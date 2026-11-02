@@ -79,6 +79,17 @@ write("$folder/bin.dat", "a$(FromBytes([0]))b")
 bad = commands.OpenFile("$folder/bin.dat", fresh())
 check(Len(bad.Buffers) == 1 and Contains("not valid UTF-8", bad.Message), "a file with a zero byte is refused")
 check(Len(commands.OpenFile(folder, fresh()).Buffers) == 1, "a folder is refused")
+zero = commands.OpenFile("/dev/zero", press.Press(["m"], fresh()))
+check(Len(zero.Buffers) == 1 and wordsOf(zero) == "m" and Contains("not a regular file", zero.Message), "a device is a message, and the text stays: $(zero.Message)")
+fifo = "$folder/pipe"
+check(Unwrap(sys.Run("mkfifo", [fifo])).Code == 0, "the FIFO is made")
+piped = commands.OpenFile(fifo, press.Press(["m"], fresh()))
+check(Len(piped.Buffers) == 1 and wordsOf(piped) == "m" and Contains("not a regular file", piped.Message), "a FIFO is a message, and the text stays: $(piped.Message)")
+Unwrap(sys.Remove(fifo))
+write("$folder/large", Repeat(16 * 1024 * 1024 + 1, "x"))
+huge = commands.OpenFile("$folder/large", press.Press(["m"], fresh()))
+check(Len(huge.Buffers) == 1 and wordsOf(huge) == "m" and Contains("too large", huge.Message), "a file too large is a message, and the text stays")
+Unwrap(sys.Remove("$folder/large"))
 
 -- Several files at the start: the empty buffer makes room and the first file is current.
 all = commands.OpenAll([aPath, bPath], fresh())
@@ -103,6 +114,13 @@ over = press.Press(["$folder/a.k", "enter"], loose)
 check(over.Prompt.Label == "File changed on disk. Overwrite? (y or n)" and read(aPath) == "one\ntwo\n", "save as over a file asks")
 over = press.Press(["n"], over)
 check(read(aPath) == "one\ntwo\n" and text.IsModified(here(over)) and IsMissing(over.Prompt), "n keeps the file")
+
+-- Save as onto a file open in another buffer is refused: one file would get two buffers.
+twin = commands.OpenFile(aPath, fresh())
+twin.Current = 1
+twin = press.Press(["z", "C-x", "C-s", "$folder/./a.k", "enter"], twin)
+check(IsMissing(twin.Prompt) and IsMissing(here(twin).Path) and text.IsModified(here(twin)) and Contains("open", twin.Message), "save as onto an open file is refused: $(twin.Message)")
+check(Len(twin.Buffers) == 2 and read(aPath) == "one\ntwo\n", "the open file stays as it was")
 
 -- A file changed on disk: the save asks, n leaves it, y writes over it.
 mine = press.Press(["C-e", "?"], commands.OpenFile(bPath, fresh()))

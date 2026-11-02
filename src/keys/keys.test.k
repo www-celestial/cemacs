@@ -33,16 +33,23 @@ isCtrlSlashAlias() = keys.Chord(press("/", true, false, true)) == "C-S-/"
 isNoShiftForUnderscore() = keys.Chord(press("_", true, false, true)) == "C-_"
 isUpperLetterLowered() = keys.Chord(press("X", true, false, true)) == "C-S-x"
 
-isPair() = keys.Resolved("", "C-x") == {Pending: "C-x"}
-isPairC() = keys.Resolved("", "C-c") == {Pending: "C-c"}
-isPairEnd() = keys.Resolved("C-x", "C-s") == {Command: "save"}
-isUnknown() = keys.Resolved("", "C-q") == {Unknown: "C-q"}
-isUnknownPair() = keys.Resolved("C-x", "C-q") == {Unknown: "C-x C-q"}
-isCancelInPair() = keys.Resolved("C-x", "C-g") == {Command: "cancel"}
-isCancel() = keys.Resolved("", "C-g") == {Command: "cancel"}
-isSingle() = keys.Resolved("", "C-f") == {Command: "forward_char"}
-isArrow() = keys.Resolved("", "S-right") == {Command: "select_forward_char"}
-isChordThenResolved() = keys.Resolved("", keys.Chord(press("<", false, true, true))) == {Command: "file_start"}
-isAliasResolved() = keys.Resolved("", "M-S-,") == {Command: "file_start"} and keys.Resolved("", "C-S-/") == {Command: "redo"}
-isNoPairAfterPair() = keys.Resolved("C-x", "C-x") == {Unknown: "C-x C-x"}
-isWholeTable() = keys.Table["C-c C-c"] == "run" and keys.Table["C-c C-k"] == "stop" and keys.Table["C-c C-o"] == "toggle_output" and keys.Table["C-x C-f"] == "open_file" and keys.Table["C-x b"] == "next_buffer" and keys.Table["C-x k"] == "close_buffer" and keys.Table["C-x C-c"] == "quit"
+-- Bindings for the logic of pairs, which doesn't care what they run: the keys of the editor are tested with commands.
+one(state) = state
+two(state) = state
+sample = {"C-f": one, "S-right": two, "C-x C-s": two, "C-c C-c": one, "C-t C-t": one}
+
+isPair() = keys.Lookup("", "C-x", sample) == {Pending: "C-x"}
+isPairC() = keys.Lookup("", "C-c", sample) == {Pending: "C-c"}
+isPairEnd() = keys.Lookup("C-x", "C-s", sample) == {Command: two}
+isPairEndIsTheFunction() = keys.Lookup("C-c", "C-c", sample) == {Command: one}
+isUnknown() = keys.Lookup("", "C-q", sample) == {Unknown: "C-q"}
+isUnknownPair() = keys.Lookup("C-x", "C-q", sample) == {Unknown: "C-x C-q"}
+isSingle() = keys.Lookup("", "C-f", sample) == {Command: one}
+isNamedKey() = keys.Lookup("", "S-right", sample) == {Command: two}
+isNoPairAfterPair() = keys.Lookup("C-x", "C-x", sample) == {Unknown: "C-x C-x"}
+-- The first key of a pair comes from the bindings, so binding a new pair is one line. The second key alone is nothing.
+isFirstFromBindings() = keys.Lookup("", "C-t", sample) == {Pending: "C-t"}
+isSecondAloneUnknown() = keys.Lookup("", "C-s", sample) == {Unknown: "C-s"}
+isNoFirstWithoutBinding() = keys.Lookup("", "C-x", {"C-f": one}) == {Unknown: "C-x"}
+-- A chord bound alone runs, even if a pair begins with it.
+isSingleBeforeFirst() = keys.Lookup("", "C-x", {"C-x": one, "C-x C-s": two}) == {Command: one}

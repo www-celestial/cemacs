@@ -1,7 +1,6 @@
 -- Kemacs: opens the window and runs the editor of commands.Kp.
--- Run through bin/kemacs, which gives the home of Kemacs first, then the files to open.
+-- Run through bin/kemacs, which gives the home of Kemacs first, then the files to open, or through kepler do dev, which runs from the root of Kemacs and gives nothing.
 use sdl
-use sys
 use ui
 use commands
 use text
@@ -16,7 +15,7 @@ end
 
 -- Opens the window, the files given after the home (or one empty buffer) and runs until the editor ends.
 defn main()
-  home = Args[1]
+  home = if Len(Args) == 0 "." else Args[1] end
   window = opened(home)?
   measured = sdl.Measure(window)
   look = ui.Look(ui.Dark, measured.Width, measured.Height)

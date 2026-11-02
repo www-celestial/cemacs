@@ -249,3 +249,35 @@ defn isFollowStateMoves()
   s = view.FollowState(stateOf([b], 800, 600))
   s.Buffers[1].Top > 1
 end
+
+-- M5 and M6: a click in the margins of the code area is on the nearest cell of the screen. A drag isn't kept there, so that the screen can follow it.
+defn scrolledSide()
+  b = text.Of(Join("", Map(n -> "x", Range(1, 100))), "a.k")
+  b.Left = 40
+  stateOf([b], 800, 600)
+end
+isClickInGutterScrolled() = view.ClickAt(10, 40, scrolledSide()) == {Line: 1, Column: 40}
+isDragInGutterScrolled() = view.PositionAt(10, 40, scrolledSide()) == {Line: 1, Column: 34}
+isClickUnderLastRow() = view.ClickAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.k")], 800, 600)).Line == 26
+isDragUnderLastRow() = view.PositionAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.k")], 800, 600)).Line == 27
+defn isClickAboveFirstRow()
+  b = text.Of(manyLines(100), "a.k")
+  b.Top = 10
+  view.ClickAt(view.Gutter, 37, stateOf([b], 800, 600)).Line == 10
+end
+isClickWithNoRows() = view.ClickAt(view.Gutter, 37, stateOf([text.Of(manyLines(3), "a.k")], 800, 60)).Line == 1
+
+-- M12: the one layout of a state.
+isLayoutOf() = view.LayoutOf(stateOf([text.Of("", "a.k")], 800, 600)).Rows == 26 and view.LayoutOf(stateOf([text.Of("", "a.k")], 800, 600)).Code.Height == 518
+
+-- A window 800 wide shows 91 columns, from 0 to 90: a click past the last one stays on it, and a drag is not kept there, so that the screen can follow it.
+defn longLine(left)
+  b = text.Of(Repeat(200, "x"), "a.k")
+  b.Left = left
+  stateOf([b], 800, 600)
+end
+isClickPastLastColumn() = view.ClickAt(799, 40, longLine(0)) == {Line: 1, Column: 90}
+isClickPastLastColumnScrolled() = view.ClickAt(799, 40, longLine(40)) == {Line: 1, Column: 130}
+isClickOnLastColumn() = view.ClickAt(view.Gutter + 90 * 8, 40, longLine(0)) == {Line: 1, Column: 90}
+isDragPastLastColumn() = view.PositionAt(799, 40, longLine(0)) == {Line: 1, Column: 92}
+isClickWithNoColumns() = view.ClickAt(50, 40, stateOf([text.Of(Repeat(200, "x"), "a.k")], 60, 600)) == {Line: 1, Column: 0}

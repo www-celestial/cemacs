@@ -69,11 +69,15 @@ check(Unwrap(sys.Read(other)) == "again", "force_save wrote the words")
 bad = "$folder/nodir/c.k"
 check(IsErr(files.SaveFile(bad, "x", missing)), "saving in a folder that doesn't exist fails")
 check(IsErr(files.ForceSave(bad, "x")), "force_save in a folder that doesn't exist fails")
+noFolder = files.ForceSave(bad, "x").Error.Message
+check(Contains(bad, noFolder) and not Contains(".kemacs-", noFolder), "a failed write names the file, not the new one: $noFolder")
 check(names(folder) == "a.k,b.k", "a failed save leaves nothing behind")
 
 -- A failed rename leaves the old file whole: the target is a folder.
 Unwrap(sys.Mkdir("$folder/sub"))
 check(IsErr(files.ForceSave("$folder/sub", "x")), "saving over a folder fails")
+overFolder = files.ForceSave("$folder/sub", "x").Error.Message
+check(Contains("$folder/sub", overFolder) and not Contains(".kemacs-", overFolder), "a failed rename names the file, not the new one: $overFolder")
 check(names(folder) == "a.k,b.k,sub", "a failed rename removes the new file")
 check(IsErr(files.ReadFile("$folder/sub")), "reading a folder fails")
 check(IsErr(files.SaveFile("$folder/sub", "x", missing)), "saving over a folder with disk missing fails")
@@ -114,6 +118,26 @@ latin = "$folder/latin"
 Unwrap(sys.Write(latin, FromBytes([99, 97, 102, 233])))
 check(IsErr(files.ReadFile(latin)), "Latin-1 gives an Err")
 check(byteText(Unwrap(sys.Read(latin))) == "99,97,102,233", "the refused file stays as it was")
+
+-- A file over 16 MiB is refused from its size alone, as an Err: reading one too large for memory would panic and lose the text of the other buffers.
+large = "$folder/large"
+Unwrap(sys.Write(large, Repeat(16 * 1024 * 1024 + 1, "x")))
+tooLarge = files.ReadFile(large)
+check(kindOf(tooLarge) == "large", "a file over the limit gives an Err of kind large")
+check(Contains(large, tooLarge.Error.Message) and Contains("too large", tooLarge.Error.Message), "the message names the file and says why")
+Unwrap(sys.Remove(large))
+
+-- What isn't a regular file is refused from sys.Stat, before any read: reading a FIFO waits for a writer that never comes, and /dev/zero never ends and fills the memory.
+fifo = "$folder/pipe"
+check(Unwrap(sys.Run("mkfifo", [fifo])).Code == 0, "the FIFO is made")
+pipe = files.ReadFile(fifo)
+check(kindOf(pipe) == "special", "a FIFO gives an Err of kind special")
+check(Contains(fifo, pipe.Error.Message) and Contains("not a regular file", pipe.Error.Message), "the message names the FIFO and says why")
+device = files.ReadFile("/dev/zero")
+check(kindOf(device) == "special", "a device gives an Err of kind special")
+check(Contains("/dev/zero", device.Error.Message) and Contains("not a regular file", device.Error.Message), "the message names the device and says why")
+check(kindOf(files.ReadFile(folder)) == "folder", "a folder keeps its own message")
+Unwrap(sys.Remove(fifo))
 
 -- IsText.
 check(files.IsText(""), "empty is text")

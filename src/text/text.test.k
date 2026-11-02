@@ -110,3 +110,31 @@ end
 
 isLineWidth() = text.LineWidth(1, text.Of("abc\r\nde", missing)) == 3 and text.LineWidth(2, text.Of("abc\r\nde", missing)) == 2
 isOfEditorFields() = text.Of("", missing).Free == false and text.Of("", missing).Origin == ""
+
+-- A \r that ends up just before a line end becomes part of that line end, so the line is shorter than the edit thought: the cursor stops before the \r.
+isPasteCrBeforeLineEndCursor() = same(at(text.InsertWords("x\r", atPlace(1, 2, "ab\ncd"))), [1, 3])
+isPasteCrCursorInHistory() = same(at(text.Redo(text.Undo(text.InsertWords("x\r", atPlace(1, 2, "ab\ncd"))))), [1, 3])
+isEditAfterPasteCr() = allText(text.InsertWords("z", text.InsertWords("x\r", atPlace(1, 2, "ab\ncd")))) == "abxz\r\ncd"
+isDeleteAfterMakesCrlfCursor() = same(at(text.DeleteAfter(atPlace(1, 2, "a\rb\nc"))), [1, 1])
+isDeleteBeforeMakesCrlfCursor() = same(at(text.DeleteBefore(atPlace(1, 3, "a\rb\nc"))), [1, 1])
+isCutLineMakesCrlfCursor() = same(at(text.CutLine(atPlace(1, 2, "a\rb\nc")).Buffer), [1, 1])
+isEditAfterDeleteMakesCrlf() = allText(text.InsertWords("z", text.DeleteAfter(atPlace(1, 2, "a\rb\nc")))) == "az\r\nc"
+
+-- A buffer holding words, with the first two characters selected.
+markedTwo(words) = text.MoveChar(2, text.SetMark(text.Of(words, missing)))
+xyInPlace(b) = text.ReplaceRegion(c -> text.InsertWords("xy", c), b)
+
+isReplaceRegion() = allText(xyInPlace(markedTwo("abcd"))) == "xycd" and IsMissing(xyInPlace(markedTwo("abcd")).Mark)
+isReplaceRegionOneUndo() = allText(text.Undo(xyInPlace(markedTwo("abcd")))) == "abcd" and same(at(text.Undo(xyInPlace(markedTwo("abcd")))), [1, 2])
+isReplaceRegionRedo() = allText(text.Redo(text.Undo(xyInPlace(markedTwo("abcd"))))) == "xycd" and same(at(text.Redo(text.Undo(xyInPlace(markedTwo("abcd"))))), [1, 2])
+isReplaceRegionNoSelection() = allText(xyInPlace(text.Of("ab", missing))) == "xyab" and allText(text.Undo(xyInPlace(text.Of("ab", missing)))) == "ab"
+isReplaceRegionNotModifiedAfterUndo() = not text.IsModified(text.Undo(xyInPlace(markedTwo("abcd"))))
+isReplaceRegionColorsFromFirstLine() = text.Undo(xyInPlace(text.MoveLine(1, text.SetMark(text.Of("a\nb\nc", missing))))).Colors.Known == 1
+-- The steps before stay steps of their own: q first, then a replaced by xy.
+defn isReplaceRegionKeepsStepBefore()
+  b = text.InsertWords("q", text.Of("ab", missing))
+  replaced = xyInPlace(text.MoveChar(1, text.SetMark(b)))
+  allText(replaced) == "qxyb" and allText(text.Undo(replaced)) == "qab" and allText(text.Undo(text.Undo(replaced))) == "ab"
+end
+-- An f that adds no step leaves the cut as the only step: the state before stays in the history.
+isReplaceRegionFAddsNothing() = allText(text.ReplaceRegion(c -> c, markedTwo("abcd"))) == "cd" and allText(text.Undo(text.ReplaceRegion(c -> c, markedTwo("abcd")))) == "abcd"

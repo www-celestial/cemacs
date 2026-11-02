@@ -3,7 +3,7 @@
 use sys
 use color
 
-stdFolder = "../kepler/std"
+stdFolder = "../kepler/src/std"
 
 defn lostIn(path, text)
   state = color.FirstState

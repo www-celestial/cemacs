@@ -203,15 +203,17 @@ ToFileEnd(b) = moved(clamp({Line: rope.LineCount(b.Rope), Column: width(rope.Lin
 Place(line, column, b) = moved(clamp({Line: line, Column: column}, b), b)
 
 -- The buffer with a new rope, a new cursor and the history that records it. A step that continues typing replaces the last state of the history
--- instead of adding one. line is the first line that changed, where the colors stop being known.
+-- instead of adding one. line is the first line that changed, where the colors stop being known. The cursor is brought inside the new text, also in
+-- the history: a \r that ends up before a line end joins it, and the line is then shorter than the caller counted.
 defn edit(r, cursor, line, continues, typing, b)
   version = b.Clock + 1
   merging = continues and b.Typing
   now = b.History.Present
-  state = {Rope: r, Cursor: cursor, Version: version, Before: if merging now.Before else b.Cursor end, Line: if merging Min(line, now.Line) else line end}
-  h = if merging history.Record(state, history.Undo(b.History)) else history.Record(state, b.History) end
   b.Rope = r
-  b.Cursor = cursor
+  inside = clamp(cursor, b)
+  state = {Rope: r, Cursor: inside, Version: version, Before: if merging now.Before else b.Cursor end, Line: if merging Min(line, now.Line) else line end}
+  h = if merging history.Record(state, history.Undo(b.History)) else history.Record(state, b.History) end
+  b.Cursor = inside
   b.Version = version
   b.Clock = version
   b.History = h
@@ -340,6 +342,30 @@ defn CutRegion(b)
   else
     ClearMark(delete(e.First, e.Last, b))
   end
+end
+
+-- The buffer with the last two steps of its history made one, which undo takes back at once: the second one, from where the first one began.
+defn joinSteps(b)
+  second = b.History.Present
+  h = history.Undo(b.History)
+  first = h.Present
+  second.Before = first.Before
+  second.Line = Min(first.Line, second.Line)
+  b.History = history.Record(second, history.Undo(h))
+  b
+end
+
+-- What f makes of the buffer without its selection, as one step of undo. Without a selection, it is only f.
+--
+--   ReplaceRegion(b -> InsertWords("x", b), MoveChar(1, SetMark(Of("ab", missing)))).Cursor.Column --> 1
+defn ReplaceRegion(f, b)
+  e = ends(b)
+  if IsMissing(e) or not before(e.First, e.Last)
+    return f(b)
+  end
+  gone = CutRegion(b)
+  done = f(gone)
+  if done.Version == gone.Version done else joinSteps(done) end
 end
 
 -- Cuts from the cursor to the end of its line, or the line end itself if the cursor is already there: {Buffer, Cut}, cut being the removed

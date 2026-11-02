@@ -111,13 +111,24 @@ defn Normal(path)
   end
 end
 
--- The file at path, in an Ok of {Words, Disk}. A file that doesn't exist is {Words: "", Disk: missing}. A folder, a file that can't be read,
--- one with a zero byte and one that isn't valid UTF-8 are an Err, and the file is not touched. The disk is taken before the read, so a file
--- changed in between makes the next save ask instead of overwriting.
+-- The largest file the editor opens, in bytes. Reading one too large for memory would panic and lose the text of every buffer. As measured, a file of
+-- this size takes 2 to 5 seconds to open and 600 MiB for a moment, and one of 64 MiB takes 18 seconds and 2.3 GB.
+largest = 16 * 1024 * 1024
+
+-- The file at path, in an Ok of {Words, Disk}. A file that doesn't exist is {Words: "", Disk: missing}. A folder, what isn't a regular file, a file
+-- that can't be read, one too large, one with a zero byte and one that isn't valid UTF-8 are an Err, and the file is not touched. The disk is taken before
+-- the read, so a file changed in between makes the next save ask instead of overwriting. A device or a FIFO has the size 0, and reading one never ends,
+-- so sys.Stat must say what it is first.
 defn ReadFile(path)
   disk = current(path)?
   if IsMissing(disk)
     return Ok({Words: "", Disk: missing})
+  end
+  if not sys.Stat(path)?.IsFile
+    return Err({Kind: "special", Message: "$path is not a regular file: it may be a device, a pipe or a socket."})
+  end
+  if disk.Size > largest
+    return Err({Kind: "large", Message: "$path is too large to open: $(disk.Size) bytes, and the limit is $largest."})
   end
   words = sys.Read(path)?
   if not IsText(words)
@@ -139,6 +150,9 @@ defn isFresh(path)
   Err({Kind: "io", Message: "No free name next to $path for a new file."})
 end
 
+-- A failure on the new file, as a failure on path: the person never heard of the new one.
+named(path, fresh, failure) = Err({Kind: failure.Error.Kind, Message: Replace(fresh, path, failure.Error.Message)})
+
 -- Writes the words to path through a new file next to it, then renames it over the file. The new file has a name that nothing used, and the
 -- cleanup removes only it. On any failure the old file stays whole. Gives Ok of the new disk. If only the stat after the rename fails, the file
 -- is saved and the Err has the kind "saved".
@@ -147,12 +161,12 @@ defn replace(path, words)
   written = sys.Write(fresh, words)
   if IsErr(written)
     sys.Remove(fresh)
-    return written
+    return named(path, fresh, written)
   end
   moved = sys.Rename(fresh, path)
   if IsErr(moved)
     sys.Remove(fresh)
-    return moved
+    return named(path, fresh, moved)
   end
   match current(path)
     Ok(disk) -> Ok(disk)

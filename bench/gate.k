@@ -14,7 +14,7 @@ passes = 300
 -- The number of lines of the text of the gate.
 wantedLines = 20000
 -- The folder of the files that make the text, read from the root of kemacs.
-stdFolder = "../kepler/std"
+stdFolder = "../kepler/src/std"
 
 -- The text of every file of the Kepler std, one after the other.
 defn stdText()

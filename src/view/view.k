@@ -16,12 +16,15 @@ modeHeight = 24
 promptHeight = 22
 
 -- The state of the editor with its buffers, before any key: the first buffer is current, there is no pending key, no prompt, no run and no window yet.
--- The editor adds its own fields: clip, the clipboard when there is no window; chorded, true right after a key with Ctrl or Alt, whose text event
--- is ignored; chain, true while the last command was C-k; dragging, true while the mouse selects; ending, true when the editor must stop; and title.
+-- The editor adds its own fields: clip, the clipboard when there is no window; chorded, right after a key with Ctrl or Alt, the text of the event to ignore,
+-- or true for any text; chain, true while the last command was C-k; dragging, true while the mouse selects; pressed, the place of a mouse press until the mouse leaves
+-- the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; and title.
+-- Under --watch the code changes and the state stays, so a session can hold a state from before a field was added here. A field added after that
+-- is read only through a match with a default, which is how Kepler tests for a field: reading one that isn't there panics, with all the unsaved text.
 --
 --   Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600).Current --> 1
 Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pending: "", Prompt: missing, Message: "", Run: missing, Window: missing, Width: width, Height: height, Cell: cell, Look: look,
-  Clip: "", Chorded: false, Chain: false, Dragging: false, Ending: false, Title: ""}
+  Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: ""}
 
 -- The rectangles of the screen {Tabs, Code, Output, Mode, Prompt}, and rows and columns, the lines and the characters that fit in code.
 -- With showing_output false, output is empty. No size goes below zero, so a tiny window still has a layout.
@@ -47,11 +50,8 @@ bufferName(b) = if IsMissing(b.Path) "untitled" else Last(Split("/", b.Path)) en
 --   BufferName(text.Of("", "src/a.k")) --> "a.k"
 BufferName(b) = bufferName(b)
 
--- Is the text of a buffer modified since it was saved?
-modified(b) = b.Version != b.Saved
-
 -- The label of the mode line: the name, and a star if the text isn't saved. Tabs show the plain name and a dot instead.
-label(b) = if modified(b) "$(bufferName(b)) *" else bufferName(b) end
+label(b) = if text.IsModified(b) "$(bufferName(b)) *" else bufferName(b) end
 
 -- A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, and whose colors are known up to the last line on the screen.
 -- It is the only place that moves the screen: view only reads. A buffer that is free, after the wheel, keeps its top and left: the cursor may be off the screen.
@@ -90,7 +90,7 @@ end
 
 -- The state with the screen of its current buffer kept on the cursor, as follow does.
 defn FollowState(state)
-  lay = Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run))
+  lay = LayoutOf(state)
   s = state
   s.Buffers[state.Current] = Follow(lay.Rows, lay.Columns, state.Buffers[state.Current])
   s
@@ -162,25 +162,39 @@ defn cellAt(x, y, rect, cell)
   {Row: floorDiv(dy, cell.Height), Column: floorDiv(dx, cell.Width)}
 end
 
--- The layout of a state.
-layoutOf(state) = Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run))
+-- The layout of a state: the one of its window, with the output pane if a program runs.
+--
+--   LayoutOf(Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Rows --> 26
+LayoutOf(state) = Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run))
 
 -- Is a point inside the code area?
 --
 --   IsInCode(10, 100, Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> true
 defn IsInCode(x, y, state)
-  r = layoutOf(state).Code
+  r = LayoutOf(state).Code
   x >= r.X and x < r.X + r.Width and y >= r.Y and y < r.Y + r.Height
 end
 
--- The position {Line, Column} of the current buffer under a point of the code area, brought inside the text.
+-- The position {Line, Column} of the current buffer under a point, brought inside the text. The point can be anywhere: in a drag past the edge of the
+-- code, the screen then follows it.
 --
 --   PositionAt(0, 0, Start([text.Of("ab", missing)], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Line --> 1
 defn PositionAt(x, y, state)
-  lay = layoutOf(state)
+  lay = LayoutOf(state)
   b = state.Buffers[state.Current]
   at = cellAt(x, y, lay.Code, state.Cell)
   text.Place(b.Top + at.Row, b.Left + at.Column, b).Cursor
+end
+
+-- The position {Line, Column} of the current buffer under a click in the code area, which doesn't move the screen: in the gutter it is on the first
+-- column shown, past the last column on that one, and in the margins above and under the rows on the nearest row.
+--
+--   ClickAt(0, 37, Start([text.Of("ab", missing)], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Column --> 0
+defn ClickAt(x, y, state)
+  lay = LayoutOf(state)
+  b = state.Buffers[state.Current]
+  at = cellAt(x, y, lay.Code, state.Cell)
+  text.Place(b.Top + Max(0, Min(at.Row, lay.Rows - 1)), b.Left + Max(0, Min(at.Column, lay.Columns - 1)), b).Cursor
 end
 
 -- The selection of a buffer on the lines from first to last: one rectangle per line, from the mark to the cursor. A line that the selection
@@ -232,13 +246,13 @@ end
 dotCommand(x, y, color) = box(x, y, 7, 7, color, 3)
 
 -- The width of the tab of a buffer: its name, the space around it, and room for the dot of a text that isn't saved.
-tabSize(b, look) = look.Width(bufferName(b), "body") + 28 + if modified(b) 13 else 0 end
+tabSize(b, look) = look.Width(bufferName(b), "body") + 28 + if text.IsModified(b) 13 else 0 end
 
 -- The index of the tab under a point, or 0 if it is not on a tab.
 --
 --   TabAt(0, 100, Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> 0
 defn TabAt(x, y, state)
-  rect = layoutOf(state).Tabs
+  rect = LayoutOf(state).Tabs
   if y < rect.Y or y >= rect.Y + rect.Height
     return 0
   end
@@ -263,7 +277,7 @@ defn tabs(state, lay, look)
   for k in 1:Len(state.Buffers)
     b = state.Buffers[k]
     name = bufferName(b)
-    dot = if modified(b) 13 else 0 end
+    dot = if text.IsModified(b) 13 else 0 end
     size = tabSize(b, look)
     if k == state.Current
       out = Concat(out, [inside("strong", x + 14, y, name, th.Bright), box(x + 8, rect.Y + rect.Height - 3, size - 16, 3, th.Accent, 1)])
@@ -318,7 +332,7 @@ end
 -- The screen of the buffer (top, left and colors) is what follow gave it.
 defn View(state)
   look = state.Look
-  lay = Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run))
+  lay = LayoutOf(state)
   lay.Cell = state.Cell
   b = state.Buffers[state.Current]
   Flatten([[{Kind: "clear", Color: look.Theme.Ground}], code(b, lay, look), tabs(state, lay, look), output(state, lay, look), mode(b, lay, look), prompt(state, lay, look)])
