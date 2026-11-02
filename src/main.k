@@ -6,11 +6,14 @@ use commands
 use text
 use view
 
+-- The size of the three fonts. The window reads it when it opens, so a change shows at the next start.
+fontSize() = 15
+
 -- The window, with the three fonts of Kemacs found in fonts/ under its home: body, strong and code.
 defn opened(home)
-  first = sdl.Open("Kemacs", 1280, 720, "$home/fonts/AdwaitaSans-Regular.ttf", size = 13, light = true)?
-  second = sdl.AddFont("strong", "$home/fonts/NotoSans-Medium.ttf", 13, first, light = true)?
-  sdl.AddFont("code", "$home/fonts/JetBrainsMono-Regular.ttf", 13, second)
+  first = sdl.Open("Kemacs", 1280, 720, "$home/fonts/AdwaitaSans-Regular.ttf", size = fontSize(), light = true)?
+  second = sdl.AddFont("strong", "$home/fonts/NotoSans-Medium.ttf", fontSize(), first, light = true)?
+  sdl.AddFont("code", "$home/fonts/JetBrainsMono-Regular.ttf", fontSize(), second)
 end
 
 -- Opens the window, the files given after the home (or one empty buffer) and runs until the editor ends.
