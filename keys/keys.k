@@ -2,29 +2,29 @@
 -- costs one line. Nothing here knows of a window or a file.
 
 -- The keys that make no difference with Shift, because the character already holds it: "<" is Shift and ",".
-_shifted = ["<", ">", "?", "_"]
+shifted = ["<", ">", "?", "_"]
 
 -- The prefix of the modifiers, always in the order C, M, S: "C-M-S-".
-_prefix(ctrl, alt, shift) = "$(if ctrl "C-" else "" end)$(if alt "M-" else "" end)$(if shift "S-" else "" end)"
+prefix(ctrl, alt, shift) = "$(if ctrl "C-" else "" end)$(if alt "M-" else "" end)$(if shift "S-" else "" end)"
 
 -- Has this key a name, as "enter" or "right", rather than being one character?
-_is_named(key) = length(key) > 1
+isNamed(key) = Len(key) > 1
 
 -- The chord of an event, such as "C-f", "M-w", "enter" or "S-right", or missing if the key only types: the text event types it.
 -- A key that types is a character or the space bar with no Ctrl and no Alt, with or without Shift. A key with Super is not ours.
-defn chord(event)
-  key = if _is_named(event.key) event.key else lower(event.key) end
-  types = (not _is_named(event.key) or key == "space") and not event.ctrl and not event.alt
-  if event.super or types
+defn Chord(event)
+  key = if isNamed(event.Key) event.Key else Lower(event.Key) end
+  types = (not isNamed(event.Key) or key == "space") and not event.Ctrl and not event.Alt
+  if event.Super or types
     missing
   else
-    shift = event.shift and not (key in _shifted)
-    "$(_prefix(event.ctrl, event.alt, shift))$key"
+    shift = event.Shift and not (key in shifted)
+    "$(prefix(event.Ctrl, event.Alt, shift))$key"
   end
 end
 
--- The commands by chord: a chord, or two chords with a space between, to the name of a command of commands.kp.
-table = {
+-- The commands by chord: a chord, or two chords with a space between, to the name of a command of commands.k.
+Table = {
   "C-f": "forward_char", "right": "forward_char",
   "C-b": "backward_char", "left": "backward_char",
   "C-n": "next_line", "down": "next_line",
@@ -65,23 +65,23 @@ table = {
 }
 
 -- The chords that begin a pair.
-_firsts = ["C-x", "C-c"]
+firsts = ["C-x", "C-c"]
 
--- What a chord means after the pending first key of a pair, which is "" if there is none: {command} to run, {pending} for the first key of a
--- pair, or {unknown} with the text of the keys that mean nothing. C-g cancels, even as the second key.
-defn resolved(pending, chord)
+-- What a chord means after the pending first key of a pair, which is "" if there is none: {Command} to run, {Pending} for the first key of a
+-- pair, or {Unknown} with the text of the keys that mean nothing. C-g cancels, even as the second key.
+defn Resolved(pending, chord)
   if pending == ""
-    if has(chord, table)
-      {command: table[chord]}
-    else if chord in _firsts
-      {pending: chord}
+    if Has(chord, Table)
+      {Command: Table[chord]}
+    else if chord in firsts
+      {Pending: chord}
     else
-      {unknown: chord}
+      {Unknown: chord}
     end
   else if chord == "C-g"
-    {command: "cancel"}
+    {Command: "cancel"}
   else
     both = "$pending $chord"
-    if has(both, table) {command: table[both]} else {unknown: both} end
+    if Has(both, Table) {Command: Table[both]} else {Unknown: both} end
   end
 end

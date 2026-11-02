@@ -1,0 +1,112 @@
+-- Tests of the buffer in text.Kp: run with kepler test .
+use text
+use color
+use rope
+
+allText(b) = rope.Text(b.Rope)
+at(b) = [b.Cursor.Line, b.Cursor.Column]
+same(a, b) = "$a" == "$b"
+typed(words, b) = Reduce((acc, c) -> text.InsertWords(c, acc), b, Chars(words))
+atPlace(line, column, words) = text.Place(line, column, text.Of(words, missing))
+
+isTyping() = allText(text.InsertWords("a", text.Of("", missing))) == "a" and text.InsertWords("a", text.Of("", missing)).Cursor.Column == 1
+isAccentMove() = allText(text.DeleteAfter(text.MoveChar(1, text.Of("éa", missing)))) == "é"
+isAccentDelete() = allText(text.DeleteBefore(atPlace(1, 1, "éa"))) == "a"
+isAccentInsert() = allText(text.InsertWords("x", atPlace(1, 1, "éa"))) == "éxa"
+isStartOfFile() = allText(text.DeleteBefore(text.Of("ab", missing))) == "ab" and same(at(text.DeleteBefore(text.Of("ab", missing))), [1, 0])
+isStartOfFileVersion() = text.DeleteBefore(text.Of("ab", missing)).Version == 0
+isJoinLines() = allText(text.DeleteBefore(atPlace(2, 0, "ab\ncd"))) == "abcd" and same(at(text.DeleteBefore(atPlace(2, 0, "ab\ncd"))), [1, 2])
+isEndOfLastLine() = same(at(text.MoveChar(1, atPlace(2, 2, "ab\ncd"))), [2, 2])
+isStartOfFileMove() = same(at(text.MoveChar(-1, text.Of("ab", missing))), [1, 0])
+isMoveAcrossLines() = same(at(text.MoveChar(1, atPlace(1, 2, "ab\ncd"))), [2, 0]) and same(at(text.MoveChar(-1, atPlace(2, 0, "ab\ncd"))), [1, 2])
+isShortLineColumn() = same(at(text.MoveLine(1, text.MoveLine(1, atPlace(1, 4, "abcde\nx\nabcde")))), [3, 4])
+isWantedClearedByMove() = same(at(text.MoveLine(1, text.MoveChar(-1, text.MoveLine(1, atPlace(1, 4, "abcde\nx\nabcde"))))), [3, 0])
+isWantedClearedByEdit() = same(at(text.MoveLine(1, text.InsertWords("y", text.MoveLine(1, atPlace(1, 4, "abcde\nx\nabcde"))))), [3, 2])
+isMoveLineEdges() = same(at(text.MoveLine(-1, atPlace(1, 2, "abc\nd"))), [1, 2]) and same(at(text.MoveLine(5, atPlace(1, 2, "abc\nd"))), [2, 1])
+isIndent() = allText(text.NewLine(atPlace(1, 3, "  x"))) == "  x\n  " and same(at(text.NewLine(atPlace(1, 3, "  x"))), [2, 2])
+isNewLineSplits() = allText(text.NewLine(atPlace(1, 1, "ab"))) == "a\nb" and same(at(text.NewLine(atPlace(1, 1, "ab"))), [2, 0])
+isCutLineMiddle() = allText(text.CutLine(atPlace(1, 1, "abc\nd")).Buffer) == "a\nd" and text.CutLine(atPlace(1, 1, "abc\nd")).Cut == "bc"
+isCutLineEnd() = allText(text.CutLine(atPlace(1, 3, "abc\nd")).Buffer) == "abcd" and text.CutLine(atPlace(1, 3, "abc\nd")).Cut == "\n"
+isCutLineLast() = allText(text.CutLine(atPlace(1, 3, "abc")).Buffer) == "abc" and text.CutLine(atPlace(1, 3, "abc")).Cut == ""
+isUndoWord() = allText(text.Undo(typed("ab cd", text.Of("", missing)))) == "ab "
+isUndoTwice() = allText(text.Undo(text.Undo(typed("ab cd", text.Of("", missing))))) == ""
+isUndoMoreThanHistory() = allText(text.Undo(text.Undo(text.Undo(typed("ab cd", text.Of("", missing)))))) == ""
+isUndoRestoresCursor() = same(at(text.Undo(typed("ab cd", text.Of("", missing)))), [1, 3])
+isUndoClearsStar() = not text.IsModified(text.Undo(text.InsertWords("x", text.MarkSaved(missing, text.Of("", missing)))))
+isEditSetsStar() = text.IsModified(text.InsertWords("x", text.Of("", missing))) and not text.IsModified(text.Of("", missing))
+isStarAfterOtherBranch() = text.IsModified(text.InsertWords("z", text.Undo(text.InsertWords("y", text.MarkSaved(missing, text.InsertWords("x", text.Of("", missing)))))))
+isRedo() = allText(text.Redo(text.Undo(typed("ab cd", text.Of("", missing))))) == "ab cd"
+isRedoLost() = allText(text.Redo(text.InsertWords("z", text.Undo(typed("ab", text.Of("", missing)))))) == "z"
+isMoveEndsStep() = allText(text.Undo(typed("c", text.MoveChar(-1, typed("ab", text.Of("", missing)))))) == "ab"
+isNewLineStep() = allText(text.Undo(text.NewLine(typed("ab", text.Of("", missing))))) == "ab"
+isMarkSaved() = text.MarkSaved(5, text.InsertWords("x", text.Of("", missing))).Disk == 5 and not text.IsModified(text.MarkSaved(5, text.InsertWords("x", text.Of("", missing))))
+isRegionNone() = text.Region(text.Of("abc", missing)) == ""
+isRegion() = text.Region(text.MoveChar(2, text.SetMark(text.Of("abcd", missing)))) == "ab"
+isRegionBackwards() = text.Region(text.MoveChar(-2, text.SetMark(atPlace(1, 3, "abcd")))) == text.Region(text.MoveChar(2, text.SetMark(atPlace(1, 1, "abcd")))) and text.Region(text.MoveChar(-2, text.SetMark(atPlace(1, 3, "abcd")))) == "bc"
+isRegionAcrossLines() = text.Region(text.MoveLine(1, text.SetMark(text.Of("ab\ncd", missing)))) == "ab\n"
+isRegionAccent() = text.Region(text.MoveChar(2, text.SetMark(text.Of("éàb", missing)))) == "éà"
+isClearMark() = text.Region(text.ClearMark(text.MoveChar(2, text.SetMark(text.Of("abcd", missing))))) == ""
+isCutRegion() = allText(text.CutRegion(text.MoveChar(2, text.SetMark(text.Of("abcd", missing))))) == "cd"
+isCutRegionBackwards() = allText(text.CutRegion(text.MoveChar(-2, text.SetMark(atPlace(1, 3, "abcd"))))) == "ad" and same(at(text.CutRegion(text.MoveChar(-2, text.SetMark(atPlace(1, 3, "abcd"))))), [1, 1])
+isCutRegionClearsMark() = text.Region(text.CutRegion(text.MoveChar(2, text.SetMark(text.Of("abcd", missing))))) == ""
+isMarkAfterEditIsValid() = text.Region(text.CutLine(text.Place(1, 3, text.SetMark(atPlace(1, 6, "abcdef")))).Buffer) == ""
+isLineEdges() = same(at(text.ToLineEnd(text.Of("ab\ncd", missing))), [1, 2]) and same(at(text.ToLineStart(atPlace(2, 1, "ab\ncd"))), [2, 0])
+isFileEdges() = same(at(text.ToFileEnd(text.Of("ab\ncé", missing))), [2, 2]) and same(at(text.ToFileStart(atPlace(2, 1, "ab\ncd"))), [1, 0])
+isEmptyFile() = same(at(text.ToFileEnd(text.Of("", missing))), [1, 0]) and allText(text.DeleteAfter(text.Of("", missing))) == ""
+isPlaceClamped() = same(at(atPlace(9, 9, "ab\ncd")), [2, 2]) and same(at(atPlace(0, -3, "ab\ncd")), [1, 0])
+isMoveWord() = same(at(text.MoveWord(1, text.Of("foo bar", missing))), [1, 3]) and same(at(text.MoveWord(1, atPlace(1, 3, "foo bar"))), [1, 7])
+isMoveWordBack() = same(at(text.MoveWord(-1, atPlace(1, 7, "foo bar"))), [1, 4]) and same(at(text.MoveWord(-1, atPlace(1, 4, "foo bar"))), [1, 0])
+isMoveWordAccent() = same(at(text.MoveWord(1, text.Of("été_1 x", missing))), [1, 5])
+isMoveWordLines() = same(at(text.MoveWord(1, atPlace(1, 3, "ab\ncd"))), [2, 2])
+isMovePage() = same(at(text.MovePage(1, 3, text.Of(Join("\n", Map(n -> "l", Range(1, 10))), missing))), [4, 0]) and same(at(text.MovePage(-1, 3, atPlace(2, 0, Join("\n", Map(n -> "l", Range(1, 10)))))), [1, 0])
+isMovePageKeepsColumn() = same(at(text.MovePage(1, 2, text.MoveLine(1, atPlace(1, 3, "abcd\nx\nabcd\nabcd")))), [4, 3])
+isColorsForgotten() = text.InsertWords("x", text.Of("a\nb\nc", missing)).Colors.Known == 1 and color.ColoredTo(3, n -> "x", text.Of("a", missing).Colors).Known == 3
+isColorsForgottenBelow() = text.InsertWords("x", colorTo3(atPlace(2, 0, "a\nb\nc"))).Colors.Known == 2
+isCrlfKept() = allText(text.InsertWords("x", text.Of("a\r\nb", missing))) == "xa\r\nb"
+isInsertNewlines() = same(at(text.InsertWords("x\nyz", text.Of("ab", missing))), [2, 2]) and allText(text.InsertWords("x\nyz", text.Of("ab", missing))) == "x\nyzab"
+isDeleteAfterJoin() = allText(text.DeleteAfter(atPlace(1, 2, "ab\ncd"))) == "abcd"
+isDeleteAfterLast() = allText(text.DeleteAfter(atPlace(1, 2, "ab"))) == "ab"
+isUndoDelete() = allText(text.Undo(text.DeleteBefore(atPlace(1, 2, "abc")))) == "abc"
+isLimit() = text.Of("", missing).History.Limit == 1000
+
+defn colorTo3(b)
+  b.Colors = color.ColoredTo(3, n -> "x", b.Colors)
+  b
+end
+
+crlf = "ab\r\ncd"
+longText = Join("\n", Map(n -> "x", Range(1, 100)))
+
+isCrlfRoundtrip() = allText(text.Of(crlf, missing)) == crlf and allText(text.Undo(text.Redo(text.InsertWords("z", text.Of(crlf, missing))))) == crlf
+isCrlfLineEndType() = allText(text.InsertWords("X", text.ToLineEnd(text.Of(crlf, missing)))) == "abX\r\ncd"
+isCrlfWidth() = same(at(text.ToLineEnd(text.Of(crlf, missing))), [1, 2]) and same(at(text.MoveLine(-1, atPlace(2, 5, crlf))), [1, 2])
+isCrlfMoveChar() = same(at(text.MoveChar(3, text.Of(crlf, missing))), [2, 0]) and same(at(text.MoveChar(-1, atPlace(2, 0, crlf))), [1, 2])
+isCrlfDeleteBefore() = allText(text.DeleteBefore(atPlace(2, 0, crlf))) == "abcd" and same(at(text.DeleteBefore(atPlace(2, 0, crlf))), [1, 2])
+isCrlfDeleteAfter() = allText(text.DeleteAfter(atPlace(1, 2, crlf))) == "abcd"
+isCrlfNewLine() = allText(text.NewLine(atPlace(1, 2, "  ab\r\ncd"))) == "  ab\r\n  \r\ncd" or allText(text.NewLine(atPlace(1, 4, "  ab\r\ncd"))) == "  ab\r\n  \r\ncd"
+isCrlfNewLineCursor() = same(at(text.NewLine(atPlace(1, 4, "  ab\r\ncd"))), [2, 2])
+isCrlfNewLineLast() = allText(text.NewLine(atPlace(2, 2, crlf))) == "ab\r\ncd\r\n"
+isLfNewLineLast() = allText(text.NewLine(atPlace(2, 2, "ab\ncd"))) == "ab\ncd\n"
+isCrlfCutLine() = text.CutLine(atPlace(1, 2, crlf)).Cut == "\r\n" and allText(text.CutLine(atPlace(1, 2, crlf)).Buffer) == "abcd"
+isCrlfRegion() = text.Region(text.MoveChar(1, text.SetMark(atPlace(1, 2, crlf)))) == "\r\n" and allText(text.CutRegion(text.MoveChar(1, text.SetMark(atPlace(1, 2, crlf))))) == "abcd"
+isCrInsideLine() = same(at(text.ToLineEnd(text.Of("a\rb\ncd", missing))), [1, 3]) and same(at(text.ToLineEnd(text.Of("ab\r", missing))), [1, 3])
+isUndoKeepsColors() = colorTo60(text.InsertWords("y", atPlace(50, 0, longText))).Colors.Known == 60 and text.Undo(colorTo60(text.InsertWords("y", atPlace(50, 0, longText)))).Colors.Known >= 49
+isUndoCursorFarEdit() = same(at(text.Undo(text.DeleteBefore(text.MoveChar(-2, text.InsertWords("x", atPlace(1, 3, "abc")))))), [1, 2]) and allText(text.Undo(text.DeleteBefore(text.MoveChar(-2, text.InsertWords("x", atPlace(1, 3, "abc")))))) == "abcx"
+isRedoCursor() = same(at(text.Redo(text.Undo(text.DeleteBefore(text.MoveChar(-2, text.InsertWords("x", atPlace(1, 3, "abc"))))))), [1, 1])
+isUndoWordCursor() = same(at(text.Undo(text.MoveChar(-1, typed("ab cd", text.Of("", missing))))), [1, 3]) and same(at(text.Undo(typed("ab cd", text.Of("", missing)))), [1, 3]) and same(at(text.Undo(text.Undo(typed("ab cd", text.Of("", missing))))), [1, 0])
+isSaveEndsStep() = not text.IsModified(text.Undo(text.InsertWords("c", text.MarkSaved(missing, typed("ab", text.Of("", missing)))))) and allText(text.Undo(text.InsertWords("c", text.MarkSaved(missing, typed("ab", text.Of("", missing)))))) == "ab"
+
+defn colorTo60(b)
+  b.Colors = color.ColoredTo(60, n -> "x", b.Colors)
+  b
+end
+
+defn isSelectionEnds()
+  b = text.Place(1, 3, text.Of("abcdef", missing))
+  b.Mark = {Line: 1, Column: 1}
+  e = text.Selection(b)
+  e.First.Column == 1 and e.Last.Column == 3 and IsMissing(text.Selection(text.Of("a", missing)))
+end
+
+isLineWidth() = text.LineWidth(1, text.Of("abc\r\nde", missing)) == 3 and text.LineWidth(2, text.Of("abc\r\nde", missing)) == 2
+isOfEditorFields() = text.Of("", missing).Free == false and text.Of("", missing).Origin == ""

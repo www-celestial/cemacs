@@ -1,0 +1,139 @@
+-- Checks of commands.Kp against real files, in a new folder under /tmp. It is a script, not a test file: it needs permissions.
+-- Run it with kepler run --allow read,write tests/commands-check.k. It prints ok at the end and stops at the first failure.
+use rope
+use sys
+use ui
+use commands
+use press
+use text
+use view
+
+-- Stops the script with the words if the condition is false.
+defn check(condition, words)
+  if not condition
+    Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+
+-- A state with one empty buffer and no window.
+fresh() = view.Start([text.Of("", missing)], look, cell, 800, 600)
+here(state) = state.Buffers[state.Current]
+wordsOf(state) = rope.Text(here(state).Rope)
+
+-- The text of a file, or panics.
+read(path) = Unwrap(sys.Read(path))
+-- Writes a file for the checks.
+write(path, words) = Unwrap(sys.Write(path, words))
+
+folder = "/tmp/kemacs-commands-check-$(Text(sys.Now()))"
+check(IsOk(sys.Mkdir(folder)), "the folder is made")
+aPath = "$folder/a.k"
+bPath = "$folder/b.k"
+write(aPath, "one\ntwo\n")
+write(bPath, "bee\n")
+
+-- Opening a file gives a buffer with its text and path, and the person in it.
+s = commands.OpenFile(aPath, fresh())
+check(Len(s.Buffers) == 2 and s.Current == 2, "a new buffer for the file")
+check(wordsOf(s) == "one\ntwo\n" and here(s).Path == aPath, "the buffer has the text and the path")
+check(not text.IsModified(here(s)), "a buffer just read is not modified")
+
+-- The same file twice, written another way, is one buffer.
+twice = commands.OpenFile("$folder/./a.k", commands.OpenFile(bPath, s))
+check(Len(twice.Buffers) == 3 and twice.Current == 2, "the same file opened again goes to its buffer")
+check(Len(commands.OpenFile(aPath, s).Buffers) == 2, "the same path again opens nothing")
+
+-- Two buffers keep their own cursor and undo.
+two = press.Press(["C-n", "C-e", "x"], twice)
+check(wordsOf(two) == "one\ntwox\n", "typing in the first file")
+two = press.Press(["C-x", "b"], two)
+check(here(two).Path == bPath, "next buffer")
+two = press.Press(["C-e", "y"], two)
+check(wordsOf(two) == "beey\n", "typing in the second file")
+two = press.Press(["C-/"], two)
+check(wordsOf(two) == "bee\n", "undo in the second buffer")
+two = press.Press(["C-x", "b", "C-x", "b"], two)
+check(here(two).Path == aPath and here(two).Cursor == {Line: 2, Column: 4} and wordsOf(two) == "one\ntwox\n", "the first buffer kept its cursor and its text")
+two = press.Press(["C-/"], two)
+check(wordsOf(two) == "one\ntwo\n", "undo in the first buffer")
+
+-- Find file: the prompt starts with the folder of the current file, and Enter opens the answer.
+asked = press.Press(["C-x", "C-f"], commands.OpenFile(aPath, fresh()))
+check(asked.Prompt.Answer == "$folder/", "the prompt starts with the folder")
+opened = press.Press(["b.k", "enter"], asked)
+check(here(opened).Path == "$folder/b.k" and IsMissing(opened.Prompt) and wordsOf(opened) == "bee\n", "Enter opens the file of the answer")
+
+-- A file that doesn't exist opens as an empty buffer, and is created by the first save.
+newPath = "$folder/new.k"
+made = commands.OpenFile(newPath, fresh())
+check(wordsOf(made) == "" and here(made).Path == newPath, "a missing file opens empty")
+made = press.Press(["h", "i", "C-x", "C-s"], made)
+check(read(newPath) == "hi" and not text.IsModified(here(made)), "the first save creates the file")
+check(Contains("Saved", made.Message), "the save says so")
+
+-- A file that is not text is not opened, and the message says why.
+write("$folder/bin.dat", "a$(FromBytes([0]))b")
+bad = commands.OpenFile("$folder/bin.dat", fresh())
+check(Len(bad.Buffers) == 1 and Contains("not valid UTF-8", bad.Message), "a file with a zero byte is refused")
+check(Len(commands.OpenFile(folder, fresh()).Buffers) == 1, "a folder is refused")
+
+-- Several files at the start: the empty buffer makes room and the first file is current.
+all = commands.OpenAll([aPath, bPath], fresh())
+check(Len(all.Buffers) == 2 and all.Current == 1 and here(all).Path == aPath, "open_all")
+check(Len(commands.OpenAll([], fresh()).Buffers) == 1, "no file keeps the empty buffer")
+check(Len(commands.OpenAll(["$folder/none-1.k"], fresh()).Buffers) == 1 and wordsOf(commands.OpenAll(["$folder/none-1.k"], fresh())) == "", "a missing file at the start opens empty")
+
+-- Saving: C-x C-s writes the file, and the star goes.
+edited = press.Press(["C-e", "!", "C-x", "C-s"], commands.OpenFile(bPath, fresh()))
+check(read(bPath) == "bee!\n" and not text.IsModified(here(edited)) and IsMissing(edited.Prompt), "C-x C-s writes the file")
+
+-- Save as: a buffer with no path asks for one, and gets it only when the save works.
+loose = press.Press(["z", "C-x", "C-s"], fresh())
+check(loose.Prompt.Label == "Save as: ", "a buffer with no path asks")
+saved = press.Press(["$folder/loose.k", "enter"], loose)
+check(read("$folder/loose.k") == "z" and here(saved).Path == "$folder/loose.k" and not text.IsModified(here(saved)), "save as writes the file and names the buffer")
+failed = press.Press(["$folder/nodir/x.k", "enter"], loose)
+check(IsMissing(here(failed).Path) and text.IsModified(here(failed)) and failed.Message != "", "a failed save as keeps the text modified, with a message")
+emptyName = press.Press(["enter"], loose)
+check(IsMissing(emptyName.Prompt) and IsMissing(here(emptyName).Path), "an empty name saves nothing")
+over = press.Press(["$folder/a.k", "enter"], loose)
+check(over.Prompt.Label == "File changed on disk. Overwrite? (y or n)" and read(aPath) == "one\ntwo\n", "save as over a file asks")
+over = press.Press(["n"], over)
+check(read(aPath) == "one\ntwo\n" and text.IsModified(here(over)) and IsMissing(over.Prompt), "n keeps the file")
+
+-- A file changed on disk: the save asks, n leaves it, y writes over it.
+mine = press.Press(["C-e", "?"], commands.OpenFile(bPath, fresh()))
+write(bPath, "theirs\n")
+asked = press.Press(["C-x", "C-s"], mine)
+check(asked.Prompt.Label == "File changed on disk. Overwrite? (y or n)" and read(bPath) == "theirs\n", "a changed file asks before writing")
+check(press.Press(["q"], asked).Prompt.Label == asked.Prompt.Label, "another key does not answer")
+refused = press.Press(["n"], asked)
+check(read(bPath) == "theirs\n" and text.IsModified(here(refused)) and IsMissing(refused.Prompt), "n keeps the file of the disk")
+cancelled = press.Press(["C-g"], asked)
+check(read(bPath) == "theirs\n" and IsMissing(cancelled.Prompt), "C-g keeps the file of the disk")
+forced = press.Press(["y"], asked)
+check(read(bPath) == "bee!?\n" and not text.IsModified(here(forced)), "y writes over the file")
+again = press.Press(["C-e", "1", "C-x", "C-s"], forced)
+check(read(bPath) == "bee!?1\n" and IsMissing(again.Prompt), "after y the next save does not ask")
+
+-- A save that fails keeps the text modified.
+blocked = commands.OpenFile(aPath, fresh())
+blocked.Buffers[blocked.Current].Path = "$folder/nodir/a.k"
+blocked.Buffers[blocked.Current].Disk = missing
+blocked = press.Press(["x", "C-x", "C-s"], blocked)
+check(text.IsModified(here(blocked)) and blocked.Message != "" and wordsOf(blocked) == "xone\ntwo\n", "a failed save keeps the text and says why")
+
+-- Closing a modified buffer asks; a file buffer closes to its neighbour.
+dirty = press.Press(["x"], commands.OpenFile(aPath, commands.OpenFile(bPath, fresh())))
+asked = press.Press(["C-x", "k"], dirty)
+check(Len(asked.Buffers) == 3 and asked.Prompt.Label == "Text not saved. Close anyway? (y or n)", "closing a modified file buffer asks")
+closed = press.Press(["y"], asked)
+check(Len(closed.Buffers) == 2 and here(closed).Path == bPath, "y closes it")
+
+-- The title follows the current buffer.
+check(commands.Settled(commands.OpenFile(aPath, fresh())).Title == "a.k", "the title is the name of the file")
+
+Print("ok")

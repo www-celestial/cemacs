@@ -1,0 +1,46 @@
+-- A helper for tests: plays keys and texts through update, as the window would send them. It holds no test, so kepler test finds nothing here.
+use commands
+
+-- The names of the keys that are not one character.
+named = ["enter", "tab", "backspace", "delete", "left", "right", "up", "down", "home", "end", "pageup", "pagedown", "space"]
+
+-- Is this item a chord such as "C-f" or "enter", and not a text to type?
+isChord(item) = item in named or (Len(item) > 2 and (StartsWith("C-", item) or StartsWith("M-", item) or StartsWith("S-", item)))
+
+-- A text without its first n characters.
+drop(n, words) = Join("", Skip(n, Chars(words)))
+
+-- The key event of a chord such as "C-M-x" or "S-left".
+defn keyEvent(chord)
+  rest = chord
+  held = {Ctrl: false, Alt: false, Shift: false}
+  while Len(rest) > 2 and Slice(2, 2, rest) == "-" and (Slice(1, 1, rest) in ["C", "M", "S"])
+    letter = Slice(1, 1, rest)
+    if letter == "C" held.Ctrl = true else if letter == "M" held.Alt = true else held.Shift = true end
+    rest = drop(2, rest)
+  end
+  {Kind: "key", Key: rest, Ctrl: held.Ctrl, Alt: held.Alt, Shift: held.Shift, Super: false}
+end
+
+-- The events of one item: a chord is one key event; a text is typed one character at a time, each with its key event and then its text event, as SDL sends them.
+defn events(item)
+  if isChord(item)
+    [keyEvent(item)]
+  else
+    Flatten(Map(c -> [{Kind: "key", Key: c, Ctrl: false, Alt: false, Shift: false, Super: false}, {Kind: "text", Text: c}], Chars(item)))
+  end
+end
+
+-- The state after playing the items: chords such as "C-f" or "enter", and texts to type. If the editor ends on the way, its state has ending true.
+defn Press(items, state)
+  s = state
+  for event in Flatten(Map(events, items))
+    next = commands.Update(event, s)
+    if IsMissing(next)
+      s.Ending = true
+      return s
+    end
+    s = next
+  end
+  s
+end

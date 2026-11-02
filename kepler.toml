@@ -6,6 +6,6 @@ native = ["SDL3", "SDL3_ttf"]
 run = ["tests/run.sh"]
 
 [tasks.dev]
-file = "main.kp"
+file = "main.k"
 watch = true
 allow = ["read", "write", "exec=kepler"]

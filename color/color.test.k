@@ -1,0 +1,50 @@
+-- Tests of color.Kp: run with kepler test .
+use color
+
+roles(line) = Map(t -> t[1], color.Tokens(line, color.FirstState).Tokens)
+joined(tokens) = Join("", Map(t -> t[2], tokens))
+lost(line) = joined(color.Tokens(line, color.FirstState).Tokens) == line
+
+defn commentFirst(n)
+  if n == 1
+    "(* a"
+  else
+    "b"
+  end
+end
+
+knownToTen = color.ColoredTo(10, n -> "line", color.BlankColors())
+
+isKeyword() = Equal(color.Tokens("defn f(x)", color.FirstState).Tokens[1], [color.Keyword, "defn"])
+isNameBeforeParen() = Equal(color.Tokens("defn f(x)", color.FirstState).Tokens[3], [color.Name, "f"])
+isFieldAfterDot() = Equal(color.Tokens("p.x", color.FirstState).Tokens, [[color.Plain, "p."], [color.Field, "x"]])
+isFieldBeforeParen() = Equal(color.Tokens("a.f(1)", color.FirstState).Tokens[2], [color.Field, "f"])
+isPlainWord() = Equal(color.Tokens("count", color.FirstState).Tokens, [[color.Plain, "count"]])
+isKeywordInsideAName() = Equal(color.Tokens("ending", color.FirstState).Tokens, [[color.Plain, "ending"]])
+isNumber() = Equal(color.Tokens("x = 0x1F + 2.5", color.FirstState).Tokens[2], [color.Number, "0x1F"])
+isFloat() = Equal(color.Tokens("x = 2.5", color.FirstState).Tokens[2], [color.Number, "2.5"])
+isText() = color.String in roles("x = \"a\"")
+isTextWhole() = Equal(color.Tokens("x = \"a\"", color.FirstState).Tokens[2], [color.String, "\"a\""])
+isTextWithEscape() = Equal(color.Tokens("\"a\\\"b\" c", color.FirstState).Tokens[1], [color.String, "\"a\\\"b\""])
+isInterpolationStaysString() = Equal(color.Tokens("\"a $$(b) c\"", color.FirstState).Tokens, [[color.String, "\"a $$(b) c\""]])
+isCommentLine() = Equal(color.Tokens("-- note", color.FirstState).Tokens, [[color.Comment, "-- note"]])
+isCommentAfterCode() = Equal(color.Tokens("x -- note", color.FirstState).Tokens, [[color.Plain, "x "], [color.Comment, "-- note"]])
+isCommentEndsTheLine() = Equal(roles("x -- \"a\" if"), [color.Plain, color.Comment])
+isCommentCarries() = color.Tokens("(* a", color.FirstState).State.Comment == 1
+isCommentNests() = color.Tokens("(* (* a *)", color.FirstState).State.Comment == 1
+isCommentCloses() = color.Tokens("(* a *) x", color.FirstState).State.Comment == 0
+isCommentContinues() = Equal(color.Tokens("b *) if", {Comment: 1, Text: false}).Tokens, [[color.Comment, "b *)"], [color.Plain, " "], [color.Keyword, "if"]])
+isTextCarries() = color.Tokens("x = \"one", color.FirstState).State.Text
+isTextContinues() = Equal(color.Tokens("two\" + y", {Comment: 0, Text: true}).Tokens[1], [color.String, "two\""])
+isTextEnds() = not color.Tokens("two\"", {Comment: 0, Text: true}).State.Text
+isEmptyLine() = Equal(color.Tokens("", color.FirstState).Tokens, []) and color.Tokens("", color.FirstState).State.Comment == 0
+isNothingLost() = All(Map(lost, ["defn f(x)", "  x = \"a\" -- b", "(* a *) if (* b", "é = 1.5e3 $$(", "\t.. ... ::", "\"\" \"\"\"\""]))
+isBrokenCodeColors() = lost("x = (* \" $$(")
+isForgetLimits() = color.ForgetFrom(5, knownToTen).Known == 5
+isForgetKeepsStates() = Len(color.ForgetFrom(5, knownToTen).Starts) == 5
+isForgetAfterKnownChangesNothing() = Equal(color.ForgetFrom(20, knownToTen), knownToTen)
+isForgetKeepsFirst() = color.ForgetFrom(0, knownToTen).Known == 1
+isBlank() = Equal(color.BlankColors(), {Starts: [color.FirstState], Known: 1})
+isColoredToReaches() = knownToTen.Known == 10 and Len(knownToTen.Starts) == 10
+isColoredToKeepsKnown() = Equal(color.ColoredTo(3, n -> Panic("not read"), knownToTen), knownToTen)
+isColoredToFollowsComments() = color.ColoredTo(3, commentFirst, color.BlankColors()).Starts[3].Comment == 1
