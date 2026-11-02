@@ -1,0 +1,251 @@
+-- Tests of view.kp and text.of: run with kepler test .
+use "./color"
+use "./text"
+use "./view"
+use rope
+use history
+use ui
+
+cell = {width: 8, height: 19}
+look = ui.look(ui.dark, (words, font) -> length(words) * 8, 19)
+
+state_of(buffers, width, height) = view.start(buffers, look, cell, width, height)
+
+-- A text of count lines, each one "word".
+many_lines(count) = join("\n", map(n -> "word", range(1, count)))
+
+texts_of(commands) = map(c -> c.text, filter(c -> c.kind == "text", commands))
+
+is_only_visible_lines() = is_only_visible(state_of([text.of(many_lines(20000), "a.kp")], 800, 600))
+
+defn is_only_visible(state)
+  layout = view.layout(state.width, state.height, state.cell, false)
+  b = view.follow(layout.rows, layout.columns, state.buffers[1])
+  s = state
+  s.buffers = [b]
+  shown = length(filter(t -> t == "word", texts_of(view.view(s))))
+  shown > 0 and shown <= layout.rows
+end
+
+defn is_long_line_follows()
+  b = text.of(join("", map(n -> "x", range(1, 600))), "a.kp")
+  b.cursor = {line: 1, column: 500}
+  f = view.follow(10, 80, b)
+  f.left <= 500 and 500 < f.left + 80
+end
+
+defn is_follow_scrolls_down()
+  b = text.of(many_lines(100), "a.kp")
+  b.cursor = {line: 50, column: 0}
+  f = view.follow(10, 80, b)
+  f.top <= 50 and 50 < f.top + 10 and f.colors.known >= 50
+end
+
+defn is_follow_keeps_top()
+  b = text.of(many_lines(100), "a.kp")
+  b.cursor = {line: 3, column: 2}
+  f = view.follow(10, 80, b)
+  f.top == 1 and f.left == 0
+end
+
+defn is_tiny_window()
+  s = state_of([text.of("a\nb", "a.kp")], 10, 10)
+  lay = view.layout(s.width, s.height, s.cell, false)
+  s.buffers = [view.follow(lay.rows, lay.columns, s.buffers[1])]
+  is_array(view.view(s))
+end
+
+defn is_tabs()
+  a = text.of("a", "/x/a.kp")
+  b = text.of("b", "/x/b.kp")
+  b.version = 3
+  commands = view.view(state_of([a, b], 800, 600))
+  shown = texts_of(commands)
+  dots = filter(c -> c.kind == "box" and c.width == 7, commands)
+  "a.kp" in shown and "b.kp" in shown and not ("b.kp *" in shown) and length(dots) == 1
+end
+
+is_no_dot_when_saved() = length(filter(c -> c.kind == "box" and c.width == 7, view.view(state_of([text.of("a", "/x/a.kp")], 800, 600)))) == 0
+
+is_no_output_pane() = view.layout(800, 600, cell, false).output.height == 0
+is_output_pane() = view.layout(800, 600, cell, true).output.height > 0
+is_rows_fit() = view.layout(800, 600, cell, false).rows * 19 <= view.layout(800, 600, cell, false).code.height
+defn is_of_fields()
+  b = text.of("a", "a.kp")
+  is_missing(b.mark) and is_missing(b.disk) and b.version == 0 and b.saved == 0 and b.top == 1 and b.left == 0 and b.path == "a.kp" and b.colors.known == 1 and b.cursor.line == 1 and b.cursor.column == 0 and history.can_undo(b.history) == false
+end
+is_of_rope() = rope.text(text.of("ab\ncd", "a.kp").rope) == "ab\ncd"
+
+-- The commands of a one-buffer window 102 pixels wide, so that 4 columns of code fit, showing words from column left.
+defn shown_from(words, left)
+  b = text.of(words, "a.kp")
+  b.left = left
+  view.view(state_of([b], 102, 600))
+end
+
+-- Is this command a text of the code area? Tabs, mode line and prompt are not: the window is 600 high, and the first line is at 32.
+in_code(c) = c.kind == "text" and c.y >= 28 and c.y < 100
+
+-- The texts in the code area, the line number first.
+code_texts(commands) = map(c -> c.text, filter(c -> in_code(c), commands))
+
+is_four_columns() = view.layout(102, 600, cell, false).columns == 4
+is_cut_to_columns() = equal(code_texts(shown_from("abcdefghij", 3)), ["1", "defg"])
+
+defn is_cut_x()
+  first = filter(c -> in_code(c) and c.text == "defg", shown_from("abcdefghij", 3))[1]
+  first.x == view.gutter
+end
+
+defn is_token_straddling_left()
+  commands = filter(c -> in_code(c) and c.text != "1", shown_from("defn x", 2))
+  equal(map(c -> c.text, commands), ["fn", " x"]) and commands[2].x == view.gutter + 16 and commands[1].color == ui.dark.syntax[color.keyword]
+end
+
+is_line_shorter_than_left() = equal(code_texts(shown_from("ab", 5)), ["1"])
+is_multibyte_cut_like_ascii() = equal(map(t -> length(t), code_texts(shown_from("ééééé", 2))), map(t -> length(t), code_texts(shown_from("eeeee", 2))))
+is_multibyte_text() = equal(code_texts(shown_from("ééééé", 2)), ["1", "ééé"])
+
+defn is_empty_file()
+  s = state_of([text.of("", "a.kp")], 800, 600)
+  lay = view.layout(s.width, s.height, s.cell, false)
+  s.buffers = [view.follow(lay.rows, lay.columns, s.buffers[1])]
+  is_array(view.view(s)) and s.buffers[1].top == 1
+end
+
+defn is_cursor_on_last_line()
+  b = text.of(many_lines(3), "a.kp")
+  b.cursor = {line: 3, column: 0}
+  s = state_of([b], 800, 600)
+  lay = view.layout(s.width, s.height, s.cell, false)
+  s.buffers = [view.follow(lay.rows, lay.columns, b)]
+  bars = filter(c -> c.kind == "rect" and c.width == 2, view.view(s))
+  length(bars) == 1 and length(filter(t -> t == "word", texts_of(view.view(s)))) == 3
+end
+
+defn is_follow_without_rows()
+  b = text.of(many_lines(10), "a.kp")
+  b.cursor = {line: 5, column: 3}
+  f = view.follow(0, 0, b)
+  f.top <= 5 and f.left <= 3
+end
+
+defn is_cursor_bar_inside_columns()
+  b = text.of("abcd", "a.kp")
+  b.cursor = {line: 1, column: 4}
+  s = state_of([b], 102, 600)
+  s.buffers = [view.follow(4, 4, b)]
+  bars = filter(c -> c.kind == "rect" and c.width == 2, view.view(s))
+  length(bars) == 1 and bars[1].x < 102
+end
+
+-- The rectangles of the theme fill color: the selection.
+fills(commands) = filter(c -> c.kind == "rect" and c.color == ui.dark.fill, commands)
+
+defn selected_state(words, mark, cursor)
+  b = text.of(words, "a.kp")
+  b.mark = mark
+  b.cursor = cursor
+  state_of([b], 800, 600)
+end
+
+defn is_selection_one_line()
+  s = selected_state("abcdef", {line: 1, column: 1}, {line: 1, column: 4})
+  f = fills(view.view(s))
+  length(f) == 1 and f[1].x == view.gutter + 8 and f[1].width == 24 and f[1].height == 19
+end
+
+defn is_selection_backwards()
+  s = selected_state("abcdef", {line: 1, column: 4}, {line: 1, column: 1})
+  f = fills(view.view(s))
+  length(f) == 1 and f[1].x == view.gutter + 8 and f[1].width == 24
+end
+
+defn is_selection_lines()
+  s = selected_state("abc\ndef\nghi", {line: 1, column: 2}, {line: 3, column: 1})
+  f = fills(view.view(s))
+  length(f) == 3 and f[1].width == 16 and f[2].width == 32 and f[3].width == 8 and f[2].y == f[1].y + 19
+end
+
+is_no_selection_no_fill() = length(fills(view.view(selected_state("abc", missing, {line: 1, column: 1})))) == 0
+is_empty_selection_no_fill() = length(fills(view.view(selected_state("abc", {line: 1, column: 1}, {line: 1, column: 1})))) == 0
+
+defn is_selection_under_text()
+  commands = view.view(selected_state("abc", {line: 1, column: 0}, {line: 1, column: 2}))
+  first_fill = index_of(fills(commands)[1], commands)
+  first_text = index_of(filter(c -> c.kind == "text" and c.text == "abc", commands)[1], commands)
+  first_fill < first_text
+end
+
+defn is_selection_cut_to_screen()
+  b = text.of("abcdefghij", "a.kp")
+  b.mark = {line: 1, column: 0}
+  b.cursor = {line: 1, column: 10}
+  b.left = 3
+  f = fills(view.view(state_of([b], 102, 600)))
+  length(f) == 1 and f[1].x == view.gutter and f[1].width == 32
+end
+
+defn is_prompt_drawn()
+  s = state_of([text.of("a", "a.kp")], 800, 600)
+  s.prompt = {label: "Find file: ", answer: "a.kp", done: (a, t) -> t, choice: false}
+  commands = view.view(s)
+  bars = filter(c -> c.kind == "rect" and c.width == 2 and c.y > 500, commands)
+  "Find file: a.kp" in texts_of(commands) and length(bars) == 1 and bars[1].x == 12 + length("Find file: a.kp") * 8
+end
+
+defn is_message_drawn()
+  s = state_of([text.of("a", "a.kp")], 800, 600)
+  s.message = "Saved a.kp"
+  commands = view.view(s)
+  "Saved a.kp" in texts_of(commands) and length(filter(c -> c.kind == "rect" and c.width == 2 and c.y > 500, commands)) == 0
+end
+
+defn is_position_at()
+  s = state_of([text.of("abcd\nefgh", "a.kp")], 800, 600)
+  p = view.position_at(view.gutter + 17, 36 + 4 + 19 + 3, s)
+  p == {line: 2, column: 2}
+end
+
+is_position_clamped() = view.position_at(790, 590, state_of([text.of("abcd\nefgh", "a.kp")], 800, 600)) == {line: 2, column: 4}
+is_position_before_text() = view.position_at(0, 0, state_of([text.of("abcd\nefgh", "a.kp")], 800, 600)) == {line: 1, column: 0}
+
+defn is_position_with_scroll()
+  b = text.of(many_lines(50), "a.kp")
+  b.top = 10
+  b.left = 0
+  view.position_at(view.gutter, 40, state_of([b], 800, 600)).line == 10
+end
+
+defn is_position_on_cursor_bar()
+  b = text.of("abcdef", "a.kp")
+  b.cursor = {line: 1, column: 3}
+  s = state_of([b], 800, 600)
+  bar = filter(c -> c.kind == "rect" and c.width == 2 and c.y < 100, view.view(s))[1]
+  view.position_at(bar.x + 1, bar.y + 1, s).column == 3
+end
+
+defn is_tab_at()
+  s = state_of([text.of("a", "x.kp"), text.of("b", "y.kp")], 800, 600)
+  view.tab_at(8, 10, s) == 1 and view.tab_at(67, 10, s) == 1 and view.tab_at(68, 10, s) == 2 and view.tab_at(500, 10, s) == 0 and view.tab_at(10, 50, s) == 0
+end
+
+defn is_in_code()
+  s = state_of([text.of("a", "x.kp")], 800, 600)
+  view.is_in_code(10, 100, s) and not view.is_in_code(10, 10, s) and not view.is_in_code(10, 580, s)
+end
+
+defn is_follow_free_keeps_top()
+  b = text.of(many_lines(100), "a.kp")
+  b.top = 60
+  b.free = true
+  f = view.follow(10, 80, b)
+  f.top == 60 and f.colors.known >= 60
+end
+
+defn is_follow_state_moves()
+  b = text.of(many_lines(100), "a.kp")
+  b.cursor = {line: 80, column: 0}
+  s = view.follow_state(state_of([b], 800, 600))
+  s.buffers[1].top > 1
+end

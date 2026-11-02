@@ -1,0 +1,11 @@
+[project]
+name = "kemacs"
+native = ["SDL3", "SDL3_ttf"]
+
+[tasks.test]
+run = ["tests/run.sh"]
+
+[tasks.dev]
+file = "main.kp"
+watch = true
+allow = ["read", "write", "exec=kepler"]

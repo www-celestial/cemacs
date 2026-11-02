@@ -1,0 +1,32 @@
+-- Kemacs: opens the window and runs the editor of commands.kp.
+-- Run through bin/kemacs, which gives the home of Kemacs first, then the files to open.
+use sdl
+use sys
+use ui
+use "./commands"
+use "./text"
+use "./view"
+
+-- The window, with the three fonts of Kemacs found in fonts/ under its home: body, strong and code.
+defn opened(home)
+  first = sdl.open("Kemacs", 1280, 720, "$home/fonts/AdwaitaSans-Regular.ttf", size = 13, light = true)?
+  second = sdl.add_font("strong", "$home/fonts/NotoSans-Medium.ttf", 13, first, light = true)?
+  sdl.add_font("code", "$home/fonts/JetBrainsMono-Regular.ttf", 13, second)
+end
+
+-- Opens the window, the files given after the home (or one empty buffer) and runs until the editor ends.
+defn main()
+  home = args[1]
+  window = opened(home)?
+  measured = sdl.measure(window)
+  look = ui.look(ui.dark, measured.width, measured.height)
+  cell = {width: look.width("M", "code"), height: sdl.text_size("Ag", window, font = "code").height + view.line_gap}
+  empty = view.start([text.of("", missing)], look, cell, 1280, 720)
+  empty.window = window
+  state = commands.settled(commands.open_all(skip(1, args), empty))
+  sdl.run(state, commands.update, view.view, window, moving = commands.moving)
+  sdl.close(window)
+  Ok(missing)
+end
+
+print(main())

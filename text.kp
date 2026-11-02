@@ -1,0 +1,405 @@
+-- The buffer of a file: a rope, a cursor, a mark and the history. Lines count from 1, columns from 0.
+use rope
+use history
+use "./color"
+
+-- A buffer holding words, for the file at path (or missing for a text with no file). The cursor is at the start, nothing is selected,
+-- nothing is colored yet, and the text counts as saved. The editor owns two more fields: free, true while the wheel has moved the screen away
+-- from the cursor, and origin, where the mark came from: "" for no mark, "key" for C-space, "shift" for a selection with Shift, "mouse" for a drag.
+-- Besides the fields of the state, a buffer has three private ones: wanted, the column that
+-- move_line and move_page try to keep through shorter lines (a column, or missing, and every other move and every edit clears it); clock, the
+-- highest version given so far, so that a new edit never gets the number of a state that was undone; and typing, which is true while the last
+-- command was a letter typed that a following letter continues (the step of undo).
+--
+--   of("a", "a.kp").cursor.line --> 1
+defn of(words, path)
+  r = rope.of(words)
+  cursor = {line: 1, column: 0}
+  {rope: r, cursor: cursor, mark: missing, history: history.of({rope: r, cursor: cursor, version: 0, before: cursor, line: 1}), version: 0, top: 1, left: 0, path: path, saved: 0, disk: missing,
+    colors: color.blank_colors(), wanted: missing, clock: 0, typing: false, free: false, origin: ""}
+end
+
+-- Does line n end with a CRLF? Then its \r belongs to the line end. A \r anywhere else, or at the end of the last line, is an ordinary character.
+_has_cr(n, b) = n < rope.line_count(b.rope) and ends_with("\r", rope.line(n, b.rope))
+
+-- The text of line n, without its line end: a \r before the line end is not part of it.
+defn _line(n, b)
+  s = rope.line(n, b.rope)
+  if _has_cr(n, b) _without_last(s) else s end
+end
+
+-- A text without its last character.
+_without_last(s) = join("", take(length(s) - 1, chars(s)))
+
+-- The line end of line n: \r\n or \n. The last line has none, so it takes the one of the line above, or \n if it is alone.
+defn _eol(n, b)
+  if n < rope.line_count(b.rope)
+    if _has_cr(n, b) "\r\n" else "\n" end
+  else if n > 1 and _has_cr(n - 1, b)
+    "\r\n"
+  else
+    "\n"
+  end
+end
+-- The number of characters of line n.
+_width(n, b) = length(_line(n, b))
+
+-- A position {line, column} brought inside the text.
+defn _clamp(pos, b)
+  line = min(max(1, pos.line), rope.line_count(b.rope))
+  {line: line, column: min(max(0, pos.column), _width(line, b))}
+end
+
+-- The byte of the rope at a position: the start of its line, plus the bytes of the characters before it.
+defn _byte(pos, b)
+  start = rope.line_start(pos.line, b.rope)
+  if pos.column == 0
+    start
+  else
+    start + byte_length(slice(1, pos.column, _line(pos.line, b)))
+  end
+end
+
+-- The position after another one, or missing at the end of the file. A line end counts as one step.
+defn _forward(pos, b)
+  if pos.column < _width(pos.line, b)
+    {line: pos.line, column: pos.column + 1}
+  else if pos.line < rope.line_count(b.rope)
+    {line: pos.line + 1, column: 0}
+  else
+    missing
+  end
+end
+
+-- The position before another one, or missing at the start of the file.
+defn _back(pos, b)
+  if pos.column > 0
+    {line: pos.line, column: pos.column - 1}
+  else if pos.line > 1
+    {line: pos.line - 1, column: _width(pos.line - 1, b)}
+  else
+    missing
+  end
+end
+
+-- Does the first position come before the second?
+_before(p, q) = p.line < q.line or (p.line == q.line and p.column < q.column)
+
+-- The buffer with a cursor, after a command that is not a move by lines: no wanted column, and the step of typing ends.
+defn _moved(cursor, b)
+  b.cursor = cursor
+  b.wanted = missing
+  b.typing = false
+  b
+end
+
+-- A letter, a digit or an underscore. Kepler knows the case of the ASCII letters only, so any character of more than one byte counts as a letter,
+-- as in color.kp: accents and other alphabets are in words, and so are the rare symbols outside ASCII.
+_is_word(c) = c == "_" or (c >= "0" and c <= "9") or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or byte_length(c) > 1
+
+-- The character after a position, or a line end at the end of a line.
+defn _char_after(pos, b)
+  if pos.column >= _width(pos.line, b)
+    "\n"
+  else
+    slice(pos.column + 1, pos.column + 1, _line(pos.line, b))
+  end
+end
+
+-- Moves one position while a test holds for the character that would be crossed, forward or back.
+defn _skip(forward, test, pos, b)
+  p = pos
+  go = true
+  while go
+    next = if forward _forward(p, b) else _back(p, b) end
+    if is_missing(next)
+      go = false
+    else
+      c = if forward _char_after(p, b) else _char_after(next, b) end
+      if test(c)
+        p = next
+      else
+        go = false
+      end
+    end
+  end
+  p
+end
+
+-- The cursor moved by whole characters: forward for a positive number, back for a negative one, stopping at the ends of the file.
+--
+--   move_char(1, of("ab", missing)).cursor.column --> 1
+defn move_char(by, b)
+  p = b.cursor
+  n = abs(by)
+  while n > 0
+    next = if by > 0 _forward(p, b) else _back(p, b) end
+    if is_missing(next)
+      n = 0
+    else
+      p = next
+      n -= 1
+    end
+  end
+  _moved(p, b)
+end
+
+-- The cursor moved by words: a word is a run of letters, digits and underscores, in any alphabet. Forward it goes to the end of the next
+-- word, back to the start of the previous one.
+--
+--   move_word(1, of("foo bar", missing)).cursor.column --> 3
+defn move_word(by, b)
+  p = b.cursor
+  for i in range(1, abs(by))
+    if by > 0
+      p = _skip(true, _is_word, _skip(true, c -> not _is_word(c), p, b), b)
+    else
+      p = _skip(false, _is_word, _skip(false, c -> not _is_word(c), p, b), b)
+    end
+  end
+  _moved(p, b)
+end
+
+-- The cursor moved by lines, keeping the column the person wanted through shorter lines. At the first and last lines it stays there.
+--
+--   move_line(1, of("ab\ncd", missing)).cursor.line --> 2
+defn move_line(by, b)
+  wanted = if is_missing(b.wanted) b.cursor.column else b.wanted end
+  line = min(max(1, b.cursor.line + by), rope.line_count(b.rope))
+  b.cursor = {line: line, column: min(wanted, _width(line, b))}
+  b.wanted = wanted
+  b.typing = false
+  b
+end
+
+-- The cursor moved by pages of rows lines: forward for a positive number, back for a negative one. It keeps the wanted column as move_line does.
+--
+--   move_page(1, 2, of("a\nb\nc", missing)).cursor.line --> 3
+move_page(by, rows, b) = move_line(by * max(1, rows), b)
+
+-- The cursor at the start of its line.
+--
+--   to_line_start(place(1, 1, of("ab", missing))).cursor.column --> 0
+to_line_start(b) = _moved({line: b.cursor.line, column: 0}, b)
+
+-- The cursor at the end of its line.
+--
+--   to_line_end(of("ab", missing)).cursor.column --> 2
+to_line_end(b) = _moved({line: b.cursor.line, column: _width(b.cursor.line, b)}, b)
+
+-- The cursor at the start of the file.
+--
+--   to_file_start(place(1, 1, of("ab", missing))).cursor.column --> 0
+to_file_start(b) = _moved({line: 1, column: 0}, b)
+
+-- The cursor at the end of the file.
+--
+--   to_file_end(of("a\nbc", missing)).cursor.line --> 2
+to_file_end(b) = _moved(_clamp({line: rope.line_count(b.rope), column: _width(rope.line_count(b.rope), b)}, b), b)
+
+-- The cursor at a line and a column, brought inside the text.
+--
+--   place(9, 9, of("ab", missing)).cursor.column --> 2
+place(line, column, b) = _moved(_clamp({line: line, column: column}, b), b)
+
+-- The buffer with a new rope, a new cursor and the history that records it. A step that continues typing replaces the last state of the history
+-- instead of adding one. line is the first line that changed, where the colors stop being known.
+defn _edit(r, cursor, line, continues, typing, b)
+  version = b.clock + 1
+  merging = continues and b.typing
+  now = b.history.present
+  state = {rope: r, cursor: cursor, version: version, before: if merging now.before else b.cursor end, line: if merging min(line, now.line) else line end}
+  h = if merging history.record(state, history.undo(b.history)) else history.record(state, b.history) end
+  b.rope = r
+  b.cursor = cursor
+  b.version = version
+  b.clock = version
+  b.history = h
+  b.wanted = missing
+  b.typing = typing
+  b.colors = color.forget_from(line, b.colors)
+  b
+end
+
+-- The leading spaces and tabs of line n, up to the column.
+defn _indent(n, column, b)
+  cs = take(column, chars(_line(n, b)))
+  join("", take_while(c -> c == " " or c == "\t", cs))
+end
+
+-- Inserts a text at the cursor. Only one character typed continues the step of undo, and a space or a line end ends it.
+defn _insert(words, continues, b)
+  pieces = split("\n", words)
+  at = b.cursor
+  cursor = if length(pieces) == 1
+    {line: at.line, column: at.column + length(words)}
+  else
+    {line: at.line + length(pieces) - 1, column: length(last(pieces))}
+  end
+  r = rope.insert(_byte(at, b), words, b.rope)
+  typing = length(words) == 1 and not (words == " " or words == "\t" or words == "\n")
+  _edit(r, cursor, at.line, continues and length(words) == 1, typing, b)
+end
+
+-- The text typed at the cursor. The cursor goes after it. Typing one character at a time makes words of undo: a step ends at a space, at a line end
+-- and at any command other than typing.
+--
+--   insert_words("a", of("", missing)).cursor.column --> 1
+insert_words(words, b) = if words == "" b else _insert(words, true, b) end
+
+-- The buffer without the text from one position up to another, which comes after it. The cursor goes to the first.
+defn _delete(p, q, b)
+  r = rope.delete(_byte(p, b), _byte(q, b), b.rope)
+  _edit(r, p, p.line, false, false, b)
+end
+
+-- A line end, with the spaces and tabs the line starts with, inserted at the cursor, so that the next line is indented as this one.
+--
+--   new_line(place(1, 3, of("  x", missing))).cursor.column --> 2
+new_line(b) = _insert("$(_eol(b.cursor.line, b))$(_indent(b.cursor.line, b.cursor.column, b))", false, b)
+
+-- The character before the cursor deleted, or the line end before it if it is at the start of a line, which joins the two lines. At the
+-- start of the file nothing changes.
+--
+--   delete_before(place(1, 1, of("ab", missing))).cursor.column --> 0
+defn delete_before(b)
+  p = _back(b.cursor, b)
+  if is_missing(p)
+    b
+  else
+    _delete(p, b.cursor, b)
+  end
+end
+
+-- The character after the cursor deleted, or the line end after it if it is at the end of a line. At the end of the file nothing changes.
+--
+--   delete_after(of("ab", missing)).cursor.column --> 0
+defn delete_after(b)
+  q = _forward(b.cursor, b)
+  if is_missing(q)
+    b
+  else
+    _delete(b.cursor, q, b)
+  end
+end
+
+-- The mark put at the cursor.
+defn set_mark(b)
+  b.mark = b.cursor
+  b.wanted = missing
+  b.typing = false
+  b
+end
+
+-- The mark taken away.
+defn clear_mark(b)
+  b.mark = missing
+  b.wanted = missing
+  b.typing = false
+  b
+end
+
+-- The two ends of the selection {first, last}, the first being the one that comes first in the text, or missing if there is no mark. A mark that
+-- an edit left outside the text is brought back inside.
+defn _ends(b)
+  if is_missing(b.mark)
+    missing
+  else
+    m = _clamp(b.mark, b)
+    if _before(m, b.cursor) {first: m, last: b.cursor} else {first: b.cursor, last: m} end
+  end
+end
+
+-- The two ends of the selection {first, last}, the first being the one that comes first in the text, or missing if there is no mark.
+--
+--   selection(move_char(1, set_mark(of("ab", missing)))).last.column --> 1
+selection(b) = _ends(b)
+
+-- The number of characters of line n, without its line end.
+--
+--   line_width(1, of("abc", missing)) --> 3
+line_width(n, b) = _width(n, b)
+
+-- The selected text, between the mark and the cursor in whichever order, or an empty text if there is no mark.
+--
+--   region(move_char(1, set_mark(of("ab", missing)))) --> "a"
+defn region(b)
+  e = _ends(b)
+  if is_missing(e)
+    ""
+  else
+    rope.slice(_byte(e.first, b), _byte(e.last, b), b.rope)
+  end
+end
+
+-- The selected text removed. The cursor goes to its start and the mark is taken away. Without a mark, nothing is removed.
+defn cut_region(b)
+  e = _ends(b)
+  if is_missing(e) or not _before(e.first, e.last)
+    clear_mark(b)
+  else
+    clear_mark(_delete(e.first, e.last, b))
+  end
+end
+
+-- Cuts from the cursor to the end of its line, or the line end itself if the cursor is already there: {buffer, cut}, cut being the removed
+-- text. At the end of the file there is nothing to cut.
+--
+--   cut_line(of("ab", missing)).cut --> "ab"
+defn cut_line(b)
+  at = b.cursor
+  q = if at.column < _width(at.line, b) {line: at.line, column: _width(at.line, b)} else _forward(at, b) end
+  if is_missing(q)
+    {buffer: b, cut: ""}
+  else
+    {buffer: _delete(at, q, b), cut: rope.slice(_byte(at, b), _byte(q, b), b.rope)}
+  end
+end
+
+-- The buffer with the text and version of a state of the history, the cursor given, and the colors known only up to the line given.
+defn _travel(h, s, cursor, line, b)
+  b.rope = s.rope
+  b.cursor = cursor
+  b.version = s.version
+  b.history = h
+  b.wanted = missing
+  b.typing = false
+  b.colors = color.forget_from(line, b.colors)
+  b
+end
+
+-- The last step of typing or editing undone, with the cursor where it was before that step. A mark stays where it was, and region and
+-- cut_region bring it inside the text. Without a step before, nothing changes.
+defn undo(b)
+  if history.can_undo(b.history)
+    left = b.history.present
+    h = history.undo(b.history)
+    _travel(h, history.current(h), left.before, left.line, b)
+  else
+    b
+  end
+end
+
+-- The step that was undone, done again, with the cursor where that step left it. An edit after an undo forgets it.
+defn redo(b)
+  if history.can_redo(b.history)
+    h = history.redo(b.history)
+    entered = history.current(h)
+    _travel(h, entered, entered.cursor, entered.line, b)
+  else
+    b
+  end
+end
+
+-- Is the text different from the last one saved? Undoing back to the saved text makes it false again.
+--
+--   is_modified(of("", missing)) --> false
+is_modified(b) = b.version != b.saved
+
+-- The buffer after a save: the current version counts as saved, and disk is the time of the file that was written.
+defn mark_saved(disk, b)
+  b.saved = b.version
+  b.disk = disk
+  b.typing = false
+  b
+end

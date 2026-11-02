@@ -1,0 +1,154 @@
+-- Checks of the editor in a window, under SDL_VIDEODRIVER=dummy, with events pushed to SDL as the keyboard and the mouse would send them.
+-- Run it from the root of kemacs:
+--   SDL_VIDEODRIVER=dummy kepler run --allow read,write,exec=kepler,ffi=SDL3,ffi=SDL3_ttf tests/window_check.kp
+-- It prints ok at the end and stops at the first failure.
+use c
+use rope
+use sdl
+use sys
+use ui
+use "../commands"
+use "../text"
+use "../view"
+
+-- Stops the script with the words if the condition is false.
+defn check(condition, words)
+  if not condition
+    panic("FAILED: $words")
+  end
+end
+
+-- Pushes an event of this type to SDL, with its fields as [type, offset, value].
+defn push(type, fields)
+  lib = unwrap(c.open("SDL3", version = 0))
+  send = unwrap(c.fn("SDL_PushEvent", ["ptr"], "bool", lib))
+  event = c.alloc(128)
+  c.set("u32", 0, type, event)
+  for field in fields
+    c.set(field[1], field[2], field[3], event)
+  end
+  send(event)
+  c.free(event)
+end
+
+-- A key event with a key code and the modifiers of SDL: 0x1 shift, 0x40 control, 0x100 alt.
+key(code, mods) = push(0x300, [["u32", 28, code], ["u16", 32, mods]])
+
+-- A text event for the characters of a text. The blocks stay: SDL keeps their addresses until the events are read.
+defn typed(words)
+  held = c.alloc(byte_length(words) + 1)
+  for k in 1:length(bytes(words))
+    c.set("u8", k - 1, bytes(words)[k], held)
+  end
+  push(0x303, [["ptr", 24, held]])
+end
+
+-- A letter typed: its key event and then its text event.
+defn letter(words)
+  key(bytes(words)[1], 0)
+  typed(words)
+end
+
+-- A mouse button event on the point.
+mouse(type, x, y) = push(type, [["u8", 24, 1], ["f32", 28, x], ["f32", 32, y]])
+
+-- The state after the events waiting in the window went through update. If update ends the editor, its state has ending true.
+defn played(state)
+  s = state
+  for event in sdl.events(state.window)
+    if s.ending
+      return s
+    end
+    next = commands.update(event, s)
+    s = if is_missing(next) ended(s) else next end
+  end
+  s
+end
+
+-- The state, ended.
+defn ended(state)
+  s = state
+  s.ending = true
+  s
+end
+
+here(state) = state.buffers[state.current]
+words_of(state) = rope.text(here(state).rope)
+read(path) = unwrap(sys.read(path))
+
+folder = "/tmp/kemacs-window-check-$(text(sys.now()))"
+check(is_ok(sys.mkdir(folder)), "the folder is made")
+path = "$folder/a.kp"
+unwrap(sys.write(path, "alpha\n"))
+
+defn opened()
+  first = sdl.open("Kemacs check", 800, 600, "fonts/AdwaitaSans-Regular.ttf", size = 13, light = true)?
+  second = sdl.add_font("strong", "fonts/NotoSans-Medium.ttf", 13, first, light = true)?
+  sdl.add_font("code", "fonts/JetBrainsMono-Regular.ttf", 13, second)
+end
+
+window = unwrap(opened())
+measured = sdl.measure(window)
+look = ui.look(ui.dark, measured.width, measured.height)
+cell = {width: look.width("M", "code"), height: sdl.text_size("Ag", window, font = "code").height + view.line_gap}
+empty = view.start([text.of("", missing)], look, cell, 800, 600)
+empty.window = window
+state = commands.settled(commands.open_all([path], empty))
+check(here(state).path == path and words_of(state) == "alpha\n", "the file is open")
+
+-- Typing, then C-x C-s: the file is written.
+letter("a")
+typed("é")
+key(0x78, 0x40)
+key(0x73, 0x40)
+state = played(state)
+check(words_of(state) == "aéalpha\n", "typed text: $(words_of(state))")
+check(read(path) == "aéalpha\n", "C-x C-s writes the file")
+check(not text.is_modified(here(state)), "the star is gone")
+
+-- A file changed on disk: C-x C-s asks, and y writes over it.
+unwrap(sys.write(path, "theirs\n"))
+letter("z")
+key(0x78, 0x40)
+key(0x73, 0x40)
+state = played(state)
+check(not is_missing(state.prompt) and state.prompt.label == "File changed on disk. Overwrite? (y or n)", "a changed file asks")
+check(read(path) == "theirs\n", "nothing is written before the answer")
+letter("y")
+state = played(state)
+check(is_missing(state.prompt) and read(path) == "aézalpha\n", "y writes over the file")
+check(not text.is_modified(here(state)), "the star is gone after y")
+
+-- M-w then C-y goes through the clipboard of the system.
+key(0x40000050, 0x1)
+key(0x40000050, 0x1)
+key(0x77, 0x100)
+state = played(state)
+check(sdl.paste(window) == "éz", "M-w puts the selection in the clipboard of the system: $(sdl.paste(window))")
+check(is_missing(here(state).mark), "M-w ends the selection")
+key(0x65, 0x40)
+key(0x79, 0x40)
+state = played(state)
+check(words_of(state) == "aézalphaéz\n", "C-y pastes the clipboard: $(words_of(state))")
+
+-- A click in the code places the cursor.
+mouse(0x401, 62.0 + 3.0 * cell.width + 1.0, 36.0 + 4.0 + 2.0)
+mouse(0x402, 62.0 + 3.0 * cell.width + 1.0, 36.0 + 4.0 + 2.0)
+state = played(state)
+check(here(state).cursor == {line: 1, column: 3} and is_missing(here(state).mark), "a click places the cursor")
+
+-- The window takes a few events and quits: sdl.run returns when the window closes, and the text is saved by then, so it doesn't ask.
+key(0x78, 0x40)
+key(0x73, 0x40)
+state = played(state)
+check(read(path) == "aézalphaéz\n", "saved again")
+letter("q")
+key(0x78, 0x40)
+key(0x73, 0x40)
+push(0x206, [["i32", 20, 640], ["i32", 24, 480]])
+push(0x100, [])
+last = sdl.run(state, commands.update, view.view, window, moving = commands.moving)
+check(words_of(last) == "aézqalphaéz\n", "run took the events: $(words_of(last))")
+check(last.width == 640 and last.height == 480, "run took the resize")
+sdl.close(window)
+print("ok")

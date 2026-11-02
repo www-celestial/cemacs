@@ -1,0 +1,229 @@
+-- Tests of commands.kp that need no file: run with kepler test .
+-- What opens or saves a file is in tests/commands_check.kp.
+use "./commands"
+use "./keys"
+use "./press"
+use "./text"
+use "./view"
+use rope
+use ui
+
+cell = {width: 8, height: 19}
+look = ui.look(ui.dark, (words, font) -> length(words) * 8, 19)
+
+-- A state of one buffer holding words, with no window.
+state_of(words) = view.start([text.of(words, missing)], look, cell, 800, 600)
+here(state) = state.buffers[state.current]
+region_of(state) = text.region(here(state))
+words_of(state) = rope.text(here(state).rope)
+-- A state whose current buffer is modified.
+modified(words) = press.press(["x"], state_of(words))
+-- The key event of a mouse event.
+mouse(action, x, y) = {kind: "mouse", action: action, x: x, y: y, button: 1, amount: 0.0}
+-- The pixel under a character of the first line: the code starts at x = view.gutter and the first line at y = 36 + 4.
+at_char(column) = view.gutter + column * 8 + 1
+
+is_every_command_exists() = length(filter(name -> not has(name, commands.names), values(keys.table))) == 0
+is_shift_keys_in_table() = keys.table["S-backspace"] == "delete_before" and keys.table["S-enter"] == "new_line" and keys.table["S-delete"] == "delete_after" and keys.table["S-tab"] == "tab"
+is_type_and_move() = words_of(press.press(["a", "b", "C-b", "x"], state_of(""))) == "axb"
+is_type_cursor() = here(press.press(["a", "b", "C-b", "x"], state_of(""))).cursor.column == 2
+is_tab() = words_of(press.press(["tab"], state_of(""))) == "  "
+is_shift_tab() = words_of(press.press(["S-tab"], state_of(""))) == "  "
+is_shift_selects() = region_of(press.press(["a", "b", "S-left"], state_of(""))) == "b"
+is_plain_move_clears_shift_mark() = is_missing(here(press.press(["a", "b", "S-left", "left"], state_of(""))).mark)
+is_shift_extends() = region_of(press.press(["a", "b", "c", "S-left", "S-left"], state_of(""))) == "bc"
+is_cancel_pair() = words_of(press.press(["C-x", "C-g", "C-s"], state_of("a"))) == "a" and is_missing(press.press(["C-x", "C-g", "C-s"], state_of("a")).prompt)
+is_cancel_pair_clears_pending() = press.press(["C-x", "C-g"], state_of("")).pending == ""
+is_pair_pending() = press.press(["C-x"], state_of("")).pending == "C-x"
+is_prompt_gets_keys() = press.press(["C-x", "C-f", "a.kp"], state_of("hi")).prompt.answer == "a.kp" and words_of(press.press(["C-x", "C-f", "a.kp"], state_of("hi"))) == "hi"
+is_prompt_label() = press.press(["C-x", "C-f"], state_of("")).prompt.label == "Find file: "
+is_prompt_backspace() = press.press(["C-x", "C-f", "a.kp", "backspace"], state_of("")).prompt.answer == "a.k"
+is_prompt_ignores_chords() = press.press(["C-x", "C-f", "C-f", "C-a", "left", "tab"], state_of("hi")).prompt.answer == "" and words_of(press.press(["C-x", "C-f", "C-a", "tab"], state_of("hi"))) == "hi"
+is_prompt_cancel() = is_missing(press.press(["C-x", "C-f", "a", "C-g"], state_of("hi")).prompt) and words_of(press.press(["C-x", "C-f", "a", "C-g"], state_of("hi"))) == "hi"
+is_prompt_shift_enter_and_backspace() = press.press(["C-x", "C-f", "ab", "S-backspace"], state_of("")).prompt.answer == "a"
+is_save_as_asks() = press.press(["C-x", "C-s"], state_of("a")).prompt.label == "Save as: "
+is_next_buffer() = press.press(["C-x", "b"], view.start([text.of("a", "x.kp"), text.of("b", "y.kp")], look, cell, 800, 600)).current == 2
+is_next_buffer_goes_round() = press.press(["C-x", "b", "C-x", "b"], view.start([text.of("a", "x.kp"), text.of("b", "y.kp")], look, cell, 800, 600)).current == 1
+is_close_unsaved_asks() = close_asks()
+defn close_asks()
+  s = press.press(["C-x", "k"], modified(""))
+  s.prompt.label == "Text not saved. Close anyway? (y or n)" and length(s.buffers) == 1
+end
+is_close_unsaved_yes() = length(press.press(["C-x", "k", "y"], modified("")).buffers) == 1 and words_of(press.press(["C-x", "k", "y"], modified(""))) == "" and press.press(["C-x", "k", "y"], modified("")).prompt == missing
+is_close_unsaved_no() = words_of(press.press(["C-x", "k", "n"], modified(""))) == "x"
+is_close_saved_directly() = is_missing(press.press(["C-x", "k"], state_of("")).prompt)
+defn is_last_buffer_closed()
+  s = press.press(["C-x", "k"], state_of("abc"))
+  length(s.buffers) == 1 and words_of(s) == ""
+end
+defn is_close_goes_to_neighbour()
+  s = press.press(["C-x", "k"], view.start([text.of("a", "x.kp"), text.of("b", "y.kp")], look, cell, 800, 600))
+  length(s.buffers) == 1 and words_of(s) == "b"
+end
+defn is_quit_asks()
+  s = press.press(["C-x", "C-c"], modified(""))
+  s.prompt.label == "Text not saved. Quit anyway? (y or n)" and not s.ending
+end
+is_quit_no_keeps() = not press.press(["C-x", "C-c", "n"], modified("")).ending and is_missing(press.press(["C-x", "C-c", "n"], modified("")).prompt)
+is_quit_yes_ends() = press.press(["C-x", "C-c", "y"], modified("")).ending
+is_quit_saved_ends() = press.press(["C-x", "C-c"], state_of("")).ending
+is_quit_prompt_ignores_other_text() = press.press(["C-x", "C-c", "q"], modified("")).prompt.label == "Text not saved. Quit anyway? (y or n)"
+is_quit_prompt_ignores_enter() = not is_missing(press.press(["C-x", "C-c", "enter"], modified("")).prompt)
+is_window_close_asks() = not is_missing(commands.update({kind: "quit"}, modified(""))) and commands.update({kind: "quit"}, modified("")).prompt.label == "Text not saved. Quit anyway? (y or n)"
+is_window_close_clean() = is_missing(commands.update({kind: "quit"}, state_of("")))
+is_window_close_answer_y() = press.press(["y"], commands.update({kind: "quit"}, modified(""))).ending
+is_click() = click_places()
+defn click_places()
+  s = commands.update(mouse("down", at_char(2), 40), state_of("abcd\nefgh"))
+  here(s).cursor == {line: 1, column: 2}
+end
+defn is_click_second_line()
+  s = commands.update(mouse("down", at_char(1), 40 + 19), state_of("abcd\nefgh"))
+  here(s).cursor == {line: 2, column: 1}
+end
+is_click_below_text() = here(commands.update(mouse("down", at_char(30), 300), state_of("abcd\nefgh"))).cursor == {line: 2, column: 4}
+defn is_drag_selects()
+  s = commands.update(mouse("down", at_char(1), 40), state_of("abcd\nefgh"))
+  s = commands.update(mouse("move", at_char(3), 40), s)
+  s = commands.update(mouse("up", at_char(3), 40), s)
+  region_of(s) == "bc" and not s.dragging
+end
+defn is_click_without_drag_clears_mark()
+  s = commands.update(mouse("down", at_char(1), 40), state_of("abcd"))
+  s = commands.update(mouse("up", at_char(1), 40), s)
+  is_missing(here(s).mark)
+end
+defn is_move_without_button_ignored()
+  s = commands.update(mouse("move", at_char(3), 40), state_of("abcd"))
+  here(s).cursor == {line: 1, column: 0} and is_missing(here(s).mark)
+end
+defn is_mouse_mark_cleared_by_move()
+  s = commands.update(mouse("down", at_char(1), 40), state_of("abcd"))
+  s = commands.update(mouse("move", at_char(3), 40), s)
+  s = commands.update(mouse("up", at_char(3), 40), s)
+  is_missing(here(press.press(["right"], s)).mark)
+end
+defn is_click_tab()
+  s = view.start([text.of("a", "x.kp"), text.of("b", "y.kp")], look, cell, 800, 600)
+  commands.update(mouse("down", 70, 10), s).current == 2 and view.tab_at(10, 10, s) == 1 and view.tab_at(70, 10, s) == 2 and view.tab_at(300, 10, s) == 0 and view.tab_at(10, 100, s) == 0
+end
+defn is_wheel()
+  s = state_of(join("\n", map(n -> "word", range(1, 100))))
+  s = commands.update({kind: "mouse", action: "wheel", x: 100, y: 100, button: 0, amount: -1.0}, s)
+  here(s).top == 4 and here(s).cursor == {line: 1, column: 0} and here(s).free
+end
+defn is_wheel_up_stays_in_file()
+  s = state_of("a\nb")
+  s = commands.update({kind: "mouse", action: "wheel", x: 100, y: 100, button: 0, amount: 5.0}, s)
+  here(s).top == 1
+end
+defn is_wheel_down_stays_in_file()
+  s = state_of("a\nb")
+  s = commands.update({kind: "mouse", action: "wheel", x: 100, y: 100, button: 0, amount: -50.0}, s)
+  here(s).top == 2
+end
+defn is_wheel_not_pulled_back()
+  s = state_of(join("\n", map(n -> "word", range(1, 100))))
+  s = commands.update({kind: "mouse", action: "wheel", x: 100, y: 100, button: 0, amount: -10.0}, s)
+  here(s).top == 31
+end
+defn is_key_after_wheel_follows()
+  s = state_of(join("\n", map(n -> "word", range(1, 100))))
+  s = commands.update({kind: "mouse", action: "wheel", x: 100, y: 100, button: 0, amount: -10.0}, s)
+  s = press.press(["a"], s)
+  here(s).top == 1 and not here(s).free
+end
+defn is_resize()
+  s = commands.update({kind: "resize", width: 500, height: 300}, state_of(""))
+  s.width == 500 and s.height == 300
+end
+is_unknown_key() = contains("C-q", press.press(["C-q"], state_of("")).message)
+is_unknown_pair_clears_pending() = press.press(["C-x", "C-q"], state_of("")).pending == "" and contains("C-x C-q", press.press(["C-x", "C-q"], state_of("")).message)
+defn is_text_event_with_ctrl()
+  key = {kind: "key", key: "f", ctrl: true, alt: false, shift: false, super: false}
+  s = commands.update({kind: "text", text: "f"}, commands.update(key, state_of("")))
+  words_of(s) == "" and not s.chorded
+end
+defn is_text_after_ctrl_then_real_text()
+  key = {kind: "key", key: "f", ctrl: true, alt: false, shift: false, super: false}
+  s = commands.update({kind: "text", text: "f"}, commands.update(key, state_of("")))
+  words_of(commands.update({kind: "text", text: "g"}, s)) == "g"
+end
+defn is_text_after_alt()
+  key = {kind: "key", key: "f", ctrl: false, alt: true, shift: false, super: false}
+  words_of(commands.update({kind: "text", text: "f"}, commands.update(key, state_of("")))) == ""
+end
+is_accents() = words_of(press.press(["é", "ñ"], state_of(""))) == "éñ"
+is_enter_at_start() = words_of(press.press(["enter"], state_of("  x"))) == "\n  x"
+defn is_enter_keeps_indent()
+  s = press.press(["C-e", "enter", "y"], state_of("  x"))
+  words_of(s) == "  x\n  y"
+end
+defn is_enter_uses_eol()
+  s = press.press(["enter"], state_of("a\r\nb"))
+  words_of(s) == "\r\na\r\nb"
+end
+is_backspace() = words_of(press.press(["C-e", "backspace"], state_of("ab"))) == "a"
+is_delete() = words_of(press.press(["delete"], state_of("ab"))) == "b"
+is_shift_backspace() = words_of(press.press(["C-e", "S-backspace"], state_of("ab"))) == "a"
+is_shift_delete() = words_of(press.press(["S-delete"], state_of("ab"))) == "b"
+is_shift_enter() = words_of(press.press(["S-enter"], state_of("ab"))) == "\nab"
+is_ctrl_d() = words_of(press.press(["C-d"], state_of("ab"))) == "b"
+is_typing_replaces_selection() = words_of(press.press(["C-e", "S-left", "x"], state_of("ab"))) == "ax"
+is_paste_replaces_selection() = words_of(press.press(["C-space", "C-e", "M-w", "C-e", "S-left", "C-y"], state_of("ab"))) == "aab"
+is_backspace_deletes_selection() = words_of(press.press(["C-e", "S-left", "backspace"], state_of("ab"))) == "a"
+is_delete_deletes_selection() = words_of(press.press(["S-right", "delete"], state_of("ab"))) == "b"
+is_backspace_with_empty_key_mark() = words_of(press.press(["C-e", "C-space", "backspace"], state_of("ab"))) == "a"
+is_key_mark_stays_through_moves() = region_of(press.press(["C-space", "right", "right"], state_of("abc"))) == "ab"
+is_key_mark_cancelled() = is_missing(here(press.press(["C-space", "right", "C-g"], state_of("abc"))).mark)
+is_edit_clears_mark() = is_missing(here(press.press(["C-space", "right", "x"], state_of("abc"))).mark)
+is_key_mark_shift_extend() = region_of(press.press(["C-space", "S-right", "S-right"], state_of("abc"))) == "ab"
+is_cut_and_paste() = words_of(press.press(["S-right", "S-right", "C-w", "C-e", "C-y"], state_of("abc"))) == "cab"
+is_copy_and_paste() = words_of(press.press(["S-right", "M-w", "C-e", "C-y"], state_of("abc"))) == "abca"
+is_copy_clears_mark() = is_missing(here(press.press(["S-right", "M-w"], state_of("abc"))).mark)
+defn is_cut_nothing_says_so()
+  s = press.press(["C-w"], state_of("abc"))
+  s.message != "" and s.clip == "" and words_of(s) == "abc"
+end
+defn is_copy_nothing_says_so()
+  s = press.press(["M-w"], state_of("abc"))
+  s.message != "" and s.clip == ""
+end
+defn is_copy_nothing_keeps_clip()
+  s = press.press(["S-right", "M-w", "M-w"], state_of("abc"))
+  s.clip == "a"
+end
+is_paste_empty() = words_of(press.press(["C-y"], state_of("abc"))) == "abc"
+is_paste_multiline() = words_of(press.press(["S-down", "C-w", "C-y"], state_of("a\nb"))) == "a\nb"
+is_cut_line() = words_of(press.press(["C-k"], state_of("ab\ncd"))) == "\ncd" and press.press(["C-k"], state_of("ab\ncd")).clip == "ab"
+is_cut_line_accumulates() = press.press(["C-k", "C-k"], state_of("ab\ncd")).clip == "ab\n" and words_of(press.press(["C-k", "C-k"], state_of("ab\ncd"))) == "cd"
+is_cut_line_chain_broken() = press.press(["C-k", "C-k", "C-f", "C-k"], state_of("ab\ncd\nef")).clip == "d"
+is_cut_line_empty_file() = press.press(["C-k"], state_of("")).clip == ""
+is_cut_line_yank() = words_of(press.press(["C-k", "C-k", "C-y"], state_of("ab\ncd"))) == "ab\ncd"
+is_undo() = words_of(press.press(["a", "b", "C-/"], state_of(""))) == ""
+is_redo() = words_of(press.press(["a", "b", "C-/", "C-?"], state_of(""))) == "ab"
+is_page_down() = here(press.press(["C-v"], state_of(join("\n", map(n -> "w", range(1, 100)))))).cursor.line > 10
+is_page_up() = here(press.press(["C-v", "M-v"], state_of(join("\n", map(n -> "w", range(1, 100)))))).cursor.line == 1
+is_select_page_down() = region_of(press.press(["S-pagedown"], state_of(join("\n", map(n -> "w", range(1, 100)))))) != ""
+is_file_ends() = here(press.press(["M->"], state_of("a\nbc"))).cursor == {line: 2, column: 2} and here(press.press(["M->", "M-<"], state_of("a\nbc"))).cursor == {line: 1, column: 0}
+is_word_moves() = here(press.press(["M-f"], state_of("foo bar"))).cursor.column == 3 and here(press.press(["C-e", "M-b"], state_of("foo bar"))).cursor.column == 4
+is_line_ends() = here(press.press(["C-e"], state_of("abc"))).cursor.column == 3 and here(press.press(["C-e", "C-a"], state_of("abc"))).cursor.column == 0
+is_wanted_column() = here(press.press(["C-e", "C-n", "C-n"], state_of("abcd\nx\nabcd"))).cursor == {line: 3, column: 4}
+is_message_cleared_by_next_key() = press.press(["C-q", "a"], state_of("")).message == ""
+is_placeholders() = press.press(["C-c", "C-c"], state_of("")).message != "" and press.press(["C-c", "C-k"], state_of("")).message != "" and press.press(["C-c", "C-o"], state_of("")).message != ""
+is_moving_false() = not commands.moving(state_of(""))
+is_tick_ignored() = words_of(commands.update({kind: "tick", seconds: 0.01}, state_of("a"))) == "a"
+is_super_key_ignored() = words_of(commands.update({kind: "key", key: "a", ctrl: false, alt: false, shift: false, super: true}, state_of("a"))) == "a"
+is_all_keys_on_empty_file() = empty_file_survives()
+defn empty_file_survives()
+  chords = filter(k -> not contains(" ", k) and k != "C-x" and k != "C-c", keys(keys.table))
+  s = state_of("")
+  for c in chords
+    s = press.press([c], s)
+    s = press.press(["C-g", "y"], s)
+  end
+  is_array(view.view(s))
+end
+is_view_with_prompt() = is_array(view.view(press.press(["C-x", "C-f", "a"], state_of(""))))
+is_title_follows_buffer() = press.press(["C-x", "b"], view.start([text.of("a", "d/x.kp"), text.of("b", "d/y.kp")], look, cell, 800, 600)).title == "y.kp"
+is_follow_after_event() = here(press.press(["C-v", "C-v", "C-v"], state_of(join("\n", map(n -> "w", range(1, 100)))))).top > 1
