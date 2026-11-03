@@ -1,0 +1,117 @@
+-- The panes of the window: a tree that cuts the screen in two, again and again, with one pane at each leaf. A leaf is {Buffer, View}: the index of the
+-- buffer it shows, and the place of its cursor and its screen, which view.ViewOf gives, or missing for the place the buffer holds. A cut is {Along, First,
+-- Second}: along "rows" puts First above Second, and "columns" puts it on the left. Panes count from 1 in the order of the leaves, from the top left.
+-- Everything here is pure: commands moves between panes, and view draws them.
+use ui
+
+-- One pane showing buffer k, at the place the buffer holds.
+--
+--   One(2).Buffer --> 2
+One(k) = {Buffer: k, View: missing}
+
+-- Is this tree a cut, and not one pane?
+defn isCut(tree)
+  match tree
+    {Along: _} -> true
+    else -> false
+  end
+end
+
+-- The number of panes of a tree.
+--
+--   Count(Split(1, "rows", One(1))) --> 2
+Count(tree) = if isCut(tree) Count(tree.First) + Count(tree.Second) else 1 end
+
+-- The leaves of a tree, in the order of the panes.
+Leaves(tree) = if isCut(tree) Concat(Leaves(tree.First), Leaves(tree.Second)) else [tree] end
+
+-- Pane i of a tree.
+At(i, tree) = Leaves(tree)[i]
+
+-- The tree with pane i replaced by leaf.
+defn WithLeaf(i, leaf, tree)
+  if not isCut(tree)
+    return leaf
+  end
+  n = Count(tree.First)
+  out = tree
+  if i <= n
+    out.First = WithLeaf(i, leaf, tree.First)
+  else
+    out.Second = WithLeaf(i - n, leaf, tree.Second)
+  end
+  out
+end
+
+-- The tree with pane i cut in two along "rows" or "columns": both halves show what it showed, and the first one stays pane i.
+defn Split(i, along, tree)
+  leaf = At(i, tree)
+  WithLeaf(i, {Along: along, First: leaf, Second: leaf}, tree)
+end
+
+-- The tree without pane i: the other side of its cut takes its place. The last pane stays.
+defn Remove(i, tree)
+  if not isCut(tree)
+    return tree
+  end
+  n = Count(tree.First)
+  out = tree
+  if i <= n
+    if not isCut(tree.First)
+      return tree.Second
+    end
+    out.First = Remove(i, tree.First)
+  else
+    if not isCut(tree.Second)
+      return tree.First
+    end
+    out.Second = Remove(i - n, tree.Second)
+  end
+  out
+end
+
+-- The tree with f applied to each of its leaves.
+defn MapLeaves(f, tree)
+  if not isCut(tree)
+    return f(tree)
+  end
+  out = tree
+  out.First = MapLeaves(f, tree.First)
+  out.Second = MapLeaves(f, tree.Second)
+  out
+end
+
+-- The rectangle of each pane in rect, in the order of the panes. A cut gives each side half, and the second one the odd pixel.
+defn Rects(rect, tree)
+  if not isCut(tree)
+    return [rect]
+  end
+  halves = if tree.Along == "rows" ui.Top(Div(rect.Height, 2), rect) else ui.Left(Div(rect.Width, 2), rect) end
+  Concat(Rects(halves.Part, tree.First), Rects(halves.Rest, tree.Second))
+end
+
+-- The pane whose rectangle holds the point, or 0. The right and bottom edges of a rectangle belong to the next one.
+defn IndexAt(x, y, rects)
+  for i in 1:Len(rects)
+    if ui.Contains({X: x, Y: y}, rects[i])
+      return i
+    end
+  end
+  0
+end
+
+-- The panes of a state: one pane on the current buffer for a state from before this field, since reading a field it lacks would panic.
+defn Tree(state)
+  match state
+    {Panes: tree} -> tree
+    else -> One(state.Current)
+  end
+end
+
+-- The pane being edited, which shows the current buffer: the first one for a state from before this field.
+defn Active(state)
+  match state
+    {Pane: i} -> i
+    else -> 1
+  end
+end

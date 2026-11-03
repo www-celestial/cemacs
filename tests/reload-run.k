@@ -1,10 +1,11 @@
--- The editor in a window, as src/main.k runs it, for tests/reload-check.sh: a fiber sends the same keys again and again through SDL, and what each one did is
+-- The editor in a window, as apps/kemacs.k runs it, for tests/reload-check.sh: a fiber sends the same keys again and again through SDL, and what each one did is
 -- printed.
 -- The state is one from before the fields Wheel and Pressed, as a session running under --watch keeps it through a reload.
 use c
 use sdl
 use sys
 use ui
+use apps/emacs
 use commands
 use text
 use view
@@ -75,14 +76,18 @@ defn update(event, state)
 end
 
 defn opened()
-  first = sdl.Open("Kemacs reload check", 800, 600, "fonts/AdwaitaSans-Regular.ttf", size = 13, light = true)?
-  second = sdl.AddFont("strong", "fonts/NotoSans-Medium.ttf", 13, first, light = true)?
-  sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", 13, second)
+  first = sdl.Open("Kemacs reload check", 800, 600, "fonts/AdwaitaSans-Regular.ttf", size = emacs.FontSize(), light = true)?
+  second = sdl.AddFont("strong", "fonts/NotoSans-Medium.ttf", emacs.FontSize(), first, light = true)?
+  sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", emacs.FontSize(), second)
 end
 
--- A state with what view.Start gave before the fields Wheel and Pressed.
+-- What the editor runs on: the Emacs keys and the settings, which tests/reload-check.sh changes in apps/emacs/emacs.k while this runs.
+Config() = emacs.Config(emacs.Keys)
+
+-- A state with what view.Start gave before the fields Wheel and Pressed, and the config the program gives.
 older(s) = {Buffers: s.Buffers, Current: s.Current, Pending: s.Pending, Prompt: s.Prompt, Message: s.Message, Run: s.Run, Window: s.Window, Width: s.Width,
-  Height: s.Height, Cell: s.Cell, Look: s.Look, Clip: s.Clip, Chorded: s.Chorded, Chain: s.Chain, Dragging: s.Dragging, Ending: s.Ending, Title: s.Title}
+  Height: s.Height, Cell: s.Cell, Look: s.Look, Clip: s.Clip, Chorded: s.Chorded, Chain: s.Chain, Dragging: s.Dragging, Ending: s.Ending, Title: s.Title,
+  Config: Config}
 
 defn main()
   window = opened()?

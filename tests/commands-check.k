@@ -3,6 +3,7 @@
 use rope
 use sys
 use ui
+use apps/emacs
 use commands
 use press
 use text
@@ -18,8 +19,14 @@ end
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}
 
+-- What the editor runs on in these checks: the Emacs keys and the settings.
+checkConfig() = emacs.Config(emacs.Keys)
 -- A state with one empty buffer and no window.
-fresh() = view.Start([text.Of("", missing)], look, cell, 800, 600)
+defn fresh()
+  s = view.Start([text.Of("", missing)], look, cell, 800, 600)
+  s.Config = checkConfig
+  s
+end
 here(state) = state.Buffers[state.Current]
 wordsOf(state) = rope.Text(here(state).Rope)
 
@@ -153,5 +160,10 @@ check(Len(closed.Buffers) == 2 and here(closed).Path == bPath, "y closes it")
 
 -- The title follows the current buffer.
 check(commands.Settled(commands.OpenFile(aPath, fresh())).Title == "a.k", "the title is the name of the file")
+
+-- C-c c opens the entry point of the apps, under the home: run from the root of Kemacs, the home is ".".
+config = press.Press(["C-c", "c"], fresh())
+check(not IsMissing(here(config).Path) and EndsWith("apps/kemacs.k", here(config).Path), "C-c c opens apps/kemacs.k: $(here(config).Path) $(config.Message)")
+check(StartsWith("-- Kemacs", wordsOf(config)), "C-c c shows the text of apps/kemacs.k")
 
 Print("ok")

@@ -1,10 +1,12 @@
 -- The editor: one small public function per command, from a state to a state, and update, which turns the events of the window into commands.
--- GlobalKeys, PromptKeys and MouseKeys say which key runs which function: they hold the functions themselves, so that any function can be bound, and kepler doc commands
--- lists them all. Errors from the file system never panic: they become a message.
+-- No key is bound here: the Config of the state says which key runs which function, as apps/emacs/emacs.k does, and kepler doc commands lists every command.
+-- Errors from the file system never panic: they become a message.
 use rope
 use sdl
 use files
 use keys
+use lists
+use panes
 use text
 use view
 
@@ -23,6 +25,17 @@ defn say(words, state)
   s = state
   s.Message = words
   s
+end
+
+-- The state with a message for the person, as an app shows one.
+Say(words, state) = say(words, state)
+
+-- The folder of Kemacs, where fonts/ and apps/ are: what the program gave, or "." for a state with none, as one from a session before this field.
+defn Home(state)
+  match state
+    {Home: home} -> home
+    else -> "."
+  end
 end
 
 -- The buffer without its mark.
@@ -164,7 +177,7 @@ DeleteAfter(state) = deleting(text.DeleteAfter, state)
 -- A line end with the indent of the line, in place of the selection.
 NewLine(state) = replacing(text.NewLine, state)
 -- The text of a tab, in place of the selection.
-Tab(state) = typed(TabText(), state)
+Tab(state) = typed(config(state).TabText(), state)
 
 -- The undone step back, and the mark ended: left where it was, it would select a text the person never chose.
 Undo(state) = put(unmarked(text.Undo(current(state))), state)
@@ -301,6 +314,18 @@ end
 -- An array without its element k.
 without(k, items) = Concat(Take(k - 1, items), Skip(k, items))
 
+-- The state without buffer k, and current the current one, as withBuffers keeps it. A pane that showed buffer k shows the buffer that takes its place, at
+-- the place that one holds, and a pane on a buffer after it counts one less.
+defn dropped(k, current, state)
+  s = withBuffers(without(k, state.Buffers), current, state)
+  n = Len(s.Buffers)
+  s.Panes = panes.MapLeaves(leaf -> renumbered(k, n, leaf), panes.Tree(state))
+  s
+end
+
+-- A leaf of a pane after buffer k went, of the n buffers left.
+renumbered(k, n, leaf) = if leaf.Buffer > k {Buffer: leaf.Buffer - 1, View: leaf.View} else if leaf.Buffer == k panes.One(Min(k, n)) else leaf end
+
 -- The folder of a path with its slash, or an empty text for a path with no folder.
 defn folder(path)
   if IsMissing(path) or not Contains("/", path)
@@ -355,7 +380,7 @@ defn OpenAll(paths, state)
   if Len(s.Buffers) == Len(state.Buffers)
     s
   else if isPlaceholder(state)
-    withBuffers(Skip(1, s.Buffers), 1, s)
+    dropped(1, 1, s)
   else
     withBuffers(s.Buffers, Len(state.Buffers) + 1, s)
   end
@@ -376,7 +401,7 @@ end
 
 -- The state with buffer k closed.
 defn close(k, state)
-  withBuffers(without(k, state.Buffers), k, state)
+  dropped(k, k, state)
 end
 
 -- The answer to the question about closing buffer k.
@@ -444,11 +469,13 @@ defn saveAs(k, answer, state)
   end
 end
 
--- Saves the current buffer, asking for a file name first if it has none.
+-- Saves the current buffer, asking for a file name first if it has none. A list has no file to save.
 defn Save(state)
   b = current(state)
   k = state.Current
-  if IsMissing(b.Path)
+  if lists.IsList(b)
+    say("A list has no file.", state)
+  else if IsMissing(b.Path)
     ask("Save as: ", "", (answer, s) -> saveAs(k, answer, s), state)
   else
     store(k, b.Path, false, b.Disk, state)
@@ -481,78 +508,207 @@ Stop(state) = say("No program is running.", state)
 -- Showing the output: not there yet.
 ToggleOutput(state) = say("There is no output yet.", state)
 
--- ---- Bindings and settings
--- These are functions and not variables, for --watch: a reload changes functions and reruns no file-level statement. GlobalKeys = {...} would keep its old
--- value until a restart, and a new variable would be read before it has a value, which panics. A function gives what the code says at the next key. It costs a
--- new dictionary for each chord, about 15 microseconds, and nothing for a key that types.
+-- ---- Panes: the pane being edited holds its place in the current buffer, and each other pane keeps its own in its leaf, see panes.k.
 
--- What Tab types.
-TabText() = "  "
+-- The state with its pane being edited on the current buffer, after a command that changed buffer.
+defn synced(state)
+  tree = panes.Tree(state)
+  i = panes.Active(state)
+  if panes.At(i, tree).Buffer == state.Current
+    state
+  else
+    s = state
+    s.Panes = panes.WithLeaf(i, panes.One(state.Current), tree)
+    s
+  end
+end
 
--- The lines that one notch of the wheel moves the screen, as a float: a touchpad sends parts of a notch.
-WheelLines() = 3.0
+-- The state with the panes of tree and pane j being edited: its buffer becomes the current one, at the place its leaf keeps.
+defn showing(j, tree, state)
+  leaf = panes.At(j, tree)
+  k = Min(leaf.Buffer, Len(state.Buffers))
+  s = state
+  s.Buffers[k] = view.WithView(leaf.View, state.Buffers[k])
+  s.Current = k
+  s.Panes = tree
+  s.Pane = j
+  s
+end
 
--- How far the mouse can go from the place of a press, in pixels on either axis, for the press to stay a click.
-DragZone() = 4
+-- The state with pane j being edited: the place of the current buffer is kept in the leaf of the pane that was, and the buffer of pane j comes at its own.
+defn focused(j, state)
+  s = synced(state)
+  i = panes.Active(s)
+  if j == i
+    s
+  else
+    showing(j, panes.WithLeaf(i, {Buffer: s.Current, View: view.ViewOf(current(s))}, panes.Tree(s)), s)
+  end
+end
 
--- The keys, with the function each one runs: one chord, or two with a space between for a pair. Any function from a state to a state will do, also an anonymous
--- one, as in "C-c C-x": s -> say("hi", s). A chord starts a pair as soon as a binding here does. C-g as the second key of a pair is bound for each first key.
-GlobalKeys() = {
-  "C-f": ForwardChar, "right": ForwardChar,
-  "C-b": BackwardChar, "left": BackwardChar,
-  "C-n": NextLine, "down": NextLine,
-  "C-p": PreviousLine, "up": PreviousLine,
-  "M-f": ForwardWord, "M-b": BackwardWord,
-  "C-a": LineStart, "home": LineStart,
-  "C-e": LineEnd, "end": LineEnd,
-  "C-v": PageDown, "pagedown": PageDown,
-  "M-v": PageUp, "pageup": PageUp,
-  "M-<": FileStart, "M-S-,": FileStart,
-  "M->": FileEnd, "M-S-.": FileEnd,
-  "backspace": DeleteBefore, "S-backspace": DeleteBefore,
-  "C-d": DeleteAfter, "delete": DeleteAfter, "S-delete": DeleteAfter,
-  "C-k": CutLine,
-  "C-space": SetMark,
-  "S-right": SelectForwardChar,
-  "S-left": SelectBackwardChar,
-  "S-down": SelectNextLine,
-  "S-up": SelectPreviousLine,
-  "S-home": SelectLineStart,
-  "S-end": SelectLineEnd,
-  "S-pagedown": SelectPageDown,
-  "S-pageup": SelectPageUp,
-  "C-w": Cut, "M-w": Copy, "C-y": Paste,
-  "C-/": Undo,
-  "C-?": Redo, "C-S-/": Redo,
-  "C-g": Cancel,
-  "tab": Tab, "S-tab": Tab,
-  "enter": NewLine, "S-enter": NewLine,
-  "C-x C-s": Save,
-  "C-x C-f": FindFile,
-  "C-x b": NextBuffer,
-  "C-x k": CloseBuffer,
-  "C-x C-c": Quit,
-  "C-x C-g": CancelPair,
-  "C-c C-c": Run,
-  "C-c C-k": Stop,
-  "C-c C-o": ToggleOutput,
-  "C-c C-g": CancelPair
-}
+-- The pane being edited split in two along "rows" or "columns", if each half has room for two lines of eight characters. It stays the one being edited,
+-- and the new half shows the same buffer at the same place.
+defn split(along, state)
+  s = synced(state)
+  i = panes.Active(s)
+  cut = panes.Split(i, along, panes.Tree(s))
+  s.Panes = panes.WithLeaf(i + 1, {Buffer: s.Current, View: view.ViewOf(current(s))}, cut)
+  s.Pane = i
+  halves = Skip(i - 1, Take(i + 1, view.PaneLayouts(s)))
+  if Len(Filter(one -> one.Rows < 2 or one.Columns < 8, halves)) == 0
+    s
+  else
+    say("This pane is too small to split.", state)
+  end
+end
 
--- The keys while a prompt is open. Any other key does nothing, and a prompt has no pairs.
-PromptKeys() = {
-  "enter": PromptAccept, "S-enter": PromptAccept,
-  "backspace": PromptDeleteBefore, "S-backspace": PromptDeleteBefore,
-  "C-y": PromptPaste,
-  "C-g": PromptCancel
-}
+-- The pane being edited split in two, one above the other.
+SplitBelow(state) = split("rows", state)
+-- The pane being edited split in two, side by side.
+SplitRight(state) = split("columns", state)
 
--- What the mouse does, by the Action of its event. These functions take the event as well as the state.
-MouseKeys() = {"down": Press, "move": Drag, "up": Release, "wheel": Wheel}
+-- The next pane, from the last to the first.
+NextPane(state) = focused(Mod(panes.Active(state), panes.Count(panes.Tree(state))) + 1, state)
 
--- What the mouse does while a prompt is open: only the wheel and the end of a drag count, so that the buffer can't change under a question and a drag doesn't
--- outlive its button.
-PromptMouseKeys() = {"up": Release, "wheel": Wheel}
+-- The pane being edited closed: the other side of its split takes its place, and the pane there is edited. The last pane stays.
+defn ClosePane(state)
+  tree = panes.Tree(state)
+  if panes.Count(tree) == 1
+    return say("This is the only pane.", state)
+  end
+  i = panes.Active(state)
+  rest = panes.Remove(i, tree)
+  showing(Min(i, panes.Count(rest)), rest, state)
+end
+
+-- Only the pane being edited is kept.
+defn OnlyPane(state)
+  s = state
+  s.Panes = panes.One(state.Current)
+  s.Pane = 1
+  s
+end
+
+-- ---- Config
+
+-- What the editor runs on: the record that the function in the Config of the state gives, with the keys and the settings, as emacs.Config in apps/ makes it.
+-- A state with none, as one from a session before this field, has no key and the settings of unconfigured: see view.Start.
+defn config(state)
+  match state
+    {Config: f} -> if IsMissing(f) unconfigured() else f() end
+    else -> unconfigured()
+  end
+end
+
+-- The config of a state that has none: no key, so that nothing runs that nobody bound, and plain settings.
+unconfigured() = {Keys: () -> Dict(), PromptKeys: () -> Dict(), MouseKeys: () -> Dict(), PromptMouseKeys: () -> Dict(), ListKeys: () -> Dict(), TabText: () -> "  ",
+  WheelLines: () -> 3.0, DragZone: () -> 4, FontSize: () -> 15}
+
+-- ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.k for what a list holds.
+
+-- Opens a list named name. rows is a function from the state to the rows, each {Words, Item}, and keys a function that gives the keys of the list, whose
+-- functions take the item under the cursor and the state. Typing filters the rows, and the ListKeys of the config take the filter back. A list open already
+-- gives its place to this one.
+defn ShowList(name, rows, keys, state)
+  here = current(state)
+  back = if lists.IsList(here) lists.Of(here).Back else state.Current end
+  s = withoutList(state)
+  b = text.Of("", missing)
+  b.List = {Name: name, Rows: rows, Keys: keys, Filter: "", Items: [], Back: Min(back, Len(s.Buffers))}
+  s.Buffers = Append(b, s.Buffers)
+  s.Current = Len(s.Buffers)
+  refreshed(s)
+end
+
+-- The state without its list, if one is open, and current on the same buffer as before.
+defn withoutList(state)
+  for k in 1:Len(state.Buffers)
+    if lists.IsList(state.Buffers[k])
+      return dropped(k, if state.Current > k state.Current - 1 else state.Current end, state)
+    end
+  end
+  state
+end
+
+-- Goes to buffer k. From a list, the list closes on the way, and k counts the buffers as they were with it.
+defn ToBuffer(k, state)
+  if lists.IsList(current(state))
+    at = state.Current
+    dropped(at, if k > at k - 1 else k end, state)
+  else
+    withBuffers(state.Buffers, k, state)
+  end
+end
+
+-- The state with this filter in the list of the current buffer.
+defn withFilter(filter, state)
+  b = current(state)
+  l = lists.Of(b)
+  l.Filter = filter
+  b.List = l
+  put(b, state)
+end
+
+-- The last character of the filter of a list taken back. Out of a list, nothing changes.
+defn ListBack(state)
+  l = lists.Of(current(state))
+  if IsMissing(l) state else withFilter(Join("", Take(Max(0, Len(l.Filter) - 1), Chars(l.Filter))), state) end
+end
+
+-- The filter of a list cleared, or with none the list closed, back to the buffer it was opened from. Out of a list, nothing changes.
+defn ListCancel(state)
+  l = lists.Of(current(state))
+  if IsMissing(l)
+    state
+  else if l.Filter != ""
+    withFilter("", state)
+  else
+    ToBuffer(l.Back, state)
+  end
+end
+
+-- The state with the list in the current buffer, if it is one, made again from its rows and its filter. The cursor stays on the item it was on, if that one is
+-- still shown, else on its line. When the words don't change, the buffer stays as it is, with its selection.
+defn refreshed(state)
+  b = current(state)
+  l = lists.Of(b)
+  if IsMissing(l)
+    return state
+  end
+  shown = lists.Filtered(l.Filter, l.Rows(state))
+  words = lists.Words(shown)
+  items = Map(r -> r.Item, shown)
+  out = b
+  if words != rope.Text(b.Rope)
+    was = lists.ItemAt(b)
+    out = text.Place(lists.LineOf(was, items, b.Cursor.Line), 0, text.Of(words, missing))
+    out.Top = b.Top
+  end
+  l.Items = items
+  out.List = l
+  put(out, state)
+end
+
+-- The keys of the list in the current buffer, over the keys of the config and its ListKeys: a key of the list gets the item under the cursor.
+defn listKeys(state)
+  own = MapValues(f -> (s -> withItem(f, s)), lists.Of(current(state)).Keys())
+  Merge(Merge(config(state).Keys(), config(state).ListKeys()), own)
+end
+
+-- The state after f on the item under the cursor of the list, or a message when no row is left.
+defn withItem(f, state)
+  item = lists.ItemAt(current(state))
+  if IsMissing(item) say("Nothing here.", state) else f(item, state) end
+end
+
+-- A list is read only: after a command that changed its text, as a cut or an undo, its buffer is put back as it was, with a message.
+defn guarded(after, before)
+  if after.Current == before.Current and Len(after.Buffers) == Len(before.Buffers) and lists.IsList(current(after)) and current(after).Version != current(before).Version
+    say("This list is read only.", put(current(before), after))
+  else
+    after
+  end
+end
 
 -- ---- Keys and events
 
@@ -619,10 +775,12 @@ defn onKey(event, state)
   if IsMissing(chord) and IsMissing(second)
     s
   else if not IsMissing(state.Prompt)
-    promptChord(if IsMissing(chord) second else chord end, PromptKeys(), s)
+    promptChord(if IsMissing(chord) second else chord end, config(s).PromptKeys(), s)
+  else if lists.IsList(current(s))
+    guarded(chorded(if IsMissing(chord) second else chord end, listKeys(s), s), s)
   else
     s.Buffers[state.Current].Typing = false
-    chorded(if IsMissing(chord) second else chord end, GlobalKeys(), s)
+    chorded(if IsMissing(chord) second else chord end, config(s).Keys(), s)
   end
 end
 
@@ -639,6 +797,8 @@ defn onText(event, state)
     s
   else if not IsMissing(state.Prompt)
     promptText(event.Text, s)
+  else if lists.IsList(current(s))
+    withFilter("$(lists.Of(current(s)).Filter)$(event.Text)", s)
   else
     s.Chain = false
     s.Buffers[state.Current].Free = false
@@ -654,11 +814,22 @@ defn wheelRest(state)
   end
 end
 
--- The screen of the current buffer moved by the wheel, WheelLines for each notch, without moving the cursor. What is less than a line stays for the next
--- event, since a touchpad sends many small ones.
+-- The screen of the pane under the mouse moved by the wheel, the WheelLines of the config for each notch, without moving the cursor, and without making that pane
+-- the one being edited. What is less than a line stays for the next event, since a touchpad sends many small ones.
 defn Wheel(event, state)
+  i = panes.Active(state)
+  j = view.PaneAt(event.X, event.Y, state)
+  if j > 0 and j != i
+    focused(i, wheeled(event, focused(j, state)))
+  else
+    wheeled(event, state)
+  end
+end
+
+-- The screen of the current buffer moved by the wheel.
+defn wheeled(event, state)
   b = current(state)
-  wanted = wheelRest(state) - event.Amount * WheelLines()
+  wanted = wheelRest(state) - event.Amount * config(state).WheelLines()
   lines = Div(Floor(wanted + 0.5), 1)
   b.Top = Min(Max(1, b.Top + lines), rope.LineCount(b.Rope))
   b.Free = true
@@ -667,25 +838,22 @@ defn Wheel(event, state)
   s
 end
 
--- The state after a mouse press in the code: the cursor goes under the point and a mark from the mouse starts there. On a tab, goes to it.
+-- The state after a mouse press: the pane under it is edited, and in its code the cursor goes under the point and a mark from the mouse starts there.
 defn down(event, state)
-  tab = view.TabAt(event.X, event.Y, state)
-  if tab > 0
-    s = state
-    s.Current = tab
-    s
-  else if view.IsInCode(event.X, event.Y, state)
-    at = view.ClickAt(event.X, event.Y, state)
-    b = text.Place(at.Line, at.Column, current(state))
+  j = view.PaneAt(event.X, event.Y, state)
+  s = if j > 0 focused(j, state) else state end
+  if view.IsInCode(event.X, event.Y, s)
+    at = view.ClickAt(event.X, event.Y, s)
+    b = text.Place(at.Line, at.Column, current(s))
     b.Mark = b.Cursor
     b.Origin = "mouse"
     b.Free = false
-    s = put(b, state)
-    s.Dragging = true
-    s.Pressed = {X: event.X, Y: event.Y}
-    s
+    out = put(b, s)
+    out.Dragging = true
+    out.Pressed = {X: event.X, Y: event.Y}
+    out
   else
-    state
+    s
   end
 end
 
@@ -698,11 +866,11 @@ defn pressPoint(state)
 end
 
 -- Is this event still in the zone around the press at this point? A hand that moves one pixel during a click means no drag.
-inZone(event, at) = not IsMissing(at) and Abs(event.X - at.X) <= DragZone() and Abs(event.Y - at.Y) <= DragZone()
+inZone(event, at, zone) = not IsMissing(at) and Abs(event.X - at.X) <= zone and Abs(event.Y - at.Y) <= zone
 
 -- The mouse moved: with the button held, the cursor follows it once it has left the zone around the press, even if it comes back.
 defn Drag(event, state)
-  if not state.Dragging or inZone(event, pressPoint(state))
+  if not state.Dragging or inZone(event, pressPoint(state), config(state).DragZone())
     state
   else
     at = view.PositionAt(event.X, event.Y, state)
@@ -757,9 +925,10 @@ defn resized(event, state)
   s
 end
 
--- The state with the screen on the cursor and the title of the window the name of the current file.
+-- The state with a list made again from its rows, the pane being edited on the current buffer, the screen of each pane on its cursor, and the title of the
+-- window the name of the current buffer.
 defn Settled(state)
-  s = view.FollowState(state)
+  s = view.FollowState(synced(refreshed(state)))
   name = view.BufferName(current(s))
   if name != s.Title
     if not IsMissing(s.Window)
@@ -777,7 +946,7 @@ defn Update(event, state)
     "resize" -> resized(event, state)
     "key" -> onKey(event, state)
     "text" -> onText(event, state)
-    "mouse" -> onMouse(event, if IsMissing(state.Prompt) MouseKeys() else PromptMouseKeys() end, state)
+    "mouse" -> onMouse(event, if IsMissing(state.Prompt) config(state).MouseKeys() else config(state).PromptMouseKeys() end, state)
     else -> state
   end
   if next.Ending missing else Settled(next) end

@@ -1,0 +1,93 @@
+-- The Emacs keys of Kemacs, and its settings. The core in src/ holds no key: apps/kemacs.k gives it these through Config, with the keys of every app.
+-- Every binding holds the function itself, so any function can be bound, and kepler doc emacs lists them all.
+-- These are functions and not variables, for --watch: a reload changes functions and reruns no file-level statement. Keys = {...} would keep its old value
+-- until a restart, and a new variable would be read before it has a value, which panics. A function gives what the code says at the next key.
+use commands
+
+-- What Tab types.
+TabText() = "  "
+
+-- The lines that one notch of the wheel moves the screen, as a float: a touchpad sends parts of a notch.
+WheelLines() = 3.0
+
+-- How far the mouse can go from the place of a press, in pixels on either axis, for the press to stay a click.
+DragZone() = 4
+
+-- The size of the three fonts. The window reads it when it opens, so a change shows at the next start.
+FontSize() = 15
+
+-- The keys, with the function each one runs: one chord, or two with a space between for a pair. Any function from a state to a state will do, also an anonymous
+-- one, as in "C-c C-x": s -> say("hi", s). A chord starts a pair as soon as a binding here does. C-g as the second key of a pair is bound for each first key.
+Keys() = {
+  "C-f": commands.ForwardChar, "right": commands.ForwardChar,
+  "C-b": commands.BackwardChar, "left": commands.BackwardChar,
+  "C-n": commands.NextLine, "down": commands.NextLine,
+  "C-p": commands.PreviousLine, "up": commands.PreviousLine,
+  "M-f": commands.ForwardWord, "M-b": commands.BackwardWord,
+  "C-a": commands.LineStart, "home": commands.LineStart,
+  "C-e": commands.LineEnd, "end": commands.LineEnd,
+  "C-v": commands.PageDown, "pagedown": commands.PageDown,
+  "M-v": commands.PageUp, "pageup": commands.PageUp,
+  "M-<": commands.FileStart, "M-S-,": commands.FileStart,
+  "M->": commands.FileEnd, "M-S-.": commands.FileEnd,
+  "backspace": commands.DeleteBefore, "S-backspace": commands.DeleteBefore,
+  "C-d": commands.DeleteAfter, "delete": commands.DeleteAfter, "S-delete": commands.DeleteAfter,
+  "C-k": commands.CutLine,
+  "C-space": commands.SetMark,
+  "S-right": commands.SelectForwardChar,
+  "S-left": commands.SelectBackwardChar,
+  "S-down": commands.SelectNextLine,
+  "S-up": commands.SelectPreviousLine,
+  "S-home": commands.SelectLineStart,
+  "S-end": commands.SelectLineEnd,
+  "S-pagedown": commands.SelectPageDown,
+  "S-pageup": commands.SelectPageUp,
+  "C-w": commands.Cut, "M-w": commands.Copy, "C-y": commands.Paste,
+  "C-/": commands.Undo,
+  "C-?": commands.Redo, "C-S-/": commands.Redo,
+  "C-g": commands.Cancel,
+  "tab": commands.Tab, "S-tab": commands.Tab,
+  "enter": commands.NewLine, "S-enter": commands.NewLine,
+  "C-x C-s": commands.Save,
+  "C-x C-f": commands.FindFile,
+  "C-x b": commands.NextBuffer,
+  "C-x k": commands.CloseBuffer,
+  "C-x 2": commands.SplitBelow,
+  "C-x 3": commands.SplitRight,
+  "C-x o": commands.NextPane,
+  "C-x 0": commands.ClosePane,
+  "C-x 1": commands.OnlyPane,
+  "C-x C-c": commands.Quit,
+  "C-x C-g": commands.CancelPair,
+  "C-c C-c": commands.Run,
+  "C-c C-k": commands.Stop,
+  "C-c C-o": commands.ToggleOutput,
+  "C-c C-g": commands.CancelPair,
+  "C-c c": OpenConfig
+}
+
+-- The keys while a prompt is open. Any other key does nothing, and a prompt has no pairs.
+PromptKeys() = {
+  "enter": commands.PromptAccept, "S-enter": commands.PromptAccept,
+  "backspace": commands.PromptDeleteBefore, "S-backspace": commands.PromptDeleteBefore,
+  "C-y": commands.PromptPaste,
+  "C-g": commands.PromptCancel
+}
+
+-- What the mouse does, by the Action of its event. These functions take the event as well as the state.
+MouseKeys() = {"down": commands.Press, "move": commands.Drag, "up": commands.Release, "wheel": commands.Wheel}
+
+-- What the mouse does while a prompt is open: only the wheel and the end of a drag count, so that the buffer can't change under a question and a drag doesn't
+-- outlive its button.
+PromptMouseKeys() = {"up": commands.Release, "wheel": commands.Wheel}
+
+-- Opens apps/kemacs.k, where the apps and their keys start: the place to change the editor.
+OpenConfig(state) = commands.OpenFile("$(commands.Home(state))/apps/kemacs.k", state)
+
+-- The keys of a list, over the keys above: Backspace and C-g take back its filter, and C-g with none closes it. Letters filter it.
+ListKeys() = {"backspace": commands.ListBack, "S-backspace": commands.ListBack, "C-g": commands.ListCancel}
+
+-- What the editor runs on, for the Config of a state: keys, the global keys given, and the other keys and the settings of this file. apps/kemacs.k gives
+-- it the keys of every app. Each field is a function, read at the next key, so that a change applies under --watch.
+Config(keys) = {Keys: keys, PromptKeys: PromptKeys, MouseKeys: MouseKeys, PromptMouseKeys: PromptMouseKeys, ListKeys: ListKeys, TabText: TabText,
+  WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize}

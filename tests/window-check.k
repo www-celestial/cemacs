@@ -3,6 +3,7 @@
 --   SDL_VIDEODRIVER=dummy kepler run --allow read,write,exec=kepler,ffi=SDL3,ffi=SDL3_ttf tests/window-check.k
 -- It prints ok at the end and stops at the first failure.
 use c
+use apps/emacs
 use rope
 use sdl
 use sys
@@ -82,10 +83,13 @@ path = "$folder/a.k"
 Unwrap(sys.Write(path, "alpha\n"))
 
 defn opened()
-  first = sdl.Open("Kemacs check", 800, 600, "fonts/AdwaitaSans-Regular.ttf", size = 13, light = true)?
-  second = sdl.AddFont("strong", "fonts/NotoSans-Medium.ttf", 13, first, light = true)?
-  sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", 13, second)
+  first = sdl.Open("Kemacs check", 800, 600, "fonts/AdwaitaSans-Regular.ttf", size = emacs.FontSize(), light = true)?
+  second = sdl.AddFont("strong", "fonts/NotoSans-Medium.ttf", emacs.FontSize(), first, light = true)?
+  sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", emacs.FontSize(), second)
 end
+
+-- What the editor runs on in this check: the Emacs keys and the settings, as apps/kemacs.k gives them without its apps.
+checkConfig() = emacs.Config(emacs.Keys)
 
 window = Unwrap(opened())
 measured = sdl.Measure(window)
@@ -93,6 +97,7 @@ look = ui.Look(ui.Dark, measured.Width, measured.Height)
 cell = {Width: look.Width("M", "code"), Height: sdl.TextSize("Ag", window, font = "code").Height + view.LineGap}
 empty = view.Start([text.Of("", missing)], look, cell, 800, 600)
 empty.Window = window
+empty.Config = checkConfig
 state = commands.Settled(commands.OpenAll([path], empty))
 check(here(state).Path == path and wordsOf(state) == "alpha\n", "the file is open")
 
@@ -132,8 +137,8 @@ state = played(state)
 check(wordsOf(state) == "aézalphaéz\n", "C-y pastes the clipboard: $(wordsOf(state))")
 
 -- A click in the code places the cursor.
-mouse(0x401, 62.0 + 3.0 * cell.Width + 1.0, 36.0 + 4.0 + 2.0)
-mouse(0x402, 62.0 + 3.0 * cell.Width + 1.0, 36.0 + 4.0 + 2.0)
+mouse(0x401, 62.0 + 3.0 * cell.Width + 1.0, 4.0 + 2.0)
+mouse(0x402, 62.0 + 3.0 * cell.Width + 1.0, 4.0 + 2.0)
 state = played(state)
 check(here(state).Cursor == {Line: 1, Column: 3} and IsMissing(here(state).Mark), "a click places the cursor")
 

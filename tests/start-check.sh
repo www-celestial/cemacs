@@ -25,5 +25,5 @@ started() {
 
 started kepler do dev
 started bin/kemacs
-started bin/kemacs src/main.k src/text/text.k
+started bin/kemacs apps/kemacs.k src/text/text.k
 echo ok

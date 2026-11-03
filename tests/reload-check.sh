@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A binding changed while the editor runs applies at the next key. It runs tests/reload-run.k under --watch, on a copy, in a window of the dummy driver, and
-# changes src/commands/commands.k as a person would save it. Bindings and settings are functions for this: a reload reruns no file-level statement, so
-# GlobalKeys = {...} would keep its old value until a restart.
+# changes apps/emacs/emacs.k as a person would save it. Bindings and settings are functions for this: a reload reruns no file-level statement, so
+# Keys = {...} would keep its old value until a restart.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 
@@ -15,7 +15,7 @@ cleanup() {
   rm -rf "$dir"
 }
 trap cleanup EXIT
-cp -r fonts src tests kepler.toml "$dir"
+cp -r apps fonts src tests kepler.toml "$dir"
 
 failed() {
   printf 'FAILED: %s\n' "$1"
@@ -37,7 +37,7 @@ seen() {
 changed() {
   local before
   before="$(wc -l < "$dir/out")"
-  sed -i "$1" "$dir/src/commands/commands.k"
+  sed -i "$1" "$dir/apps/emacs/emacs.k"
   seen "$2" "$before"
 }
 
@@ -51,13 +51,13 @@ seen "tab: 2" 0
 seen "wheel: 3 " 0
 
 # A new key on an anonymous function, a key moved to a named one, a new pair.
-changed 's/^GlobalKeys() = {$/GlobalKeys() = {\n  "C-t": s -> say("hi", s),/' "C-t alone: hi"
-changed 's/^  "C-t": s -> say("hi", s),$/  "C-t": Cancel,/' "C-t alone: Quit"
-changed 's/^GlobalKeys() = {$/GlobalKeys() = {\n  "C-x C-t": s -> say("a pair", s),/' "C-t in a pair: a pair"
+changed 's/^Keys() = {$/Keys() = {\n  "C-t": s -> commands.Say("hi", s),/' "C-t alone: hi"
+changed 's/^  "C-t": s -> commands.Say("hi", s),$/  "C-t": commands.Cancel,/' "C-t alone: Quit"
+changed 's/^Keys() = {$/Keys() = {\n  "C-x C-t": s -> commands.Say("a pair", s),/' "C-t in a pair: a pair"
 # A key of the prompt and an action of the mouse, bound the same way.
-changed 's/^PromptKeys() = {$/PromptKeys() = {\n  "C-t": s -> say("in the prompt", s),/' "C-t in a prompt: in the prompt"
-changed 's/^MouseKeys() = {"down": Press, "move": Drag, "up": Release, "wheel": Wheel}$/MouseKeys() = {"down": Press, "move": Drag, "up": Release, "wheel": (event, s) -> say("rolled at $(event.X)", s)}/' "wheel: 0 rolled at 100"
-changed 's/"wheel": (event, s) -> say("rolled at $(event.X)", s)}$/"wheel": Wheel}/' "wheel: 3 "
+changed 's/^PromptKeys() = {$/PromptKeys() = {\n  "C-t": s -> commands.Say("in the prompt", s),/' "C-t in a prompt: in the prompt"
+changed 's/^MouseKeys() = {"down": commands.Press, "move": commands.Drag, "up": commands.Release, "wheel": commands.Wheel}$/MouseKeys() = {"down": commands.Press, "move": commands.Drag, "up": commands.Release, "wheel": (event, s) -> commands.Say("rolled at $(event.X)", s)}/' "wheel: 0 rolled at 100"
+changed 's/"wheel": (event, s) -> commands.Say("rolled at $(event.X)", s)}$/"wheel": commands.Wheel}/' "wheel: 3 "
 # Settings.
 changed 's/^TabText() = "  "$/TabText() = "    "/' "tab: 4"
 changed 's/^WheelLines() = 3.0$/WheelLines() = 5.0/' "wheel: 5 "

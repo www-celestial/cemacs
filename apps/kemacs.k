@@ -1,0 +1,13 @@
+-- Kemacs: the editor with its apps. bin/kemacs and kepler do dev run this file, and C-c c opens it. An app lives in a folder of apps/ and brings its keys:
+-- add its use here and its keys to Keys. Loading this file opens the window, so no test uses it.
+use apps/buffers
+use apps/emacs
+use editor
+
+-- Every key of the editor: the Emacs keys, then the keys of each app. For a key in both, the later one wins.
+Keys() = Merge(emacs.Keys(), buffers.Keys())
+
+-- What the editor runs on: these keys, and the other keys and the settings of apps/emacs.
+Config() = emacs.Config(Keys)
+
+Print(editor.Start(Config))

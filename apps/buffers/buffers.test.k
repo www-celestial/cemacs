@@ -1,0 +1,39 @@
+-- Tests of the buffer list: run with kepler test .
+use apps/buffers
+use apps/emacs
+use commands
+use press
+use rope
+use text
+use ui
+use view
+
+look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+-- The Emacs keys with the keys of this app, as apps/kemacs.k merges them.
+withApp() = emacs.Config(() -> Merge(emacs.Keys(), buffers.Keys()))
+-- Two files, the second one modified, with the second current.
+defn twoFiles()
+  y = text.Of("b", "/p/y.k")
+  y.Version = 2
+  s = view.Start([text.Of("a", "/p/x.k"), y], look, cell, 800, 600)
+  s.Config = withApp
+  s.Current = 2
+  s
+end
+here(state) = state.Buffers[state.Current]
+wordsOf(state) = rope.Text(here(state).Rope)
+played(items) = press.Press(items, twoFiles())
+
+isKeyBound() = buffers.Keys()["C-x C-b"] == buffers.Open
+isListOfBuffers() = wordsOf(played(["C-x", "C-b"])) == "  x.k  /p/x.k\n* y.k  /p/y.k" and view.BufferName(here(played(["C-x", "C-b"]))) == "Buffers"
+isEnterVisits() = played(["C-x", "C-b", "enter"]).Current == 1 and Len(played(["C-x", "C-b", "enter"]).Buffers) == 2
+isFilterThenVisit() = played(["C-x", "C-b", "y", "enter"]).Current == 2 and wordsOf(played(["C-x", "C-b", "y", "enter"])) == "b"
+isCancelGoesBack() = played(["C-x", "C-b", "C-g"]).Current == 2 and Len(played(["C-x", "C-b", "C-g"]).Buffers) == 2
+-- An untitled buffer has no path, and its name is padded only when a path follows.
+isUntitledRow() = wordsOf(press.Press(["C-x", "C-b"], withUntitled())) == "  untitled\n  x.k       /p/x.k"
+defn withUntitled()
+  s = view.Start([text.Of("", missing), text.Of("a", "/p/x.k")], look, cell, 800, 600)
+  s.Config = withApp
+  s
+end

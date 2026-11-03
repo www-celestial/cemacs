@@ -3,6 +3,8 @@
 use rope
 use ui
 use color
+use lists
+use panes
 use text
 
 -- The width of the line numbers and the space around them, before the first column of text.
@@ -11,46 +13,89 @@ Gutter = 62
 -- Pixels added under the height of the code font to space the lines: JetBrains Mono at 13 is 18 high, and the 19 of ui.Code reads less tight.
 LineGap = 1
 
-tabsHeight = 36
 modeHeight = 24
 promptHeight = 22
 
 -- The state of the editor with its buffers, before any key: the first buffer is current, there is no pending key, no prompt, no run and no window yet.
 -- The editor adds its own fields: clip, the clipboard when there is no window; chorded, right after a key with Ctrl or Alt, the text of the event to ignore,
 -- or true for any text; chain, true while the last command was C-k; dragging, true while the mouse selects; pressed, the place of a mouse press until the mouse leaves
--- the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; and title.
+-- the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; and title. Config is the function
+-- that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Kemacs, "." until the program says. Panes is
+-- the tree of the panes, see panes.k, and Pane the one being edited, which shows the current buffer.
 -- Under --watch the code changes and the state stays, so a session can hold a state from before a field was added here. A field added after that
 -- is read only through a match with a default, which is how Kepler tests for a field: reading one that isn't there panics, with all the unsaved text.
 --
 --   Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600).Current --> 1
 Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pending: "", Prompt: missing, Message: "", Run: missing, Window: missing, Width: width, Height: height, Cell: cell, Look: look,
-  Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: ""}
+  Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: "", Config: missing, Home: ".",
+  Panes: panes.One(1), Pane: 1}
 
--- The rectangles of the screen {Tabs, Code, Output, Mode, Prompt}, and rows and columns, the lines and the characters that fit in code.
--- With showing_output false, output is empty. No size goes below zero, so a tiny window still has a layout.
+-- The rectangles of the screen {Area, Code, Output, Mode, Prompt}, and rows and columns, the lines and the characters that fit in code. Area is where the
+-- panes go, above the output and the prompt line, and code and mode are those of one pane that fills it. With showing_output false, output is empty.
+-- No size goes below zero, so a tiny window still has a layout.
 --
 --   Layout(800, 600, {Width: 8, Height: 19}, false).Output.Height --> 0
 defn Layout(width, height, cell, showingOutput)
   whole = {X: 0, Y: 0, Width: width, Height: height}
-  tabs = ui.Top(tabsHeight, whole)
-  prompt = ui.Bottom(promptHeight, tabs.Rest)
-  mode = ui.Bottom(modeHeight, prompt.Rest)
-  outputHeight = if showingOutput Max(0, Div(mode.Rest.Height, 3)) else 0 end
-  output = ui.Bottom(outputHeight, mode.Rest)
-  code = output.Rest
-  {Tabs: tabs.Part, Code: code, Output: output.Part, Mode: mode.Part, Prompt: prompt.Part,
-    Rows: Max(0, Div(code.Height - 8, cell.Height)), Columns: Max(0, Div(code.Width - Gutter - 8, cell.Width))}
+  prompt = ui.Bottom(promptHeight, whole)
+  outputHeight = if showingOutput Max(0, Div(prompt.Rest.Height - modeHeight, 3)) else 0 end
+  output = ui.Bottom(outputHeight, prompt.Rest)
+  one = PaneLayout(output.Rest, cell)
+  {Area: output.Rest, Code: one.Code, Output: output.Part, Mode: one.Mode, Prompt: prompt.Part, Rows: one.Rows, Columns: one.Columns}
 end
 
--- The name of a buffer in its tab: the last part of its path, or untitled.
-bufferName(b) = if IsMissing(b.Path) "untitled" else Last(Split("/", b.Path)) end
+-- The rectangles of a pane in rect, {Code, Mode} with its mode line at the bottom, and the rows and the columns that fit in its code.
+--
+--   PaneLayout({X: 0, Y: 0, Width: 800, Height: 289}, {Width: 8, Height: 19}).Rows --> 13
+defn PaneLayout(rect, cell)
+  mode = ui.Bottom(modeHeight, rect)
+  code = mode.Rest
+  {Code: code, Mode: mode.Part, Rows: Max(0, Div(code.Height - 8, cell.Height)), Columns: Max(0, Div(code.Width - Gutter - 8, cell.Width))}
+end
 
--- The name of a buffer, as its tab and the title of the window show it.
+-- The layout of each pane of a state, in the order of the panes, in the area of lay.
+paneLayoutsIn(lay, state) = Map(r -> PaneLayout(r, state.Cell), panes.Rects(lay.Area, panes.Tree(state)))
+
+-- The layout of each pane of a state, as PaneLayout gives it, in the order of the panes.
+PaneLayouts(state) = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run)), state)
+
+-- The place of a buffer on the screen, which a pane keeps while another one is edited: the cursor, the mark and where it came from, the top and the left of
+-- the screen, and free.
+ViewOf(b) = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Left: b.Left, Free: b.Free}
+
+-- The buffer at the place v, brought inside its text, which may have changed in another pane, or the buffer as it is for a v that is missing.
+defn WithView(v, b)
+  if IsMissing(v)
+    return b
+  end
+  out = text.Place(v.Cursor.Line, v.Cursor.Column, b)
+  out.Mark = v.Mark
+  out.Origin = v.Origin
+  out.Top = Min(Max(1, v.Top), rope.LineCount(b.Rope))
+  out.Left = Max(0, v.Left)
+  out.Free = v.Free
+  out
+end
+
+-- The buffer as pane j of a state shows it: the current buffer for the pane being edited, else the buffer of the pane at the place it keeps.
+defn shownIn(j, state)
+  if j == panes.Active(state)
+    state.Buffers[state.Current]
+  else
+    leaf = panes.At(j, panes.Tree(state))
+    WithView(leaf.View, state.Buffers[Min(leaf.Buffer, Len(state.Buffers))])
+  end
+end
+
+-- The name of a buffer: the name of its list, the last part of its path, or untitled.
+bufferName(b) = if lists.IsList(b) lists.Of(b).Name else if IsMissing(b.Path) "untitled" else Last(Split("/", b.Path)) end
+
+-- The name of a buffer, as the mode line and the title of the window show it.
 --
 --   BufferName(text.Of("", "src/a.k")) --> "a.k"
 BufferName(b) = bufferName(b)
 
--- The label of the mode line: the name, and a star if the text isn't saved. Tabs show the plain name and a dot instead.
+-- The label of the mode line: the name, and a star if the text isn't saved.
 label(b) = if text.IsModified(b) "$(bufferName(b)) *" else bufferName(b) end
 
 -- A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, and whose colors are known up to the last line on the screen.
@@ -88,11 +133,25 @@ defn Follow(rows, columns, b)
   out
 end
 
--- The state with the screen of its current buffer kept on the cursor, as follow does.
+-- The state with the screen of each pane kept on its cursor, as follow does: the current buffer for the pane being edited, and the place that each other
+-- pane keeps. The colors of a buffer are known down to the last line that any pane shows.
 defn FollowState(state)
-  lay = LayoutOf(state)
+  layouts = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run)), state)
+  active = panes.Active(state)
+  tree = panes.Tree(state)
   s = state
-  s.Buffers[state.Current] = Follow(lay.Rows, lay.Columns, state.Buffers[state.Current])
+  for j in 1:Len(layouts)
+    if j != active
+      leaf = panes.At(j, tree)
+      k = Min(leaf.Buffer, Len(s.Buffers))
+      f = Follow(layouts[j].Rows, layouts[j].Columns, WithView(leaf.View, s.Buffers[k]))
+      s.Buffers[k].Colors = f.Colors
+      tree = panes.WithLeaf(j, {Buffer: k, View: ViewOf(f)}, tree)
+    end
+  end
+  one = layouts[active]
+  s.Buffers[state.Current] = Follow(one.Rows, one.Columns, s.Buffers[state.Current])
+  s.Panes = tree
   s
 end
 
@@ -121,14 +180,14 @@ end
 -- The state at the start of line n, or the first one if the colors don't reach it yet.
 startOf(n, colors) = if n <= colors.Known colors.Starts[n] else color.FirstState end
 
--- The commands of line n of a buffer: its number, then one text per token. The line is cut to the columns on the screen before
--- it is read, since sdl has no clipping and the tail would not be seen.
+-- The commands of line n of a buffer: its number, then one text per token, or one plain text for the row of a list. The line is cut to the columns on the
+-- screen before it is read, since sdl has no clipping and the tail would not be seen.
 defn line(b, n, y, columns, rect, look)
   th = look.Theme
   cw = look.Width("M", "code")
   cs = Chars(rope.Line(n, b.Rope))
   words = if Len(cs) > b.Left + columns Join("", Take(b.Left + columns, cs)) else Join("", cs) end
-  read = color.Tokens(words, startOf(n, b.Colors))
+  read = if lists.IsList(b) {Tokens: [[color.Plain, words]]} else color.Tokens(words, startOf(n, b.Colors)) end
   x0 = rect.X + Gutter
   numbered = inside("code", rect.X + Gutter - 16 - Len("$n") * cw, y, "$n", th.Faint)
   out = [numbered]
@@ -162,10 +221,25 @@ defn cellAt(x, y, rect, cell)
   {Row: floorDiv(dy, cell.Height), Column: floorDiv(dx, cell.Width)}
 end
 
--- The layout of a state: the one of its window, with the output pane if a program runs.
+-- The layout of a state: the one of its window, with the output pane if a program runs, and the code, the mode line, the rows and the columns of the pane
+-- being edited.
 --
---   LayoutOf(Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Rows --> 26
-LayoutOf(state) = Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run))
+--   LayoutOf(Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Rows --> 28
+defn LayoutOf(state)
+  lay = Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run))
+  layouts = paneLayoutsIn(lay, state)
+  one = layouts[Min(panes.Active(state), Len(layouts))]
+  lay.Code = one.Code
+  lay.Mode = one.Mode
+  lay.Rows = one.Rows
+  lay.Columns = one.Columns
+  lay
+end
+
+-- The pane under a point, its code or its mode line, or 0 out of the panes.
+--
+--   PaneAt(10, 10, Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> 1
+PaneAt(x, y, state) = panes.IndexAt(x, y, panes.Rects(Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run)).Area, panes.Tree(state)))
 
 -- Is a point inside the code area?
 --
@@ -219,8 +293,9 @@ defn selection(b, first, last, lay, look)
   out
 end
 
--- The code area of a buffer: the band of the current line, the lines on the screen and the cursor bar.
-defn code(b, lay, look)
+-- The code area of a buffer in a pane: the band of the current line, the lines on the screen and the cursor bar. Only the pane being edited, focused, has
+-- the band and a bright bar.
+defn code(b, lay, look, focused)
   th = look.Theme
   cell = lay.Cell
   rect = lay.Code
@@ -229,7 +304,7 @@ defn code(b, lay, look)
   last = Min(rope.LineCount(b.Rope), b.Top + lay.Rows - 1)
   lineY(n) = rowY(n - b.Top, rect, cell)
   here = b.Cursor.Line
-  if here >= first and here <= last
+  if focused and here >= first and here <= last
     out = Append(box(rect.X + 4, lineY(here), rect.Width - 8, cell.Height, th.Hover, 4), out)
   end
   out = Concat(out, selection(b, first, last, lay, look))
@@ -237,81 +312,33 @@ defn code(b, lay, look)
     out = Concat(out, line(b, n, lineY(n), lay.Columns, rect, look))
   end
   if here >= first and here <= last and b.Cursor.Column >= b.Left and b.Cursor.Column - b.Left < lay.Columns
-    out = Append(rectCommand(columnX(b.Cursor.Column - b.Left, rect, cell), lineY(here), 2, cell.Height, th.Bright), out)
+    out = Append(rectCommand(columnX(b.Cursor.Column - b.Left, rect, cell), lineY(here), 2, cell.Height, if focused th.Bright else th.Faint end), out)
   end
   out
 end
 
--- A dot, for a file that isn't saved.
-dotCommand(x, y, color) = box(x, y, 7, 7, color, 3)
-
--- The width of the tab of a buffer: its name, the space around it, and room for the dot of a text that isn't saved.
-tabSize(b, look) = look.Width(bufferName(b), "body") + 28 + if text.IsModified(b) 13 else 0 end
-
--- The index of the tab under a point, or 0 if it is not on a tab.
---
---   TabAt(0, 100, Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> 0
-defn TabAt(x, y, state)
-  rect = LayoutOf(state).Tabs
-  if y < rect.Y or y >= rect.Y + rect.Height
-    return 0
-  end
-  left = rect.X + 8
-  for k in 1:Len(state.Buffers)
-    size = tabSize(state.Buffers[k], state.Look)
-    if x >= left and x < left + size
-      return k
-    end
-    left = left + size
-  end
-  0
-end
-
--- The tabs: one per buffer, flat on the bar. The current one has a blue line under it, and a blue dot marks a file that isn't saved.
-defn tabs(state, lay, look)
-  th = look.Theme
-  rect = lay.Tabs
-  out = [rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Code), rectCommand(rect.X, rect.Y + rect.Height - 1, rect.Width, 1, th.Line)]
-  x = rect.X + 8
-  y = rect.Y + Div(rect.Height - look.Height, 2)
-  for k in 1:Len(state.Buffers)
-    b = state.Buffers[k]
-    name = bufferName(b)
-    dot = if text.IsModified(b) 13 else 0 end
-    size = tabSize(b, look)
-    if k == state.Current
-      out = Concat(out, [inside("strong", x + 14, y, name, th.Bright), box(x + 8, rect.Y + rect.Height - 3, size - 16, 3, th.Accent, 1)])
-    else
-      out = Append(textCommand(x + 14, y, name, th.Muted), out)
-    end
-    if dot > 0
-      out = Append(dotCommand(x + 14 + look.Width(name, "body") + 7, y + 6, th.Accent), out)
-    end
-    x = x + size
-  end
-  out
-end
-
--- The mode line: the tab name, the position of the cursor, and the language.
-defn mode(b, lay, look)
+-- The mode line of a pane: the name of the buffer, the position of the cursor, and the language. The one of the pane being edited, focused, is lighter.
+defn mode(b, lay, look, focused)
   th = look.Theme
   rect = lay.Mode
   y = rect.Y + Div(rect.Height - look.Height, 2)
   position = "$(b.Cursor.Line):$(b.Cursor.Column)"
-  language = "Kepler"
+  language = if lists.IsList(b) "List" else "Kepler" end
   right = rect.X + rect.Width - 12
-  [rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Header), textCommand(rect.X + 12, y, label(b), th.Ink),
+  [rectCommand(rect.X, rect.Y, rect.Width, rect.Height, if focused th.Header else th.Panel end), textCommand(rect.X + 12, y, label(b), if focused th.Ink else th.Muted end),
     textCommand(right - look.Width(language, "body"), y, language, th.Muted),
     textCommand(right - look.Width(language, "body") - 24 - look.Width(position, "body"), y, position, th.Muted)]
 end
 
--- The prompt line: the question and the answer being typed, or else the last message.
+-- The prompt line: the question and the answer being typed, or else the last message, or else in a list its filter.
 defn prompt(state, lay, look)
   th = look.Theme
   rect = lay.Prompt
   y = rect.Y + Div(rect.Height - look.Height, 2)
-  words = if IsMissing(state.Prompt) state.Message else "$(state.Prompt.Label)$(state.Prompt.Answer)" end
-  bar = if IsMissing(state.Prompt) [] else [rectCommand(rect.X + 12 + look.Width(words, "body"), y, 2, look.Height, th.Bright)] end
+  b = state.Buffers[state.Current]
+  filtering = IsMissing(state.Prompt) and state.Message == "" and lists.IsList(b)
+  words = if not IsMissing(state.Prompt) "$(state.Prompt.Label)$(state.Prompt.Answer)" else if filtering "Filter: $(lists.Of(b).Filter)" else state.Message end
+  bar = if IsMissing(state.Prompt) and not filtering [] else [rectCommand(rect.X + 12 + look.Width(words, "body"), y, 2, look.Height, th.Bright)] end
   Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, th.Ink)], bar)
 end
 
@@ -329,11 +356,21 @@ defn output(state, lay, look)
 end
 
 -- The frame of a state: an array of commands for sdl. Only the lines on the screen are read, so a large file costs no more than a small one.
--- The screen of the buffer (top, left and colors) is what follow gave it.
+-- The screen of each pane (top, left and colors) is what follow gave it. A line on the left of a pane parts it from the one beside it.
 defn View(state)
   look = state.Look
-  lay = LayoutOf(state)
-  lay.Cell = state.Cell
-  b = state.Buffers[state.Current]
-  Flatten([[{Kind: "clear", Color: look.Theme.Ground}], code(b, lay, look), tabs(state, lay, look), output(state, lay, look), mode(b, lay, look), prompt(state, lay, look)])
+  lay = Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run))
+  layouts = paneLayoutsIn(lay, state)
+  active = panes.Active(state)
+  drawn = []
+  for j in 1:Len(layouts)
+    one = layouts[j]
+    one.Cell = state.Cell
+    b = shownIn(j, state)
+    drawn = Concat(drawn, Concat(code(b, one, look, j == active), mode(b, one, look, j == active)))
+    if one.Code.X > lay.Area.X
+      drawn = Append(rectCommand(one.Code.X, one.Code.Y, 1, one.Code.Height + one.Mode.Height, look.Theme.Line), drawn)
+    end
+  end
+  Flatten([[{Kind: "clear", Color: look.Theme.Ground}], drawn, output(state, lay, look), prompt(state, lay, look)])
 end

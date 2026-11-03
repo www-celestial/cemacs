@@ -1,7 +1,9 @@
 -- Tests of commands.Kp that need no file: run with kepler test .
 -- What opens or saves a file is in tests/commands-check.k.
+use apps/emacs
 use commands
 use keys
+use panes
 use press
 use text
 use view
@@ -11,8 +13,16 @@ use ui
 cell = {Width: 8, Height: 19}
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
 
+-- What the editor runs on in these tests: the Emacs keys and the settings, as apps/kemacs.k gives them without its apps.
+testConfig() = emacs.Config(emacs.Keys)
+-- A state as view.Start gives it, with the config of the tests.
+defn begun(buffers, look, cell, width, height)
+  s = view.Start(buffers, look, cell, width, height)
+  s.Config = testConfig
+  s
+end
 -- A state of one buffer holding words, with no window.
-stateOf(words) = view.Start([text.Of(words, missing)], look, cell, 800, 600)
+stateOf(words) = begun([text.Of(words, missing)], look, cell, 800, 600)
 here(state) = state.Buffers[state.Current]
 regionOf(state) = text.Region(here(state))
 wordsOf(state) = rope.Text(here(state).Rope)
@@ -20,12 +30,12 @@ wordsOf(state) = rope.Text(here(state).Rope)
 modified(words) = press.Press(["x"], stateOf(words))
 -- The key event of a mouse event.
 mouse(action, x, y) = {Kind: "mouse", Action: action, X: x, Y: y, Button: 1, Amount: 0.0}
--- The pixel under a character of the first line: the code starts at x = view.Gutter and the first line at y = 36 + 4.
+-- The pixel under a character of the first line: the code starts at x = view.Gutter and the first line at y = 4.
 atChar(column) = view.Gutter + column * 8 + 1
 
 -- A binding holds the function itself, never a name.
-isEveryBindingAFunction() = Len(Filter(f -> not IsFunction(f), Concat(Concat(Values(commands.GlobalKeys()), Values(commands.PromptKeys())), Concat(Values(commands.MouseKeys()), Values(commands.PromptMouseKeys()))))) == 0
-isShiftKeysBound() = commands.GlobalKeys()["S-backspace"] == commands.DeleteBefore and commands.GlobalKeys()["S-enter"] == commands.NewLine and commands.GlobalKeys()["S-delete"] == commands.DeleteAfter and commands.GlobalKeys()["S-tab"] == commands.Tab
+isEveryBindingAFunction() = Len(Filter(f -> not IsFunction(f), Concat(Concat(Values(emacs.Keys()), Values(emacs.PromptKeys())), Concat(Values(emacs.MouseKeys()), Values(emacs.PromptMouseKeys()))))) == 0
+isShiftKeysBound() = emacs.Keys()["S-backspace"] == commands.DeleteBefore and emacs.Keys()["S-enter"] == commands.NewLine and emacs.Keys()["S-delete"] == commands.DeleteAfter and emacs.Keys()["S-tab"] == commands.Tab
 isTypeAndMove() = wordsOf(press.Press(["a", "b", "C-b", "x"], stateOf(""))) == "axb"
 isTypeCursor() = here(press.Press(["a", "b", "C-b", "x"], stateOf(""))).Cursor.Column == 2
 isTab() = wordsOf(press.Press(["tab"], stateOf(""))) == "  "
@@ -43,8 +53,8 @@ isPromptIgnoresChords() = press.Press(["C-x", "C-f", "C-f", "C-a", "left", "tab"
 isPromptCancel() = IsMissing(press.Press(["C-x", "C-f", "a", "C-g"], stateOf("hi")).Prompt) and wordsOf(press.Press(["C-x", "C-f", "a", "C-g"], stateOf("hi"))) == "hi"
 isPromptShiftEnterAndBackspace() = press.Press(["C-x", "C-f", "ab", "S-backspace"], stateOf("")).Prompt.Answer == "a"
 isSaveAsAsks() = press.Press(["C-x", "C-s"], stateOf("a")).Prompt.Label == "Save as: "
-isNextBuffer() = press.Press(["C-x", "b"], view.Start([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)).Current == 2
-isNextBufferGoesRound() = press.Press(["C-x", "b", "C-x", "b"], view.Start([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)).Current == 1
+isNextBuffer() = press.Press(["C-x", "b"], begun([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)).Current == 2
+isNextBufferGoesRound() = press.Press(["C-x", "b", "C-x", "b"], begun([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)).Current == 1
 isCloseUnsavedAsks() = closeAsks()
 defn closeAsks()
   s = press.Press(["C-x", "k"], modified(""))
@@ -58,7 +68,7 @@ defn isLastBufferClosed()
   Len(s.Buffers) == 1 and wordsOf(s) == ""
 end
 defn isCloseGoesToNeighbour()
-  s = press.Press(["C-x", "k"], view.Start([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600))
+  s = press.Press(["C-x", "k"], begun([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600))
   Len(s.Buffers) == 1 and wordsOf(s) == "b"
 end
 defn isQuitAsks()
@@ -75,7 +85,7 @@ isWindowCloseClean() = IsMissing(commands.Update({Kind: "quit"}, stateOf("")))
 isWindowCloseAnswerY() = press.Press(["y"], commands.Update({Kind: "quit"}, modified(""))).Ending
 isClick() = clickPlaces()
 defn clickPlaces()
-  s = commands.Update(mouse("down", atChar(2), 40), stateOf("abcd\nefgh"))
+  s = commands.Update(mouse("down", atChar(2), 4), stateOf("abcd\nefgh"))
   here(s).Cursor == {Line: 1, Column: 2}
 end
 defn isClickSecondLine()
@@ -84,29 +94,30 @@ defn isClickSecondLine()
 end
 isClickBelowText() = here(commands.Update(mouse("down", atChar(30), 300), stateOf("abcd\nefgh"))).Cursor == {Line: 2, Column: 4}
 defn isDragSelects()
-  s = commands.Update(mouse("down", atChar(1), 40), stateOf("abcd\nefgh"))
-  s = commands.Update(mouse("move", atChar(3), 40), s)
-  s = commands.Update(mouse("up", atChar(3), 40), s)
+  s = commands.Update(mouse("down", atChar(1), 4), stateOf("abcd\nefgh"))
+  s = commands.Update(mouse("move", atChar(3), 4), s)
+  s = commands.Update(mouse("up", atChar(3), 4), s)
   regionOf(s) == "bc" and not s.Dragging
 end
 defn isClickWithoutDragClearsMark()
-  s = commands.Update(mouse("down", atChar(1), 40), stateOf("abcd"))
-  s = commands.Update(mouse("up", atChar(1), 40), s)
+  s = commands.Update(mouse("down", atChar(1), 4), stateOf("abcd"))
+  s = commands.Update(mouse("up", atChar(1), 4), s)
   IsMissing(here(s).Mark)
 end
 defn isMoveWithoutButtonIgnored()
-  s = commands.Update(mouse("move", atChar(3), 40), stateOf("abcd"))
+  s = commands.Update(mouse("move", atChar(3), 4), stateOf("abcd"))
   here(s).Cursor == {Line: 1, Column: 0} and IsMissing(here(s).Mark)
 end
 defn isMouseMarkClearedByMove()
-  s = commands.Update(mouse("down", atChar(1), 40), stateOf("abcd"))
-  s = commands.Update(mouse("move", atChar(3), 40), s)
-  s = commands.Update(mouse("up", atChar(3), 40), s)
+  s = commands.Update(mouse("down", atChar(1), 4), stateOf("abcd"))
+  s = commands.Update(mouse("move", atChar(3), 4), s)
+  s = commands.Update(mouse("up", atChar(3), 4), s)
   IsMissing(here(press.Press(["right"], s)).Mark)
 end
-defn isClickTab()
-  s = view.Start([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)
-  commands.Update(mouse("down", 70, 10), s).Current == 2 and view.TabAt(10, 10, s) == 1 and view.TabAt(70, 10, s) == 2 and view.TabAt(300, 10, s) == 0 and view.TabAt(10, 100, s) == 0
+-- The top of the window is code: a click there goes to the first line, and stays in the buffer.
+defn isClickAtTopIsInCode()
+  s = commands.Update(mouse("down", atChar(1), 10), twoFiles())
+  s.Current == 1 and here(s).Cursor == {Line: 1, Column: 1}
 end
 defn isWheel()
   s = stateOf(Join("\n", Map(n -> "word", Range(1, 100))))
@@ -217,7 +228,7 @@ isTickIgnored() = wordsOf(commands.Update({Kind: "tick", Seconds: 0.01}, stateOf
 isSuperKeyIgnored() = wordsOf(commands.Update({Kind: "key", Key: "a", Ctrl: false, Alt: false, Shift: false, Super: true}, stateOf("a"))) == "a"
 isAllKeysOnEmptyFile() = emptyFileSurvives()
 defn emptyFileSurvives()
-  chords = Filter(k -> not Contains(" ", k), Keys(commands.GlobalKeys()))
+  chords = Filter(k -> not Contains(" ", k), Keys(emacs.Keys()))
   s = stateOf("")
   for c in chords
     s = press.Press([c], s)
@@ -226,7 +237,7 @@ defn emptyFileSurvives()
   IsArray(view.View(s))
 end
 isViewWithPrompt() = IsArray(view.View(press.Press(["C-x", "C-f", "a"], stateOf(""))))
-isTitleFollowsBuffer() = press.Press(["C-x", "b"], view.Start([text.Of("a", "d/x.k"), text.Of("b", "d/y.k")], look, cell, 800, 600)).Title == "y.k"
+isTitleFollowsBuffer() = press.Press(["C-x", "b"], begun([text.Of("a", "d/x.k"), text.Of("b", "d/y.k")], look, cell, 800, 600)).Title == "y.k"
 isFollowAfterEvent() = here(press.Press(["C-v", "C-v", "C-v"], stateOf(Join("\n", Map(n -> "w", Range(1, 100)))))).Top > 1
 
 -- A state holding words with a text in the clipboard.
@@ -257,7 +268,7 @@ isTypeAfterUndoReplacesNothing() = wordsOf(press.Press(["x", "C-space", "C-e", "
 isTypeAfterRedoReplacesNothing() = wordsOf(press.Press(["x", "C-/", "C-space", "C-e", "C-?", "y"], stateOf("hello"))) == "xyhello"
 
 -- Two buffers with files, the first one current.
-twoFiles() = view.Start([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)
+twoFiles() = begun([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)
 -- A mouse press with another button than the first.
 otherButton(x, y) = {Kind: "mouse", Action: "down", X: x, Y: y, Button: 3, Amount: 0.0}
 
@@ -271,16 +282,16 @@ defn isQuitQuestionNoAfterPending()
   not s.Ending and IsMissing(s.Prompt) and s.Pending == ""
 end
 defn isClickEndsPending()
-  s = commands.Update(mouse("down", atChar(1), 40), press.Press(["C-x"], twoFiles()))
+  s = commands.Update(mouse("down", atChar(1), 4), press.Press(["C-x"], twoFiles()))
   s.Pending == "" and s.Message == ""
 end
 defn isTypeAfterClickWithPending()
-  s = commands.Update(mouse("down", atChar(1), 40), press.Press(["C-x"], twoFiles()))
-  s = press.Press(["b"], commands.Update(mouse("up", atChar(1), 40), s))
+  s = commands.Update(mouse("down", atChar(1), 4), press.Press(["C-x"], twoFiles()))
+  s = press.Press(["b"], commands.Update(mouse("up", atChar(1), 4), s))
   s.Current == 1 and wordsOf(s) == "ab"
 end
-isClickOnTabEndsPending() = commands.Update(mouse("down", 70, 10), press.Press(["C-x"], twoFiles())).Pending == ""
-isOtherButtonEndsPending() = commands.Update(otherButton(atChar(1), 40), press.Press(["C-x"], twoFiles())).Pending == ""
+isClickAtTopEndsPending() = commands.Update(mouse("down", 70, 10), press.Press(["C-x"], twoFiles())).Pending == ""
+isOtherButtonEndsPending() = commands.Update(otherButton(atChar(1), 4), press.Press(["C-x"], twoFiles())).Pending == ""
 
 -- I5: only another command ends a chain of cuts, and every other command does.
 defn isTextOfChordKeepsCutChain()
@@ -299,20 +310,20 @@ isQuestionEndsCutChain() = press.Press(["n", "C-k"], commands.Update({Kind: "qui
 
 -- I6: the end of a drag counts during a question, or the next move would select with no button down.
 defn isReleaseDuringPrompt()
-  s = commands.Update(mouse("down", atChar(1), 40), modified("abcd"))
-  s = commands.Update(mouse("up", atChar(1), 40), commands.Update({Kind: "quit"}, s))
-  s = commands.Update(mouse("move", atChar(3), 40), press.Press(["n"], s))
+  s = commands.Update(mouse("down", atChar(1), 4), modified("abcd"))
+  s = commands.Update(mouse("up", atChar(1), 4), commands.Update({Kind: "quit"}, s))
+  s = commands.Update(mouse("move", atChar(3), 4), press.Press(["n"], s))
   not s.Dragging and here(s).Cursor == {Line: 1, Column: 1} and IsMissing(here(s).Mark)
 end
 defn isReleaseDuringPromptKeepsSelection()
-  s = commands.Update(mouse("down", atChar(1), 40), modified("abcd"))
-  s = commands.Update(mouse("move", atChar(3), 40), s)
-  s = press.Press(["n"], commands.Update(mouse("up", atChar(3), 40), commands.Update({Kind: "quit"}, s)))
+  s = commands.Update(mouse("down", atChar(1), 4), modified("abcd"))
+  s = commands.Update(mouse("move", atChar(3), 4), s)
+  s = press.Press(["n"], commands.Update(mouse("up", atChar(3), 4), commands.Update({Kind: "quit"}, s)))
   not s.Dragging and regionOf(s) == "ab"
 end
 defn isMoveDuringPromptChangesNothing()
-  s = commands.Update(mouse("down", atChar(1), 40), modified("abcd"))
-  s = commands.Update(mouse("move", atChar(3), 40), commands.Update({Kind: "quit"}, s))
+  s = commands.Update(mouse("down", atChar(1), 4), modified("abcd"))
+  s = commands.Update(mouse("move", atChar(3), 4), commands.Update({Kind: "quit"}, s))
   here(s).Cursor == {Line: 1, Column: 1}
 end
 
@@ -322,11 +333,10 @@ isUnboundKeyEndsTypingStep() = wordsOf(press.Press(["a", "C-q", "b", "C-/"], sta
 isNothingToCutEndsTypingStep() = wordsOf(press.Press(["a", "C-w", "b", "C-/"], stateOf(""))) == "a"
 isEmptyPasteEndsTypingStep() = wordsOf(press.Press(["a", "C-y", "b", "C-/"], stateOf(""))) == "a"
 isBufferSwitchEndsTypingStep() = wordsOf(press.Press(["x", "C-x", "b", "C-x", "b", "y", "C-/"], twoFiles())) == "xa"
--- The tab of a modified x.k takes 8 to 73 on the bar: 24 for its name, 28 around it and 13 for the dot. y.k comes after it.
-defn isTabClickEndsTypingStep()
-  s = commands.Update(mouse("down", 100, 10), press.Press(["x"], twoFiles()))
-  s = commands.Update(mouse("down", 20, 10), s)
-  s.Current == 1 and wordsOf(press.Press(["y", "C-/"], s)) == "xa"
+-- A click ends a step of typing: what is typed after it is its own step.
+defn isClickEndsTypingStep()
+  s = commands.Update(mouse("down", atChar(0), 4), press.Press(["x"], twoFiles()))
+  wordsOf(press.Press(["y", "C-/"], s)) == "xa"
 end
 
 -- M2: a selection replaced is one step of undo, and undo puts the cursor back.
@@ -365,34 +375,34 @@ isNotchStaysThreeLines() = here(wheeled(2, -1.0, stateOf(hundred))).Top == 7
 defn isGutterClickKeepsScreen()
   s = stateOf(Join("", Map(n -> "x", Range(1, 100))))
   s.Buffers[1].Left = 40
-  s = commands.Update(mouse("down", 10, 40), s)
+  s = commands.Update(mouse("down", 10, 4), s)
   here(s).Left == 40 and here(s).Cursor == {Line: 1, Column: 40}
 end
 
--- M6: the code area of a window 800 by 600 runs from y = 36 to 554, with 26 full rows from y = 40 to 534. A click under them, or above them, stays on the screen.
+-- M6: the code area of a window 800 by 600 runs from y = 0 to 554, with 28 full rows from y = 4 to 536. A click under them, or above them, stays on the screen.
 defn isClickUnderLastRowKeepsScreen()
   s = commands.Update(mouse("down", atChar(0), 540), stateOf(hundred))
-  here(s).Top == 1 and here(s).Cursor == {Line: 26, Column: 0}
+  here(s).Top == 1 and here(s).Cursor == {Line: 28, Column: 0}
 end
 defn isClickAboveFirstRowKeepsScreen()
   s = stateOf(hundred)
   s.Buffers[1].Top = 10
-  s = commands.Update(mouse("down", atChar(0), 37), s)
+  s = commands.Update(mouse("down", atChar(0), 1), s)
   here(s).Top == 10 and here(s).Cursor == {Line: 10, Column: 0}
 end
--- A drag past the bottom of the code area still scrolls: y = 580 is row 28, so line 29, and the last row shown is then that line.
+-- A drag past the bottom of the code area still scrolls: y = 580 is row 30, so line 31, and the last row shown is then that line.
 defn isDragBelowCodeScrolls()
-  s = commands.Update(mouse("down", atChar(0), 40), stateOf(hundred))
+  s = commands.Update(mouse("down", atChar(0), 4), stateOf(hundred))
   s = commands.Update(mouse("move", atChar(0), 580), s)
-  here(s).Top == 4 and here(s).Cursor == {Line: 29, Column: 0}
+  here(s).Top == 4 and here(s).Cursor == {Line: 31, Column: 0}
 end
 
 -- A drag into the gutter of a line scrolled to the side still scrolls: x = 10 is column 34, six left of the first one shown.
 defn isDragInGutterScrolls()
   s = stateOf(Join("", Map(n -> "x", Range(1, 100))))
   s.Buffers[1].Left = 40
-  s = commands.Update(mouse("down", atChar(0), 40), s)
-  s = commands.Update(mouse("move", 10, 40), s)
+  s = commands.Update(mouse("down", atChar(0), 4), s)
+  s = commands.Update(mouse("move", 10, 4), s)
   here(s).Left == 34 and here(s).Cursor == {Line: 1, Column: 34}
 end
 
@@ -408,7 +418,7 @@ end
 
 -- A state as a session keeps it through a reload under --watch, from before the fields added to view.Start since: code changes, and the state doesn't.
 oldState(words) = {Buffers: [text.Of(words, missing)], Current: 1, Pending: "", Prompt: missing, Message: "", Run: missing, Window: missing, Width: 800, Height: 600, Cell: cell, Look: look,
-  Clip: "", Chorded: false, Chain: false, Dragging: false, Ending: false, Title: ""}
+  Clip: "", Chorded: false, Chain: false, Dragging: false, Ending: false, Title: "", Config: testConfig}
 
 -- The wheel on an old state: a notch is three lines from line 1, then the field exists and two notches add up, and tenths still add up to one notch.
 isWheelOnOldState() = here(commands.Update(wheelBy(-1.0), oldState(hundred))).Top == 4
@@ -426,52 +436,52 @@ pressAndMove(x, y, toX, toY, state) = commands.Update(mouse("move", toX, toY), c
 
 -- The dead zone: 1 px during a click in the gutter, on column 200 of the screen, used to give x = 11, which is 6 columns left of it: Left 194 and 6 characters selected.
 defn isSmallMoveKeepsGutterClick()
-  s = pressAndMove(10, 40, 11, 40, scrolledTo(200, 400))
+  s = pressAndMove(10, 4, 11, 4, scrolledTo(200, 400))
   here(s).Left == 200 and here(s).Cursor == {Line: 1, Column: 200} and regionOf(s) == ""
 end
--- 1 px under the last row used to reach row 26, which is line 27 and scrolls by one.
+-- 1 px under the last row used to reach row 28, which is line 29 and scrolls by one.
 defn isSmallMoveKeepsClickUnderLastRow()
   s = pressAndMove(atChar(0), 540, atChar(0), 541, stateOf(hundred))
-  here(s).Top == 1 and here(s).Cursor == {Line: 26, Column: 0}
+  here(s).Top == 1 and here(s).Cursor == {Line: 28, Column: 0}
 end
 defn isClickWithSmallMoveLeavesNoMark()
-  s = pressAndMove(atChar(1), 40, atChar(1) + 1, 40, stateOf("abcd"))
-  s = commands.Update(mouse("up", atChar(1) + 1, 40), s)
+  s = pressAndMove(atChar(1), 4, atChar(1) + 1, 4, stateOf("abcd"))
+  s = commands.Update(mouse("up", atChar(1) + 1, 4), s)
   IsMissing(here(s).Mark) and not s.Dragging and here(s).Cursor == {Line: 1, Column: 1}
 end
 -- The press at x = 63 is on column 0. 4 px is x = 67, and it stays a click though the column under it is 1: 5 px is a drag, and selects one character.
-isFourPixelsStayAClick() = regionOf(pressAndMove(atChar(0), 40, atChar(0) + 4, 40, stateOf("abcd"))) == ""
-isFivePixelsAreADrag() = regionOf(pressAndMove(atChar(0), 40, atChar(0) + 5, 40, stateOf("abcd"))) == "a"
--- A press at y = 55 is on the first row. y = 59 is on the second one but 4 px away, and y = 60 is 5 px away: the selection reaches line 2.
-isFourPixelsDownStayAClick() = here(pressAndMove(atChar(0), 55, atChar(0), 59, stateOf("ab\ncd"))).Cursor == {Line: 1, Column: 0}
-isFivePixelsDownAreADrag() = here(pressAndMove(atChar(0), 55, atChar(0), 60, stateOf("ab\ncd"))).Cursor == {Line: 2, Column: 0}
+isFourPixelsStayAClick() = regionOf(pressAndMove(atChar(0), 4, atChar(0) + 4, 4, stateOf("abcd"))) == ""
+isFivePixelsAreADrag() = regionOf(pressAndMove(atChar(0), 4, atChar(0) + 5, 4, stateOf("abcd"))) == "a"
+-- A press at y = 19 is on the first row. y = 23 is on the second one but 4 px away, and y = 24 is 5 px away: the selection reaches line 2.
+isFourPixelsDownStayAClick() = here(pressAndMove(atChar(0), 19, atChar(0), 23, stateOf("ab\ncd"))).Cursor == {Line: 1, Column: 0}
+isFivePixelsDownAreADrag() = here(pressAndMove(atChar(0), 19, atChar(0), 24, stateOf("ab\ncd"))).Cursor == {Line: 2, Column: 0}
 -- The zone holds only until the mouse leaves it: a drag that comes back follows the mouse to where it began.
 defn isDragBackIntoZoneFollows()
-  s = pressAndMove(atChar(0), 40, atChar(3), 40, stateOf("abcd"))
-  s = commands.Update(mouse("move", atChar(0), 40), s)
+  s = pressAndMove(atChar(0), 4, atChar(3), 4, stateOf("abcd"))
+  s = commands.Update(mouse("move", atChar(0), 4), s)
   regionOf(s) == "" and here(s).Cursor == {Line: 1, Column: 0} and s.Dragging
 end
 -- A second press has a zone of its own.
 defn isSecondPressHasItsZone()
-  s = pressAndMove(atChar(0), 40, atChar(3), 40, stateOf("abcd"))
-  s = commands.Update(mouse("up", atChar(3), 40), s)
-  regionOf(pressAndMove(atChar(2), 40, atChar(2) + 1, 40, s)) == ""
+  s = pressAndMove(atChar(0), 4, atChar(3), 4, stateOf("abcd"))
+  s = commands.Update(mouse("up", atChar(3), 4), s)
+  regionOf(pressAndMove(atChar(2), 4, atChar(2) + 1, 4, s)) == ""
 end
 -- A drag that began before the zone existed has no press to compare with, and follows the mouse.
 defn isDragOnOldStateFollows()
   s = oldState("abcd")
   s.Dragging = true
-  here(commands.Update(mouse("move", atChar(3), 40), s)).Cursor == {Line: 1, Column: 3}
+  here(commands.Update(mouse("move", atChar(3), 4), s)).Cursor == {Line: 1, Column: 3}
 end
-isPressOnOldState() = regionOf(pressAndMove(atChar(1), 40, atChar(1) + 1, 40, oldState("abcd"))) == ""
+isPressOnOldState() = regionOf(pressAndMove(atChar(1), 4, atChar(1) + 1, 4, oldState("abcd"))) == ""
 
 -- The right edge: a click at x = 799 of a window 800 wide used to move Left from 0 to 2, and a drag there still does.
 defn isClickAtRightEdgeKeepsScreen()
-  s = commands.Update(mouse("down", 799, 40), stateOf(Repeat(200, "x")))
+  s = commands.Update(mouse("down", 799, 4), stateOf(Repeat(200, "x")))
   here(s).Left == 0 and here(s).Cursor == {Line: 1, Column: 90}
 end
 defn isDragPastRightEdgeScrolls()
-  s = pressAndMove(atChar(0), 40, 799, 40, stateOf(Repeat(200, "x")))
+  s = pressAndMove(atChar(0), 4, 799, 4, stateOf(Repeat(200, "x")))
   here(s).Left == 2 and here(s).Cursor == {Line: 1, Column: 92}
 end
 
@@ -505,7 +515,7 @@ defn isOldChordedDropsOnce()
 end
 
 -- The keys of the editor, as the tests of keys.Lookup can't see them.
-global() = commands.GlobalKeys()
+global() = emacs.Keys()
 isCancelBound() = keys.Lookup("", "C-g", global()) == {Command: commands.Cancel}
 isCancelInPair() = keys.Lookup("C-x", "C-g", global()) == {Command: commands.CancelPair} and keys.Lookup("C-c", "C-g", global()) == {Command: commands.CancelPair}
 isArrowBound() = keys.Lookup("", "S-right", global()) == {Command: commands.SelectForwardChar}
@@ -543,27 +553,27 @@ defn isChainOfOldSession()
   press.Press(["C-k"], s).Clip == "beforeab"
 end
 -- The mouse moving without a button is no command: it leaves a chain alone.
-isHoverKeepsCutChain() = press.Press(["C-k"], commands.Update(mouse("move", atChar(1), 40), press.Press(["C-k"], stateOf("ab\ncd")))).Clip == "ab\n"
+isHoverKeepsCutChain() = press.Press(["C-k"], commands.Update(mouse("move", atChar(1), 4), press.Press(["C-k"], stateOf("ab\ncd")))).Clip == "ab\n"
 
 -- A prompt key is found the same way, through bindings of the test.
 promptOpen() = press.Press(["C-x", "C-f", "ab"], stateOf("hi"))
 isPromptKeyFound() = promptChord("C-t", {"C-t": s -> say("in the prompt", s)}, promptOpen()).Message == "in the prompt"
-isPromptUnboundDoesNothing() = promptChord("C-q", commands.PromptKeys(), promptOpen()).Prompt.Answer == "ab"
-isPromptKeysBound() = commands.PromptKeys()["enter"] == commands.PromptAccept and commands.PromptKeys()["S-enter"] == commands.PromptAccept and commands.PromptKeys()["backspace"] == commands.PromptDeleteBefore and commands.PromptKeys()["S-backspace"] == commands.PromptDeleteBefore and commands.PromptKeys()["C-y"] == commands.PromptPaste and commands.PromptKeys()["C-g"] == commands.PromptCancel
+isPromptUnboundDoesNothing() = promptChord("C-q", emacs.PromptKeys(), promptOpen()).Prompt.Answer == "ab"
+isPromptKeysBound() = emacs.PromptKeys()["enter"] == commands.PromptAccept and emacs.PromptKeys()["S-enter"] == commands.PromptAccept and emacs.PromptKeys()["backspace"] == commands.PromptDeleteBefore and emacs.PromptKeys()["S-backspace"] == commands.PromptDeleteBefore and emacs.PromptKeys()["C-y"] == commands.PromptPaste and emacs.PromptKeys()["C-g"] == commands.PromptCancel
 -- A prompt command needs a prompt, and any command can be bound to any key: without one it does nothing, and can't panic.
 isPromptCommandWithoutPrompt() = wordsOf(commands.PromptAccept(commands.PromptDeleteBefore(commands.PromptPaste(commands.PromptCancel(stateOf("ab")))))) == "ab"
 
 -- A mouse action is found the same way, and takes the event too.
 isMouseActionFound() = onMouse(mouse("down", 5, 7), {"down": (event, s) -> say("at $(event.X) $(event.Y)", s)}, stateOf("")).Message == "at 5 7"
-isMouseUnboundDoesNothing() = wordsOf(onMouse(mouse("down", atChar(1), 40), {"up": commands.Release}, stateOf("ab"))) == "ab" and here(onMouse(mouse("down", atChar(1), 40), {"up": commands.Release}, stateOf("ab"))).Cursor == {Line: 1, Column: 0}
-isMouseKeysBound() = commands.MouseKeys()["down"] == commands.Press and commands.MouseKeys()["move"] == commands.Drag and commands.MouseKeys()["up"] == commands.Release and commands.MouseKeys()["wheel"] == commands.Wheel
+isMouseUnboundDoesNothing() = wordsOf(onMouse(mouse("down", atChar(1), 4), {"up": commands.Release}, stateOf("ab"))) == "ab" and here(onMouse(mouse("down", atChar(1), 4), {"up": commands.Release}, stateOf("ab"))).Cursor == {Line: 1, Column: 0}
+isMouseKeysBound() = emacs.MouseKeys()["down"] == commands.Press and emacs.MouseKeys()["move"] == commands.Drag and emacs.MouseKeys()["up"] == commands.Release and emacs.MouseKeys()["wheel"] == commands.Wheel
 -- Under a prompt only the wheel and the end of a drag count.
-isPromptMouseKeysBound() = commands.PromptMouseKeys()["up"] == commands.Release and commands.PromptMouseKeys()["wheel"] == commands.Wheel and Len(Keys(commands.PromptMouseKeys())) == 2
+isPromptMouseKeysBound() = emacs.PromptMouseKeys()["up"] == commands.Release and emacs.PromptMouseKeys()["wheel"] == commands.Wheel and Len(Keys(emacs.PromptMouseKeys())) == 2
 
 -- The values that were written inline.
-isTabText() = wordsOf(press.Press(["tab"], stateOf(""))) == commands.TabText() and commands.TabText() == "  "
-isWheelLines() = commands.WheelLines() == 3.0
-isDragZone() = commands.DragZone() == 4
+isTabText() = wordsOf(press.Press(["tab"], stateOf(""))) == emacs.TabText() and emacs.TabText() == "  "
+isWheelLines() = emacs.WheelLines() == 3.0
+isDragZone() = emacs.DragZone() == 4
 
 -- kepler doc commands lists every command: that is what visible means.
 defn isEveryCommandVisible()
@@ -572,17 +582,142 @@ defn isEveryCommandVisible()
     "SelectForwardChar", "SelectBackwardChar", "SelectNextLine", "SelectPreviousLine", "SelectLineStart", "SelectLineEnd", "SelectPageDown", "SelectPageUp",
     "SetMark", "Cancel", "CancelPair", "DeleteBefore", "DeleteAfter", "NewLine", "Tab", "Undo", "Redo", "Cut", "Copy", "Paste", "CutLine",
     "Save", "FindFile", "NextBuffer", "CloseBuffer", "Quit", "Run", "Stop", "ToggleOutput",
-    "PromptAccept", "PromptDeleteBefore", "PromptPaste", "PromptCancel", "Press", "Drag", "Release", "Wheel",
-    "GlobalKeys", "PromptKeys", "MouseKeys", "PromptMouseKeys", "TabText", "WheelLines", "DragZone"]
+    "PromptAccept", "PromptDeleteBefore", "PromptPaste", "PromptCancel", "Press", "Drag", "Release", "Wheel"]
   Len(Filter(name -> not ("commands.$name" in shown), names)) == 0
 end
 
--- A button released with no drag, as after a press on a tab, is nothing: an empty selection stays, from C-space or from a drag taken back with Shift.
-isReleaseWithoutDragKeepsKeyMark() = not IsMissing(here(commands.Update(mouse("up", atChar(1), 40), press.Press(["C-space"], stateOf("ab")))).Mark)
+-- A button released with no drag, as after a press out of the code, is nothing: an empty selection stays, from C-space or from a drag taken back with Shift.
+isReleaseWithoutDragKeepsKeyMark() = not IsMissing(here(commands.Update(mouse("up", atChar(1), 4), press.Press(["C-space"], stateOf("ab")))).Mark)
 defn isReleaseWithoutDragKeepsMouseMark()
-  s = pressAndMove(atChar(0), 40, atChar(1), 40, stateOf("ab"))
-  s = press.Press(["S-left"], commands.Update(mouse("up", atChar(1), 40), s))
-  regionOf(s) == "" and not IsMissing(here(commands.Update(mouse("up", atChar(1), 40), s)).Mark)
+  s = pressAndMove(atChar(0), 4, atChar(1), 4, stateOf("ab"))
+  s = press.Press(["S-left"], commands.Update(mouse("up", atChar(1), 4), s))
+  regionOf(s) == "" and not IsMissing(here(commands.Update(mouse("up", atChar(1), 4), s)).Mark)
 end
 -- With Caps Lock, the key & of a French keyboard gives 1 with no Shift: the second key of a pair can't compare its text.
 isSecondKeyOtherTextDropped() = wordsOf(played([keyWith("x", true, false, false), keyWith("&", false, false, false), textOf("1")], stateOf("ab"))) == "ab"
+
+-- kepler doc emacs lists every key and every setting, as it does the commands.
+defn isEveryKeyAndSettingVisible()
+  shown = DocNames("emacs")
+  names = ["Keys", "PromptKeys", "MouseKeys", "PromptMouseKeys", "TabText", "WheelLines", "DragZone", "FontSize", "Config"]
+  Len(Filter(name -> not ("emacs.$name" in shown), names)) == 0
+end
+-- The core holds no key: a state with no config, as from a session before it, runs no command and doesn't panic, and text still types.
+isNoConfigRunsNothing() = here(press.Press(["C-f"], view.Start([text.Of("ab", missing)], look, cell, 800, 600))).Cursor.Column == 0
+isNoConfigTypes() = wordsOf(press.Press(["x"], view.Start([text.Of("ab", missing)], look, cell, 800, 600))) == "xab"
+-- The font size is a setting, so that the tests and the editor read the same one.
+isFontSize() = emacs.FontSize() == 15
+
+-- Lists: a buffer of rows from an app, which typing filters. This one has four rows that stand for 10 to 40, and enter says which one is under the cursor.
+fruits(state) = [{Words: "apple", Item: 10}, {Words: "banana", Item: 20}, {Words: "cherry", Item: 30}, {Words: "date", Item: 40}]
+fruitKeys() = {"enter": (item, s) -> say("picked $item", s)}
+withFruits(state) = commands.Settled(commands.ShowList("Fruits", fruits, fruitKeys, state))
+inFruits(items) = press.Press(items, withFruits(stateOf("x")))
+isListShowsRows() = wordsOf(withFruits(stateOf("x"))) == "apple\nbanana\ncherry\ndate" and withFruits(stateOf("x")).Current == 2 and Len(withFruits(stateOf("x")).Buffers) == 2
+isListNotModified() = not text.IsModified(here(withFruits(stateOf("x"))))
+isEnterGetsItem() = inFruits(["C-n", "enter"]).Message == "picked 20"
+isTypingFilters() = wordsOf(inFruits(["an"])) == "banana"
+isFilterFuzzy() = wordsOf(inFruits(["bna"])) == "banana"
+isFilterIgnoresCase() = wordsOf(inFruits(["CH"])) == "cherry"
+isEnterAfterFilter() = inFruits(["ch", "enter"]).Message == "picked 30"
+isBackspaceShrinksFilter() = wordsOf(inFruits(["chx"])) == "" and wordsOf(inFruits(["chx", "backspace"])) == "cherry"
+isCancelClearsFilter() = wordsOf(inFruits(["ch", "C-g"])) == "apple\nbanana\ncherry\ndate" and inFruits(["ch", "C-g"]).Current == 2
+isCancelClosesList() = inFruits(["C-g"]).Current == 1 and Len(inFruits(["C-g"]).Buffers) == 1 and wordsOf(inFruits(["C-g"])) == "x"
+-- The cursor stays on its item when the rows change: on cherry, line 3, the filter e leaves apple, cherry and date, and cherry is then line 2.
+isCursorStaysOnItem() = inFruits(["C-n", "C-n", "e", "enter"]).Message == "picked 30"
+isEnterOnNothing() = inFruits(["zz", "enter"]).Message == "Nothing here."
+-- A list is read only: an edit is taken back, with a message. Moves, the filter and copy still work.
+isCutLineInListTakenBack() = wordsOf(inFruits(["C-k"])) == "apple\nbanana\ncherry\ndate" and inFruits(["C-k"]).Message == "This list is read only."
+isUndoInListChangesNothing() = wordsOf(inFruits(["C-/"])) == "apple\nbanana\ncherry\ndate"
+isCopyFromList() = clipped(inFruits(["S-down", "M-w"])) == "apple\n"
+isSaveInListAsksNothing() = IsMissing(inFruits(["C-x", "C-s"]).Prompt) and inFruits(["C-x", "C-s"]).Message == "A list has no file."
+isQuitWithListAsksNothing() = inFruits(["C-x", "C-c"]).Ending
+-- A list open already gives its place: there is one at a time.
+isOneListAtATime() = Len(commands.ShowList("Fruits", fruits, fruitKeys, withFruits(stateOf("x"))).Buffers) == 2
+-- From a list, ToBuffer goes to a buffer and closes the list on the way.
+isToBufferClosesList() = commands.ToBuffer(1, withFruits(stateOf("x"))).Current == 1 and Len(commands.ToBuffer(1, withFruits(stateOf("x"))).Buffers) == 1
+
+-- Panes: C-x 2 and C-x 3 split the pane being edited, C-x o goes to the next one, C-x 0 closes it and C-x 1 keeps only it. In a window of 800 by 600, two
+-- panes one above the other are 289 high, and the code of the second one starts at y = 289.
+paneCount(state) = panes.Count(state.Panes)
+shownBuffers(state) = Map(leaf -> leaf.Buffer, panes.Leaves(state.Panes))
+threeFiles() = begun([text.Of("a", "x.k"), text.Of("b", "y.k"), text.Of("c", "z.k")], look, cell, 800, 600)
+wheelAt(x, y, amount) = {Kind: "mouse", Action: "wheel", X: x, Y: y, Button: 0, Amount: amount}
+
+isPaneKeysBound() = emacs.Keys()["C-x 2"] == commands.SplitBelow and emacs.Keys()["C-x 3"] == commands.SplitRight and emacs.Keys()["C-x o"] == commands.NextPane and emacs.Keys()["C-x 0"] == commands.ClosePane and emacs.Keys()["C-x 1"] == commands.OnlyPane
+isSplitBelow() = paneCount(press.Press(["C-x", "2"], stateOf("a"))) == 2 and press.Press(["C-x", "2"], stateOf("a")).Panes.Along == "rows" and press.Press(["C-x", "2"], stateOf("a")).Pane == 1
+isSplitRight() = paneCount(press.Press(["C-x", "3"], stateOf("a"))) == 2 and press.Press(["C-x", "3"], stateOf("a")).Panes.Along == "columns"
+isSplitShowsSameBuffer() = Equal(shownBuffers(press.Press(["C-x", "2"], twoFiles())), [1, 1]) and wordsOf(press.Press(["C-x", "2"], twoFiles())) == "a"
+isSplitTypesNothing() = wordsOf(press.Press(["C-x", "2", "C-x", "3"], stateOf("a"))) == "a"
+isNextPane() = press.Press(["C-x", "2", "C-x", "o"], stateOf("a")).Pane == 2 and press.Press(["C-x", "2", "C-x", "o", "C-x", "o"], stateOf("a")).Pane == 1
+isNextPaneAlone() = press.Press(["C-x", "o"], stateOf("a")).Pane == 1
+defn isPanesKeepTheirCursor()
+  s = press.Press(["C-x", "2", "M->"], stateOf(hundred))
+  away = press.Press(["C-x", "o"], s)
+  back = press.Press(["C-x", "o"], away)
+  here(s).Cursor.Line == 100 and here(away).Cursor.Line == 1 and here(back).Cursor.Line == 100
+end
+defn isEditShowsInOtherPane()
+  s = press.Press(["C-x", "2", "x", "C-x", "o"], stateOf("ab"))
+  wordsOf(s) == "xab" and s.Current == 1 and s.Pane == 2
+end
+defn isOtherPaneCursorInsideShorterText()
+  s = press.Press(["C-x", "2", "M->", "C-x", "o", "C-space", "M->", "C-w", "C-x", "o"], stateOf(hundred))
+  wordsOf(s) == "" and here(s).Cursor == {Line: 1, Column: 0} and s.Pane == 1
+end
+isClosePane() = paneCount(press.Press(["C-x", "2", "C-x", "0"], stateOf("a"))) == 1
+isCloseOnlyPaneSays() = press.Press(["C-x", "0"], stateOf("a")).Message == "This is the only pane." and paneCount(press.Press(["C-x", "0"], stateOf("a"))) == 1
+defn isClosePaneGoesToOther()
+  s = press.Press(["C-x", "2", "M->", "C-x", "o", "C-x", "0"], stateOf(hundred))
+  paneCount(s) == 1 and s.Pane == 1 and here(s).Cursor.Line == 100
+end
+defn isClosePaneOfThree()
+  s = press.Press(["C-x", "3", "C-x", "o", "C-x", "2", "C-x", "b", "C-x", "0"], twoFiles())
+  paneCount(s) == 2 and s.Pane == 2 and Equal(shownBuffers(s), [1, 1])
+end
+isOnlyPane() = paneCount(press.Press(["C-x", "2", "C-x", "3", "C-x", "1"], stateOf("a"))) == 1 and press.Press(["C-x", "2", "C-x", "3", "C-x", "1"], stateOf("a")).Pane == 1
+defn isOnlyPaneKeepsActive()
+  s = press.Press(["C-x", "2", "C-x", "o", "M->", "C-x", "1"], stateOf(hundred))
+  paneCount(s) == 1 and here(s).Cursor.Line == 100
+end
+isOtherBufferInPane() = Equal(shownBuffers(press.Press(["C-x", "2", "C-x", "b"], twoFiles())), [2, 1])
+defn isCloseBufferShownElsewhere()
+  s = press.Press(["C-x", "2", "C-x", "b", "C-x", "k"], twoFiles())
+  Len(s.Buffers) == 1 and Equal(shownBuffers(s), [1, 1])
+end
+defn isCloseBufferOfOtherPane()
+  s = press.Press(["C-x", "2", "C-x", "o", "C-x", "b", "C-x", "o", "C-x", "b", "C-x", "k"], twoFiles())
+  Len(s.Buffers) == 1 and Equal(shownBuffers(s), [1, 1])
+end
+defn isCloseBufferRenumbers()
+  s = press.Press(["C-x", "2", "C-x", "o", "C-x", "b", "C-x", "b", "C-x", "o", "C-x", "k"], threeFiles())
+  Len(s.Buffers) == 2 and s.Buffers[panes.At(2, s.Panes).Buffer].Path == "z.k" and here(s).Path == "y.k"
+end
+isTooSmallToSplitBelow() = paneCount(press.Press(["C-x", "2"], begun([text.Of("a", missing)], look, cell, 800, 120))) == 1 and press.Press(["C-x", "2"], begun([text.Of("a", missing)], look, cell, 800, 120)).Message == "This pane is too small to split."
+isTooSmallToSplitRight() = paneCount(press.Press(["C-x", "3"], begun([text.Of("a", missing)], look, cell, 200, 600))) == 1
+defn isClickFocusesPane()
+  s = commands.Update(mouse("down", atChar(1), 300), press.Press(["C-x", "2"], stateOf(hundred)))
+  s.Pane == 2 and here(s).Cursor == {Line: 1, Column: 1}
+end
+defn isClickInOtherPaneKeepsItsPlace()
+  s = press.Press(["C-x", "2", "M->", "C-x", "o"], stateOf(hundred))
+  clicked = commands.Update(mouse("up", 100, 280), commands.Update(mouse("down", 100, 280), s))
+  clicked.Pane == 1 and here(clicked).Cursor.Line == 100
+end
+defn isWheelScrollsPaneUnderMouse()
+  s = commands.Update(wheelAt(100, 400, -1.0), press.Press(["C-x", "2"], stateOf(hundred)))
+  s.Pane == 1 and here(s).Top == 1 and panes.At(2, s.Panes).View.Top == 4
+end
+isWheelOnActivePane() = here(commands.Update(wheelAt(100, 100, -1.0), press.Press(["C-x", "2"], stateOf(hundred)))).Top == 4
+isSplitOnOldState() = paneCount(press.Press(["C-x", "2"], oldState("a"))) == 2
+isNextPaneOnOldState() = panes.Active(press.Press(["C-x", "o"], oldState("a"))) == 1 and wordsOf(press.Press(["C-x", "o"], oldState("a"))) == "a"
+isClickOnOldState() = commands.Update(mouse("down", atChar(1), 4), oldState("ab")).Buffers[1].Cursor == {Line: 1, Column: 1}
+fourFiles() = begun([text.Of("a", "w.k"), text.Of("b", "x.k"), text.Of("c", "y.k"), text.Of("d", "z.k")], look, cell, 800, 600)
+defn isCloseBufferRenumbersAmongFour()
+  s = press.Press(["C-x", "2", "C-x", "o", "C-x", "b", "C-x", "b", "C-x", "o", "C-x", "k"], fourFiles())
+  Len(s.Buffers) == 3 and s.Buffers[panes.At(2, s.Panes).Buffer].Path == "y.k" and here(s).Path == "x.k"
+end
+defn isSplitOfMovedPaneCopiesItsPlace()
+  s = press.Press(["C-x", "2", "C-x", "o", "M->", "C-x", "2", "C-x", "o"], stateOf(hundred))
+  s.Pane == 3 and here(s).Cursor.Line == 100
+end

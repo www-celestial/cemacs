@@ -1,0 +1,51 @@
+-- Lists: a buffer of rows that an app gives, as the buffer list does. A list is a buffer of text, so moves, selection and copy work in it as in a file, and its
+-- List field says what each line stands for: {Name, Rows, Keys, Filter, Items, Back}. Rows gives the rows {Words, Item} from the state, Keys the keys of the list,
+-- Filter what was typed, Items the item of each line shown, and Back the buffer to go back to. Everything here is pure: commands opens and runs lists.
+
+-- The list of a buffer, or missing for a buffer of text. A buffer from before this field has none, and reading a field it lacks would panic.
+defn Of(b)
+  match b
+    {List: l} -> l
+    else -> missing
+  end
+end
+
+-- Is this buffer a list?
+IsList(b) = not IsMissing(Of(b))
+
+-- Does the filter match the words? Its characters must come in the words in order, side by side or not, and case doesn't count.
+--
+--   Matches("cmk", "commands.k") --> true
+defn Matches(filter, words)
+  wanted = Chars(Lower(filter))
+  k = 1
+  for c in Chars(Lower(words))
+    if k <= Len(wanted) and c == wanted[k]
+      k += 1
+    end
+  end
+  k > Len(wanted)
+end
+
+-- The rows whose words the filter matches, in their order.
+Filtered(filter, rows) = Filter(r -> Matches(filter, r.Words), rows)
+
+-- The text of the rows, one per line.
+Words(rows) = Join("\n", Map(r -> r.Words, rows))
+
+-- The line of an item among the items shown, or else the line given, brought inside them.
+defn LineOf(item, items, line)
+  for k in 1:Len(items)
+    if items[k] == item
+      return k
+    end
+  end
+  Max(1, Min(line, Len(items)))
+end
+
+-- The item under the cursor of a list, or missing when no row is left.
+defn ItemAt(b)
+  l = Of(b)
+  line = b.Cursor.Line
+  if IsMissing(l) or line > Len(l.Items) missing else l.Items[line] end
+end

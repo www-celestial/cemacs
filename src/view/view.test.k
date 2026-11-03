@@ -4,6 +4,7 @@ use text
 use view
 use rope
 use history
+use panes
 use ui
 
 cell = {Width: 8, Height: 19}
@@ -55,17 +56,16 @@ defn isTinyWindow()
   IsArray(view.View(s))
 end
 
-defn isTabs()
+-- No tabs: the code starts at the top of the window, and the name of a buffer that isn't current is nowhere on the screen. The mode line names the current one.
+defn isNoTabs()
   a = text.Of("a", "/x/a.k")
   b = text.Of("b", "/x/b.k")
   b.Version = 3
   commands = view.View(stateOf([a, b], 800, 600))
   shown = textsOf(commands)
-  dots = Filter(c -> c.Kind == "box" and c.Width == 7, commands)
-  "a.k" in shown and "b.k" in shown and not ("b.k *" in shown) and Len(dots) == 1
+  "a.k" in shown and not ("b.k" in shown) and not ("b.k *" in shown) and Len(Filter(c -> c.Kind == "box" and c.Width == 7, commands)) == 0
 end
-
-isNoDotWhenSaved() = Len(Filter(c -> c.Kind == "box" and c.Width == 7, view.View(stateOf([text.Of("a", "/x/a.k")], 800, 600)))) == 0
+isCodeAtTop() = view.Layout(800, 600, cell, false).Code.Y == 0 and view.Layout(800, 600, cell, false).Rows == 28
 
 isNoOutputPane() = view.Layout(800, 600, cell, false).Output.Height == 0
 isOutputPane() = view.Layout(800, 600, cell, true).Output.Height > 0
@@ -83,8 +83,8 @@ defn shownFrom(words, left)
   view.View(stateOf([b], 102, 600))
 end
 
--- Is this command a text of the code area? Tabs, mode line and prompt are not: the window is 600 high, and the first line is at 32.
-inCode(c) = c.Kind == "text" and c.Y >= 28 and c.Y < 100
+-- Is this command a text of the code area? The mode line and the prompt are not: the window is 600 high, and the first line is at 4.
+inCode(c) = c.Kind == "text" and c.Y < 100
 
 -- The texts in the code area, the line number first.
 codeTexts(commands) = Map(c -> c.Text, Filter(c -> inCode(c), commands))
@@ -203,7 +203,7 @@ end
 
 defn isPositionAt()
   s = stateOf([text.Of("abcd\nefgh", "a.k")], 800, 600)
-  p = view.PositionAt(view.Gutter + 17, 36 + 4 + 19 + 3, s)
+  p = view.PositionAt(view.Gutter + 17, 4 + 19 + 3, s)
   p == {Line: 2, Column: 2}
 end
 
@@ -214,7 +214,7 @@ defn isPositionWithScroll()
   b = text.Of(manyLines(50), "a.k")
   b.Top = 10
   b.Left = 0
-  view.PositionAt(view.Gutter, 40, stateOf([b], 800, 600)).Line == 10
+  view.PositionAt(view.Gutter, 4, stateOf([b], 800, 600)).Line == 10
 end
 
 defn isPositionOnCursorBar()
@@ -225,14 +225,10 @@ defn isPositionOnCursorBar()
   view.PositionAt(bar.X + 1, bar.Y + 1, s).Column == 3
 end
 
-defn isTabAt()
-  s = stateOf([text.Of("a", "x.k"), text.Of("b", "y.k")], 800, 600)
-  view.TabAt(8, 10, s) == 1 and view.TabAt(59, 10, s) == 1 and view.TabAt(60, 10, s) == 2 and view.TabAt(500, 10, s) == 0 and view.TabAt(10, 50, s) == 0
-end
 
 defn isInCode()
   s = stateOf([text.Of("a", "x.k")], 800, 600)
-  view.IsInCode(10, 100, s) and not view.IsInCode(10, 10, s) and not view.IsInCode(10, 580, s)
+  view.IsInCode(10, 100, s) and view.IsInCode(10, 10, s) and not view.IsInCode(10, 560, s) and not view.IsInCode(10, 590, s)
 end
 
 defn isFollowFreeKeepsTop()
@@ -256,19 +252,19 @@ defn scrolledSide()
   b.Left = 40
   stateOf([b], 800, 600)
 end
-isClickInGutterScrolled() = view.ClickAt(10, 40, scrolledSide()) == {Line: 1, Column: 40}
-isDragInGutterScrolled() = view.PositionAt(10, 40, scrolledSide()) == {Line: 1, Column: 34}
-isClickUnderLastRow() = view.ClickAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.k")], 800, 600)).Line == 26
-isDragUnderLastRow() = view.PositionAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.k")], 800, 600)).Line == 27
+isClickInGutterScrolled() = view.ClickAt(10, 4, scrolledSide()) == {Line: 1, Column: 40}
+isDragInGutterScrolled() = view.PositionAt(10, 4, scrolledSide()) == {Line: 1, Column: 34}
+isClickUnderLastRow() = view.ClickAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.k")], 800, 600)).Line == 28
+isDragUnderLastRow() = view.PositionAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.k")], 800, 600)).Line == 29
 defn isClickAboveFirstRow()
   b = text.Of(manyLines(100), "a.k")
   b.Top = 10
-  view.ClickAt(view.Gutter, 37, stateOf([b], 800, 600)).Line == 10
+  view.ClickAt(view.Gutter, 1, stateOf([b], 800, 600)).Line == 10
 end
 isClickWithNoRows() = view.ClickAt(view.Gutter, 37, stateOf([text.Of(manyLines(3), "a.k")], 800, 60)).Line == 1
 
 -- M12: the one layout of a state.
-isLayoutOf() = view.LayoutOf(stateOf([text.Of("", "a.k")], 800, 600)).Rows == 26 and view.LayoutOf(stateOf([text.Of("", "a.k")], 800, 600)).Code.Height == 518
+isLayoutOf() = view.LayoutOf(stateOf([text.Of("", "a.k")], 800, 600)).Rows == 28 and view.LayoutOf(stateOf([text.Of("", "a.k")], 800, 600)).Code.Height == 554
 
 -- A window 800 wide shows 91 columns, from 0 to 90: a click past the last one stays on it, and a drag is not kept there, so that the screen can follow it.
 defn longLine(left)
@@ -276,8 +272,88 @@ defn longLine(left)
   b.Left = left
   stateOf([b], 800, 600)
 end
-isClickPastLastColumn() = view.ClickAt(799, 40, longLine(0)) == {Line: 1, Column: 90}
-isClickPastLastColumnScrolled() = view.ClickAt(799, 40, longLine(40)) == {Line: 1, Column: 130}
-isClickOnLastColumn() = view.ClickAt(view.Gutter + 90 * 8, 40, longLine(0)) == {Line: 1, Column: 90}
-isDragPastLastColumn() = view.PositionAt(799, 40, longLine(0)) == {Line: 1, Column: 92}
-isClickWithNoColumns() = view.ClickAt(50, 40, stateOf([text.Of(Repeat(200, "x"), "a.k")], 60, 600)) == {Line: 1, Column: 0}
+isClickPastLastColumn() = view.ClickAt(799, 4, longLine(0)) == {Line: 1, Column: 90}
+isClickPastLastColumnScrolled() = view.ClickAt(799, 4, longLine(40)) == {Line: 1, Column: 130}
+isClickOnLastColumn() = view.ClickAt(view.Gutter + 90 * 8, 4, longLine(0)) == {Line: 1, Column: 90}
+isDragPastLastColumn() = view.PositionAt(799, 4, longLine(0)) == {Line: 1, Column: 92}
+isClickWithNoColumns() = view.ClickAt(50, 4, stateOf([text.Of(Repeat(200, "x"), "a.k")], 60, 600)) == {Line: 1, Column: 0}
+
+-- A list shows its name in the mode line, its filter in the prompt line, and its rows in one plain color.
+defn fruitList(filter)
+  b = text.Of("apple\nend 12", missing)
+  b.List = {Name: "Fruits", Rows: s -> [], Keys: () -> {}, Filter: filter, Items: [10, 20], Back: 1}
+  b
+end
+isListNamed() = "Fruits" in textsOf(view.View(stateOf([fruitList("")], 800, 600))) and view.BufferName(fruitList("")) == "Fruits"
+isListFilterShown() = "Filter: an" in textsOf(view.View(stateOf([fruitList("an")], 800, 600)))
+-- end 12 would be a keyword and a number in code: a row is one plain text.
+isListPlain() = Len(Filter(c -> c.Kind == "text" and c.Text == "end 12" and c.Color == look.Theme.Syntax[color.Plain], view.View(stateOf([fruitList("")], 800, 600)))) == 1
+
+-- Panes. A state of two panes cut along "rows" or "columns", the first showing buffer 1 and the second the last buffer, with pane active being edited.
+defn twoPanes(along, buffers, active)
+  s = stateOf(buffers, 800, 600)
+  s.Panes = panes.WithLeaf(2, panes.One(Len(buffers)), panes.Split(1, along, panes.One(1)))
+  s.Pane = active
+  s.Current = panes.At(active, s.Panes).Buffer
+  s
+end
+-- A buffer of 100 lines with the cursor on a line.
+defn hundredAt(line)
+  b = text.Of(manyLines(100), "a.k")
+  b.Cursor = {Line: line, Column: 0}
+  b
+end
+-- The cursor bars of a frame: rectangles 2 pixels wide.
+barsOf(commands) = Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Height == 19, commands)
+
+isStartHasOnePane() = panes.Count(stateOf([text.Of("", "a.k")], 800, 600).Panes) == 1 and stateOf([text.Of("", "a.k")], 800, 600).Pane == 1
+defn isViewOfKeepsPlace()
+  b = hundredAt(40)
+  b.Top = 30
+  b.Left = 2
+  b.Free = true
+  v = view.ViewOf(b)
+  put = view.WithView(v, text.Of(manyLines(100), "a.k"))
+  put.Cursor == {Line: 40, Column: 0} and put.Top == 30 and put.Left == 2 and put.Free and IsMissing(put.Mark)
+end
+defn isWithViewClamps()
+  v = view.ViewOf(hundredAt(90))
+  v.Top = 85
+  put = view.WithView(v, text.Of(manyLines(10), "a.k"))
+  put.Cursor.Line == 10 and put.Top == 10
+end
+isWithViewMissingKeepsBuffer() = view.WithView(missing, hundredAt(7)).Cursor.Line == 7
+defn isPaneLayoutOfAreaIsLayout()
+  lay = view.Layout(800, 600, cell, false)
+  one = view.PaneLayout(lay.Area, cell)
+  one.Code == lay.Code and one.Mode == lay.Mode and one.Rows == lay.Rows and one.Columns == lay.Columns
+end
+defn isOutputUnderPanes()
+  lay = view.Layout(800, 600, cell, true)
+  lay.Output.Y + lay.Output.Height == lay.Prompt.Y and lay.Mode.Y + lay.Mode.Height == lay.Output.Y
+end
+isLayoutOfActivePane() = view.LayoutOf(twoPanes("rows", [hundredAt(1)], 2)).Code.Y == 289 and view.LayoutOf(twoPanes("rows", [hundredAt(1)], 2)).Rows == 13
+isLayoutOfColumns() = view.LayoutOf(twoPanes("columns", [hundredAt(1)], 2)).Code.X == 400 and view.LayoutOf(twoPanes("columns", [hundredAt(1)], 2)).Rows == 28
+isPaneAt() = view.PaneAt(10, 300, twoPanes("rows", [hundredAt(1)], 1)) == 2 and view.PaneAt(10, 10, twoPanes("rows", [hundredAt(1)], 1)) == 1 and view.PaneAt(10, 590, twoPanes("rows", [hundredAt(1)], 1)) == 0
+isTwoModeLines() = ("a.k" in textsOf(view.View(twoPanes("rows", [text.Of("a", "a.k"), text.Of("b", "b.k")], 1)))) and ("b.k" in textsOf(view.View(twoPanes("rows", [text.Of("a", "a.k"), text.Of("b", "b.k")], 1))))
+defn isInactivePaneShowsItsPlace()
+  s = twoPanes("rows", [hundredAt(1)], 1)
+  v = view.ViewOf(hundredAt(60))
+  v.Top = 55
+  s.Panes = panes.WithLeaf(2, {Buffer: 1, View: v}, s.Panes)
+  shown = Filter(c -> c.Kind == "text" and c.Y >= 289 and c.Y < 289 + 265, view.View(s))
+  "55" in Map(c -> c.Text, shown) and not ("1" in Map(c -> c.Text, shown))
+end
+defn isOneBrightBar()
+  bars = barsOf(view.View(view.FollowState(twoPanes("rows", [hundredAt(1)], 1))))
+  Len(bars) == 2 and Len(Filter(c -> c.Color == look.Theme.Bright, bars)) == 1 and Filter(c -> c.Color == look.Theme.Bright, bars)[1].Y < 289
+end
+isDividerBetweenColumns() = Len(Filter(c -> c.Kind == "rect" and c.X == 400 and c.Width == 1, view.View(twoPanes("columns", [hundredAt(1)], 1)))) == 1
+isNoDividerAlone() = Len(Filter(c -> c.Kind == "rect" and c.Width == 1 and c.Height > 100, view.View(stateOf([hundredAt(1)], 800, 600)))) == 0
+defn isFollowStateFollowsEveryPane()
+  s = twoPanes("rows", [hundredAt(1)], 1)
+  s.Panes = panes.WithLeaf(2, {Buffer: 1, View: view.ViewOf(hundredAt(80))}, s.Panes)
+  f = view.FollowState(s)
+  leaf = panes.At(2, f.Panes)
+  leaf.View.Top > 60 and f.Buffers[1].Top == 1 and f.Buffers[1].Colors.Known >= 80
+end
