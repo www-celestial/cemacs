@@ -1,0 +1,95 @@
+(** Checks of the folders app against real folders, in a new folder under /tmp, with the trash where XDG_DATA_HOME says. It is a script, not a test file: it
+    needs permissions. tests/run.sh runs it with XDG_DATA_HOME in a new folder and cesia run --allow read,write,env=HOME,env=PWD,env=XDG_DATA_HOME. It prints ok
+    at the end and stops at the first failure. *)
+use buffers
+use emacs
+use folders
+use lists
+use press
+use pkg/rope
+use sys
+use text
+use pkg/ui
+use view
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+withApps() = emacs.Config(() -> Merge(Merge(emacs.Keys(), buffers.Keys()), folders.Keys()))   (** The keys as apps/cemacs.ce merges them. *)
+here(state) = state.Buffers[state.Current]   (** The current buffer. *)
+names(state) = Join(",", Map(l -> Split(" ", l)[1], Lines(rope.Text(here(state).Rope))))   (** The first word of each row of the list. *)
+nameOf(state) = view.BufferName(here(state))   (** The name of the current buffer: for a list, its folder. *)
+
+defn removed(path)
+  (** Removes a file or a folder and all it holds. *)
+  if Unwrap(sys.Stat(path)).IsDir
+    for name in Unwrap(sys.List(path))
+      removed("$path/$name")
+    end
+  end
+  Unwrap(sys.Remove(path))
+end
+
+folder = "/tmp/cemacs-folders-check-$(Text(sys.Now()))"
+trash = "$(sys.Env("XDG_DATA_HOME"))/Trash"
+check(not IsMissing(sys.Env("XDG_DATA_HOME")), "XDG_DATA_HOME is set")
+check(IsOk(sys.Mkdir("$folder/sub")), "the folders are made")
+check(IsOk(sys.Write("$folder/a.ce", "a")) and IsOk(sys.Write("$folder/.hidden", "")), "the files are made")
+start = view.Start([text.Of("a", "$folder/a.ce")], look, cell, 800, 600)
+start.Config = withApps
+
+(* C-x d lists the folder of the current file: folders first, hidden names out; C-c . shows them. *)
+s = press.Press(["C-x", "d"], start)
+check(nameOf(s) == folder, "the list is named by its folder: $(nameOf(s))")
+check(names(s) == "sub/,a.ce", "folders first and hidden names out: $(names(s))")
+check(names(press.Press(["C-c", "."], s)) == "sub/,.hidden,a.ce", "C-c . shows the hidden names")
+check(names(press.Press(["C-c", ".", "C-c", "."], s)) == "sub/,a.ce", "C-c . again hides them")
+
+(* Enter opens a folder; in an empty one, C-c n makes a file, and the cursor goes to it. *)
+s = press.Press(["enter"], s)
+check(nameOf(s) == "$folder/sub", "enter opens the folder")
+s = press.Press(["C-c", "n", "new.ce", "enter"], s)
+check(sys.Exists("$folder/sub/new.ce") and names(s) == "new.ce", "C-c n makes a file")
+
+(* Backspace goes up, the cursor on the folder just left. *)
+s = press.Press(["backspace"], s)
+check(nameOf(s) == folder and here(s).Cursor.Line == 1, "backspace goes up, onto sub")
+
+(* C-c n with a slash makes a folder; a name that exists is refused. *)
+s = press.Press(["C-c", "n", "dir2/", "enter"], s)
+check(Unwrap(sys.Stat("$folder/dir2")).IsDir and names(s) == "dir2/,sub/,a.ce", "C-c n with a slash makes a folder")
+s = press.Press(["C-c", "n", "a.ce", "enter"], s)
+check(s.Message == "a.ce already exists.", "an existing name is refused")
+
+(* C-c r renames the row under the cursor: the prompt starts with its name. *)
+s = press.Press(["down", "down", "C-c", "r", "backspace", "backspace", "backspace", "backspace", "b.ce", "enter"], s)
+check(sys.Exists("$folder/b.ce") and not sys.Exists("$folder/a.ce") and names(s) == "dir2/,sub/,b.ce", "C-c r renames")
+check(here(s).Cursor.Line == 3, "the cursor stays on the renamed file")
+
+(* C-c k asks: n keeps the file, y moves it to the trash with its info. *)
+s = press.Press(["C-c", "k", "n"], s)
+check(sys.Exists("$folder/b.ce"), "n keeps the file")
+s = press.Press(["C-c", "k", "y"], s)
+check(not sys.Exists("$folder/b.ce") and sys.Exists("$trash/files/b.ce"), "y moves the file to the trash")
+info = Unwrap(sys.Read("$trash/info/b.ce.trashinfo"))
+check(StartsWith("[Trash Info]\nPath=$folder/b.ce\nDeletionDate=", info), "the info of the trash: $info")
+check(names(s) == "dir2/,sub/", "the list no longer shows it")
+
+(* A second file of that name gets another name in the trash. *)
+s = press.Press(["C-c", "n", "b.ce", "enter", "C-c", "k", "y"], s)
+check(sys.Exists("$trash/files/b.ce.2") and sys.Exists("$trash/info/b.ce.2.trashinfo"), "a second b.ce is b.ce.2 in the trash")
+
+(* Enter on a file opens it in a buffer, and the list closes. *)
+s = press.Press(["C-c", "n", "c.ce", "enter", "enter"], s)
+check(here(s).Path == "$folder/c.ce", "enter opens the file")
+check(Len(Filter(b -> lists.IsList(b), s.Buffers)) == 0, "the list is closed")
+
+removed(folder)
+check(not sys.Exists(folder), "the folder is gone")
+Print("ok")

@@ -718,3 +718,16 @@ defn isSplitOfMovedPaneCopiesItsPlace()
   s = press.Press(["C-x", "2", "C-x", "o", "M->", "C-x", "2", "C-x", "o"], stateOf(hundred))
   s.Pane == 3 and here(s).Cursor.Line == 100
 end
+
+(** What SDL sends for ? on a US keyboard: the key / with Shift, then the text ?. *)
+question = [{Kind: "key", Key: "/", Ctrl: false, Alt: false, Shift: true, Super: false}, {Kind: "text", Text: "?"}]
+updated(events, state) = Reduce((s, e) -> commands.Update(e, s), state, events)   (** The state after these events, as the window sends them. *)
+defn withQuestion()
+  (** A state whose keys bind C-x ?. *)
+  s = stateOf("")
+  s.Config = () -> emacs.Config(() -> Merge(emacs.Keys(), {"C-x ?": st -> commands.Say("help", st)}))
+  s
+end
+isSecondKeyIsWhatItTypes() = updated(question, press.Press(["C-x"], stateOf(""))).Message == "C-x ? is not bound."
+isSecondKeyTypesNothing() = wordsOf(updated(question, press.Press(["C-x"], stateOf("")))) == ""
+isSecondKeyRunsItsBinding() = updated(question, press.Press(["C-x"], withQuestion())).Message == "help"

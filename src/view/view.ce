@@ -27,7 +27,7 @@ promptHeight = 22
 
       Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600).Current --> 1 *)
 Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pending: "", Prompt: missing, Message: "", Run: missing, Window: missing, Width: width, Height: height, Cell: cell, Look: look,
-  Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: "", Config: missing, Home: ".",
+  Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: "", Config: missing, Home: ".", Second: false,
   Panes: panes.One(1), Pane: 1}
 
 defn Layout(width, height, cell, showingOutput)
@@ -177,6 +177,24 @@ defn visible(tokens, left)
   out
 end
 
+defn rowTokens(parts, words)
+  (** The tokens of a row of a list: its parts, cut to the length of words, which is the line cut to the screen; a row with none is one plain text. *)
+  if IsMissing(parts)
+    return [[color.Plain, words]]
+  end
+  out = []
+  left = Len(words)
+  for part in parts
+    if left > 0
+      cs = Chars(part[2])
+      taken = if Len(cs) > left Join("", Take(left, cs)) else part[2] end
+      out = Append([part[1], taken], out)
+      left = left - Len(cs)
+    end
+  end
+  out
+end
+
 (** The state at the start of line n, or the first one if the colors don't reach it yet. *)
 startOf(n, colors) = if n <= colors.Known colors.Starts[n] else color.FirstState end
 
@@ -187,7 +205,7 @@ defn line(b, n, y, columns, rect, look)
   cw = look.Width("M", "code")
   cs = Chars(rope.Line(n, b.Rope))
   words = if Len(cs) > b.Left + columns Join("", Take(b.Left + columns, cs)) else Join("", cs) end
-  read = if lists.IsList(b) {Tokens: [[color.Plain, words]]} else color.Tokens(words, startOf(n, b.Colors)) end
+  read = if lists.IsList(b) {Tokens: rowTokens(lists.PartsAt(n, b), words)} else color.Tokens(words, startOf(n, b.Colors)) end
   x0 = rect.X + Gutter
   numbered = inside("code", rect.X + Gutter - 16 - Len("$n") * cw, y, "$n", th.Faint)
   out = [numbered]

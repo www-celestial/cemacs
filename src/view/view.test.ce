@@ -288,6 +288,17 @@ isListFilterShown() = "Filter: an" in textsOf(view.View(stateOf([fruitList("an")
 (** end 12 would be a keyword and a number in code: a row is one plain text. *)
 isListPlain() = Len(Filter(c -> c.Kind == "text" and c.Text == "end 12" and c.Color == look.Theme.Syntax[color.Plain], view.View(stateOf([fruitList("")], 800, 600)))) == 1
 
+defn partedList()
+  (** A list whose second row gives its parts, each with its color, as the folders color a name and a size. *)
+  b = fruitList("")
+  l = b.List
+  l.Parts = [missing, [[color.Number, "end"], [color.Plain, " 12"]]]
+  b.List = l
+  b
+end
+drawn(words, role, b) = Len(Filter(c -> c.Kind == "text" and c.Text == words and c.Color == look.Theme.Syntax[role], view.View(stateOf([b], 800, 600)))) == 1
+isListRowParts() = drawn("end", color.Number, partedList()) and drawn(" 12", color.Plain, partedList()) and drawn("apple", color.Plain, partedList())
+
 defn twoPanes(along, buffers, active)
   (** Panes. A state of two panes cut along "rows" or "columns", the first showing buffer 1 and the second the last buffer, with pane active being edited. *)
   s = stateOf(buffers, 800, 600)

@@ -9,4 +9,4 @@ run = ["tests/run.sh"]
 [tasks.dev]
 file = "apps/cemacs.ce"
 watch = true
-allow = ["read", "write", "exec=cesia"]
+allow = ["read", "write", "exec=cesia", "env=HOME", "env=PWD", "env=XDG_DATA_HOME"]

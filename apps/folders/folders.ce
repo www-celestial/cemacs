@@ -1,0 +1,310 @@
+(** The folders: the files and folders of a folder in a list, as a file manager. Typing filters the names, enter opens, backspace with no filter goes up,
+    C-c n makes a file or a folder, C-c r renames and C-c k moves to the trash. Names that start with a dot stay hidden until C-c . shows them. *)
+use color
+use commands
+use files
+use lists
+use pkg/date
+use pkg/encode
+use sys
+use text
+
+Keys() = {"C-x d": Open}   (** The keys that work everywhere. *)
+
+defn Open(state)
+  (** Opens the folder of the current file, or the folder Cemacs started in. *)
+  b = state.Buffers[state.Current]
+  here = if IsMissing(b.Path) or lists.IsList(b) "." else Parent(b.Path) end
+  show(Absolute(here, sys.Env("PWD")), false, missing, state)
+end
+
+(** The folder above a path; the root stays the root.
+
+      Parent("/a/b/c.ce") --> "/a/b" *)
+Parent(path) = files.Normal("$path/..")
+
+(** The last part of a path.
+
+      BaseName("/a/b/c.ce") --> "c.ce" *)
+BaseName(path) = Split("/", files.Normal(path))[Len(Split("/", files.Normal(path)))]
+
+(** A path from the root, from where the program started for a relative one; without that folder, the path as it is.
+
+      Absolute("src", "/home/a") --> "/home/a/src" *)
+Absolute(path, from) = if StartsWith("/", path) or IsMissing(from) files.Normal(path) else files.Normal("$from/$path") end
+
+(** A name in a folder: a path from the root stays as it is. *)
+within(dir, name) = if StartsWith("/", name) files.Normal(name) else files.Normal("$dir/$name") end
+
+defn entryOf(dir, name)
+  (** An entry of a folder, {Name, IsDir, Size, Modified}, or missing if it vanished between the list and its stat. *)
+  match sys.Stat("$dir/$name")
+    Ok(st) -> {Name: name, IsDir: st.IsDir, Size: st.Size, Modified: st.Modified}
+    Err(_) -> missing
+  end
+end
+
+defn entriesOf(dir)
+  (** The entries of a folder, in an Ok, or an Err when it can't be read. *)
+  names = sys.List(dir)?
+  Ok(Filter(e -> not IsMissing(e), [entryOf(dir, n) for n in names]))
+end
+
+(** The name of an entry as a row shows it: a folder ends with a slash. *)
+shownName(e) = if e.IsDir "$(e.Name)/" else e.Name end
+
+defn Rows(entries, hidden, now)
+  (** The rows of a folder: folders first, then files, in the order of the entries, each {Words, Key, Item}. The filter reads the name only, and a name that
+      starts with a dot is left out unless hidden is true. *)
+  shown = Filter(e -> hidden or not StartsWith(".", e.Name), entries)
+  ordered = Concat(Filter(e -> e.IsDir, shown), Filter(e -> not e.IsDir, shown))
+  width = Reduce((w, e) -> Max(w, Len(shownName(e))), 0, ordered)
+  Map(e -> rowOf(e, width, now), ordered)
+end
+
+defn rowOf(e, width, now)
+  (** The row of an entry: its name padded to width in the color of its kind, the size of a file as a number, and its age, faint. *)
+  size = if e.IsDir "" else SizeText(e.Size) end
+  parts = [[RoleOf(e), PadRight(width, " ", shownName(e))], [color.Plain, "  "], [color.Number, PadLeft(7, " ", size)], [color.Plain, "  "],
+    [color.Comment, AgeText(now - e.Modified, e.Modified)]]
+  {Words: Join("", Map(p -> p[2], parts)), Parts: parts, Key: e.Name, Item: {Name: e.Name, IsDir: e.IsDir}}
+end
+
+(* The kinds of files by the end of their name, each shown in a color of the theme. *)
+code = ["ce", "cen", "ml", "mli", "kt", "kts", "java", "c", "h", "cpp", "hpp", "rs", "go", "py", "js", "ts", "sh", "el", "vim", "lua", "rb"]
+settings = ["toml", "json", "yaml", "yml", "csv", "lock", "xml", "ini", "cfg", "conf"]
+media = ["png", "jpg", "jpeg", "gif", "svg", "webp", "ttf", "otf", "pdf", "mp3", "mp4", "wav", "zip", "gz", "tar", "bundle"]
+
+(** The end of a name after its last dot, in lower case, or "" for a name with none.
+
+      Extension("Main.KT") --> "kt" *)
+Extension(name) = if Contains(".", name) Lower(Last(Split(".", name))) else "" end
+
+defn RoleOf(e)
+  (** The color of the name of an entry: a hidden one is faint, a folder a name, code a string, settings and data a keyword, pictures, fonts and archives a
+      field, anything else plain. *)
+  if StartsWith(".", e.Name)
+    color.Comment
+  else if e.IsDir
+    color.Name
+  else
+    ext = Extension(e.Name)
+    if ext in code color.String else if ext in settings color.Keyword else if ext in media color.Field else color.Plain end
+  end
+end
+
+defn SizeText(n)
+  (** A size in bytes as a person reads it, by 1000: bytes below 1000, then kB, MB, GB and TB, with one decimal below 10.
+
+        SizeText(142) --> "142 B"
+        SizeText(3250) --> "3.3 kB"
+        SizeText(45000000) --> "45 MB" *)
+  if n < 1000
+    return "$n B"
+  end
+  units = ["kB", "MB", "GB", "TB"]
+  v = n / 1000
+  k = 1
+  while v >= 1000 and k < Len(units)
+    v = v / 1000
+    k += 1
+  end
+  shown = if v < 10 Text(Round(v * 10) / 10) else Text(Div(Round(v), 1)) end
+  "$shown $(units[k])"
+end
+
+defn AgeText(age, modified)
+  (** How long ago a file changed, from its age in seconds: now, minutes, hours, days up to 30, then the date of modified. Cesia knows no time zone, so a
+      row shows no hour of the day.
+
+        AgeText(30, 0) --> "now"
+        AgeText(300, 0) --> "5 min"
+        AgeText(7200, 0) --> "2 h"
+        AgeText(86400 * 40, 0) --> "1970-01-01" *)
+  if age < 60
+    "now"
+  else if age < 3600
+    "$(Div(Floor(age / 60), 1)) min"
+  else if age < 86400
+    "$(Div(Floor(age / 3600), 1)) h"
+  else if age < 30 * 86400
+    "$(Div(Floor(age / 86400), 1)) d"
+  else
+    date.FormatDate(date.FromUnix(modified))
+  end
+end
+
+defn show(dir, hidden, at, state)
+  (** The state with the list of a folder, read now, and the cursor on the name at when it is there. A folder that can't be read is a message. *)
+  match entriesOf(dir)
+    Ok(entries) -> Shown(dir, entries, hidden, at, sys.Now(), state)
+    Err(e) -> commands.Say(e.Message, state)
+  end
+end
+
+defn Shown(dir, entries, hidden, at, now, state)
+  (** The state with the list of a folder from its entries, as read at now, and the cursor on the name at when it is there. The rows are made once here:
+      each event filters them, and none reads the folder again. *)
+  rows = Rows(entries, hidden, now)
+  s = commands.ShowList(dir, rows, () -> keysOf(dir, hidden), state, free = () -> freeOf(dir, hidden))
+  onName(at, s)
+end
+
+defn onName(at, state)
+  (** The state with the cursor of the list on the row of this name, if there is one. *)
+  b = state.Buffers[state.Current]
+  items = lists.Of(b).Items
+  for k in 1:Len(items)
+    if items[k].Name == at
+      s = state
+      s.Buffers[state.Current] = text.Place(k, 0, b)
+      return s
+    end
+  end
+  state
+end
+
+(** The keys of the list that act on the row under the cursor. *)
+keysOf(dir, hidden) = {"enter": (item, s) -> enter(dir, hidden, item, s), "C-c r": (item, s) -> rename(dir, hidden, item, s),
+  "C-c k": (item, s) -> trash(dir, hidden, item, s)}
+
+(** The keys of the list that need no row: going up, making a file or a folder, showing the hidden names. *)
+freeOf(dir, hidden) = {"backspace": s -> back(dir, hidden, s), "S-backspace": s -> back(dir, hidden, s), "C-c n": s -> make(dir, hidden, s),
+  "C-c .": s -> show(dir, not hidden, under(s), s)}
+
+defn under(state)
+  (** The name under the cursor of the list, or missing. *)
+  item = lists.ItemAt(state.Buffers[state.Current])
+  if IsMissing(item) missing else item.Name end
+end
+
+defn back(dir, hidden, state)
+  (** Backspace: the last character of the filter taken back, or with no filter the folder above, the cursor on the one just left. *)
+  if lists.Of(state.Buffers[state.Current]).Filter != ""
+    commands.ListBack(state)
+  else if dir == "/"
+    commands.Say("This is the root.", state)
+  else
+    show(Parent(dir), hidden, BaseName(dir), state)
+  end
+end
+
+defn enter(dir, hidden, item, state)
+  (** Enter: a folder opens in the list, and a file in a buffer, with the list closed. *)
+  path = within(dir, item.Name)
+  if item.IsDir
+    show(path, hidden, missing, state)
+  else
+    commands.OpenFile(path, commands.ToBuffer(lists.Of(state.Buffers[state.Current]).Back, state))
+  end
+end
+
+(** The first part of a name typed in a prompt, which the folder shows: a for a/b.ce. *)
+firstPart(name) = Split("/", name)[1]
+
+(** C-c n: asks for a name, then makes a folder for one that ends with a slash, else an empty file. *)
+make(dir, hidden, state) = commands.Ask("New file, or folder/: ", "", (answer, s) -> made(dir, hidden, answer, s), state)
+
+defn made(dir, hidden, answer, state)
+  (** The state after the name of a new file or folder was given: made, and the cursor on it, or a message. A name that exists is refused. *)
+  if answer == "" or answer == "/"
+    return commands.Say("No name.", state)
+  end
+  path = within(dir, answer)
+  if sys.Exists(path)
+    return commands.Say("$answer already exists.", state)
+  end
+  done = if EndsWith("/", answer) sys.Mkdir(path) else sys.Write(path, "") end
+  match done
+    Ok(_) -> show(dir, hidden, firstPart(answer), state)
+    Err(e) -> commands.Say(e.Message, state)
+  end
+end
+
+(** C-c r: asks for the new name of the row under the cursor; a path in it moves the entry. *)
+rename(dir, hidden, item, state) = commands.Ask("Rename $(item.Name) to: ", item.Name, (answer, s) -> renamed(dir, hidden, item, answer, s), state)
+
+defn renamed(dir, hidden, item, answer, state)
+  (** The state after the new name was given: renamed, and the cursor on it, or a message. A name that exists is refused. *)
+  if answer == "" or answer == item.Name
+    return state
+  end
+  to = within(dir, answer)
+  if sys.Exists(to)
+    return commands.Say("$answer already exists.", state)
+  end
+  match sys.Rename(within(dir, item.Name), to)
+    Ok(_) -> show(dir, hidden, firstPart(answer), state)
+    Err(e) -> commands.Say(e.Message, state)
+  end
+end
+
+(** C-c k: asks y or n, then moves the row under the cursor to the trash. *)
+trash(dir, hidden, item, state) = commands.Confirm("Move $(item.Name) to the trash? (y or n) ", (answer, s) -> if answer == "y" trashed(dir, hidden, item, s) else s end, state)
+
+defn nextName(item, state)
+  (** The name of the row after this one, or of the one before at the end, for the cursor once it is gone. *)
+  items = lists.Of(state.Buffers[state.Current]).Items
+  k = IndexOf(item, items)
+  if IsMissing(k) or Len(items) < 2 missing else if k < Len(items) items[k + 1].Name else items[k - 1].Name end
+end
+
+defn trashed(dir, hidden, item, state)
+  (** The state after the entry went to the trash, the cursor on the row that took its place, or a message. Nothing is ever deleted for good. *)
+  root = TrashRoot(sys.Env("XDG_DATA_HOME"), sys.Env("HOME"))
+  if IsMissing(root)
+    return commands.Say("There is no trash: HOME is not set.", state)
+  end
+  match ToTrash(within(dir, item.Name), root, sys.Now())
+    Ok(_) -> show(dir, hidden, nextName(item, state), state)
+    Err(e) -> commands.Say("Can't move $(item.Name) to the trash: $(e.Message)", state)
+  end
+end
+
+defn TrashRoot(data, home)
+  (** The trash of the person, as freedesktop says: in XDG_DATA_HOME when it is set, else in ~/.local/share, or missing with neither.
+
+        TrashRoot(missing, "/home/a") --> "/home/a/.local/share/Trash" *)
+  if not IsMissing(data) and data != ""
+    "$data/Trash"
+  else if IsMissing(home) or home == ""
+    missing
+  else
+    "$home/.local/share/Trash"
+  end
+end
+
+(** The info of a path put in the trash at now, in seconds since 1970: its path, percent-encoded part by part, and the date, in UTC.
+
+      TrashInfo("/a b/c.ce", 0) --> "[Trash Info]\nPath=/a%20b/c.ce\nDeletionDate=1970-01-01T00:00:00\n" *)
+TrashInfo(path, now) = "[Trash Info]\nPath=$(Join("/", Map(encode.UrlEncode, Split("/", path))))\nDeletionDate=$(Join("", Take(19, Chars(date.Format(date.FromUnix(now))))))\n"
+
+defn FreeName(name, taken)
+  (** The name itself, or the first of name.2, name.3... that the function taken refuses.
+
+        FreeName("a.ce", n -> n == "a.ce") --> "a.ce.2" *)
+  if not taken(name)
+    return name
+  end
+  k = 2
+  while taken("$name.$k")
+    k += 1
+  end
+  "$name.$k"
+end
+
+defn ToTrash(path, root, now)
+  (** Moves a file or a folder to the trash in root: the entry into files/, and into info/ a .trashinfo with its path and the date. The info is written first,
+      and removed if the move fails, as for an entry on another disk, which can't be moved there: Ok(its name in the trash) or an Err. *)
+  sys.Mkdir("$root/files")?
+  sys.Mkdir("$root/info")?
+  name = FreeName(BaseName(path), n -> sys.Exists("$root/files/$n") or sys.Exists("$root/info/$n.trashinfo"))
+  info = "$root/info/$name.trashinfo"
+  sys.Write(info, TrashInfo(path, now))?
+  moved = sys.Rename(path, "$root/files/$name")
+  if IsErr(moved)
+    sys.Remove(info)
+    return moved
+  end
+  Ok(name)
+end

@@ -220,6 +220,11 @@ ask(label, answer, done, state) = prompted({Label: label, Answer: answer, Done: 
 (** The state with a prompt that takes y or n. *)
 confirm(label, done, state) = prompted({Label: label, Answer: "", Done: done, Choice: true}, state)
 
+(** A prompt for an app: label, the answer it starts with, and done, which gets the answer and the state without the prompt. *)
+Ask(label, answer, done, state) = ask(label, answer, done, state)
+
+Confirm(label, done, state) = confirm(label, done, state)   (** A prompt for an app that takes y or n: done gets "y" or "n" and the state. *)
+
 defn accept(state)
   (** The state after the answer of the prompt is accepted. *)
   p = state.Prompt
@@ -575,15 +580,17 @@ unconfigured() = {Keys: () -> Dict(), PromptKeys: () -> Dict(), MouseKeys: () ->
 
 (* ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.ce for what a list holds. *)
 
-defn ShowList(name, rows, keys, state)
-  (** Opens a list named name. rows is a function from the state to the rows, each {Words, Item}, and keys a function that gives the keys of the list, whose
-      functions take the item under the cursor and the state. Typing filters the rows, and the ListKeys of the config take the filter back. A list open already
-      gives its place to this one. *)
+defn ShowList(name, rows, keys, state, free = missing)
+  (** Opens a list named name. rows is the rows, each {Words, Item} and maybe a Key, which the filter reads in place of the words, or a function that gives
+      them from the state, for rows that change with it.
+      keys is a function that gives the keys of the list, whose functions take the item under the cursor and the state; free, if given, gives keys that take
+      only the state, and so run with no row left. Typing filters the rows, and the ListKeys of the config take the filter back. A list open already gives its
+      place to this one. *)
   here = current(state)
   back = if lists.IsList(here) lists.Of(here).Back else state.Current end
   s = withoutList(state)
   b = text.Of("", missing)
-  b.List = {Name: name, Rows: rows, Keys: keys, Filter: "", Items: [], Back: Min(back, Len(s.Buffers))}
+  b.List = {Name: name, Rows: rows, Keys: keys, Free: free, Filter: "", Items: [], Back: Min(back, Len(s.Buffers)), Shown: missing}
   s.Buffers = Append(b, s.Buffers)
   s.Current = Len(s.Buffers)
   refreshed(s)
@@ -638,13 +645,20 @@ end
 
 defn refreshed(state)
   (** The state with the list in the current buffer, if it is one, made again from its rows and its filter. The cursor stays on the item it was on, if that one is
-      still shown, else on its line. When the words don't change, the buffer stays as it is, with its selection. *)
+      still shown, else on its line. When the words don't change, the buffer stays as it is, with its selection. Fixed rows are filtered again only when the
+      filter changed, and from the rows shown when it only grew: every event comes here, and a folder can have ten thousand rows. *)
   b = current(state)
   l = lists.Of(b)
   if IsMissing(l)
     return state
   end
-  shown = lists.Filtered(l.Filter, l.Rows(state))
+  fixed = not IsFunction(l.Rows)
+  last = if fixed lists.ShownOf(l) else missing end
+  if not IsMissing(last) and last.Filter == l.Filter
+    return state
+  end
+  from = if fixed and not IsMissing(last) and StartsWith(last.Filter, l.Filter) last.Rows else if fixed l.Rows else l.Rows(state) end
+  shown = lists.Filtered(l.Filter, from)
   words = lists.Words(shown)
   items = Map(r -> r.Item, shown)
   out = b
@@ -654,14 +668,19 @@ defn refreshed(state)
     out.Top = b.Top
   end
   l.Items = items
+  l.Parts = Map(lists.PartsOf, shown)
+  if fixed
+    l.Shown = {Filter: l.Filter, Rows: shown}
+  end
   out.List = l
   put(out, state)
 end
 
 defn listKeys(state)
   (** The keys of the list in the current buffer, over the keys of the config and its ListKeys: a key of the list gets the item under the cursor. *)
-  own = MapValues(f -> (s -> withItem(f, s)), lists.Of(current(state)).Keys())
-  Merge(Merge(config(state).Keys(), config(state).ListKeys()), own)
+  l = lists.Of(current(state))
+  own = MapValues(f -> (s -> withItem(f, s)), l.Keys())
+  Merge(Merge(Merge(config(state).Keys(), config(state).ListKeys()), lists.FreeKeys(l)), own)
 end
 
 defn withItem(f, state)
@@ -696,12 +715,31 @@ defn ran(f, state)
   after
 end
 
-defn secondKey(event, state)
-  (** The chord of a key with no chord of its own that follows the first key of a pair, as the b of C-x b, or missing. *)
-  if state.Pending != "" and not event.Ctrl and not event.Alt and not event.Super
-    Lower(event.Key)
+(** Is this key, with no chord of its own, the second key of a pair, as the b of C-x b? Its chord is what it types, which its text event tells. *)
+isSecond(event, state) = state.Pending != "" and not event.Ctrl and not event.Alt and not event.Super
+
+defn awaitsSecond(state)
+  (** Is the state waiting for the text of the second key of a pair? A state from before this field has none, and reading one it lacks would panic. *)
+  match state
+    {Second: waiting} -> waiting == true
+    else -> false
+  end
+end
+
+(** The chord of the second key of a pair from the text it typed: in lower case, as C-x b for Shift and b, and space for a space. Shift and / on a US
+    keyboard type ?, so they give C-x ?: the name of the key would say /. *)
+secondOf(words) = if words == " " "space" else Lower(words) end
+
+defn routed(chord, state)
+  (** The state after a chord: in the prompt if one is open, in the list of the current buffer, or else in the buffer. *)
+  if not IsMissing(state.Prompt)
+    promptChord(chord, config(state).PromptKeys(), state)
+  else if lists.IsList(current(state))
+    guarded(chorded(chord, listKeys(state), state), state)
   else
-    missing
+    s = state
+    s.Buffers[state.Current].Typing = false
+    chorded(chord, config(s).Keys(), s)
   end
 end
 
@@ -735,21 +773,18 @@ defn onKey(event, state)
   (** The state after a key event. A key that types gives its text event the work, unless it is the second key of a pair. Any other key is a command,
       which ends a step of typing even if it changes nothing. *)
   s = state
-  s.Message = ""
+  s.Message = if state.Pending != "" "$(state.Pending) -" else "" end
   s.Buffers[state.Current].Free = false
+  s.Second = false
   chord = keys.Chord(event)
-  second = if IsMissing(chord) secondKey(event, state) else missing end
-  held = event.Ctrl or event.Alt or not IsMissing(second)
-  s.Chorded = if held and not event.Shift and IsMissing(second) echo(event.Key) else held end
-  if IsMissing(chord) and IsMissing(second)
+  held = event.Ctrl or event.Alt
+  s.Chorded = if held and not event.Shift echo(event.Key) else held end
+  if IsMissing(chord)
+    s.Second = isSecond(event, state)
     s
-  else if not IsMissing(state.Prompt)
-    promptChord(if IsMissing(chord) second else chord end, config(s).PromptKeys(), s)
-  else if lists.IsList(current(s))
-    guarded(chorded(if IsMissing(chord) second else chord end, listKeys(s), s), s)
   else
-    s.Buffers[state.Current].Typing = false
-    chorded(if IsMissing(chord) second else chord end, config(s).Keys(), s)
+    s.Message = ""
+    routed(chord, s)
   end
 end
 
@@ -762,7 +797,11 @@ defn onText(event, state)
   s = state
   same = state.Chorded == true or state.Chorded == Lower(event.Text)
   s.Chorded = false
-  if same
+  if awaitsSecond(state)
+    s.Second = false
+    s.Message = ""
+    routed(secondOf(event.Text), s)
+  else if same
     s
   else if not IsMissing(state.Prompt)
     promptText(event.Text, s)

@@ -1,6 +1,8 @@
 (** Lists: a buffer of rows that an app gives, as the buffer list does. A list is a buffer of text, so moves, selection and copy work in it as in a file, and its
-    List field says what each line stands for: {Name, Rows, Keys, Filter, Items, Back}. Rows gives the rows {Words, Item} from the state, Keys the keys of the list,
-    Filter what was typed, Items the item of each line shown, and Back the buffer to go back to. Everything here is pure: commands opens and runs lists. *)
+    List field says what each line stands for: {Name, Rows, Keys, Free, Filter, Items, Parts, Back, Shown}. Rows is the rows {Words, Item}, or a function that
+    gives them from the state, Keys the keys of the list, Free missing or the keys that need no row, Filter what was typed, Items the item of each line shown,
+    Parts their colors, Back the buffer to go back to, and Shown, for fixed rows, what the last filter showed. A row may give Parts, [role, words] each with a
+    role of color.ce, whose words joined are its Words. Everything here is pure: commands opens and runs lists. *)
 
 defn Of(b)
   (** The list of a buffer, or missing for a buffer of text. A buffer from before this field has none, and reading a field it lacks would panic. *)
@@ -27,8 +29,56 @@ defn Matches(filter, words)
   k > Len(wanted)
 end
 
-(** The rows whose words the filter matches, in their order. *)
-Filtered(filter, rows) = Filter(r -> Matches(filter, r.Words), rows)
+defn keyOf(row)
+  (** What the filter reads in a row: its Key when it has one, as a file name beside its size, else its words. *)
+  match row
+    {Key: k} -> k
+    else -> row.Words
+  end
+end
+
+defn Filtered(filter, rows)
+  (** The rows whose words, or keys, the filter matches, in their order. An empty filter keeps them all at once, and one character is a native search. *)
+  if filter == ""
+    rows
+  else if Len(filter) == 1
+    Filter(r -> Contains(Lower(filter), Lower(keyOf(r))), rows)
+  else
+    Filter(r -> Matches(filter, keyOf(r)), rows)
+  end
+end
+
+defn PartsOf(row)
+  (** The colored parts of a row, or missing for a row of one plain color. *)
+  match row
+    {Parts: p} -> p
+    else -> missing
+  end
+end
+
+defn PartsAt(line, b)
+  (** The colored parts of a line of a list, or missing: for a plain row, or a list from before this field. *)
+  match Of(b)
+    {Parts: all} -> if line <= Len(all) all[line] else missing end
+    else -> missing
+  end
+end
+
+defn ShownOf(l)
+  (** What a list of fixed rows showed last, {Filter, Rows}, or missing: for a list whose rows a function makes, or one from before this field. *)
+  match l
+    {Shown: shown} -> shown
+    else -> missing
+  end
+end
+
+defn FreeKeys(l)
+  (** The keys of a list that take only the state: none for a list without any, or from before this field. *)
+  match l
+    {Free: f} -> if IsMissing(f) Dict() else f() end
+    else -> Dict()
+  end
+end
 
 Words(rows) = Join("\n", Map(r -> r.Words, rows))   (** The text of the rows, one per line. *)
 

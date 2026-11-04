@@ -3,9 +3,10 @@
 use buffers
 use emacs
 use editor
+use folders
 
 (** Every key of the editor: the Emacs keys, then the keys of each app. For a key in both, the later one wins. *)
-Keys() = Merge(emacs.Keys(), buffers.Keys())
+Keys() = Merge(Merge(emacs.Keys(), buffers.Keys()), folders.Keys())
 
 (** What the editor runs on: these keys, and the other keys and the settings of apps/emacs. *)
 Config() = emacs.Config(Keys)
