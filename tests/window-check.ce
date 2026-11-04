@@ -1,6 +1,6 @@
 -- Checks of the editor in a window, under SDL_VIDEODRIVER=dummy, with events pushed to SDL as the keyboard and the mouse would send them.
--- Run it from the root of kemacs:
---   SDL_VIDEODRIVER=dummy kepler run --allow read,write,exec=kepler,ffi=SDL3,ffi=SDL3_ttf tests/window-check.k
+-- Run it from the root of cemacs:
+--   SDL_VIDEODRIVER=dummy cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/window-check.ce
 -- It prints ok at the end and stops at the first failure.
 use c
 use apps/emacs
@@ -77,18 +77,18 @@ here(state) = state.Buffers[state.Current]
 wordsOf(state) = rope.Text(here(state).Rope)
 read(path) = Unwrap(sys.Read(path))
 
-folder = "/tmp/kemacs-window-check-$(Text(sys.Now()))"
+folder = "/tmp/cemacs-window-check-$(Text(sys.Now()))"
 check(IsOk(sys.Mkdir(folder)), "the folder is made")
-path = "$folder/a.k"
+path = "$folder/a.ce"
 Unwrap(sys.Write(path, "alpha\n"))
 
 defn opened()
-  first = sdl.Open("Kemacs check", 800, 600, "fonts/AdwaitaSans-Regular.ttf", size = emacs.FontSize(), light = true)?
+  first = sdl.Open("Cemacs check", 800, 600, "fonts/AdwaitaSans-Regular.ttf", size = emacs.FontSize(), light = true)?
   second = sdl.AddFont("strong", "fonts/NotoSans-Medium.ttf", emacs.FontSize(), first, light = true)?
   sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", emacs.FontSize(), second)
 end
 
--- What the editor runs on in this check: the Emacs keys and the settings, as apps/kemacs.k gives them without its apps.
+-- What the editor runs on in this check: the Emacs keys and the settings, as apps/cemacs.ce gives them without its apps.
 checkConfig() = emacs.Config(emacs.Keys)
 
 window = Unwrap(opened())

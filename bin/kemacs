@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# Starts Kemacs from anywhere, even through a symbolic link: Kemacs is in the folder above this one, and it starts with apps/kemacs.k.
-home="$(dirname "$(dirname "$(readlink -f "$0")")")"
-exec kepler run --allow read,write,exec=kepler,ffi=SDL3,ffi=SDL3_ttf "$home/apps/kemacs.k" "$home" "$@"

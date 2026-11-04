@@ -1,11 +1,11 @@
 [project]
-name = "kemacs"
+name = "cemacs"
 native = ["SDL3", "SDL3_ttf"]
 
 [tasks.test]
 run = ["tests/run.sh"]
 
 [tasks.dev]
-file = "apps/kemacs.k"
+file = "apps/cemacs.ce"
 watch = true
-allow = ["read", "write", "exec=kepler"]
+allow = ["read", "write", "exec=cesia"]

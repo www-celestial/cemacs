@@ -1,5 +1,5 @@
--- Checks of files.Kp against real files, in a new folder under /tmp. It is a script, not a test file: it needs permissions.
--- Run it with kepler run --allow read,write tests/files-check.k. It prints ok at the end and stops at the first failure.
+-- Checks of files.ce against real files, in a new folder under /tmp. It is a script, not a test file: it needs permissions.
+-- Run it with cesia run --allow read,write tests/files-check.ce. It prints ok at the end and stops at the first failure.
 use sys
 use files
 
@@ -13,7 +13,7 @@ end
 -- The kind of the error of a result, or "ok" for an Ok.
 kindOf(r) = if IsErr(r) r.Error.Kind else "ok" end
 
--- The names in the folder, in one text: lists compare element by element in Kepler, so a text is the way to compare them.
+-- The names in the folder, in one text: lists compare element by element in Cesia, so a text is the way to compare them.
 names(folder) = Join(",", Unwrap(sys.List(folder)))
 
 -- Is there a folder at this path?
@@ -22,12 +22,12 @@ folderAt(path) = sys.Exists(path) and Unwrap(sys.Stat(path)).IsDir
 -- The bytes of a text, in one text.
 byteText(words) = Join(",", [Text(b) for b in Bytes(words)])
 
-folder = "/tmp/kemacs-files-check-$(Text(sys.Now()))"
+folder = "/tmp/cemacs-files-check-$(Text(sys.Now()))"
 check(IsOk(sys.Mkdir(folder)), "the folder is made")
-target = "$folder/a.k"
+target = "$folder/a.ce"
 
 -- A file that doesn't exist reads as "" with disk missing.
-gone = files.ReadFile("$folder/none.k")
+gone = files.ReadFile("$folder/none.ce")
 check(IsOk(gone), "missing file is Ok")
 check(Unwrap(gone).Words == "" and IsMissing(Unwrap(gone).Disk), "missing file reads as empty with disk missing")
 
@@ -37,21 +37,21 @@ check(IsOk(saved), "saving a new file")
 back = Unwrap(files.ReadFile(target))
 check(back.Words == "héllo\nworld\n", "save then read gives the same words")
 check(back.Disk == Unwrap(saved), "the disk after saving is the disk of a read")
-check(names(folder) == "a.k", "saving leaves no other file in the folder")
+check(names(folder) == "a.ce", "saving leaves no other file in the folder")
 
 -- Saving a new file where a file has appeared in the meantime.
 check(kindOf(files.SaveFile(target, "mine", missing)) == "changed", "a new file over a file that appeared is refused")
 check(Unwrap(sys.Read(target)) == "héllo\nworld\n", "the file that appeared stays as it was")
 
 -- A file changed after reading. A different size is a different disk even within one tick of the clock.
-other = "$folder/b.k"
+other = "$folder/b.ce"
 Unwrap(files.ForceSave(other, "one"))
 readB = Unwrap(files.ReadFile(other))
 Unwrap(sys.Write(other, "two2"))
 refused = files.SaveFile(other, "mine", readB.Disk)
 check(kindOf(refused) == "changed", "a file changed after reading gives Err of kind changed")
 check(Unwrap(sys.Read(other)) == "two2", "the changed file stays as it was")
-check(names(folder) == "a.k,b.k", "a refused save leaves no other file")
+check(names(folder) == "a.ce,b.ce", "a refused save leaves no other file")
 
 -- Saving with the right disk works, and gives the next disk.
 okSave = files.SaveFile(other, "fresh", Unwrap(files.ReadFile(other)).Disk)
@@ -66,35 +66,35 @@ check(IsOk(files.ForceSave(other, "again")), "force_save writes over anything")
 check(Unwrap(sys.Read(other)) == "again", "force_save wrote the words")
 
 -- A failed write leaves the old file whole: here the target is in a folder that doesn't exist.
-bad = "$folder/nodir/c.k"
+bad = "$folder/nodir/c.ce"
 check(IsErr(files.SaveFile(bad, "x", missing)), "saving in a folder that doesn't exist fails")
 check(IsErr(files.ForceSave(bad, "x")), "force_save in a folder that doesn't exist fails")
 noFolder = files.ForceSave(bad, "x").Error.Message
-check(Contains(bad, noFolder) and not Contains(".kemacs-", noFolder), "a failed write names the file, not the new one: $noFolder")
-check(names(folder) == "a.k,b.k", "a failed save leaves nothing behind")
+check(Contains(bad, noFolder) and not Contains(".cemacs-", noFolder), "a failed write names the file, not the new one: $noFolder")
+check(names(folder) == "a.ce,b.ce", "a failed save leaves nothing behind")
 
 -- A failed rename leaves the old file whole: the target is a folder.
 Unwrap(sys.Mkdir("$folder/sub"))
 check(IsErr(files.ForceSave("$folder/sub", "x")), "saving over a folder fails")
 overFolder = files.ForceSave("$folder/sub", "x").Error.Message
-check(Contains("$folder/sub", overFolder) and not Contains(".kemacs-", overFolder), "a failed rename names the file, not the new one: $overFolder")
-check(names(folder) == "a.k,b.k,sub", "a failed rename removes the new file")
+check(Contains("$folder/sub", overFolder) and not Contains(".cemacs-", overFolder), "a failed rename names the file, not the new one: $overFolder")
+check(names(folder) == "a.ce,b.ce,sub", "a failed rename removes the new file")
 check(IsErr(files.ReadFile("$folder/sub")), "reading a folder fails")
 check(IsErr(files.SaveFile("$folder/sub", "x", missing)), "saving over a folder with disk missing fails")
 Unwrap(sys.Remove("$folder/sub"))
 
 -- A person's file named like the old temporary file is never touched, by a save, by a failed save or by the cleanup.
-oldName = "$folder/a.k.kemacs-new"
+oldName = "$folder/a.ce.cemacs-new"
 Unwrap(sys.Write(oldName, "precious"))
 Unwrap(files.ForceSave(target, "after"))
-check(Unwrap(sys.Read(oldName)) == "precious", "a file named a.k.kemacs-new keeps its content after a save")
-check(names(folder) == "a.k,a.k.kemacs-new,b.k", "a save leaves no new file")
+check(Unwrap(sys.Read(oldName)) == "precious", "a file named a.ce.cemacs-new keeps its content after a save")
+check(names(folder) == "a.ce,a.ce.cemacs-new,b.ce", "a save leaves no new file")
 Unwrap(sys.Mkdir("$folder/sub"))
-Unwrap(sys.Write("$folder/sub.kemacs-new", "mine"))
+Unwrap(sys.Write("$folder/sub.cemacs-new", "mine"))
 check(IsErr(files.ForceSave("$folder/sub", "x")), "saving over a folder fails again")
-check(Unwrap(sys.Read("$folder/sub.kemacs-new")) == "mine", "a failed save removes nothing it didn't create")
-check(names(folder) == "a.k,a.k.kemacs-new,b.k,sub,sub.kemacs-new", "a failed save leaves nothing of its own")
-Unwrap(sys.Remove("$folder/sub.kemacs-new"))
+check(Unwrap(sys.Read("$folder/sub.cemacs-new")) == "mine", "a failed save removes nothing it didn't create")
+check(names(folder) == "a.ce,a.ce.cemacs-new,b.ce,sub,sub.cemacs-new", "a failed save leaves nothing of its own")
+Unwrap(sys.Remove("$folder/sub.cemacs-new"))
 Unwrap(sys.Remove("$folder/sub"))
 Unwrap(sys.Remove(oldName))
 Unwrap(sys.Mkdir(oldName))
@@ -156,14 +156,14 @@ check(not files.IsText(FromBytes([0xf8, 0x88, 0x80, 0x80, 0x80])), "five bytes")
 check(files.IsText(FromBytes([0xf4, 0x8f, 0xbf, 0xbf])), "U+10FFFF")
 
 -- normal.
-check(files.Normal("./a/../b.k") == "b.k", "normal of ./a/../b.k")
+check(files.Normal("./a/../b.ce") == "b.ce", "normal of ./a/../b.ce")
 check(files.Normal("a//b/./c/") == "a/b/c", "normal of doubled and trailing slashes")
 check(files.Normal("/a/b/../../c") == "/c", "normal of an absolute path")
 check(files.Normal("../a/../../b") == "../../b", "normal keeps leading ..")
 check(files.Normal("/../a") == "/a", "normal drops .. above the root")
 check(files.Normal("a/..") == ".", "normal of nothing is a dot")
 check(files.Normal("/") == "/", "normal of the root")
-check(files.Normal("x.k") == "x.k", "normal of a plain name")
+check(files.Normal("x.ce") == "x.ce", "normal of a plain name")
 
 -- Clean up.
 for name in Unwrap(sys.List(folder))

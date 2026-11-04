@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Starts Cemacs from anywhere, even through a symbolic link: Cemacs is in the folder above this one, and it starts with apps/cemacs.ce.
+home="$(dirname "$(dirname "$(readlink -f "$0")")")"
+exec cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf "$home/apps/cemacs.ce" "$home" "$@"

@@ -15,7 +15,7 @@ IsList(b) = not IsMissing(Of(b))
 
 -- Does the filter match the words? Its characters must come in the words in order, side by side or not, and case doesn't count.
 --
---   Matches("cmk", "commands.k") --> true
+--   Matches("cmd", "commands.ce") --> true
 defn Matches(filter, words)
   wanted = Chars(Lower(filter))
   k = 1

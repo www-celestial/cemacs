@@ -1,4 +1,4 @@
--- Tests of the buffer in text.Kp: run with kepler test .
+-- Tests of the buffer in text.ce: run with cesia test .
 use text
 use color
 use rope

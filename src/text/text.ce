@@ -11,7 +11,7 @@ use color
 -- highest version given so far, so that a new edit never gets the number of a state that was undone; and typing, which is true while the last
 -- command was a letter typed that a following letter continues (the step of undo).
 --
---   Of("a", "a.k").Cursor.Line --> 1
+--   Of("a", "a.ce").Cursor.Line --> 1
 defn Of(words, path)
   r = rope.Of(words)
   cursor = {Line: 1, Column: 0}
@@ -93,8 +93,8 @@ defn moved(cursor, b)
   b
 end
 
--- A letter, a digit or an underscore. Kepler knows the case of the ASCII letters only, so any character of more than one byte counts as a letter,
--- as in color.Kp: accents and other alphabets are in words, and so are the rare symbols outside ASCII.
+-- A letter, a digit or an underscore. Cesia knows the case of the ASCII letters only, so any character of more than one byte counts as a letter,
+-- as in color.ce: accents and other alphabets are in words, and so are the rare symbols outside ASCII.
 isWord(c) = c == "_" or (c >= "0" and c <= "9") or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or ByteLength(c) > 1
 
 -- The character after a position, or a line end at the end of a line.

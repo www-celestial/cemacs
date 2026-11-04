@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# A binding changed while the editor runs applies at the next key. It runs tests/reload-run.k under --watch, on a copy, in a window of the dummy driver, and
-# changes apps/emacs/emacs.k as a person would save it. Bindings and settings are functions for this: a reload reruns no file-level statement, so
+# A binding changed while the editor runs applies at the next key. It runs tests/reload-run.ce under --watch, on a copy, in a window of the dummy driver, and
+# changes apps/emacs/emacs.ce as a person would save it. Bindings and settings are functions for this: a reload reruns no file-level statement, so
 # Keys = {...} would keep its old value until a restart.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
@@ -15,7 +15,7 @@ cleanup() {
   rm -rf "$dir"
 }
 trap cleanup EXIT
-cp -r apps fonts src tests kepler.toml "$dir"
+cp -r apps fonts src tests cesia.toml "$dir"
 
 failed() {
   printf 'FAILED: %s\n' "$1"
@@ -37,11 +37,11 @@ seen() {
 changed() {
   local before
   before="$(wc -l < "$dir/out")"
-  sed -i "$1" "$dir/apps/emacs/emacs.k"
+  sed -i "$1" "$dir/apps/emacs/emacs.ce"
   seen "$2" "$before"
 }
 
-(cd "$dir" && SDL_VIDEODRIVER=dummy exec timeout -s TERM -k 1 20 kepler run --watch --allow read,write,exec=kepler,ffi=SDL3,ffi=SDL3_ttf tests/reload-run.k) > "$dir/out" 2> "$dir/err" < /dev/null &
+(cd "$dir" && SDL_VIDEODRIVER=dummy exec timeout -s TERM -k 1 20 cesia run --watch --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/reload-run.ce) > "$dir/out" 2> "$dir/err" < /dev/null &
 pid=$!
 
 seen "C-t alone: C-t is not bound." 0

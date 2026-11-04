@@ -1,4 +1,4 @@
--- Tests of keys.Kp: run with kepler test .
+-- Tests of keys.ce: run with cesia test .
 use keys
 
 press(key, ctrl, alt, shift) = {Kind: "key", Key: key, Ctrl: ctrl, Alt: alt, Shift: shift, Super: false}

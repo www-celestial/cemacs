@@ -1,5 +1,5 @@
--- Tests of commands.Kp that need no file: run with kepler test .
--- What opens or saves a file is in tests/commands-check.k.
+-- Tests of commands.ce that need no file: run with cesia test .
+-- What opens or saves a file is in tests/commands-check.ce.
 use apps/emacs
 use commands
 use keys
@@ -13,7 +13,7 @@ use ui
 cell = {Width: 8, Height: 19}
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
 
--- What the editor runs on in these tests: the Emacs keys and the settings, as apps/kemacs.k gives them without its apps.
+-- What the editor runs on in these tests: the Emacs keys and the settings, as apps/cemacs.ce gives them without its apps.
 testConfig() = emacs.Config(emacs.Keys)
 -- A state as view.Start gives it, with the config of the tests.
 defn begun(buffers, look, cell, width, height)
@@ -46,15 +46,15 @@ isShiftExtends() = regionOf(press.Press(["a", "b", "c", "S-left", "S-left"], sta
 isCancelPair() = wordsOf(press.Press(["C-x", "C-g", "C-s"], stateOf("a"))) == "a" and IsMissing(press.Press(["C-x", "C-g", "C-s"], stateOf("a")).Prompt)
 isCancelPairClearsPending() = press.Press(["C-x", "C-g"], stateOf("")).Pending == ""
 isPairPending() = press.Press(["C-x"], stateOf("")).Pending == "C-x"
-isPromptGetsKeys() = press.Press(["C-x", "C-f", "a.k"], stateOf("hi")).Prompt.Answer == "a.k" and wordsOf(press.Press(["C-x", "C-f", "a.k"], stateOf("hi"))) == "hi"
+isPromptGetsKeys() = press.Press(["C-x", "C-f", "a.ce"], stateOf("hi")).Prompt.Answer == "a.ce" and wordsOf(press.Press(["C-x", "C-f", "a.ce"], stateOf("hi"))) == "hi"
 isPromptLabel() = press.Press(["C-x", "C-f"], stateOf("")).Prompt.Label == "Find file: "
-isPromptBackspace() = press.Press(["C-x", "C-f", "a.k", "backspace"], stateOf("")).Prompt.Answer == "a."
+isPromptBackspace() = press.Press(["C-x", "C-f", "a.ce", "backspace"], stateOf("")).Prompt.Answer == "a.c"
 isPromptIgnoresChords() = press.Press(["C-x", "C-f", "C-f", "C-a", "left", "tab"], stateOf("hi")).Prompt.Answer == "" and wordsOf(press.Press(["C-x", "C-f", "C-a", "tab"], stateOf("hi"))) == "hi"
 isPromptCancel() = IsMissing(press.Press(["C-x", "C-f", "a", "C-g"], stateOf("hi")).Prompt) and wordsOf(press.Press(["C-x", "C-f", "a", "C-g"], stateOf("hi"))) == "hi"
 isPromptShiftEnterAndBackspace() = press.Press(["C-x", "C-f", "ab", "S-backspace"], stateOf("")).Prompt.Answer == "a"
 isSaveAsAsks() = press.Press(["C-x", "C-s"], stateOf("a")).Prompt.Label == "Save as: "
-isNextBuffer() = press.Press(["C-x", "b"], begun([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)).Current == 2
-isNextBufferGoesRound() = press.Press(["C-x", "b", "C-x", "b"], begun([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)).Current == 1
+isNextBuffer() = press.Press(["C-x", "b"], begun([text.Of("a", "x.ce"), text.Of("b", "y.ce")], look, cell, 800, 600)).Current == 2
+isNextBufferGoesRound() = press.Press(["C-x", "b", "C-x", "b"], begun([text.Of("a", "x.ce"), text.Of("b", "y.ce")], look, cell, 800, 600)).Current == 1
 isCloseUnsavedAsks() = closeAsks()
 defn closeAsks()
   s = press.Press(["C-x", "k"], modified(""))
@@ -68,7 +68,7 @@ defn isLastBufferClosed()
   Len(s.Buffers) == 1 and wordsOf(s) == ""
 end
 defn isCloseGoesToNeighbour()
-  s = press.Press(["C-x", "k"], begun([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600))
+  s = press.Press(["C-x", "k"], begun([text.Of("a", "x.ce"), text.Of("b", "y.ce")], look, cell, 800, 600))
   Len(s.Buffers) == 1 and wordsOf(s) == "b"
 end
 defn isQuitAsks()
@@ -237,7 +237,7 @@ defn emptyFileSurvives()
   IsArray(view.View(s))
 end
 isViewWithPrompt() = IsArray(view.View(press.Press(["C-x", "C-f", "a"], stateOf(""))))
-isTitleFollowsBuffer() = press.Press(["C-x", "b"], begun([text.Of("a", "d/x.k"), text.Of("b", "d/y.k")], look, cell, 800, 600)).Title == "y.k"
+isTitleFollowsBuffer() = press.Press(["C-x", "b"], begun([text.Of("a", "d/x.ce"), text.Of("b", "d/y.ce")], look, cell, 800, 600)).Title == "y.ce"
 isFollowAfterEvent() = here(press.Press(["C-v", "C-v", "C-v"], stateOf(Join("\n", Map(n -> "w", Range(1, 100)))))).Top > 1
 
 -- A state holding words with a text in the clipboard.
@@ -268,7 +268,7 @@ isTypeAfterUndoReplacesNothing() = wordsOf(press.Press(["x", "C-space", "C-e", "
 isTypeAfterRedoReplacesNothing() = wordsOf(press.Press(["x", "C-/", "C-space", "C-e", "C-?", "y"], stateOf("hello"))) == "xyhello"
 
 -- Two buffers with files, the first one current.
-twoFiles() = begun([text.Of("a", "x.k"), text.Of("b", "y.k")], look, cell, 800, 600)
+twoFiles() = begun([text.Of("a", "x.ce"), text.Of("b", "y.ce")], look, cell, 800, 600)
 -- A mouse press with another button than the first.
 otherButton(x, y) = {Kind: "mouse", Action: "down", X: x, Y: y, Button: 3, Amount: 0.0}
 
@@ -407,10 +407,10 @@ defn isDragInGutterScrolls()
 end
 
 -- M8: C-y pastes into the answer of a prompt: its first line, since an answer has one. A prompt of y or n takes no paste.
-isPasteInPrompt() = press.Press(["C-x", "C-f", "a", "C-y"], withClip("", "b.k")).Prompt.Answer == "ab.k"
-isPasteInPromptFirstLine() = press.Press(["C-x", "C-f", "C-y"], withClip("", "b.k\r\nc\n")).Prompt.Answer == "b.k"
+isPasteInPrompt() = press.Press(["C-x", "C-f", "a", "C-y"], withClip("", "b.ce")).Prompt.Answer == "ab.ce"
+isPasteInPromptFirstLine() = press.Press(["C-x", "C-f", "C-y"], withClip("", "b.ce\r\nc\n")).Prompt.Answer == "b.ce"
 isPasteInPromptEmpty() = press.Press(["C-x", "C-f", "a", "C-y"], stateOf("")).Prompt.Answer == "a"
-isPasteInPromptLeavesText() = wordsOf(press.Press(["C-x", "C-f", "C-y"], withClip("hi", "b.k"))) == "hi"
+isPasteInPromptLeavesText() = wordsOf(press.Press(["C-x", "C-f", "C-y"], withClip("hi", "b.ce"))) == "hi"
 defn isPasteDoesNotAnswerChoice()
   s = press.Press(["x", "C-x", "C-c", "C-y"], withClip("", "y"))
   not s.Ending and s.Prompt.Label == "Text not saved. Quit anyway? (y or n)"
@@ -575,7 +575,7 @@ isTabText() = wordsOf(press.Press(["tab"], stateOf(""))) == emacs.TabText() and 
 isWheelLines() = emacs.WheelLines() == 3.0
 isDragZone() = emacs.DragZone() == 4
 
--- kepler doc commands lists every command: that is what visible means.
+-- cesia doc commands lists every command: that is what visible means.
 defn isEveryCommandVisible()
   shown = DocNames("commands")
   names = ["ForwardChar", "BackwardChar", "NextLine", "PreviousLine", "ForwardWord", "BackwardWord", "LineStart", "LineEnd", "PageDown", "PageUp", "FileStart", "FileEnd",
@@ -596,7 +596,7 @@ end
 -- With Caps Lock, the key & of a French keyboard gives 1 with no Shift: the second key of a pair can't compare its text.
 isSecondKeyOtherTextDropped() = wordsOf(played([keyWith("x", true, false, false), keyWith("&", false, false, false), textOf("1")], stateOf("ab"))) == "ab"
 
--- kepler doc emacs lists every key and every setting, as it does the commands.
+-- cesia doc emacs lists every key and every setting, as it does the commands.
 defn isEveryKeyAndSettingVisible()
   shown = DocNames("emacs")
   names = ["Keys", "PromptKeys", "MouseKeys", "PromptMouseKeys", "TabText", "WheelLines", "DragZone", "FontSize", "Config"]
@@ -641,7 +641,7 @@ isToBufferClosesList() = commands.ToBuffer(1, withFruits(stateOf("x"))).Current 
 -- panes one above the other are 289 high, and the code of the second one starts at y = 289.
 paneCount(state) = panes.Count(state.Panes)
 shownBuffers(state) = Map(leaf -> leaf.Buffer, panes.Leaves(state.Panes))
-threeFiles() = begun([text.Of("a", "x.k"), text.Of("b", "y.k"), text.Of("c", "z.k")], look, cell, 800, 600)
+threeFiles() = begun([text.Of("a", "x.ce"), text.Of("b", "y.ce"), text.Of("c", "z.ce")], look, cell, 800, 600)
 wheelAt(x, y, amount) = {Kind: "mouse", Action: "wheel", X: x, Y: y, Button: 0, Amount: amount}
 
 isPaneKeysBound() = emacs.Keys()["C-x 2"] == commands.SplitBelow and emacs.Keys()["C-x 3"] == commands.SplitRight and emacs.Keys()["C-x o"] == commands.NextPane and emacs.Keys()["C-x 0"] == commands.ClosePane and emacs.Keys()["C-x 1"] == commands.OnlyPane
@@ -691,7 +691,7 @@ defn isCloseBufferOfOtherPane()
 end
 defn isCloseBufferRenumbers()
   s = press.Press(["C-x", "2", "C-x", "o", "C-x", "b", "C-x", "b", "C-x", "o", "C-x", "k"], threeFiles())
-  Len(s.Buffers) == 2 and s.Buffers[panes.At(2, s.Panes).Buffer].Path == "z.k" and here(s).Path == "y.k"
+  Len(s.Buffers) == 2 and s.Buffers[panes.At(2, s.Panes).Buffer].Path == "z.ce" and here(s).Path == "y.ce"
 end
 isTooSmallToSplitBelow() = paneCount(press.Press(["C-x", "2"], begun([text.Of("a", missing)], look, cell, 800, 120))) == 1 and press.Press(["C-x", "2"], begun([text.Of("a", missing)], look, cell, 800, 120)).Message == "This pane is too small to split."
 isTooSmallToSplitRight() = paneCount(press.Press(["C-x", "3"], begun([text.Of("a", missing)], look, cell, 200, 600))) == 1
@@ -712,10 +712,10 @@ isWheelOnActivePane() = here(commands.Update(wheelAt(100, 100, -1.0), press.Pres
 isSplitOnOldState() = paneCount(press.Press(["C-x", "2"], oldState("a"))) == 2
 isNextPaneOnOldState() = panes.Active(press.Press(["C-x", "o"], oldState("a"))) == 1 and wordsOf(press.Press(["C-x", "o"], oldState("a"))) == "a"
 isClickOnOldState() = commands.Update(mouse("down", atChar(1), 4), oldState("ab")).Buffers[1].Cursor == {Line: 1, Column: 1}
-fourFiles() = begun([text.Of("a", "w.k"), text.Of("b", "x.k"), text.Of("c", "y.k"), text.Of("d", "z.k")], look, cell, 800, 600)
+fourFiles() = begun([text.Of("a", "w.ce"), text.Of("b", "x.ce"), text.Of("c", "y.ce"), text.Of("d", "z.ce")], look, cell, 800, 600)
 defn isCloseBufferRenumbersAmongFour()
   s = press.Press(["C-x", "2", "C-x", "o", "C-x", "b", "C-x", "b", "C-x", "o", "C-x", "k"], fourFiles())
-  Len(s.Buffers) == 3 and s.Buffers[panes.At(2, s.Panes).Buffer].Path == "y.k" and here(s).Path == "x.k"
+  Len(s.Buffers) == 3 and s.Buffers[panes.At(2, s.Panes).Buffer].Path == "y.ce" and here(s).Path == "x.ce"
 end
 defn isSplitOfMovedPaneCopiesItsPlace()
   s = press.Press(["C-x", "2", "C-x", "o", "M->", "C-x", "2", "C-x", "o"], stateOf(hundred))

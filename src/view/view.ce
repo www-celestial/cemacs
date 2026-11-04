@@ -20,10 +20,10 @@ promptHeight = 22
 -- The editor adds its own fields: clip, the clipboard when there is no window; chorded, right after a key with Ctrl or Alt, the text of the event to ignore,
 -- or true for any text; chain, true while the last command was C-k; dragging, true while the mouse selects; pressed, the place of a mouse press until the mouse leaves
 -- the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; and title. Config is the function
--- that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Kemacs, "." until the program says. Panes is
--- the tree of the panes, see panes.k, and Pane the one being edited, which shows the current buffer.
+-- that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Cemacs, "." until the program says. Panes is
+-- the tree of the panes, see panes.ce, and Pane the one being edited, which shows the current buffer.
 -- Under --watch the code changes and the state stays, so a session can hold a state from before a field was added here. A field added after that
--- is read only through a match with a default, which is how Kepler tests for a field: reading one that isn't there panics, with all the unsaved text.
+-- is read only through a match with a default, which is how Cesia tests for a field: reading one that isn't there panics, with all the unsaved text.
 --
 --   Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600).Current --> 1
 Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pending: "", Prompt: missing, Message: "", Run: missing, Window: missing, Width: width, Height: height, Cell: cell, Look: look,
@@ -92,7 +92,7 @@ bufferName(b) = if lists.IsList(b) lists.Of(b).Name else if IsMissing(b.Path) "u
 
 -- The name of a buffer, as the mode line and the title of the window show it.
 --
---   BufferName(text.Of("", "src/a.k")) --> "a.k"
+--   BufferName(text.Of("", "src/a.ce")) --> "a.ce"
 BufferName(b) = bufferName(b)
 
 -- The label of the mode line: the name, and a star if the text isn't saved.
@@ -323,7 +323,7 @@ defn mode(b, lay, look, focused)
   rect = lay.Mode
   y = rect.Y + Div(rect.Height - look.Height, 2)
   position = "$(b.Cursor.Line):$(b.Cursor.Column)"
-  language = if lists.IsList(b) "List" else "Kepler" end
+  language = if lists.IsList(b) "List" else "Cesia" end
   right = rect.X + rect.Width - 12
   [rectCommand(rect.X, rect.Y, rect.Width, rect.Height, if focused th.Header else th.Panel end), textCommand(rect.X + 12, y, label(b), if focused th.Ink else th.Muted end),
     textCommand(right - look.Width(language, "body"), y, language, th.Muted),

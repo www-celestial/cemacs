@@ -1,4 +1,4 @@
--- A helper for tests: plays keys and texts through update, as the window would send them. It holds no test, so kepler test finds nothing here.
+-- A helper for tests: plays keys and texts through update, as the window would send them. It holds no test, so cesia test finds nothing here.
 use commands
 
 -- The names of the keys that are not one character.

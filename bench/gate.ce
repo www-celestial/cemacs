@@ -1,5 +1,5 @@
--- The speed gate of Kemacs: a text of 20,000 lines in a real window of 1920 by 1080, without vsync.
--- Run from the root of kemacs: kepler run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.k
+-- The speed gate of Cemacs: a text of 20,000 lines in a real window of 1920 by 1080, without vsync.
+-- Run from the root of cemacs: cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce
 -- It prints the median and the worst of 300 passes for one typed character, and for one scrolled line, and the time to build the rope.
 use rope
 use sdl
@@ -13,12 +13,12 @@ use view
 passes = 300
 -- The number of lines of the text of the gate.
 wantedLines = 20000
--- The folder of the files that make the text, read from the root of kemacs.
-stdFolder = "../kepler/src/std"
+-- The folder of the files that make the text, read from the root of cemacs.
+stdFolder = "../cesia/src/std"
 
--- The text of every file of the Kepler std, one after the other.
+-- The text of every file of the Cesia std, one after the other.
 defn stdText()
-  names = Filter(n -> EndsWith(".k", n), sys.List(stdFolder)?)
+  names = Filter(n -> EndsWith(".ce", n), sys.List(stdFolder)?)
   Ok(Join("\n", Map(n -> sys.Read("$stdFolder/$n")?, names)))
 end
 
@@ -35,14 +35,14 @@ defn longText(words)
 end
 
 defn opened()
-  first = sdl.Open("Kemacs speed gate", 1920, 1080, "fonts/AdwaitaSans-Regular.ttf", size = 13, vsync = false, light = true)?
+  first = sdl.Open("Cemacs speed gate", 1920, 1080, "fonts/AdwaitaSans-Regular.ttf", size = 13, vsync = false, light = true)?
   second = sdl.AddFont("strong", "fonts/NotoSans-Medium.ttf", 13, first, light = true)?
   sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", 13, second)
 end
 
 -- The state: a buffer with its cursor at line, column 0.
 defn stateAt(words, line, look, cell)
-  b = text.Of(words, "std.k")
+  b = text.Of(words, "std.ce")
   b.Cursor = {Line: line, Column: 0}
   view.Start([b], look, cell, 1920, 1080)
 end
@@ -119,7 +119,7 @@ verdict(met) = if met "ok" else "FAIL" end
 defn opening(look, cell, window)
   start = sys.Now()
   words = readFourTimes()?
-  state = view.Start([text.Of(words, "std.k")], look, cell, 1920, 1080)
+  state = view.Start([text.Of(words, "std.ce")], look, cell, 1920, 1080)
   state = view.FollowState(state)
   sdl.Frame(view.View(state), window)
   Ok((sys.Now() - start) * 1000.0)

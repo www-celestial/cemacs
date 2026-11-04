@@ -1,5 +1,5 @@
 -- The editor: one small public function per command, from a state to a state, and update, which turns the events of the window into commands.
--- No key is bound here: the Config of the state says which key runs which function, as apps/emacs/emacs.k does, and kepler doc commands lists every command.
+-- No key is bound here: the Config of the state says which key runs which function, as apps/emacs/emacs.ce does, and cesia doc commands lists every command.
 -- Errors from the file system never panic: they become a message.
 use rope
 use sdl
@@ -30,7 +30,7 @@ end
 -- The state with a message for the person, as an app shows one.
 Say(words, state) = say(words, state)
 
--- The folder of Kemacs, where fonts/ and apps/ are: what the program gave, or "." for a state with none, as one from a session before this field.
+-- The folder of Cemacs, where fonts/ and apps/ are: what the program gave, or "." for a state with none, as one from a session before this field.
 defn Home(state)
   match state
     {Home: home} -> home
@@ -508,7 +508,7 @@ Stop(state) = say("No program is running.", state)
 -- Showing the output: not there yet.
 ToggleOutput(state) = say("There is no output yet.", state)
 
--- ---- Panes: the pane being edited holds its place in the current buffer, and each other pane keeps its own in its leaf, see panes.k.
+-- ---- Panes: the pane being edited holds its place in the current buffer, and each other pane keeps its own in its leaf, see panes.ce.
 
 -- The state with its pane being edited on the current buffer, after a command that changed buffer.
 defn synced(state)
@@ -604,7 +604,7 @@ end
 unconfigured() = {Keys: () -> Dict(), PromptKeys: () -> Dict(), MouseKeys: () -> Dict(), PromptMouseKeys: () -> Dict(), ListKeys: () -> Dict(), TabText: () -> "  ",
   WheelLines: () -> 3.0, DragZone: () -> 4, FontSize: () -> 15}
 
--- ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.k for what a list holds.
+-- ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.ce for what a list holds.
 
 -- Opens a list named name. rows is a function from the state to the rows, each {Words, Item}, and keys a function that gives the keys of the list, whose
 -- functions take the item under the cursor and the state. Typing filters the rows, and the ListKeys of the config take the filter back. A list open already

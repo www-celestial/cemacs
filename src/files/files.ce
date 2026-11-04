@@ -86,7 +86,7 @@ end
 -- A path without the parts . and a/.. and without doubled or trailing slashes. It doesn't follow symbolic links: it keeps a leading / and
 -- the .. that nothing before it can cancel, except at the root, where .. stays at the root. An empty path is ".".
 --
---   Normal("./a/../b.k") --> "b.k"
+--   Normal("./a/../b.ce") --> "b.ce"
 defn Normal(path)
   absolute = StartsWith("/", path)
   parts = []
@@ -142,7 +142,7 @@ end
 defn isFresh(path)
   stamp = Text(Floor(sys.Now() * 1000000))
   for n in Range(0, 20)
-    name = if n == 0 "$path.kemacs-$stamp" else "$path.kemacs-$stamp-$n" end
+    name = if n == 0 "$path.cemacs-$stamp" else "$path.cemacs-$stamp-$n" end
     if not sys.Exists(name)
       return Ok(name)
     end

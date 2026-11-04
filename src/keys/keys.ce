@@ -1,4 +1,4 @@
--- The keys: how a key event of sdl becomes a chord such as "C-x", and how chords find a function in bindings. The bindings themselves are code, in commands.k.
+-- The keys: how a key event of sdl becomes a chord such as "C-x", and how chords find a function in bindings. The bindings themselves are code, in commands.ce.
 -- Nothing here knows of a window or a file.
 
 -- The keys that make no difference with Shift, because the character already holds it: "<" is Shift and ",".

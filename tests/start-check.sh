@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kemacs starts both ways: through the task dev, which gives no arguments, and through bin/kemacs, which gives the home first and then the files.
+# Cemacs starts both ways: through the task dev, which gives no arguments, and through bin/cemacs, which gives the home first and then the files.
 # Under --watch a program that failed doesn't end, so the exit code alone says nothing: the output counts too.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
@@ -23,7 +23,7 @@ started() {
   fi
 }
 
-started kepler do dev
-started bin/kemacs
-started bin/kemacs apps/kemacs.k src/text/text.k
+started cesia do dev
+started bin/cemacs
+started bin/cemacs apps/cemacs.ce src/text/text.ce
 echo ok

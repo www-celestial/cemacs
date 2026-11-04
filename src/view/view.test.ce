@@ -1,4 +1,4 @@
--- Tests of view.Kp and text.Of: run with kepler test .
+-- Tests of view.ce and text.Of: run with cesia test .
 use color
 use text
 use view
@@ -17,7 +17,7 @@ manyLines(count) = Join("\n", Map(n -> "word", Range(1, count)))
 
 textsOf(commands) = Map(c -> c.Text, Filter(c -> c.Kind == "text", commands))
 
-isOnlyVisibleLines() = isOnlyVisible(stateOf([text.Of(manyLines(20000), "a.k")], 800, 600))
+isOnlyVisibleLines() = isOnlyVisible(stateOf([text.Of(manyLines(20000), "a.ce")], 800, 600))
 
 defn isOnlyVisible(state)
   layout = view.Layout(state.Width, state.Height, state.Cell, false)
@@ -29,28 +29,28 @@ defn isOnlyVisible(state)
 end
 
 defn isLongLineFollows()
-  b = text.Of(Join("", Map(n -> "x", Range(1, 600))), "a.k")
+  b = text.Of(Join("", Map(n -> "x", Range(1, 600))), "a.ce")
   b.Cursor = {Line: 1, Column: 500}
   f = view.Follow(10, 80, b)
   f.Left <= 500 and 500 < f.Left + 80
 end
 
 defn isFollowScrollsDown()
-  b = text.Of(manyLines(100), "a.k")
+  b = text.Of(manyLines(100), "a.ce")
   b.Cursor = {Line: 50, Column: 0}
   f = view.Follow(10, 80, b)
   f.Top <= 50 and 50 < f.Top + 10 and f.Colors.Known >= 50
 end
 
 defn isFollowKeepsTop()
-  b = text.Of(manyLines(100), "a.k")
+  b = text.Of(manyLines(100), "a.ce")
   b.Cursor = {Line: 3, Column: 2}
   f = view.Follow(10, 80, b)
   f.Top == 1 and f.Left == 0
 end
 
 defn isTinyWindow()
-  s = stateOf([text.Of("a\nb", "a.k")], 10, 10)
+  s = stateOf([text.Of("a\nb", "a.ce")], 10, 10)
   lay = view.Layout(s.Width, s.Height, s.Cell, false)
   s.Buffers = [view.Follow(lay.Rows, lay.Columns, s.Buffers[1])]
   IsArray(view.View(s))
@@ -58,12 +58,12 @@ end
 
 -- No tabs: the code starts at the top of the window, and the name of a buffer that isn't current is nowhere on the screen. The mode line names the current one.
 defn isNoTabs()
-  a = text.Of("a", "/x/a.k")
-  b = text.Of("b", "/x/b.k")
+  a = text.Of("a", "/x/a.ce")
+  b = text.Of("b", "/x/b.ce")
   b.Version = 3
   commands = view.View(stateOf([a, b], 800, 600))
   shown = textsOf(commands)
-  "a.k" in shown and not ("b.k" in shown) and not ("b.k *" in shown) and Len(Filter(c -> c.Kind == "box" and c.Width == 7, commands)) == 0
+  "a.ce" in shown and not ("b.ce" in shown) and not ("b.ce *" in shown) and Len(Filter(c -> c.Kind == "box" and c.Width == 7, commands)) == 0
 end
 isCodeAtTop() = view.Layout(800, 600, cell, false).Code.Y == 0 and view.Layout(800, 600, cell, false).Rows == 28
 
@@ -71,14 +71,14 @@ isNoOutputPane() = view.Layout(800, 600, cell, false).Output.Height == 0
 isOutputPane() = view.Layout(800, 600, cell, true).Output.Height > 0
 isRowsFit() = view.Layout(800, 600, cell, false).Rows * 19 <= view.Layout(800, 600, cell, false).Code.Height
 defn isOfFields()
-  b = text.Of("a", "a.k")
-  IsMissing(b.Mark) and IsMissing(b.Disk) and b.Version == 0 and b.Saved == 0 and b.Top == 1 and b.Left == 0 and b.Path == "a.k" and b.Colors.Known == 1 and b.Cursor.Line == 1 and b.Cursor.Column == 0 and history.CanUndo(b.History) == false
+  b = text.Of("a", "a.ce")
+  IsMissing(b.Mark) and IsMissing(b.Disk) and b.Version == 0 and b.Saved == 0 and b.Top == 1 and b.Left == 0 and b.Path == "a.ce" and b.Colors.Known == 1 and b.Cursor.Line == 1 and b.Cursor.Column == 0 and history.CanUndo(b.History) == false
 end
-isOfRope() = rope.Text(text.Of("ab\ncd", "a.k").Rope) == "ab\ncd"
+isOfRope() = rope.Text(text.Of("ab\ncd", "a.ce").Rope) == "ab\ncd"
 
 -- The commands of a one-buffer window 102 pixels wide, so that 4 columns of code fit, showing words from column left.
 defn shownFrom(words, left)
-  b = text.Of(words, "a.k")
+  b = text.Of(words, "a.ce")
   b.Left = left
   view.View(stateOf([b], 102, 600))
 end
@@ -107,14 +107,14 @@ isMultibyteCutLikeAscii() = Equal(Map(t -> Len(t), codeTexts(shownFrom("éééé
 isMultibyteText() = Equal(codeTexts(shownFrom("ééééé", 2)), ["1", "ééé"])
 
 defn isEmptyFile()
-  s = stateOf([text.Of("", "a.k")], 800, 600)
+  s = stateOf([text.Of("", "a.ce")], 800, 600)
   lay = view.Layout(s.Width, s.Height, s.Cell, false)
   s.Buffers = [view.Follow(lay.Rows, lay.Columns, s.Buffers[1])]
   IsArray(view.View(s)) and s.Buffers[1].Top == 1
 end
 
 defn isCursorOnLastLine()
-  b = text.Of(manyLines(3), "a.k")
+  b = text.Of(manyLines(3), "a.ce")
   b.Cursor = {Line: 3, Column: 0}
   s = stateOf([b], 800, 600)
   lay = view.Layout(s.Width, s.Height, s.Cell, false)
@@ -124,14 +124,14 @@ defn isCursorOnLastLine()
 end
 
 defn isFollowWithoutRows()
-  b = text.Of(manyLines(10), "a.k")
+  b = text.Of(manyLines(10), "a.ce")
   b.Cursor = {Line: 5, Column: 3}
   f = view.Follow(0, 0, b)
   f.Top <= 5 and f.Left <= 3
 end
 
 defn isCursorBarInsideColumns()
-  b = text.Of("abcd", "a.k")
+  b = text.Of("abcd", "a.ce")
   b.Cursor = {Line: 1, Column: 4}
   s = stateOf([b], 102, 600)
   s.Buffers = [view.Follow(4, 4, b)]
@@ -143,7 +143,7 @@ end
 fills(commands) = Filter(c -> c.Kind == "rect" and c.Color == ui.Dark.Fill, commands)
 
 defn selectedState(words, mark, cursor)
-  b = text.Of(words, "a.k")
+  b = text.Of(words, "a.ce")
   b.Mark = mark
   b.Cursor = cursor
   stateOf([b], 800, 600)
@@ -178,7 +178,7 @@ defn isSelectionUnderText()
 end
 
 defn isSelectionCutToScreen()
-  b = text.Of("abcdefghij", "a.k")
+  b = text.Of("abcdefghij", "a.ce")
   b.Mark = {Line: 1, Column: 0}
   b.Cursor = {Line: 1, Column: 10}
   b.Left = 3
@@ -187,38 +187,38 @@ defn isSelectionCutToScreen()
 end
 
 defn isPromptDrawn()
-  s = stateOf([text.Of("a", "a.k")], 800, 600)
-  s.Prompt = {Label: "Find file: ", Answer: "a.k", Done: (a, t) -> t, Choice: false}
+  s = stateOf([text.Of("a", "a.ce")], 800, 600)
+  s.Prompt = {Label: "Find file: ", Answer: "a.ce", Done: (a, t) -> t, Choice: false}
   commands = view.View(s)
   bars = Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y > 500, commands)
-  "Find file: a.k" in textsOf(commands) and Len(bars) == 1 and bars[1].X == 12 + Len("Find file: a.k") * 8
+  "Find file: a.ce" in textsOf(commands) and Len(bars) == 1 and bars[1].X == 12 + Len("Find file: a.ce") * 8
 end
 
 defn isMessageDrawn()
-  s = stateOf([text.Of("a", "a.k")], 800, 600)
-  s.Message = "Saved a.k"
+  s = stateOf([text.Of("a", "a.ce")], 800, 600)
+  s.Message = "Saved a.ce"
   commands = view.View(s)
-  "Saved a.k" in textsOf(commands) and Len(Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y > 500, commands)) == 0
+  "Saved a.ce" in textsOf(commands) and Len(Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y > 500, commands)) == 0
 end
 
 defn isPositionAt()
-  s = stateOf([text.Of("abcd\nefgh", "a.k")], 800, 600)
+  s = stateOf([text.Of("abcd\nefgh", "a.ce")], 800, 600)
   p = view.PositionAt(view.Gutter + 17, 4 + 19 + 3, s)
   p == {Line: 2, Column: 2}
 end
 
-isPositionClamped() = view.PositionAt(790, 590, stateOf([text.Of("abcd\nefgh", "a.k")], 800, 600)) == {Line: 2, Column: 4}
-isPositionBeforeText() = view.PositionAt(0, 0, stateOf([text.Of("abcd\nefgh", "a.k")], 800, 600)) == {Line: 1, Column: 0}
+isPositionClamped() = view.PositionAt(790, 590, stateOf([text.Of("abcd\nefgh", "a.ce")], 800, 600)) == {Line: 2, Column: 4}
+isPositionBeforeText() = view.PositionAt(0, 0, stateOf([text.Of("abcd\nefgh", "a.ce")], 800, 600)) == {Line: 1, Column: 0}
 
 defn isPositionWithScroll()
-  b = text.Of(manyLines(50), "a.k")
+  b = text.Of(manyLines(50), "a.ce")
   b.Top = 10
   b.Left = 0
   view.PositionAt(view.Gutter, 4, stateOf([b], 800, 600)).Line == 10
 end
 
 defn isPositionOnCursorBar()
-  b = text.Of("abcdef", "a.k")
+  b = text.Of("abcdef", "a.ce")
   b.Cursor = {Line: 1, Column: 3}
   s = stateOf([b], 800, 600)
   bar = Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y < 100, view.View(s))[1]
@@ -227,12 +227,12 @@ end
 
 
 defn isInCode()
-  s = stateOf([text.Of("a", "x.k")], 800, 600)
+  s = stateOf([text.Of("a", "x.ce")], 800, 600)
   view.IsInCode(10, 100, s) and view.IsInCode(10, 10, s) and not view.IsInCode(10, 560, s) and not view.IsInCode(10, 590, s)
 end
 
 defn isFollowFreeKeepsTop()
-  b = text.Of(manyLines(100), "a.k")
+  b = text.Of(manyLines(100), "a.ce")
   b.Top = 60
   b.Free = true
   f = view.Follow(10, 80, b)
@@ -240,7 +240,7 @@ defn isFollowFreeKeepsTop()
 end
 
 defn isFollowStateMoves()
-  b = text.Of(manyLines(100), "a.k")
+  b = text.Of(manyLines(100), "a.ce")
   b.Cursor = {Line: 80, Column: 0}
   s = view.FollowState(stateOf([b], 800, 600))
   s.Buffers[1].Top > 1
@@ -248,27 +248,27 @@ end
 
 -- M5 and M6: a click in the margins of the code area is on the nearest cell of the screen. A drag isn't kept there, so that the screen can follow it.
 defn scrolledSide()
-  b = text.Of(Join("", Map(n -> "x", Range(1, 100))), "a.k")
+  b = text.Of(Join("", Map(n -> "x", Range(1, 100))), "a.ce")
   b.Left = 40
   stateOf([b], 800, 600)
 end
 isClickInGutterScrolled() = view.ClickAt(10, 4, scrolledSide()) == {Line: 1, Column: 40}
 isDragInGutterScrolled() = view.PositionAt(10, 4, scrolledSide()) == {Line: 1, Column: 34}
-isClickUnderLastRow() = view.ClickAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.k")], 800, 600)).Line == 28
-isDragUnderLastRow() = view.PositionAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.k")], 800, 600)).Line == 29
+isClickUnderLastRow() = view.ClickAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.ce")], 800, 600)).Line == 28
+isDragUnderLastRow() = view.PositionAt(view.Gutter, 540, stateOf([text.Of(manyLines(100), "a.ce")], 800, 600)).Line == 29
 defn isClickAboveFirstRow()
-  b = text.Of(manyLines(100), "a.k")
+  b = text.Of(manyLines(100), "a.ce")
   b.Top = 10
   view.ClickAt(view.Gutter, 1, stateOf([b], 800, 600)).Line == 10
 end
-isClickWithNoRows() = view.ClickAt(view.Gutter, 37, stateOf([text.Of(manyLines(3), "a.k")], 800, 60)).Line == 1
+isClickWithNoRows() = view.ClickAt(view.Gutter, 37, stateOf([text.Of(manyLines(3), "a.ce")], 800, 60)).Line == 1
 
 -- M12: the one layout of a state.
-isLayoutOf() = view.LayoutOf(stateOf([text.Of("", "a.k")], 800, 600)).Rows == 28 and view.LayoutOf(stateOf([text.Of("", "a.k")], 800, 600)).Code.Height == 554
+isLayoutOf() = view.LayoutOf(stateOf([text.Of("", "a.ce")], 800, 600)).Rows == 28 and view.LayoutOf(stateOf([text.Of("", "a.ce")], 800, 600)).Code.Height == 554
 
 -- A window 800 wide shows 91 columns, from 0 to 90: a click past the last one stays on it, and a drag is not kept there, so that the screen can follow it.
 defn longLine(left)
-  b = text.Of(Repeat(200, "x"), "a.k")
+  b = text.Of(Repeat(200, "x"), "a.ce")
   b.Left = left
   stateOf([b], 800, 600)
 end
@@ -276,7 +276,7 @@ isClickPastLastColumn() = view.ClickAt(799, 4, longLine(0)) == {Line: 1, Column:
 isClickPastLastColumnScrolled() = view.ClickAt(799, 4, longLine(40)) == {Line: 1, Column: 130}
 isClickOnLastColumn() = view.ClickAt(view.Gutter + 90 * 8, 4, longLine(0)) == {Line: 1, Column: 90}
 isDragPastLastColumn() = view.PositionAt(799, 4, longLine(0)) == {Line: 1, Column: 92}
-isClickWithNoColumns() = view.ClickAt(50, 4, stateOf([text.Of(Repeat(200, "x"), "a.k")], 60, 600)) == {Line: 1, Column: 0}
+isClickWithNoColumns() = view.ClickAt(50, 4, stateOf([text.Of(Repeat(200, "x"), "a.ce")], 60, 600)) == {Line: 1, Column: 0}
 
 -- A list shows its name in the mode line, its filter in the prompt line, and its rows in one plain color.
 defn fruitList(filter)
@@ -299,27 +299,27 @@ defn twoPanes(along, buffers, active)
 end
 -- A buffer of 100 lines with the cursor on a line.
 defn hundredAt(line)
-  b = text.Of(manyLines(100), "a.k")
+  b = text.Of(manyLines(100), "a.ce")
   b.Cursor = {Line: line, Column: 0}
   b
 end
 -- The cursor bars of a frame: rectangles 2 pixels wide.
 barsOf(commands) = Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Height == 19, commands)
 
-isStartHasOnePane() = panes.Count(stateOf([text.Of("", "a.k")], 800, 600).Panes) == 1 and stateOf([text.Of("", "a.k")], 800, 600).Pane == 1
+isStartHasOnePane() = panes.Count(stateOf([text.Of("", "a.ce")], 800, 600).Panes) == 1 and stateOf([text.Of("", "a.ce")], 800, 600).Pane == 1
 defn isViewOfKeepsPlace()
   b = hundredAt(40)
   b.Top = 30
   b.Left = 2
   b.Free = true
   v = view.ViewOf(b)
-  put = view.WithView(v, text.Of(manyLines(100), "a.k"))
+  put = view.WithView(v, text.Of(manyLines(100), "a.ce"))
   put.Cursor == {Line: 40, Column: 0} and put.Top == 30 and put.Left == 2 and put.Free and IsMissing(put.Mark)
 end
 defn isWithViewClamps()
   v = view.ViewOf(hundredAt(90))
   v.Top = 85
-  put = view.WithView(v, text.Of(manyLines(10), "a.k"))
+  put = view.WithView(v, text.Of(manyLines(10), "a.ce"))
   put.Cursor.Line == 10 and put.Top == 10
 end
 isWithViewMissingKeepsBuffer() = view.WithView(missing, hundredAt(7)).Cursor.Line == 7
@@ -335,7 +335,7 @@ end
 isLayoutOfActivePane() = view.LayoutOf(twoPanes("rows", [hundredAt(1)], 2)).Code.Y == 289 and view.LayoutOf(twoPanes("rows", [hundredAt(1)], 2)).Rows == 13
 isLayoutOfColumns() = view.LayoutOf(twoPanes("columns", [hundredAt(1)], 2)).Code.X == 400 and view.LayoutOf(twoPanes("columns", [hundredAt(1)], 2)).Rows == 28
 isPaneAt() = view.PaneAt(10, 300, twoPanes("rows", [hundredAt(1)], 1)) == 2 and view.PaneAt(10, 10, twoPanes("rows", [hundredAt(1)], 1)) == 1 and view.PaneAt(10, 590, twoPanes("rows", [hundredAt(1)], 1)) == 0
-isTwoModeLines() = ("a.k" in textsOf(view.View(twoPanes("rows", [text.Of("a", "a.k"), text.Of("b", "b.k")], 1)))) and ("b.k" in textsOf(view.View(twoPanes("rows", [text.Of("a", "a.k"), text.Of("b", "b.k")], 1))))
+isTwoModeLines() = ("a.ce" in textsOf(view.View(twoPanes("rows", [text.Of("a", "a.ce"), text.Of("b", "b.ce")], 1)))) and ("b.ce" in textsOf(view.View(twoPanes("rows", [text.Of("a", "a.ce"), text.Of("b", "b.ce")], 1))))
 defn isInactivePaneShowsItsPlace()
   s = twoPanes("rows", [hundredAt(1)], 1)
   v = view.ViewOf(hundredAt(60))

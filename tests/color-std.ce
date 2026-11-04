@@ -1,9 +1,9 @@
--- Every line of every .k file of the Kepler std goes through color.Tokens, keeping the state: no line may lose a character.
--- Run from the root of kemacs with: kepler run --allow read tests/color-std.k
+-- Every line of every .ce file of the Cesia std goes through color.Tokens, keeping the state: no line may lose a character.
+-- Run from the root of cemacs with: cesia run --allow read tests/color-std.ce
 use sys
 use color
 
-stdFolder = "../kepler/src/std"
+stdFolder = "../cesia/src/std"
 
 defn lostIn(path, text)
   state = color.FirstState
@@ -36,11 +36,11 @@ defn statesDifferIn(path, text)
   end
 end
 
--- The paths of the .k files of the folder. No file at all is a bug of the test.
+-- The paths of the .ce files of the folder. No file at all is a bug of the test.
 defn kpFiles(folder)
-  names = Filter(f -> EndsWith(".k", f), Unwrap(sys.List(folder)))
+  names = Filter(f -> EndsWith(".ce", f), Unwrap(sys.List(folder)))
   if Len(names) == 0
-    Panic("no .k file in $(folder)")
+    Panic("no .ce file in $(folder)")
   end
   names
 end

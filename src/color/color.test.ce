@@ -1,4 +1,4 @@
--- Tests of color.Kp: run with kepler test .
+-- Tests of color.ce: run with cesia test .
 use color
 
 roles(line) = Map(t -> t[1], color.Tokens(line, color.FirstState).Tokens)
