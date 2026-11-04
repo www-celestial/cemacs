@@ -355,7 +355,7 @@ defn prompt(state, lay, look)
   y = rect.Y + Div(rect.Height - look.Height, 2)
   b = state.Buffers[state.Current]
   filtering = IsMissing(state.Prompt) and state.Message == "" and lists.IsList(b)
-  words = if not IsMissing(state.Prompt) "$(state.Prompt.Label)$(state.Prompt.Answer)" else if filtering "Filter: $(lists.Of(b).Filter)" else state.Message end
+  words = if not IsMissing(state.Prompt) "$(state.Prompt.Label)$(state.Prompt.Answer)" else if filtering "$(lists.LabelOf(lists.Of(b)))$(lists.Of(b).Filter)" else state.Message end
   bar = if IsMissing(state.Prompt) and not filtering [] else [rectCommand(rect.X + 12 + look.Width(words, "body"), y, 2, look.Height, th.Bright)] end
   Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, th.Ink)], bar)
 end

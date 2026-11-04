@@ -580,17 +580,18 @@ unconfigured() = {Keys: () -> Dict(), PromptKeys: () -> Dict(), MouseKeys: () ->
 
 (* ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.ce for what a list holds. *)
 
-defn ShowList(name, rows, keys, state, free = missing)
+defn ShowList(name, rows, keys, state, free = missing, label = missing, typed = missing)
   (** Opens a list named name. rows is the rows, each {Words, Item} and maybe a Key, which the filter reads in place of the words, or a function that gives
       them from the state, for rows that change with it.
       keys is a function that gives the keys of the list, whose functions take the item under the cursor and the state; free, if given, gives keys that take
-      only the state, and so run with no row left. Typing filters the rows, and the ListKeys of the config take the filter back. A list open already gives its
-      place to this one. *)
+      only the state, and so run with no row left. Typing filters the rows, and the ListKeys of the config take the filter back; label, if given, takes the
+      place of "Filter: " before it, and typed gets each typed text and the state in place of the filter, which AddToFilter can still grow. A list open
+      already gives its place to this one. *)
   here = current(state)
   back = if lists.IsList(here) lists.Of(here).Back else state.Current end
   s = withoutList(state)
   b = text.Of("", missing)
-  b.List = {Name: name, Rows: rows, Keys: keys, Free: free, Filter: "", Items: [], Back: Min(back, Len(s.Buffers)), Shown: missing}
+  b.List = {Name: name, Rows: rows, Keys: keys, Free: free, Filter: "", Items: [], Back: Min(back, Len(s.Buffers)), Shown: missing, Label: label, Typed: typed}
   s.Buffers = Append(b, s.Buffers)
   s.Current = Len(s.Buffers)
   refreshed(s)
@@ -624,6 +625,13 @@ defn withFilter(filter, state)
   b.List = l
   put(b, state)
 end
+
+(** The state with a text added to the filter of the list of the current buffer, for the typed function of an app. *)
+AddToFilter(words, state) = withFilter("$(lists.Of(current(state)).Filter)$words", state)
+
+Clipboard(state) = clipped(state)   (** The text of the clipboard, for an app. *)
+
+Bindings(state) = config(state).Keys()   (** Every key of the editor and the function it runs, as the config gives them. *)
 
 defn ListBack(state)
   (** The last character of the filter of a list taken back. Out of a list, nothing changes. *)
@@ -806,7 +814,7 @@ defn onText(event, state)
   else if not IsMissing(state.Prompt)
     promptText(event.Text, s)
   else if lists.IsList(current(s))
-    withFilter("$(lists.Of(current(s)).Filter)$(event.Text)", s)
+    if IsMissing(lists.TypedOf(lists.Of(current(s)))) AddToFilter(event.Text, s) else lists.TypedOf(lists.Of(current(s)))(event.Text, s) end
   else
     s.Chain = false
     s.Buffers[state.Current].Free = false

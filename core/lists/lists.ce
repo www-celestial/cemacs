@@ -1,7 +1,8 @@
 (** Lists: a buffer of rows that an app gives, as the buffer list does. A list is a buffer of text, so moves, selection and copy work in it as in a file, and its
     List field says what each line stands for: {Name, Rows, Keys, Free, Filter, Items, Parts, Back, Shown}. Rows is the rows {Words, Item}, or a function that
     gives them from the state, Keys the keys of the list, Free missing or the keys that need no row, Filter what was typed, Items the item of each line shown,
-    Parts their colors, Back the buffer to go back to, and Shown, for fixed rows, what the last filter showed. A row may give Parts, [role, words] each with a
+    Parts their colors, Back the buffer to go back to, Shown, for fixed rows, what the last filter showed, Label missing or the words before the filter, and
+    Typed missing or what to do with a typed text in place of filtering. A row may give Parts, [role, words] each with a
     role of color.ce, whose words joined are its Words. Everything here is pure: commands opens and runs lists. *)
 
 defn Of(b)
@@ -60,6 +61,22 @@ defn PartsAt(line, b)
   (** The colored parts of a line of a list, or missing: for a plain row, or a list from before this field. *)
   match Of(b)
     {Parts: all} -> if line <= Len(all) all[line] else missing end
+    else -> missing
+  end
+end
+
+defn LabelOf(l)
+  (** The words before the filter in the line under the panes: the list's own, as a path, or "Filter: ". *)
+  match l
+    {Label: label} -> if IsMissing(label) "Filter: " else label end
+    else -> "Filter: "
+  end
+end
+
+defn TypedOf(l)
+  (** What a list does with a typed text, a function of the text and the state, or missing when typing only filters it. *)
+  match l
+    {Typed: f} -> f
     else -> missing
   end
 end

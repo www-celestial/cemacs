@@ -285,6 +285,15 @@ defn fruitList(filter)
 end
 isListNamed() = "Fruits" in textsOf(view.View(stateOf([fruitList("")], 800, 600))) and view.BufferName(fruitList("")) == "Fruits"
 isListFilterShown() = "Filter: an" in textsOf(view.View(stateOf([fruitList("an")], 800, 600)))
+defn labelled(filter)
+  (** A list whose filter line starts with its own label, as the folders show their path. *)
+  b = fruitList(filter)
+  l = b.List
+  l.Label = "/p/"
+  b.List = l
+  b
+end
+isListLabelShown() = "/p/an" in textsOf(view.View(stateOf([labelled("an")], 800, 600))) and not ("Filter: an" in textsOf(view.View(stateOf([labelled("an")], 800, 600))))
 (** end 12 would be a keyword and a number in code: a row is one plain text. *)
 isListPlain() = Len(Filter(c -> c.Kind == "text" and c.Text == "end 12" and c.Color == look.Theme.Syntax[color.Plain], view.View(stateOf([fruitList("")], 800, 600)))) == 1
 

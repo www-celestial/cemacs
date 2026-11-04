@@ -85,6 +85,16 @@ check(names(s) == "dir2/,sub/", "the list no longer shows it")
 s = press.Press(["C-c", "n", "b.ce", "enter", "C-c", "k", "y"], s)
 check(sys.Exists("$trash/files/b.ce.2") and sys.Exists("$trash/info/b.ce.2.trashinfo"), "a second b.ce is b.ce.2 in the trash")
 
+(* The line under the panes is the path: / goes into the folder under the cursor, / alone to the root, ~/ to the home, and C-y to a pasted path. *)
+s = press.Press(["C-x", "d"], start)
+check("$folder/" in Map(c -> c.Text, Filter(c -> c.Kind == "text", view.View(s))), "the path is the filter line")
+check(nameOf(press.Press(["su", "/"], s)) == "$folder/sub", "su then / goes into sub")
+check(nameOf(press.Press(["/"], s)) == "/", "/ alone goes to the root")
+check(nameOf(press.Press(["~", "/"], s)) == sys.Env("HOME"), "~/ goes to the home")
+pasting = s
+pasting.Clip = "$folder/sub/new.ce"
+check(nameOf(press.Press(["C-y"], pasting)) == "$folder/sub" and names(press.Press(["C-y"], pasting)) == "new.ce", "C-y goes to the folder of a pasted file")
+
 (* Enter on a file opens it in a buffer, and the list closes. *)
 s = press.Press(["C-c", "n", "c.ce", "enter", "enter"], s)
 check(here(s).Path == "$folder/c.ce", "enter opens the file")

@@ -1,5 +1,7 @@
-(** The folders: the files and folders of a folder in a list, as a file manager. Typing filters the names, enter opens, backspace with no filter goes up,
-    C-c n makes a file or a folder, C-c r renames and C-c k moves to the trash. Names that start with a dot stay hidden until C-c . shows them. *)
+(** The folders: the files and folders of a folder in a list, as a file manager. The line under the panes is the path, which typing goes on: the letters
+    filter the names, / goes into the folder under the cursor, ~/ to the home and / alone to the root, and backspace takes back a letter or, with none, goes up.
+    C-y goes to a pasted path. Enter opens, C-c n makes a file or a folder, C-c r renames and C-c k moves to the trash. Names that start with a dot stay hidden
+    until C-c . shows them. *)
 use color
 use commands
 use files
@@ -146,7 +148,8 @@ defn Shown(dir, entries, hidden, at, now, state)
   (** The state with the list of a folder from its entries, as read at now, and the cursor on the name at when it is there. The rows are made once here:
       each event filters them, and none reads the folder again. *)
   rows = Rows(entries, hidden, now)
-  s = commands.ShowList(dir, rows, () -> keysOf(dir, hidden), state, free = () -> freeOf(dir, hidden))
+  s = commands.ShowList(dir, rows, () -> keysOf(dir, hidden), state, free = () -> freeOf(dir, hidden), label = Slashed(dir),
+    typed = (words, st) -> typedIn(dir, hidden, words, st))
   onName(at, s)
 end
 
@@ -168,9 +171,53 @@ end
 keysOf(dir, hidden) = {"enter": (item, s) -> enter(dir, hidden, item, s), "C-c r": (item, s) -> rename(dir, hidden, item, s),
   "C-c k": (item, s) -> trash(dir, hidden, item, s)}
 
-(** The keys of the list that need no row: going up, making a file or a folder, showing the hidden names. *)
-freeOf(dir, hidden) = {"backspace": s -> back(dir, hidden, s), "S-backspace": s -> back(dir, hidden, s), "C-c n": s -> make(dir, hidden, s),
-  "C-c .": s -> show(dir, not hidden, under(s), s)}
+(** The keys of the list that need no row: going up, going to a pasted path, making a file or a folder, showing the hidden names. *)
+freeOf(dir, hidden) = {"backspace": s -> back(dir, hidden, s), "S-backspace": s -> back(dir, hidden, s), "C-y": s -> pasted(dir, hidden, s),
+  "C-c n": s -> make(dir, hidden, s), "C-c .": s -> show(dir, not hidden, under(s), s)}
+
+(** A folder with the slash that a name typed after it needs: the root stays /.
+
+      Slashed("/a/b") --> "/a/b/" *)
+Slashed(dir) = if EndsWith("/", dir) dir else "$dir/" end
+
+defn typedIn(dir, hidden, words, state)
+  (** A text typed in the list: / goes into a folder, to the home after ~, or to the root with nothing typed; anything else grows the filter. *)
+  if words != "/"
+    return commands.AddToFilter(words, state)
+  end
+  filter = lists.Of(state.Buffers[state.Current]).Filter
+  if filter == ""
+    show("/", hidden, missing, state)
+  else if filter == "~"
+    home = sys.Env("HOME")
+    if IsMissing(home) commands.Say("HOME is not set.", state) else show(home, hidden, missing, state) end
+  else
+    into(dir, hidden, state)
+  end
+end
+
+defn into(dir, hidden, state)
+  (** The folder under the cursor, or else the first folder shown, opened: what / after a part of its name does. *)
+  b = state.Buffers[state.Current]
+  item = lists.ItemAt(b)
+  folders = Filter(i -> i.IsDir, lists.Of(b).Items)
+  chosen = if not IsMissing(item) and item.IsDir item else if Len(folders) > 0 folders[1] else missing end
+  if IsMissing(chosen) commands.Say("No folder matches.", state) else show(within(dir, chosen.Name), hidden, missing, state) end
+end
+
+defn pasted(dir, hidden, state)
+  (** C-y: the path on the clipboard, from the root, the home with ~, or this folder: a folder opens, and a file shows its folder with the cursor on it. *)
+  words = Trim(Join("", Take(1, Lines(commands.Clipboard(state)))))
+  home = sys.Env("HOME")
+  path = if StartsWith("~", words) and not IsMissing(home) files.Normal("$home/$(Join("", Skip(1, Chars(words))))") else within(dir, words) end
+  if words == "" or not sys.Exists(path)
+    commands.Say("No file or folder at $words.", state)
+  else if Unwrap(sys.Stat(path)).IsDir
+    show(path, hidden, missing, state)
+  else
+    show(Parent(path), hidden, BaseName(path), state)
+  end
+end
 
 defn under(state)
   (** The name under the cursor of the list, or missing. *)

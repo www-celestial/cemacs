@@ -42,4 +42,5 @@ isHiddenAComment() = folders.Rows(entries, true, 1300.0)[1].Parts[1][1] == color
 isCodeAString() = folders.Rows(entries, false, 1300.0)[2].Parts[1][1] == color.String
 isSettingsAKeyword() = folders.Rows(entries, false, 1300.0)[3].Parts[1][1] == color.Keyword
 isSizeANumberAgeAComment() = folders.Rows(entries, false, 1300.0)[2].Parts[3][1] == color.Number and folders.Rows(entries, false, 1300.0)[2].Parts[5][1] == color.Comment
+isPathInTheFilterLine() = "/p/m" in Map(c -> c.Text, Filter(c -> c.Kind == "text", view.View(played(["m"]))))
 isListReadOnly() = wordsOf(played(["C-k"])) == wordsOf(listed(false, missing))
