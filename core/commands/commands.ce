@@ -1,5 +1,5 @@
 (** The editor: one small public function per command, from a state to a state, and update, which turns the events of the window into commands.
-    No key is bound here: the Config of the state says which key runs which function, as apps/emacs/emacs.ce does, and cesia doc commands lists every command.
+    No key is bound here: the Config of the state says which key runs which function, as src/emacs/emacs.ce does, and cesia doc commands lists every command.
     Errors from the file system never panic: they become a message. *)
 use pkg/rope
 use pkg/sdl
@@ -29,7 +29,7 @@ end
 Say(words, state) = say(words, state)   (** The state with a message for the person, as an app shows one. *)
 
 defn Home(state)
-  (** The folder of Cemacs, where fonts/ and apps/ are: what the program gave, or "." for a state with none, as one from a session before this field. *)
+  (** The folder of Cemacs, where fonts/ and src/ are: what the program gave, or "." for a state with none, as one from a session before this field. *)
   match state
     {Home: home} -> home
     else -> "."
@@ -566,7 +566,7 @@ end
 (* ---- Config *)
 
 defn config(state)
-  (** What the editor runs on: the record that the function in the Config of the state gives, with the keys and the settings, as emacs.Config in apps/ makes it.
+  (** What the editor runs on: the record that the function in the Config of the state gives, with the keys and the settings, as emacs.Config in src/ makes it.
       A state with none, as one from a session before this field, has no key and the settings of unconfigured: see view.Start. *)
   match state
     {Config: f} -> if IsMissing(f) unconfigured() else f() end

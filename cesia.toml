@@ -1,12 +1,12 @@
 [project]
 name = "cemacs"
-src = ["src", "apps"]
+src = ["core", "src"]
 native = ["SDL3", "SDL3_ttf"]
 
 [tasks.test]
 run = ["tests/run.sh"]
 
 [tasks.dev]
-file = "apps/cemacs.ce"
+file = "src/cemacs.ce"
 watch = true
 allow = ["read", "write", "exec=cesia", "env=HOME", "env=PWD", "env=XDG_DATA_HOME"]

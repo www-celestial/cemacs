@@ -161,7 +161,7 @@ check(commands.Settled(commands.OpenFile(aPath, fresh())).Title == "a.ce", "the 
 
 (* C-c c opens the entry point of the apps, under the home: run from the root of Cemacs, the home is ".". *)
 config = press.Press(["C-c", "c"], fresh())
-check(not IsMissing(here(config).Path) and EndsWith("apps/cemacs.ce", here(config).Path), "C-c c opens apps/cemacs.ce: $(here(config).Path) $(config.Message)")
-check(StartsWith("(** Cemacs", wordsOf(config)), "C-c c shows the text of apps/cemacs.ce")
+check(not IsMissing(here(config).Path) and EndsWith("src/cemacs.ce", here(config).Path), "C-c c opens src/cemacs.ce: $(here(config).Path) $(config.Message)")
+check(StartsWith("(** Cemacs", wordsOf(config)), "C-c c shows the text of src/cemacs.ce")
 
 Print("ok")

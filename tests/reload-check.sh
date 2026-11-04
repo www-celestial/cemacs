@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A binding changed while the editor runs applies at the next key. It runs tests/reload-run.ce under --watch, on a copy, in a window of the dummy driver, and
-# changes apps/emacs/emacs.ce as a person would save it. Bindings and settings are functions for this: a reload reruns no file-level statement, so
+# changes src/emacs/emacs.ce as a person would save it. Bindings and settings are functions for this: a reload reruns no file-level statement, so
 # Keys = {...} would keep its old value until a restart.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
@@ -15,7 +15,7 @@ cleanup() {
   rm -rf "$dir"
 }
 trap cleanup EXIT
-cp -r apps fonts src tests cesia.toml "$dir"
+cp -r core fonts src tests cesia.toml "$dir"
 
 failed() {
   printf 'FAILED: %s\n' "$1"
@@ -37,7 +37,7 @@ seen() {
 changed() {
   local before
   before="$(wc -l < "$dir/out")"
-  sed -i "$1" "$dir/apps/emacs/emacs.ce"
+  sed -i "$1" "$dir/src/emacs/emacs.ce"
   seen "$2" "$before"
 }
 

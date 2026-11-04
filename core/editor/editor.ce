@@ -1,4 +1,4 @@
-(** The window of Cemacs and its loop. A program starts it with a config, as apps/cemacs.ce does: the core knows no app, so the keys and the settings come from there. *)
+(** The window of Cemacs and its loop. A program starts it with a config, as src/cemacs.ce does: the core knows no app, so the keys and the settings come from there. *)
 use pkg/sdl
 use pkg/ui
 use commands

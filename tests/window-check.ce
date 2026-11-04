@@ -88,7 +88,7 @@ defn opened()
   sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", emacs.FontSize(), second)
 end
 
-(** What the editor runs on in this check: the Emacs keys and the settings, as apps/cemacs.ce gives them without its apps. *)
+(** What the editor runs on in this check: the Emacs keys and the settings, as src/cemacs.ce gives them without its apps. *)
 checkConfig() = emacs.Config(emacs.Keys)
 
 window = Unwrap(opened())

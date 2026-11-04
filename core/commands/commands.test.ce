@@ -13,7 +13,7 @@ use pkg/ui
 cell = {Width: 8, Height: 19}
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
 
-(** What the editor runs on in these tests: the Emacs keys and the settings, as apps/cemacs.ce gives them without its apps. *)
+(** What the editor runs on in these tests: the Emacs keys and the settings, as src/cemacs.ce gives them without its apps. *)
 testConfig() = emacs.Config(emacs.Keys)
 defn begun(buffers, look, cell, width, height)
   (** A state as view.Start gives it, with the config of the tests. *)

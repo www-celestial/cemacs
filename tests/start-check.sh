@@ -25,5 +25,5 @@ started() {
 
 started cesia do dev
 started bin/cemacs
-started bin/cemacs apps/cemacs.ce src/text/text.ce
+started bin/cemacs src/cemacs.ce core/text/text.ce
 echo ok

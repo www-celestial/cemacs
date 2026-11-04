@@ -10,7 +10,7 @@ use view
 
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}
-(** The Emacs keys with the keys of this app, as apps/cemacs.ce merges them. *)
+(** The Emacs keys with the keys of this app, as src/cemacs.ce merges them. *)
 withApp() = emacs.Config(() -> Merge(emacs.Keys(), buffers.Keys()))
 defn twoFiles()
   (** Two files, the second one modified, with the second current. *)

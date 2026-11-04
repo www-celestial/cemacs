@@ -21,7 +21,7 @@ end
 
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}
-withApps() = emacs.Config(() -> Merge(Merge(emacs.Keys(), buffers.Keys()), folders.Keys()))   (** The keys as apps/cemacs.ce merges them. *)
+withApps() = emacs.Config(() -> Merge(Merge(emacs.Keys(), buffers.Keys()), folders.Keys()))   (** The keys as src/cemacs.ce merges them. *)
 here(state) = state.Buffers[state.Current]   (** The current buffer. *)
 names(state) = Join(",", Map(l -> Split(" ", l)[1], Lines(rope.Text(here(state).Rope))))   (** The first word of each row of the list. *)
 nameOf(state) = view.BufferName(here(state))   (** The name of the current buffer: for a list, its folder. *)

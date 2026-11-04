@@ -1,4 +1,4 @@
-(** The Emacs keys of Cemacs, and its settings. The core in src/ holds no key: apps/cemacs.ce gives it these through Config, with the keys of every app.
+(** The Emacs keys of Cemacs, and its settings. The core, in core/, holds no key: src/cemacs.ce gives it these through Config, with the keys of every app.
     Every binding holds the function itself, so any function can be bound, and cesia doc emacs lists them all.
     These are functions and not variables, for --watch: a reload changes functions and reruns no file-level statement. Keys = {...} would keep its old value
     until a restart, and a new variable would be read before it has a value, which panics. A function gives what the code says at the next key. *)
@@ -81,13 +81,13 @@ MouseKeys() = {"down": commands.Press, "move": commands.Drag, "up": commands.Rel
     outlive its button. *)
 PromptMouseKeys() = {"up": commands.Release, "wheel": commands.Wheel}
 
-(** Opens apps/cemacs.ce, where the apps and their keys start: the place to change the editor. *)
-OpenConfig(state) = commands.OpenFile("$(commands.Home(state))/apps/cemacs.ce", state)
+(** Opens src/cemacs.ce, where the apps and their keys start: the place to change the editor. *)
+OpenConfig(state) = commands.OpenFile("$(commands.Home(state))/src/cemacs.ce", state)
 
 (** The keys of a list, over the keys above: Backspace and C-g take back its filter, and C-g with none closes it. Letters filter it. *)
 ListKeys() = {"backspace": commands.ListBack, "S-backspace": commands.ListBack, "C-g": commands.ListCancel}
 
-(** What the editor runs on, for the Config of a state: keys, the global keys given, and the other keys and the settings of this file. apps/cemacs.ce gives
+(** What the editor runs on, for the Config of a state: keys, the global keys given, and the other keys and the settings of this file. src/cemacs.ce gives
     it the keys of every app. Each field is a function, read at the next key, so that a change applies under --watch. *)
 Config(keys) = {Keys: keys, PromptKeys: PromptKeys, MouseKeys: MouseKeys, PromptMouseKeys: PromptMouseKeys, ListKeys: ListKeys, TabText: TabText,
   WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize}

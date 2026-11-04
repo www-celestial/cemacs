@@ -1,4 +1,4 @@
-(** The editor in a window, as apps/cemacs.ce runs it, for tests/reload-check.sh: a fiber sends the same keys again and again through SDL, and what each one did is
+(** The editor in a window, as src/cemacs.ce runs it, for tests/reload-check.sh: a fiber sends the same keys again and again through SDL, and what each one did is
     printed.
     The state is one from before the fields Wheel and Pressed, as a session running under --watch keeps it through a reload. *)
 use c
@@ -80,7 +80,7 @@ defn opened()
   sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", emacs.FontSize(), second)
 end
 
-(** What the editor runs on: the Emacs keys and the settings, which tests/reload-check.sh changes in apps/emacs/emacs.ce while this runs. *)
+(** What the editor runs on: the Emacs keys and the settings, which tests/reload-check.sh changes in src/emacs/emacs.ce while this runs. *)
 Config() = emacs.Config(emacs.Keys)
 
 (** A state with what view.Start gave before the fields Wheel and Pressed, and the config the program gives. *)
