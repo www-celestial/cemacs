@@ -1,6 +1,6 @@
--- The editor: one small public function per command, from a state to a state, and update, which turns the events of the window into commands.
--- No key is bound here: the Config of the state says which key runs which function, as apps/emacs/emacs.ce does, and cesia doc commands lists every command.
--- Errors from the file system never panic: they become a message.
+(** The editor: one small public function per command, from a state to a state, and update, which turns the events of the window into commands.
+    No key is bound here: the Config of the state says which key runs which function, as apps/emacs/emacs.ce does, and cesia doc commands lists every command.
+    Errors from the file system never panic: they become a message. *)
 use rope
 use sdl
 use files
@@ -10,52 +10,50 @@ use panes
 use text
 use view
 
--- The buffer being edited.
-current(state) = state.Buffers[state.Current]
+current(state) = state.Buffers[state.Current]   (** The buffer being edited. *)
 
--- The state with a buffer in place of the current one.
 defn put(b, state)
+  (** The state with a buffer in place of the current one. *)
   s = state
   s.Buffers[state.Current] = b
   s
 end
 
--- The state with a message for the person.
 defn say(words, state)
+  (** The state with a message for the person. *)
   s = state
   s.Message = words
   s
 end
 
--- The state with a message for the person, as an app shows one.
-Say(words, state) = say(words, state)
+Say(words, state) = say(words, state)   (** The state with a message for the person, as an app shows one. *)
 
--- The folder of Cemacs, where fonts/ and apps/ are: what the program gave, or "." for a state with none, as one from a session before this field.
 defn Home(state)
+  (** The folder of Cemacs, where fonts/ and apps/ are: what the program gave, or "." for a state with none, as one from a session before this field. *)
   match state
     {Home: home} -> home
     else -> "."
   end
 end
 
--- The buffer without its mark.
 defn unmarked(b)
+  (** The buffer without its mark. *)
   out = b
   out.Mark = missing
   out.Origin = ""
   out
 end
 
--- Is something selected? A mark with nothing between it and the cursor selects nothing.
 defn hasSelection(b)
+  (** Is something selected? A mark with nothing between it and the cursor selects nothing. *)
   e = text.Selection(b)
   not IsMissing(e) and e.First != e.Last
 end
 
--- ---- The clipboard: the one of the system when there is a window, else the state's own.
+(* ---- The clipboard: the one of the system when there is a window, else the state's own. *)
 
--- The state with words in the clipboard.
 defn clip(words, state)
+  (** The state with words in the clipboard. *)
   if not IsMissing(state.Window)
     sdl.Copy(words, state.Window)
     state
@@ -66,13 +64,13 @@ defn clip(words, state)
   end
 end
 
--- The words in the clipboard.
+(** The words in the clipboard. *)
 clipped(state) = if IsMissing(state.Window) state.Clip else sdl.Paste(state.Window) end
 
--- ---- Moves
+(* ---- Moves *)
 
--- The current buffer moved by f. A mark stays only if C-space set it: the others end with the next move.
 defn move(f, state)
+  (** The current buffer moved by f. A mark stays only if C-space set it: the others end with the next move. *)
   b = f(current(state))
   if b.Origin != "key"
     b = unmarked(b)
@@ -80,8 +78,8 @@ defn move(f, state)
   put(b, state)
 end
 
--- The current buffer moved by f, selecting: a mark is put where the cursor was, if there is none.
 defn select(f, state)
+  (** The current buffer moved by f, selecting: a mark is put where the cursor was, if there is none. *)
   before = current(state)
   b = f(before)
   if IsMissing(before.Mark)
@@ -91,74 +89,53 @@ defn select(f, state)
   put(b, state)
 end
 
--- The number of lines of a page.
-rows(state) = view.LayoutOf(state).Rows
+rows(state) = view.LayoutOf(state).Rows   (** The number of lines of a page. *)
 
--- Moves. The Select ones keep the mark of a selection.
+(* Moves. The Select ones keep the mark of a selection. *)
 
--- One character on.
-ForwardChar(state) = move(b -> text.MoveChar(1, b), state)
--- One character back.
-BackwardChar(state) = move(b -> text.MoveChar(-1, b), state)
--- One line down.
-NextLine(state) = move(b -> text.MoveLine(1, b), state)
--- One line up.
-PreviousLine(state) = move(b -> text.MoveLine(-1, b), state)
--- One word on.
-ForwardWord(state) = move(b -> text.MoveWord(1, b), state)
--- One word back.
-BackwardWord(state) = move(b -> text.MoveWord(-1, b), state)
--- To the start of the line.
-LineStart(state) = move(text.ToLineStart, state)
--- To the end of the line.
-LineEnd(state) = move(text.ToLineEnd, state)
--- One page down.
-PageDown(state) = move(b -> text.MovePage(1, rows(state), b), state)
--- One page up.
-PageUp(state) = move(b -> text.MovePage(-1, rows(state), b), state)
--- To the start of the file.
-FileStart(state) = move(text.ToFileStart, state)
--- To the end of the file.
-FileEnd(state) = move(text.ToFileEnd, state)
--- Selecting one character on.
-SelectForwardChar(state) = select(b -> text.MoveChar(1, b), state)
--- Selecting one character back.
-SelectBackwardChar(state) = select(b -> text.MoveChar(-1, b), state)
--- Selecting one line down.
-SelectNextLine(state) = select(b -> text.MoveLine(1, b), state)
--- Selecting one line up.
-SelectPreviousLine(state) = select(b -> text.MoveLine(-1, b), state)
--- Selecting to the start of the line.
-SelectLineStart(state) = select(text.ToLineStart, state)
--- Selecting to the end of the line.
-SelectLineEnd(state) = select(text.ToLineEnd, state)
--- Selecting one page down.
-SelectPageDown(state) = select(b -> text.MovePage(1, rows(state), b), state)
--- Selecting one page up.
-SelectPageUp(state) = select(b -> text.MovePage(-1, rows(state), b), state)
+ForwardChar(state) = move(b -> text.MoveChar(1, b), state)   (** One character on. *)
+BackwardChar(state) = move(b -> text.MoveChar(-1, b), state)   (** One character back. *)
+NextLine(state) = move(b -> text.MoveLine(1, b), state)   (** One line down. *)
+PreviousLine(state) = move(b -> text.MoveLine(-1, b), state)   (** One line up. *)
+ForwardWord(state) = move(b -> text.MoveWord(1, b), state)   (** One word on. *)
+BackwardWord(state) = move(b -> text.MoveWord(-1, b), state)   (** One word back. *)
+LineStart(state) = move(text.ToLineStart, state)   (** To the start of the line. *)
+LineEnd(state) = move(text.ToLineEnd, state)   (** To the end of the line. *)
+PageDown(state) = move(b -> text.MovePage(1, rows(state), b), state)   (** One page down. *)
+PageUp(state) = move(b -> text.MovePage(-1, rows(state), b), state)   (** One page up. *)
+FileStart(state) = move(text.ToFileStart, state)   (** To the start of the file. *)
+FileEnd(state) = move(text.ToFileEnd, state)   (** To the end of the file. *)
+SelectForwardChar(state) = select(b -> text.MoveChar(1, b), state)   (** Selecting one character on. *)
+SelectBackwardChar(state) = select(b -> text.MoveChar(-1, b), state)   (** Selecting one character back. *)
+SelectNextLine(state) = select(b -> text.MoveLine(1, b), state)   (** Selecting one line down. *)
+SelectPreviousLine(state) = select(b -> text.MoveLine(-1, b), state)   (** Selecting one line up. *)
+SelectLineStart(state) = select(text.ToLineStart, state)   (** Selecting to the start of the line. *)
+SelectLineEnd(state) = select(text.ToLineEnd, state)   (** Selecting to the end of the line. *)
+SelectPageDown(state) = select(b -> text.MovePage(1, rows(state), b), state)   (** Selecting one page down. *)
+SelectPageUp(state) = select(b -> text.MovePage(-1, rows(state), b), state)   (** Selecting one page up. *)
 
--- The mark put at the cursor, and kept through moves until C-g, an edit or a cut.
 defn SetMark(state)
+  (** The mark put at the cursor, and kept through moves until C-g, an edit or a cut. *)
   b = text.SetMark(current(state))
   b.Origin = "key"
   put(b, state)
 end
 
--- The mark taken away, and the message to show it.
 defn Cancel(state)
+  (** The mark taken away, and the message to show it. *)
   say("Quit", put(unmarked(current(state)), state))
 end
 
--- C-g as the second key of a pair: the pair is already forgotten, and the selection stays. It is bound for each first key.
+(** C-g as the second key of a pair: the pair is already forgotten, and the selection stays. It is bound for each first key. *)
 CancelPair(state) = say("Quit", state)
 
--- ---- Edits
+(* ---- Edits *)
 
--- The current buffer after f, in place of the selection if there is one, as one step of undo. The mark ends.
+(** The current buffer after f, in place of the selection if there is one, as one step of undo. The mark ends. *)
 replacing(f, state) = put(unmarked(text.ReplaceRegion(f, current(state))), state)
 
--- The current buffer after f, or only without its selection if it has one: Backspace and Delete delete what is selected.
 defn deleting(f, state)
+  (** The current buffer after f, or only without its selection if it has one: Backspace and Delete delete what is selected. *)
   b = current(state)
   if hasSelection(b)
     put(unmarked(text.CutRegion(b)), state)
@@ -167,25 +144,23 @@ defn deleting(f, state)
   end
 end
 
--- Words typed or pasted at the cursor, in place of the selection.
+(** Words typed or pasted at the cursor, in place of the selection. *)
 typed(words, state) = replacing(b -> text.InsertWords(words, b), state)
 
--- The character before the cursor deleted, or the selection.
+(** The character before the cursor deleted, or the selection. *)
 DeleteBefore(state) = deleting(text.DeleteBefore, state)
--- The character after the cursor deleted, or the selection.
+(** The character after the cursor deleted, or the selection. *)
 DeleteAfter(state) = deleting(text.DeleteAfter, state)
--- A line end with the indent of the line, in place of the selection.
+(** A line end with the indent of the line, in place of the selection. *)
 NewLine(state) = replacing(text.NewLine, state)
--- The text of a tab, in place of the selection.
-Tab(state) = typed(config(state).TabText(), state)
+Tab(state) = typed(config(state).TabText(), state)   (** The text of a tab, in place of the selection. *)
 
--- The undone step back, and the mark ended: left where it was, it would select a text the person never chose.
+(** The undone step back, and the mark ended: left where it was, it would select a text the person never chose. *)
 Undo(state) = put(unmarked(text.Undo(current(state))), state)
--- The undone step done again, and the mark ended.
-Redo(state) = put(unmarked(text.Redo(current(state))), state)
+Redo(state) = put(unmarked(text.Redo(current(state))), state)   (** The undone step done again, and the mark ended. *)
 
--- The selection removed and put in the clipboard. Without a selection, nothing changes but the message.
 defn Cut(state)
+  (** The selection removed and put in the clipboard. Without a selection, nothing changes but the message. *)
   b = current(state)
   if hasSelection(b)
     put(unmarked(text.CutRegion(b)), clip(text.Region(b), state))
@@ -194,8 +169,8 @@ defn Cut(state)
   end
 end
 
--- The selection put in the clipboard, and the mark ended. Without a selection, nothing changes but the message.
 defn Copy(state)
+  (** The selection put in the clipboard, and the mark ended. Without a selection, nothing changes but the message. *)
   b = current(state)
   if hasSelection(b)
     put(unmarked(b), clip(text.Region(b), state))
@@ -204,8 +179,8 @@ defn Copy(state)
   end
 end
 
--- The clipboard inserted at the cursor, in place of the selection.
 defn Paste(state)
+  (** The clipboard inserted at the cursor, in place of the selection. *)
   words = clipped(state)
   if words == ""
     say("The clipboard is empty.", state)
@@ -214,9 +189,9 @@ defn Paste(state)
   end
 end
 
--- The rest of the line cut into the clipboard, or the line end if the cursor is already there. Cuts one after the other add up, as in Emacs. It sets Chain itself,
--- so that the cuts add up through any function that calls it, and any other command ends them: see ran.
 defn CutLine(state)
+  (** The rest of the line cut into the clipboard, or the line end if the cursor is already there. Cuts one after the other add up, as in Emacs. It sets Chain itself,
+      so that the cuts add up through any function that calls it, and any other command ends them: see ran. *)
   r = text.CutLine(current(state))
   if r.Cut == ""
     say("Nothing to cut.", state)
@@ -228,10 +203,10 @@ defn CutLine(state)
   end
 end
 
--- ---- Prompts
+(* ---- Prompts *)
 
--- The state with a prompt open. The first key of a pair ends here, or the next key would be its second one instead of an answer, and so does a chain of cuts.
 defn prompted(prompt, state)
+  (** The state with a prompt open. The first key of a pair ends here, or the next key would be its second one instead of an answer, and so does a chain of cuts. *)
   s = state
   s.Prompt = prompt
   s.Pending = ""
@@ -239,59 +214,58 @@ defn prompted(prompt, state)
   s
 end
 
--- The state with a prompt that takes an answer: done gets the answer and the state, without the prompt.
+(** The state with a prompt that takes an answer: done gets the answer and the state, without the prompt. *)
 ask(label, answer, done, state) = prompted({Label: label, Answer: answer, Done: done, Choice: false}, state)
 
--- The state with a prompt that takes y or n.
+(** The state with a prompt that takes y or n. *)
 confirm(label, done, state) = prompted({Label: label, Answer: "", Done: done, Choice: true}, state)
 
--- The state after the answer of the prompt is accepted.
 defn accept(state)
+  (** The state after the answer of the prompt is accepted. *)
   p = state.Prompt
   s = state
   s.Prompt = missing
   p.Done(p.Answer, s)
 end
 
--- The state with the prompt closed.
 defn closed(state)
+  (** The state with the prompt closed. *)
   s = state
   s.Prompt = missing
   s
 end
 
--- The state after f on the prompt that is open. With none, as when a global key is bound to one of these commands, nothing changes.
+(** The state after f on the prompt that is open. With none, as when a global key is bound to one of these commands, nothing changes. *)
 inPrompt(f, state) = if IsMissing(state.Prompt) state else f(state.Prompt, state) end
 
--- Accepts the answer of a prompt. A prompt of y or n waits for one of the two.
+(** Accepts the answer of a prompt. A prompt of y or n waits for one of the two. *)
 PromptAccept(state) = inPrompt((p, s) -> if p.Choice s else accept(s) end, state)
 
--- The last character of the answer of a prompt removed.
+(** The last character of the answer of a prompt removed. *)
 PromptDeleteBefore(state) = inPrompt((p, s) -> withAnswer(Join("", Take(Max(0, Len(p.Answer) - 1), Chars(p.Answer))), s), state)
 
--- The state with this answer in the prompt.
 defn withAnswer(answer, state)
+  (** The state with this answer in the prompt. *)
   s = state
   s.Prompt.Answer = answer
   s
 end
 
--- The first line of the clipboard added to the answer of a prompt, since an answer has one. A prompt of y or n takes no paste.
+(** The first line of the clipboard added to the answer of a prompt, since an answer has one. A prompt of y or n takes no paste. *)
 PromptPaste(state) = inPrompt((p, s) -> if p.Choice s else promptText(Join("", Take(1, Lines(clipped(s)))), s) end, state)
 
--- Closes the prompt with no answer.
-PromptCancel(state) = inPrompt((p, s) -> say("Quit", closed(s)), state)
+PromptCancel(state) = inPrompt((p, s) -> say("Quit", closed(s)), state)   (** Closes the prompt with no answer. *)
 
--- A chord while a prompt is open: it runs what bindings give it, and any other chord does nothing.
 defn promptChord(chord, bindings, state)
+  (** A chord while a prompt is open: it runs what bindings give it, and any other chord does nothing. *)
   match keys.Lookup("", chord, bindings)
     {Command: f} -> ran(f, state)
     else -> state
   end
 end
 
--- Text while a prompt is open: it goes to the answer. A prompt of y or n takes one of the two and ends.
 defn promptText(words, state)
+  (** Text while a prompt is open: it goes to the answer. A prompt of y or n takes one of the two and ends. *)
   p = state.Prompt
   if p.Choice
     answer = Lower(words)
@@ -301,33 +275,32 @@ defn promptText(words, state)
   end
 end
 
--- ---- Buffers and files
+(* ---- Buffers and files *)
 
--- The state with the buffers. At least one is kept, and current stays among them.
 defn withBuffers(buffers, current, state)
+  (** The state with the buffers. At least one is kept, and current stays among them. *)
   s = state
   s.Buffers = if Len(buffers) == 0 [text.Of("", missing)] else buffers end
   s.Current = Min(Max(1, current), Len(s.Buffers))
   s
 end
 
--- An array without its element k.
-without(k, items) = Concat(Take(k - 1, items), Skip(k, items))
+without(k, items) = Concat(Take(k - 1, items), Skip(k, items))   (** An array without its element k. *)
 
--- The state without buffer k, and current the current one, as withBuffers keeps it. A pane that showed buffer k shows the buffer that takes its place, at
--- the place that one holds, and a pane on a buffer after it counts one less.
 defn dropped(k, current, state)
+  (** The state without buffer k, and current the current one, as withBuffers keeps it. A pane that showed buffer k shows the buffer that takes its place, at
+      the place that one holds, and a pane on a buffer after it counts one less. *)
   s = withBuffers(without(k, state.Buffers), current, state)
   n = Len(s.Buffers)
   s.Panes = panes.MapLeaves(leaf -> renumbered(k, n, leaf), panes.Tree(state))
   s
 end
 
--- A leaf of a pane after buffer k went, of the n buffers left.
+(** A leaf of a pane after buffer k went, of the n buffers left. *)
 renumbered(k, n, leaf) = if leaf.Buffer > k {Buffer: leaf.Buffer - 1, View: leaf.View} else if leaf.Buffer == k panes.One(Min(k, n)) else leaf end
 
--- The folder of a path with its slash, or an empty text for a path with no folder.
 defn folder(path)
+  (** The folder of a path with its slash, or an empty text for a path with no folder. *)
   if IsMissing(path) or not Contains("/", path)
     ""
   else
@@ -335,8 +308,8 @@ defn folder(path)
   end
 end
 
--- The index of the buffer for this file, or 0.
 defn indexOfFile(path, state)
+  (** The index of the buffer for this file, or 0. *)
   wanted = files.Normal(path)
   for k in 1:Len(state.Buffers)
     b = state.Buffers[k]
@@ -347,8 +320,8 @@ defn indexOfFile(path, state)
   0
 end
 
--- Goes to the file at path, in a new buffer or in the one that has it. A file that can't be read is a message.
 defn OpenFile(path, state)
+  (** Goes to the file at path, in a new buffer or in the one that has it. A file that can't be read is a message. *)
   if path == ""
     return say("No file name.", state)
   end
@@ -364,8 +337,8 @@ defn OpenFile(path, state)
   end
 end
 
--- The state with a buffer for the file just read, and the person in it.
 defn opened(path, read, state)
+  (** The state with a buffer for the file just read, and the person in it. *)
   b = text.Of(read.Words, path)
   b.Disk = read.Disk
   s = state
@@ -374,8 +347,8 @@ defn opened(path, read, state)
   s
 end
 
--- Opens every file in order, in new buffers, and stays in the first one that was opened. An empty buffer that nothing touched makes room.
 defn OpenAll(paths, state)
+  (** Opens every file in order, in new buffers, and stays in the first one that was opened. An empty buffer that nothing touched makes room. *)
   s = Reduce((acc, path) -> OpenFile(path, acc), state, paths)
   if Len(s.Buffers) == Len(state.Buffers)
     s
@@ -386,29 +359,29 @@ defn OpenAll(paths, state)
   end
 end
 
--- Does the state have only an untouched empty buffer with no file, which a first file replaces?
+(** Does the state have only an untouched empty buffer with no file, which a first file replaces? *)
 isPlaceholder(state) = Len(state.Buffers) == 1 and IsMissing(state.Buffers[1].Path) and not text.IsModified(state.Buffers[1]) and rope.Text(state.Buffers[1].Rope) == ""
 
--- Asks for a file to open, with the folder of the current file as the start of the answer.
+(** Asks for a file to open, with the folder of the current file as the start of the answer. *)
 FindFile(state) = ask("Find file: ", folder(current(state).Path), (answer, s) -> OpenFile(answer, s), state)
 
--- Goes to the next buffer, from the last to the first.
 defn NextBuffer(state)
+  (** Goes to the next buffer, from the last to the first. *)
   s = state
   s.Current = Mod(state.Current, Len(state.Buffers)) + 1
   s
 end
 
--- The state with buffer k closed.
 defn close(k, state)
+  (** The state with buffer k closed. *)
   dropped(k, k, state)
 end
 
--- The answer to the question about closing buffer k.
+(** The answer to the question about closing buffer k. *)
 closeIfYes(k, answer, state) = if answer == "y" close(k, state) else state end
 
--- Closes the current buffer, asking first if its text isn't saved. The last one is replaced by an empty buffer.
 defn CloseBuffer(state)
+  (** Closes the current buffer, asking first if its text isn't saved. The last one is replaced by an empty buffer. *)
   k = state.Current
   if text.IsModified(current(state))
     confirm("Text not saved. Close anyway? (y or n)", (answer, s) -> closeIfYes(k, answer, s), state)
@@ -417,8 +390,8 @@ defn CloseBuffer(state)
   end
 end
 
--- The state with buffer k saved at path, with the time of the file given, and a message.
 defn saved(k, path, disk, words, state)
+  (** The state with buffer k saved at path, with the time of the file given, and a message. *)
   b = text.MarkSaved(disk, state.Buffers[k])
   b.Path = path
   s = state
@@ -426,8 +399,8 @@ defn saved(k, path, disk, words, state)
   say(words, s)
 end
 
--- The answer to the question about writing over a file that changed.
 defn overwrite(k, path, answer, state)
+  (** The answer to the question about writing over a file that changed. *)
   if answer == "y"
     store(k, path, true, missing, state)
   else
@@ -435,9 +408,9 @@ defn overwrite(k, path, answer, state)
   end
 end
 
--- Writes buffer k to path, if the file is still the one of disk, or whatever is there when force is true. An Err of kind changed asks first,
--- one of kind saved counts as a save whose time is unknown, and any other Err is a message with the text still modified.
 defn store(k, path, force, disk, state)
+  (** Writes buffer k to path, if the file is still the one of disk, or whatever is there when force is true. An Err of kind changed asks first,
+      one of kind saved counts as a save whose time is unknown, and any other Err is a message with the text still modified. *)
   words = rope.Text(state.Buffers[k].Rope)
   r = if force files.ForceSave(path, words) else files.SaveFile(path, words, disk) end
   match r
@@ -446,8 +419,8 @@ defn store(k, path, force, disk, state)
   end
 end
 
--- The state after a save that gave an error.
 defn failed(k, path, disk, e, state)
+  (** The state after a save that gave an error. *)
   if e.Kind == "changed"
     confirm("File changed on disk. Overwrite? (y or n)", (answer, s) -> overwrite(k, path, answer, s), state)
   else if e.Kind == "saved"
@@ -457,9 +430,9 @@ defn failed(k, path, disk, e, state)
   end
 end
 
--- The answer of the prompt Save as: the buffer gets a path only if the save works. A file there already is asked about, as one that changed,
--- and a file open in another buffer is refused: one file would get two buffers, with two texts.
 defn saveAs(k, answer, state)
+  (** The answer of the prompt Save as: the buffer gets a path only if the save works. A file there already is asked about, as one that changed,
+      and a file open in another buffer is refused: one file would get two buffers, with two texts. *)
   if answer == ""
     say("No file name.", state)
   else if indexOfFile(answer, state) > 0
@@ -469,8 +442,8 @@ defn saveAs(k, answer, state)
   end
 end
 
--- Saves the current buffer, asking for a file name first if it has none. A list has no file to save.
 defn Save(state)
+  (** Saves the current buffer, asking for a file name first if it has none. A list has no file to save. *)
   b = current(state)
   k = state.Current
   if lists.IsList(b)
@@ -482,18 +455,18 @@ defn Save(state)
   end
 end
 
--- The state that ends the editor.
 defn ended(state)
+  (** The state that ends the editor. *)
   s = state
   s.Ending = true
   s
 end
 
--- The answer to the question about quitting.
+(** The answer to the question about quitting. *)
 quitIfYes(answer, state) = if answer == "y" ended(state) else state end
 
--- Ends the editor, asking first if any text isn't saved.
 defn Quit(state)
+  (** Ends the editor, asking first if any text isn't saved. *)
   if Len(Filter(text.IsModified, state.Buffers)) > 0
     confirm("Text not saved. Quit anyway? (y or n)", quitIfYes, state)
   else
@@ -501,17 +474,15 @@ defn Quit(state)
   end
 end
 
--- Running a program: not there yet, like the two after it, which only say so.
+(** Running a program: not there yet, like the two after it, which only say so. *)
 Run(state) = say("Running a program is not there yet.", state)
--- Stopping a program: not there yet.
-Stop(state) = say("No program is running.", state)
--- Showing the output: not there yet.
-ToggleOutput(state) = say("There is no output yet.", state)
+Stop(state) = say("No program is running.", state)   (** Stopping a program: not there yet. *)
+ToggleOutput(state) = say("There is no output yet.", state)   (** Showing the output: not there yet. *)
 
--- ---- Panes: the pane being edited holds its place in the current buffer, and each other pane keeps its own in its leaf, see panes.ce.
+(* ---- Panes: the pane being edited holds its place in the current buffer, and each other pane keeps its own in its leaf, see panes.ce. *)
 
--- The state with its pane being edited on the current buffer, after a command that changed buffer.
 defn synced(state)
+  (** The state with its pane being edited on the current buffer, after a command that changed buffer. *)
   tree = panes.Tree(state)
   i = panes.Active(state)
   if panes.At(i, tree).Buffer == state.Current
@@ -523,8 +494,8 @@ defn synced(state)
   end
 end
 
--- The state with the panes of tree and pane j being edited: its buffer becomes the current one, at the place its leaf keeps.
 defn showing(j, tree, state)
+  (** The state with the panes of tree and pane j being edited: its buffer becomes the current one, at the place its leaf keeps. *)
   leaf = panes.At(j, tree)
   k = Min(leaf.Buffer, Len(state.Buffers))
   s = state
@@ -535,8 +506,8 @@ defn showing(j, tree, state)
   s
 end
 
--- The state with pane j being edited: the place of the current buffer is kept in the leaf of the pane that was, and the buffer of pane j comes at its own.
 defn focused(j, state)
+  (** The state with pane j being edited: the place of the current buffer is kept in the leaf of the pane that was, and the buffer of pane j comes at its own. *)
   s = synced(state)
   i = panes.Active(s)
   if j == i
@@ -546,9 +517,9 @@ defn focused(j, state)
   end
 end
 
--- The pane being edited split in two along "rows" or "columns", if each half has room for two lines of eight characters. It stays the one being edited,
--- and the new half shows the same buffer at the same place.
 defn split(along, state)
+  (** The pane being edited split in two along "rows" or "columns", if each half has room for two lines of eight characters. It stays the one being edited,
+      and the new half shows the same buffer at the same place. *)
   s = synced(state)
   i = panes.Active(s)
   cut = panes.Split(i, along, panes.Tree(s))
@@ -562,16 +533,14 @@ defn split(along, state)
   end
 end
 
--- The pane being edited split in two, one above the other.
-SplitBelow(state) = split("rows", state)
--- The pane being edited split in two, side by side.
-SplitRight(state) = split("columns", state)
+SplitBelow(state) = split("rows", state)   (** The pane being edited split in two, one above the other. *)
+SplitRight(state) = split("columns", state)   (** The pane being edited split in two, side by side. *)
 
--- The next pane, from the last to the first.
+(** The next pane, from the last to the first. *)
 NextPane(state) = focused(Mod(panes.Active(state), panes.Count(panes.Tree(state))) + 1, state)
 
--- The pane being edited closed: the other side of its split takes its place, and the pane there is edited. The last pane stays.
 defn ClosePane(state)
+  (** The pane being edited closed: the other side of its split takes its place, and the pane there is edited. The last pane stays. *)
   tree = panes.Tree(state)
   if panes.Count(tree) == 1
     return say("This is the only pane.", state)
@@ -581,35 +550,35 @@ defn ClosePane(state)
   showing(Min(i, panes.Count(rest)), rest, state)
 end
 
--- Only the pane being edited is kept.
 defn OnlyPane(state)
+  (** Only the pane being edited is kept. *)
   s = state
   s.Panes = panes.One(state.Current)
   s.Pane = 1
   s
 end
 
--- ---- Config
+(* ---- Config *)
 
--- What the editor runs on: the record that the function in the Config of the state gives, with the keys and the settings, as emacs.Config in apps/ makes it.
--- A state with none, as one from a session before this field, has no key and the settings of unconfigured: see view.Start.
 defn config(state)
+  (** What the editor runs on: the record that the function in the Config of the state gives, with the keys and the settings, as emacs.Config in apps/ makes it.
+      A state with none, as one from a session before this field, has no key and the settings of unconfigured: see view.Start. *)
   match state
     {Config: f} -> if IsMissing(f) unconfigured() else f() end
     else -> unconfigured()
   end
 end
 
--- The config of a state that has none: no key, so that nothing runs that nobody bound, and plain settings.
+(** The config of a state that has none: no key, so that nothing runs that nobody bound, and plain settings. *)
 unconfigured() = {Keys: () -> Dict(), PromptKeys: () -> Dict(), MouseKeys: () -> Dict(), PromptMouseKeys: () -> Dict(), ListKeys: () -> Dict(), TabText: () -> "  ",
   WheelLines: () -> 3.0, DragZone: () -> 4, FontSize: () -> 15}
 
--- ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.ce for what a list holds.
+(* ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.ce for what a list holds. *)
 
--- Opens a list named name. rows is a function from the state to the rows, each {Words, Item}, and keys a function that gives the keys of the list, whose
--- functions take the item under the cursor and the state. Typing filters the rows, and the ListKeys of the config take the filter back. A list open already
--- gives its place to this one.
 defn ShowList(name, rows, keys, state)
+  (** Opens a list named name. rows is a function from the state to the rows, each {Words, Item}, and keys a function that gives the keys of the list, whose
+      functions take the item under the cursor and the state. Typing filters the rows, and the ListKeys of the config take the filter back. A list open already
+      gives its place to this one. *)
   here = current(state)
   back = if lists.IsList(here) lists.Of(here).Back else state.Current end
   s = withoutList(state)
@@ -620,8 +589,8 @@ defn ShowList(name, rows, keys, state)
   refreshed(s)
 end
 
--- The state without its list, if one is open, and current on the same buffer as before.
 defn withoutList(state)
+  (** The state without its list, if one is open, and current on the same buffer as before. *)
   for k in 1:Len(state.Buffers)
     if lists.IsList(state.Buffers[k])
       return dropped(k, if state.Current > k state.Current - 1 else state.Current end, state)
@@ -630,8 +599,8 @@ defn withoutList(state)
   state
 end
 
--- Goes to buffer k. From a list, the list closes on the way, and k counts the buffers as they were with it.
 defn ToBuffer(k, state)
+  (** Goes to buffer k. From a list, the list closes on the way, and k counts the buffers as they were with it. *)
   if lists.IsList(current(state))
     at = state.Current
     dropped(at, if k > at k - 1 else k end, state)
@@ -640,8 +609,8 @@ defn ToBuffer(k, state)
   end
 end
 
--- The state with this filter in the list of the current buffer.
 defn withFilter(filter, state)
+  (** The state with this filter in the list of the current buffer. *)
   b = current(state)
   l = lists.Of(b)
   l.Filter = filter
@@ -649,14 +618,14 @@ defn withFilter(filter, state)
   put(b, state)
 end
 
--- The last character of the filter of a list taken back. Out of a list, nothing changes.
 defn ListBack(state)
+  (** The last character of the filter of a list taken back. Out of a list, nothing changes. *)
   l = lists.Of(current(state))
   if IsMissing(l) state else withFilter(Join("", Take(Max(0, Len(l.Filter) - 1), Chars(l.Filter))), state) end
 end
 
--- The filter of a list cleared, or with none the list closed, back to the buffer it was opened from. Out of a list, nothing changes.
 defn ListCancel(state)
+  (** The filter of a list cleared, or with none the list closed, back to the buffer it was opened from. Out of a list, nothing changes. *)
   l = lists.Of(current(state))
   if IsMissing(l)
     state
@@ -667,9 +636,9 @@ defn ListCancel(state)
   end
 end
 
--- The state with the list in the current buffer, if it is one, made again from its rows and its filter. The cursor stays on the item it was on, if that one is
--- still shown, else on its line. When the words don't change, the buffer stays as it is, with its selection.
 defn refreshed(state)
+  (** The state with the list in the current buffer, if it is one, made again from its rows and its filter. The cursor stays on the item it was on, if that one is
+      still shown, else on its line. When the words don't change, the buffer stays as it is, with its selection. *)
   b = current(state)
   l = lists.Of(b)
   if IsMissing(l)
@@ -689,20 +658,20 @@ defn refreshed(state)
   put(out, state)
 end
 
--- The keys of the list in the current buffer, over the keys of the config and its ListKeys: a key of the list gets the item under the cursor.
 defn listKeys(state)
+  (** The keys of the list in the current buffer, over the keys of the config and its ListKeys: a key of the list gets the item under the cursor. *)
   own = MapValues(f -> (s -> withItem(f, s)), lists.Of(current(state)).Keys())
   Merge(Merge(config(state).Keys(), config(state).ListKeys()), own)
 end
 
--- The state after f on the item under the cursor of the list, or a message when no row is left.
 defn withItem(f, state)
+  (** The state after f on the item under the cursor of the list, or a message when no row is left. *)
   item = lists.ItemAt(current(state))
   if IsMissing(item) say("Nothing here.", state) else f(item, state) end
 end
 
--- A list is read only: after a command that changed its text, as a cut or an undo, its buffer is put back as it was, with a message.
 defn guarded(after, before)
+  (** A list is read only: after a command that changed its text, as a cut or an undo, its buffer is put back as it was, with a message. *)
   if after.Current == before.Current and Len(after.Buffers) == Len(before.Buffers) and lists.IsList(current(after)) and current(after).Version != current(before).Version
     say("This list is read only.", put(current(before), after))
   else
@@ -710,16 +679,16 @@ defn guarded(after, before)
   end
 end
 
--- ---- Keys and events
+(* ---- Keys and events *)
 
--- Is a program running? Not for now.
+(** Is a program running? Not for now. *)
 Moving(state) = false
 
--- What Chain holds while a command runs, if the command before it was a cut of a line: neither true, which only a new cut sets, nor false.
+(** What Chain holds while a command runs, if the command before it was a cut of a line: neither true, which only a new cut sets, nor false. *)
 wasCut() = "cut"
 
--- The state after f, a command. A chain of cuts ends here unless the command cut a line, whatever function it is.
 defn ran(f, state)
+  (** The state after f, a command. A chain of cuts ends here unless the command cut a line, whatever function it is. *)
   s = state
   s.Chain = if state.Chain wasCut() else false end
   after = f(s)
@@ -727,8 +696,8 @@ defn ran(f, state)
   after
 end
 
--- The chord of a key with no chord of its own that follows the first key of a pair, as the b of C-x b, or missing.
 defn secondKey(event, state)
+  (** The chord of a key with no chord of its own that follows the first key of a pair, as the b of C-x b, or missing. *)
   if state.Pending != "" and not event.Ctrl and not event.Alt and not event.Super
     Lower(event.Key)
   else
@@ -736,8 +705,8 @@ defn secondKey(event, state)
   end
 end
 
--- The state after a chord, found in bindings with the pending key.
 defn chorded(chord, bindings, state)
+  (** The state after a chord, found in bindings with the pending key. *)
   s = state
   s.Pending = ""
   match keys.Lookup(state.Pending, chord, bindings)
@@ -747,24 +716,24 @@ defn chorded(chord, bindings, state)
   end
 end
 
--- The state after keys with no command, which end a chain of cuts as a command does.
 defn unbound(name, state)
+  (** The state after keys with no command, which end a chain of cuts as a command does. *)
   s = say("$name is not bound.", state)
   s.Chain = false
   s
 end
 
--- The state waiting for the second key of a pair.
 defn pending(first, state)
+  (** The state waiting for the second key of a pair. *)
   s = state
   s.Pending = first
   s.Message = "$first -"
   s
 end
 
--- The state after a key event. A key that types gives its text event the work, unless it is the second key of a pair. Any other key is a command,
--- which ends a step of typing even if it changes nothing.
 defn onKey(event, state)
+  (** The state after a key event. A key that types gives its text event the work, unless it is the second key of a pair. Any other key is a command,
+      which ends a step of typing even if it changes nothing. *)
   s = state
   s.Message = ""
   s.Buffers[state.Current].Free = false
@@ -784,12 +753,12 @@ defn onKey(event, state)
   end
 end
 
--- The text that a key with Ctrl or Alt may also send, which is only the same key again. Most systems send none.
+(** The text that a key with Ctrl or Alt may also send, which is only the same key again. Most systems send none. *)
 echo(key) = if key == "space" " " else Lower(key) end
 
--- The state after a text event: typed at the cursor, or into the prompt. Right after a key with Ctrl or Alt it is only the same key again, and so is any
--- text after such a key with Shift, or after the second key of a pair, whose text the key doesn't tell. A key of the numeric keypad comes only as a text.
 defn onText(event, state)
+  (** The state after a text event: typed at the cursor, or into the prompt. Right after a key with Ctrl or Alt it is only the same key again, and so is any
+      text after such a key with Shift, or after the second key of a pair, whose text the key doesn't tell. A key of the numeric keypad comes only as a text. *)
   s = state
   same = state.Chorded == true or state.Chorded == Lower(event.Text)
   s.Chorded = false
@@ -806,17 +775,17 @@ defn onText(event, state)
   end
 end
 
--- What the wheel left for the next event. A state from before this field has none, and reading one it lacks would panic: see view.Start.
 defn wheelRest(state)
+  (** What the wheel left for the next event. A state from before this field has none, and reading one it lacks would panic: see view.Start. *)
   match state
     {Wheel: rest} -> rest
     else -> 0.0
   end
 end
 
--- The screen of the pane under the mouse moved by the wheel, the WheelLines of the config for each notch, without moving the cursor, and without making that pane
--- the one being edited. What is less than a line stays for the next event, since a touchpad sends many small ones.
 defn Wheel(event, state)
+  (** The screen of the pane under the mouse moved by the wheel, the WheelLines of the config for each notch, without moving the cursor, and without making that pane
+      the one being edited. What is less than a line stays for the next event, since a touchpad sends many small ones. *)
   i = panes.Active(state)
   j = view.PaneAt(event.X, event.Y, state)
   if j > 0 and j != i
@@ -826,8 +795,8 @@ defn Wheel(event, state)
   end
 end
 
--- The screen of the current buffer moved by the wheel.
 defn wheeled(event, state)
+  (** The screen of the current buffer moved by the wheel. *)
   b = current(state)
   wanted = wheelRest(state) - event.Amount * config(state).WheelLines()
   lines = Div(Floor(wanted + 0.5), 1)
@@ -838,8 +807,8 @@ defn wheeled(event, state)
   s
 end
 
--- The state after a mouse press: the pane under it is edited, and in its code the cursor goes under the point and a mark from the mouse starts there.
 defn down(event, state)
+  (** The state after a mouse press: the pane under it is edited, and in its code the cursor goes under the point and a mark from the mouse starts there. *)
   j = view.PaneAt(event.X, event.Y, state)
   s = if j > 0 focused(j, state) else state end
   if view.IsInCode(event.X, event.Y, s)
@@ -857,19 +826,19 @@ defn down(event, state)
   end
 end
 
--- The place of the press, until the mouse has left the zone around it, or missing. A state from before this field has none: see view.Start.
 defn pressPoint(state)
+  (** The place of the press, until the mouse has left the zone around it, or missing. A state from before this field has none: see view.Start. *)
   match state
     {Pressed: at} -> at
     else -> missing
   end
 end
 
--- Is this event still in the zone around the press at this point? A hand that moves one pixel during a click means no drag.
+(** Is this event still in the zone around the press at this point? A hand that moves one pixel during a click means no drag. *)
 inZone(event, at, zone) = not IsMissing(at) and Abs(event.X - at.X) <= zone and Abs(event.Y - at.Y) <= zone
 
--- The mouse moved: with the button held, the cursor follows it once it has left the zone around the press, even if it comes back.
 defn Drag(event, state)
+  (** The mouse moved: with the button held, the cursor follows it once it has left the zone around the press, even if it comes back. *)
   if not state.Dragging or inZone(event, pressPoint(state), config(state).DragZone())
     state
   else
@@ -880,8 +849,8 @@ defn Drag(event, state)
   end
 end
 
--- The end of a drag: a click that selected nothing leaves no mark.
 defn Release(event, state)
+  (** The end of a drag: a click that selected nothing leaves no mark. *)
   b = current(state)
   s = state
   s.Dragging = false
@@ -892,8 +861,8 @@ defn Release(event, state)
   end
 end
 
--- A mouse button pressed, which counts as a command: it ends the first key of a pair, a chain of cuts and a step of typing. Only the first button does more.
 defn Press(event, state)
+  (** A mouse button pressed, which counts as a command: it ends the first key of a pair, a chain of cuts and a step of typing. Only the first button does more. *)
   s = state
   s.Pending = ""
   s.Message = ""
@@ -902,32 +871,32 @@ defn Press(event, state)
   if event.Button == 1 down(event, s) else s end
 end
 
--- The state after a mouse event: it runs what bindings give its action, with the event, and any other action does nothing.
 defn onMouse(event, bindings, state)
+  (** The state after a mouse event: it runs what bindings give its action, with the event, and any other action does nothing. *)
   match keys.Lookup("", event.Action, bindings)
     {Command: f} -> f(event, state)
     else -> state
   end
 end
 
--- The state after the window closed: it asks if some text isn't saved, replacing any question that was open.
 defn onQuit(state)
+  (** The state after the window closed: it asks if some text isn't saved, replacing any question that was open. *)
   s = state
   s.Prompt = missing
   Quit(s)
 end
 
--- The state with the size of the window.
 defn resized(event, state)
+  (** The state with the size of the window. *)
   s = state
   s.Width = event.Width
   s.Height = event.Height
   s
 end
 
--- The state with a list made again from its rows, the pane being edited on the current buffer, the screen of each pane on its cursor, and the title of the
--- window the name of the current buffer.
 defn Settled(state)
+  (** The state with a list made again from its rows, the pane being edited on the current buffer, the screen of each pane on its cursor, and the title of the
+      window the name of the current buffer. *)
   s = view.FollowState(synced(refreshed(state)))
   name = view.BufferName(current(s))
   if name != s.Title
@@ -939,8 +908,8 @@ defn Settled(state)
   s
 end
 
--- The new state after an event, or missing when the editor ends.
 defn Update(event, state)
+  (** The new state after an event, or missing when the editor ends. *)
   next = match event.Kind
     "quit" -> onQuit(state)
     "resize" -> resized(event, state)

@@ -1,5 +1,5 @@
--- Checks of commands.ce against real files, in a new folder under /tmp. It is a script, not a test file: it needs permissions.
--- Run it with cesia run --allow read,write tests/commands-check.ce. It prints ok at the end and stops at the first failure.
+(** Checks of commands.ce against real files, in a new folder under /tmp. It is a script, not a test file: it needs permissions.
+    Run it with cesia run --allow read,write tests/commands-check.ce. It prints ok at the end and stops at the first failure. *)
 use rope
 use sys
 use ui
@@ -9,8 +9,8 @@ use press
 use text
 use view
 
--- Stops the script with the words if the condition is false.
 defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
   if not condition
     Panic("FAILED: $words")
   end
@@ -19,10 +19,10 @@ end
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}
 
--- What the editor runs on in these checks: the Emacs keys and the settings.
+(** What the editor runs on in these checks: the Emacs keys and the settings. *)
 checkConfig() = emacs.Config(emacs.Keys)
--- A state with one empty buffer and no window.
 defn fresh()
+  (** A state with one empty buffer and no window. *)
   s = view.Start([text.Of("", missing)], look, cell, 800, 600)
   s.Config = checkConfig
   s
@@ -30,10 +30,8 @@ end
 here(state) = state.Buffers[state.Current]
 wordsOf(state) = rope.Text(here(state).Rope)
 
--- The text of a file, or panics.
-read(path) = Unwrap(sys.Read(path))
--- Writes a file for the checks.
-write(path, words) = Unwrap(sys.Write(path, words))
+read(path) = Unwrap(sys.Read(path))   (** The text of a file, or panics. *)
+write(path, words) = Unwrap(sys.Write(path, words))   (** Writes a file for the checks. *)
 
 folder = "/tmp/cemacs-commands-check-$(Text(sys.Now()))"
 check(IsOk(sys.Mkdir(folder)), "the folder is made")
@@ -42,18 +40,18 @@ bPath = "$folder/b.ce"
 write(aPath, "one\ntwo\n")
 write(bPath, "bee\n")
 
--- Opening a file gives a buffer with its text and path, and the person in it.
+(* Opening a file gives a buffer with its text and path, and the person in it. *)
 s = commands.OpenFile(aPath, fresh())
 check(Len(s.Buffers) == 2 and s.Current == 2, "a new buffer for the file")
 check(wordsOf(s) == "one\ntwo\n" and here(s).Path == aPath, "the buffer has the text and the path")
 check(not text.IsModified(here(s)), "a buffer just read is not modified")
 
--- The same file twice, written another way, is one buffer.
+(* The same file twice, written another way, is one buffer. *)
 twice = commands.OpenFile("$folder/./a.ce", commands.OpenFile(bPath, s))
 check(Len(twice.Buffers) == 3 and twice.Current == 2, "the same file opened again goes to its buffer")
 check(Len(commands.OpenFile(aPath, s).Buffers) == 2, "the same path again opens nothing")
 
--- Two buffers keep their own cursor and undo.
+(* Two buffers keep their own cursor and undo. *)
 two = press.Press(["C-n", "C-e", "x"], twice)
 check(wordsOf(two) == "one\ntwox\n", "typing in the first file")
 two = press.Press(["C-x", "b"], two)
@@ -67,13 +65,13 @@ check(here(two).Path == aPath and here(two).Cursor == {Line: 2, Column: 4} and w
 two = press.Press(["C-/"], two)
 check(wordsOf(two) == "one\ntwo\n", "undo in the first buffer")
 
--- Find file: the prompt starts with the folder of the current file, and Enter opens the answer.
+(* Find file: the prompt starts with the folder of the current file, and Enter opens the answer. *)
 asked = press.Press(["C-x", "C-f"], commands.OpenFile(aPath, fresh()))
 check(asked.Prompt.Answer == "$folder/", "the prompt starts with the folder")
 opened = press.Press(["b.ce", "enter"], asked)
 check(here(opened).Path == "$folder/b.ce" and IsMissing(opened.Prompt) and wordsOf(opened) == "bee\n", "Enter opens the file of the answer")
 
--- A file that doesn't exist opens as an empty buffer, and is created by the first save.
+(* A file that doesn't exist opens as an empty buffer, and is created by the first save. *)
 newPath = "$folder/new.ce"
 made = commands.OpenFile(newPath, fresh())
 check(wordsOf(made) == "" and here(made).Path == newPath, "a missing file opens empty")
@@ -81,7 +79,7 @@ made = press.Press(["h", "i", "C-x", "C-s"], made)
 check(read(newPath) == "hi" and not text.IsModified(here(made)), "the first save creates the file")
 check(Contains("Saved", made.Message), "the save says so")
 
--- A file that is not text is not opened, and the message says why.
+(** A file that is not text is not opened, and the message says why. *)
 write("$folder/bin.dat", "a$(FromBytes([0]))b")
 bad = commands.OpenFile("$folder/bin.dat", fresh())
 check(Len(bad.Buffers) == 1 and Contains("not valid UTF-8", bad.Message), "a file with a zero byte is refused")
@@ -98,17 +96,17 @@ huge = commands.OpenFile("$folder/large", press.Press(["m"], fresh()))
 check(Len(huge.Buffers) == 1 and wordsOf(huge) == "m" and Contains("too large", huge.Message), "a file too large is a message, and the text stays")
 Unwrap(sys.Remove("$folder/large"))
 
--- Several files at the start: the empty buffer makes room and the first file is current.
+(* Several files at the start: the empty buffer makes room and the first file is current. *)
 all = commands.OpenAll([aPath, bPath], fresh())
 check(Len(all.Buffers) == 2 and all.Current == 1 and here(all).Path == aPath, "open_all")
 check(Len(commands.OpenAll([], fresh()).Buffers) == 1, "no file keeps the empty buffer")
 check(Len(commands.OpenAll(["$folder/none-1.ce"], fresh()).Buffers) == 1 and wordsOf(commands.OpenAll(["$folder/none-1.ce"], fresh())) == "", "a missing file at the start opens empty")
 
--- Saving: C-x C-s writes the file, and the star goes.
+(* Saving: C-x C-s writes the file, and the star goes. *)
 edited = press.Press(["C-e", "!", "C-x", "C-s"], commands.OpenFile(bPath, fresh()))
 check(read(bPath) == "bee!\n" and not text.IsModified(here(edited)) and IsMissing(edited.Prompt), "C-x C-s writes the file")
 
--- Save as: a buffer with no path asks for one, and gets it only when the save works.
+(* Save as: a buffer with no path asks for one, and gets it only when the save works. *)
 loose = press.Press(["z", "C-x", "C-s"], fresh())
 check(loose.Prompt.Label == "Save as: ", "a buffer with no path asks")
 saved = press.Press(["$folder/loose.ce", "enter"], loose)
@@ -122,14 +120,14 @@ check(over.Prompt.Label == "File changed on disk. Overwrite? (y or n)" and read(
 over = press.Press(["n"], over)
 check(read(aPath) == "one\ntwo\n" and text.IsModified(here(over)) and IsMissing(over.Prompt), "n keeps the file")
 
--- Save as onto a file open in another buffer is refused: one file would get two buffers.
+(* Save as onto a file open in another buffer is refused: one file would get two buffers. *)
 twin = commands.OpenFile(aPath, fresh())
 twin.Current = 1
 twin = press.Press(["z", "C-x", "C-s", "$folder/./a.ce", "enter"], twin)
 check(IsMissing(twin.Prompt) and IsMissing(here(twin).Path) and text.IsModified(here(twin)) and Contains("open", twin.Message), "save as onto an open file is refused: $(twin.Message)")
 check(Len(twin.Buffers) == 2 and read(aPath) == "one\ntwo\n", "the open file stays as it was")
 
--- A file changed on disk: the save asks, n leaves it, y writes over it.
+(* A file changed on disk: the save asks, n leaves it, y writes over it. *)
 mine = press.Press(["C-e", "?"], commands.OpenFile(bPath, fresh()))
 write(bPath, "theirs\n")
 asked = press.Press(["C-x", "C-s"], mine)
@@ -144,26 +142,26 @@ check(read(bPath) == "bee!?\n" and not text.IsModified(here(forced)), "y writes 
 again = press.Press(["C-e", "1", "C-x", "C-s"], forced)
 check(read(bPath) == "bee!?1\n" and IsMissing(again.Prompt), "after y the next save does not ask")
 
--- A save that fails keeps the text modified.
+(* A save that fails keeps the text modified. *)
 blocked = commands.OpenFile(aPath, fresh())
 blocked.Buffers[blocked.Current].Path = "$folder/nodir/a.ce"
 blocked.Buffers[blocked.Current].Disk = missing
 blocked = press.Press(["x", "C-x", "C-s"], blocked)
 check(text.IsModified(here(blocked)) and blocked.Message != "" and wordsOf(blocked) == "xone\ntwo\n", "a failed save keeps the text and says why")
 
--- Closing a modified buffer asks; a file buffer closes to its neighbour.
+(* Closing a modified buffer asks; a file buffer closes to its neighbour. *)
 dirty = press.Press(["x"], commands.OpenFile(aPath, commands.OpenFile(bPath, fresh())))
 asked = press.Press(["C-x", "k"], dirty)
 check(Len(asked.Buffers) == 3 and asked.Prompt.Label == "Text not saved. Close anyway? (y or n)", "closing a modified file buffer asks")
 closed = press.Press(["y"], asked)
 check(Len(closed.Buffers) == 2 and here(closed).Path == bPath, "y closes it")
 
--- The title follows the current buffer.
+(** The title follows the current buffer. *)
 check(commands.Settled(commands.OpenFile(aPath, fresh())).Title == "a.ce", "the title is the name of the file")
 
--- C-c c opens the entry point of the apps, under the home: run from the root of Cemacs, the home is ".".
+(* C-c c opens the entry point of the apps, under the home: run from the root of Cemacs, the home is ".". *)
 config = press.Press(["C-c", "c"], fresh())
 check(not IsMissing(here(config).Path) and EndsWith("apps/cemacs.ce", here(config).Path), "C-c c opens apps/cemacs.ce: $(here(config).Path) $(config.Message)")
-check(StartsWith("-- Cemacs", wordsOf(config)), "C-c c shows the text of apps/cemacs.ce")
+check(StartsWith("(** Cemacs", wordsOf(config)), "C-c c shows the text of apps/cemacs.ce")
 
 Print("ok")

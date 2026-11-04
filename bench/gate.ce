@@ -1,6 +1,6 @@
--- The speed gate of Cemacs: a text of 20,000 lines in a real window of 1920 by 1080, without vsync.
--- Run from the root of cemacs: cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce
--- It prints the median and the worst of 300 passes for one typed character, and for one scrolled line, and the time to build the rope.
+(** The speed gate of Cemacs: a text of 20,000 lines in a real window of 1920 by 1080, without vsync.
+    Run from the root of cemacs: cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce
+    It prints the median and the worst of 300 passes for one typed character, and for one scrolled line, and the time to build the rope. *)
 use rope
 use sdl
 use sys
@@ -9,26 +9,26 @@ use color
 use text
 use view
 
--- The number of passes measured for each goal.
+(* The number of passes measured for each goal. *)
 passes = 300
--- The number of lines of the text of the gate.
+(* The number of lines of the text of the gate. *)
 wantedLines = 20000
--- The folder of the files that make the text, read from the root of cemacs.
+(* The folder of the files that make the text, read from the root of cemacs. *)
 stdFolder = "../cesia/src/std"
 
--- The text of every file of the Cesia std, one after the other.
 defn stdText()
+  (** The text of every file of the Cesia std, one after the other. *)
   names = Filter(n -> EndsWith(".ce", n), sys.List(stdFolder)?)
   Ok(Join("\n", Map(n -> sys.Read("$stdFolder/$n")?, names)))
 end
 
--- The text of the std read four times, as a file of about 22,000 lines would be read.
 defn readFourTimes()
+  (** The text of the std read four times, as a file of about 22,000 lines would be read. *)
   Ok(Join("\n", Map(n -> stdText()?, Range(1, 4))))
 end
 
--- The text with wantedLines lines: the std, repeated until it is long enough, and cut.
 defn longText(words)
+  (** The text with wantedLines lines: the std, repeated until it is long enough, and cut. *)
   once = Lines(words)
   copies = Div(wantedLines, Len(once)) + 1
   Join("\n", Take(wantedLines, Flatten(Map(n -> once, Range(1, copies)))))
@@ -40,15 +40,15 @@ defn opened()
   sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", 13, second)
 end
 
--- The state: a buffer with its cursor at line, column 0.
 defn stateAt(words, line, look, cell)
+  (** The state: a buffer with its cursor at line, column 0. *)
   b = text.Of(words, "std.ce")
   b.Cursor = {Line: line, Column: 0}
   view.Start([b], look, cell, 1920, 1080)
 end
 
--- Shows the state of a pass and times its three parts in milliseconds: follow, view and frame.
 defn shown(state, window)
+  (** Shows the state of a pass and times its three parts in milliseconds: follow, view and frame. *)
   t0 = sys.Now()
   s = view.FollowState(state)
   t1 = sys.Now()
@@ -59,8 +59,8 @@ defn shown(state, window)
   {State: s, Window: w, Parts: [(t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0]}
 end
 
--- One typed character: insert, forget the colors from that line, then follow, view and frame.
 defn typed(state, window)
+  (** One typed character: insert, forget the colors from that line, then follow, view and frame. *)
   b = state.Buffers[1]
   at = rope.LineStart(b.Cursor.Line, b.Rope) + b.Cursor.Column
   b.Rope = rope.Insert(at, "x", b.Rope)
@@ -72,8 +72,8 @@ defn typed(state, window)
   shown(s, window)
 end
 
--- One scrolled line: the screen moves down one line, and the cursor with it.
 defn scrolled(state, window)
+  (** One scrolled line: the screen moves down one line, and the cursor with it. *)
   b = state.Buffers[1]
   b.Cursor = {Line: b.Cursor.Line + 1, Column: 0}
   b.Top = b.Top + 1
@@ -82,8 +82,8 @@ defn scrolled(state, window)
   shown(s, window)
 end
 
--- The time of each pass in milliseconds, and of its parts.
 defn measure(step, state, window)
+  (** The time of each pass in milliseconds, and of its parts. *)
   s = state
   w = window
   times = []
@@ -99,24 +99,21 @@ defn measure(step, state, window)
   {Times: times, Parts: parts, Window: w}
 end
 
--- A number with one decimal.
-round1(x) = Floor(x * 10.0) / 10.0
+round1(x) = Floor(x * 10.0) / 10.0   (** A number with one decimal. *)
 
--- The middle value of the times.
-medianOf(times) = Sort(times)[Div(Len(times), 2)]
+medianOf(times) = Sort(times)[Div(Len(times), 2)]   (** The middle value of the times. *)
 
--- Prints the median and the worst pass, and the median of follow, view and frame.
 defn report(name, run)
+  (** Prints the median and the worst pass, and the median of follow, view and frame. *)
   median = medianOf(run.Times)
   splitUp = Map(k -> round1(medianOf(Map(p -> p[k], run.Parts))), [1, 2, 3])
   Print("$name: median $(round1(median)) ms, worst $(round1(Last(Sort(run.Times)))) ms; medians of the parts: follow $(splitUp[1]) ms, view $(splitUp[2]) ms, frame $(splitUp[3]) ms")
 end
 
--- The word that tells whether a goal is met.
-verdict(met) = if met "ok" else "FAIL" end
+verdict(met) = if met "ok" else "FAIL" end   (** The word that tells whether a goal is met. *)
 
--- A real opening, end to end: read the files, make the buffer, follow the cursor, build the first frame and show it. Gives the time in milliseconds.
 defn opening(look, cell, window)
+  (** A real opening, end to end: read the files, make the buffer, follow the cursor, build the first frame and show it. Gives the time in milliseconds. *)
   start = sys.Now()
   words = readFourTimes()?
   state = view.Start([text.Of(words, "std.ce")], look, cell, 1920, 1080)

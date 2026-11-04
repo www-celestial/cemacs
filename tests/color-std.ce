@@ -1,5 +1,5 @@
--- Every line of every .ce file of the Cesia std goes through color.Tokens, keeping the state: no line may lose a character.
--- Run from the root of cemacs with: cesia run --allow read tests/color-std.ce
+(** Every line of every .ce file of the Cesia std goes through color.Tokens, keeping the state: no line may lose a character.
+    Run from the root of cemacs with: cesia run --allow read tests/color-std.ce *)
 use sys
 use color
 
@@ -18,8 +18,8 @@ defn lostIn(path, text)
   bad
 end
 
--- The states at the start of every line given by colored_to must equal the ones given by reading every line with tokens.
 defn statesDifferIn(path, text)
+  (** The states at the start of every line given by colored_to must equal the ones given by reading every line with tokens. *)
   allLines = Lines(text)
   state = color.FirstState
   expected = [state]
@@ -36,8 +36,8 @@ defn statesDifferIn(path, text)
   end
 end
 
--- The paths of the .ce files of the folder. No file at all is a bug of the test.
 defn kpFiles(folder)
+  (** The paths of the .ce files of the folder. No file at all is a bug of the test. *)
   names = Filter(f -> EndsWith(".ce", f), Unwrap(sys.List(folder)))
   if Len(names) == 0
     Panic("no .ce file in $(folder)")

@@ -1,6 +1,6 @@
--- The editor in a window, as apps/cemacs.ce runs it, for tests/reload-check.sh: a fiber sends the same keys again and again through SDL, and what each one did is
--- printed.
--- The state is one from before the fields Wheel and Pressed, as a session running under --watch keeps it through a reload.
+(** The editor in a window, as apps/cemacs.ce runs it, for tests/reload-check.sh: a fiber sends the same keys again and again through SDL, and what each one did is
+    printed.
+    The state is one from before the fields Wheel and Pressed, as a session running under --watch keeps it through a reload. *)
 use c
 use sdl
 use sys
@@ -10,8 +10,8 @@ use commands
 use text
 use view
 
--- Pushes an event of this type to SDL, with its fields as [type, offset, value].
 defn push(type, fields)
+  (** Pushes an event of this type to SDL, with its fields as [type, offset, value]. *)
   lib = Unwrap(c.Open("SDL3", version = 0))
   send = Unwrap(c.Fn("SDL_PushEvent", ["ptr"], "bool", lib))
   event = c.Alloc(128)
@@ -23,15 +23,14 @@ defn push(type, fields)
   c.Free(event)
 end
 
--- A key event with a key code and the modifiers of SDL: 0x40 is control.
+(** A key event with a key code and the modifiers of SDL: 0x40 is control. *)
 key(code, mods) = push(0x300, [["u32", 28, code], ["u16", 32, mods]])
--- C-t, the key the bindings of the test use.
-probe() = key(0x74, 0x40)
--- One notch of the wheel, down.
+probe() = key(0x74, 0x40)   (** C-t, the key the bindings of the test use. *)
+(** One notch of the wheel, down. *)
 wheel() = push(0x403, [["f32", 28, -1.0], ["f32", 36, 100.0], ["f32", 40, 100.0]])
 
--- The keys of one pass: C-t alone, tab, the wheel, C-t after C-x, and C-t in the prompt of C-x C-f, which C-g then closes.
 defn pass()
+  (** The keys of one pass: C-t alone, tab, the wheel, C-t after C-x, and C-t in the prompt of C-x C-f, which C-g then closes. *)
   probe()
   key(0x09, 0)
   wheel()
@@ -43,16 +42,16 @@ defn pass()
   key(0x67, 0x40)
 end
 
--- Sends the keys until the window closes, and for 30 seconds at most.
 defn sending()
+  (** Sends the keys until the window closes, and for 30 seconds at most. *)
   for n in 1:1500
     pass()
     sys.Sleep(0.02)
   end
 end
 
--- Prints what an event did.
 defn note(event, before, after)
+  (** Prints what an event did. *)
   was = before.Buffers[before.Current]
   now = after.Buffers[after.Current]
   if event.Kind == "key" and event.Key == "t"
@@ -65,8 +64,8 @@ defn note(event, before, after)
   end
 end
 
--- The new state after an event. A stop ends this at once, whatever the text: nothing here needs saving.
 defn update(event, state)
+  (** The new state after an event. A stop ends this at once, whatever the text: nothing here needs saving. *)
   if event.Kind == "quit"
     return missing
   end
@@ -81,10 +80,10 @@ defn opened()
   sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", emacs.FontSize(), second)
 end
 
--- What the editor runs on: the Emacs keys and the settings, which tests/reload-check.sh changes in apps/emacs/emacs.ce while this runs.
+(** What the editor runs on: the Emacs keys and the settings, which tests/reload-check.sh changes in apps/emacs/emacs.ce while this runs. *)
 Config() = emacs.Config(emacs.Keys)
 
--- A state with what view.Start gave before the fields Wheel and Pressed, and the config the program gives.
+(** A state with what view.Start gave before the fields Wheel and Pressed, and the config the program gives. *)
 older(s) = {Buffers: s.Buffers, Current: s.Current, Pending: s.Pending, Prompt: s.Prompt, Message: s.Message, Run: s.Run, Window: s.Window, Width: s.Width,
   Height: s.Height, Cell: s.Cell, Look: s.Look, Clip: s.Clip, Chorded: s.Chorded, Chain: s.Chain, Dragging: s.Dragging, Ending: s.Ending, Title: s.Title,
   Config: Config}

@@ -1,4 +1,4 @@
--- Tests of lists: run with cesia test .
+(** Tests of lists: run with cesia test . *)
 use lists
 use text
 

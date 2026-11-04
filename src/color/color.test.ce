@@ -1,4 +1,4 @@
--- Tests of color.ce: run with cesia test .
+(** Tests of color.ce: run with cesia test . *)
 use color
 
 roles(line) = Map(t -> t[1], color.Tokens(line, color.FirstState).Tokens)
@@ -27,9 +27,11 @@ isText() = color.String in roles("x = \"a\"")
 isTextWhole() = Equal(color.Tokens("x = \"a\"", color.FirstState).Tokens[2], [color.String, "\"a\""])
 isTextWithEscape() = Equal(color.Tokens("\"a\\\"b\" c", color.FirstState).Tokens[1], [color.String, "\"a\\\"b\""])
 isInterpolationStaysString() = Equal(color.Tokens("\"a $$(b) c\"", color.FirstState).Tokens, [[color.String, "\"a $$(b) c\""]])
-isCommentLine() = Equal(color.Tokens("-- note", color.FirstState).Tokens, [[color.Comment, "-- note"]])
-isCommentAfterCode() = Equal(color.Tokens("x -- note", color.FirstState).Tokens, [[color.Plain, "x "], [color.Comment, "-- note"]])
-isCommentEndsTheLine() = Equal(roles("x -- \"a\" if"), [color.Plain, color.Comment])
+isCommentLine() = Equal(color.Tokens("(* note *)", color.FirstState).Tokens, [[color.Comment, "(* note *)"]])
+isCommentAfterCode() = Equal(color.Tokens("x (* note *)", color.FirstState).Tokens, [[color.Plain, "x "], [color.Comment, "(* note *)"]])
+isDocIsAComment() = Equal(color.Tokens("(** doc *)", color.FirstState).Tokens, [[color.Comment, "(** doc *)"]])
+isDashesAreNoComment() = not (color.Comment in roles("x -- note")) and lost("x -- note")
+isDashesInTextStay() = Equal(roles("\"a -- b\""), [color.String])
 isCommentCarries() = color.Tokens("(* a", color.FirstState).State.Comment == 1
 isCommentNests() = color.Tokens("(* (* a *)", color.FirstState).State.Comment == 1
 isCommentCloses() = color.Tokens("(* a *) x", color.FirstState).State.Comment == 0

@@ -1,5 +1,5 @@
--- The frame: from a state to an array of commands for sdl. Everything here is pure and knows no window. The look of the state gives
--- the theme and the widths of the proportional fonts; cell is the size of one character of the code font.
+(** The frame: from a state to an array of commands for sdl. Everything here is pure and knows no window. The look of the state gives
+    the theme and the widths of the proportional fonts; cell is the size of one character of the code font. *)
 use rope
 use ui
 use color
@@ -7,35 +7,35 @@ use lists
 use panes
 use text
 
--- The width of the line numbers and the space around them, before the first column of text.
+(* The width of the line numbers and the space around them, before the first column of text. *)
 Gutter = 62
 
--- Pixels added under the height of the code font to space the lines: JetBrains Mono at 13 is 18 high, and the 19 of ui.Code reads less tight.
+(* Pixels added under the height of the code font to space the lines: JetBrains Mono at 13 is 18 high, and the 19 of ui.Code reads less tight. *)
 LineGap = 1
 
 modeHeight = 24
 promptHeight = 22
 
--- The state of the editor with its buffers, before any key: the first buffer is current, there is no pending key, no prompt, no run and no window yet.
--- The editor adds its own fields: clip, the clipboard when there is no window; chorded, right after a key with Ctrl or Alt, the text of the event to ignore,
--- or true for any text; chain, true while the last command was C-k; dragging, true while the mouse selects; pressed, the place of a mouse press until the mouse leaves
--- the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; and title. Config is the function
--- that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Cemacs, "." until the program says. Panes is
--- the tree of the panes, see panes.ce, and Pane the one being edited, which shows the current buffer.
--- Under --watch the code changes and the state stays, so a session can hold a state from before a field was added here. A field added after that
--- is read only through a match with a default, which is how Cesia tests for a field: reading one that isn't there panics, with all the unsaved text.
---
---   Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600).Current --> 1
+(** The state of the editor with its buffers, before any key: the first buffer is current, there is no pending key, no prompt, no run and no window yet.
+    The editor adds its own fields: clip, the clipboard when there is no window; chorded, right after a key with Ctrl or Alt, the text of the event to ignore,
+    or true for any text; chain, true while the last command was C-k; dragging, true while the mouse selects; pressed, the place of a mouse press until the mouse leaves
+    the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; and title. Config is the function
+    that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Cemacs, "." until the program says. Panes is
+    the tree of the panes, see panes.ce, and Pane the one being edited, which shows the current buffer.
+    Under --watch the code changes and the state stays, so a session can hold a state from before a field was added here. A field added after that
+    is read only through a match with a default, which is how Cesia tests for a field: reading one that isn't there panics, with all the unsaved text.
+
+      Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600).Current --> 1 *)
 Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pending: "", Prompt: missing, Message: "", Run: missing, Window: missing, Width: width, Height: height, Cell: cell, Look: look,
   Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: "", Config: missing, Home: ".",
   Panes: panes.One(1), Pane: 1}
 
--- The rectangles of the screen {Area, Code, Output, Mode, Prompt}, and rows and columns, the lines and the characters that fit in code. Area is where the
--- panes go, above the output and the prompt line, and code and mode are those of one pane that fills it. With showing_output false, output is empty.
--- No size goes below zero, so a tiny window still has a layout.
---
---   Layout(800, 600, {Width: 8, Height: 19}, false).Output.Height --> 0
 defn Layout(width, height, cell, showingOutput)
+  (** The rectangles of the screen {Area, Code, Output, Mode, Prompt}, and rows and columns, the lines and the characters that fit in code. Area is where the
+      panes go, above the output and the prompt line, and code and mode are those of one pane that fills it. With showing_output false, output is empty.
+      No size goes below zero, so a tiny window still has a layout.
+
+        Layout(800, 600, {Width: 8, Height: 19}, false).Output.Height --> 0 *)
   whole = {X: 0, Y: 0, Width: width, Height: height}
   prompt = ui.Bottom(promptHeight, whole)
   outputHeight = if showingOutput Max(0, Div(prompt.Rest.Height - modeHeight, 3)) else 0 end
@@ -44,27 +44,27 @@ defn Layout(width, height, cell, showingOutput)
   {Area: output.Rest, Code: one.Code, Output: output.Part, Mode: one.Mode, Prompt: prompt.Part, Rows: one.Rows, Columns: one.Columns}
 end
 
--- The rectangles of a pane in rect, {Code, Mode} with its mode line at the bottom, and the rows and the columns that fit in its code.
---
---   PaneLayout({X: 0, Y: 0, Width: 800, Height: 289}, {Width: 8, Height: 19}).Rows --> 13
 defn PaneLayout(rect, cell)
+  (** The rectangles of a pane in rect, {Code, Mode} with its mode line at the bottom, and the rows and the columns that fit in its code.
+
+        PaneLayout({X: 0, Y: 0, Width: 800, Height: 289}, {Width: 8, Height: 19}).Rows --> 13 *)
   mode = ui.Bottom(modeHeight, rect)
   code = mode.Rest
   {Code: code, Mode: mode.Part, Rows: Max(0, Div(code.Height - 8, cell.Height)), Columns: Max(0, Div(code.Width - Gutter - 8, cell.Width))}
 end
 
--- The layout of each pane of a state, in the order of the panes, in the area of lay.
+(** The layout of each pane of a state, in the order of the panes, in the area of lay. *)
 paneLayoutsIn(lay, state) = Map(r -> PaneLayout(r, state.Cell), panes.Rects(lay.Area, panes.Tree(state)))
 
--- The layout of each pane of a state, as PaneLayout gives it, in the order of the panes.
+(** The layout of each pane of a state, as PaneLayout gives it, in the order of the panes. *)
 PaneLayouts(state) = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run)), state)
 
--- The place of a buffer on the screen, which a pane keeps while another one is edited: the cursor, the mark and where it came from, the top and the left of
--- the screen, and free.
+(** The place of a buffer on the screen, which a pane keeps while another one is edited: the cursor, the mark and where it came from, the top and the left of
+    the screen, and free. *)
 ViewOf(b) = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Left: b.Left, Free: b.Free}
 
--- The buffer at the place v, brought inside its text, which may have changed in another pane, or the buffer as it is for a v that is missing.
 defn WithView(v, b)
+  (** The buffer at the place v, brought inside its text, which may have changed in another pane, or the buffer as it is for a v that is missing. *)
   if IsMissing(v)
     return b
   end
@@ -77,8 +77,8 @@ defn WithView(v, b)
   out
 end
 
--- The buffer as pane j of a state shows it: the current buffer for the pane being edited, else the buffer of the pane at the place it keeps.
 defn shownIn(j, state)
+  (** The buffer as pane j of a state shows it: the current buffer for the pane being edited, else the buffer of the pane at the place it keeps. *)
   if j == panes.Active(state)
     state.Buffers[state.Current]
   else
@@ -87,22 +87,22 @@ defn shownIn(j, state)
   end
 end
 
--- The name of a buffer: the name of its list, the last part of its path, or untitled.
+(** The name of a buffer: the name of its list, the last part of its path, or untitled. *)
 bufferName(b) = if lists.IsList(b) lists.Of(b).Name else if IsMissing(b.Path) "untitled" else Last(Split("/", b.Path)) end
 
--- The name of a buffer, as the mode line and the title of the window show it.
---
---   BufferName(text.Of("", "src/a.ce")) --> "a.ce"
+(** The name of a buffer, as the mode line and the title of the window show it.
+
+      BufferName(text.Of("", "src/a.ce")) --> "a.ce" *)
 BufferName(b) = bufferName(b)
 
--- The label of the mode line: the name, and a star if the text isn't saved.
+(** The label of the mode line: the name, and a star if the text isn't saved. *)
 label(b) = if text.IsModified(b) "$(bufferName(b)) *" else bufferName(b) end
 
--- A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, and whose colors are known up to the last line on the screen.
--- It is the only place that moves the screen: view only reads. A buffer that is free, after the wheel, keeps its top and left: the cursor may be off the screen.
---
---   Follow(2, 10, {Rope: rope.Of("a\nb\nc"), Cursor: {Line: 3, Column: 0}, Top: 1, Left: 0, Free: false, Colors: color.BlankColors()}).Top --> 2
 defn Follow(rows, columns, b)
+  (** A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, and whose colors are known up to the last line on the screen.
+      It is the only place that moves the screen: view only reads. A buffer that is free, after the wheel, keeps its top and left: the cursor may be off the screen.
+
+        Follow(2, 10, {Rope: rope.Of("a\nb\nc"), Cursor: {Line: 3, Column: 0}, Top: 1, Left: 0, Free: false, Colors: color.BlankColors()}).Top --> 2 *)
   line = b.Cursor.Line
   column = b.Cursor.Column
   seenRows = Max(1, rows)
@@ -133,9 +133,9 @@ defn Follow(rows, columns, b)
   out
 end
 
--- The state with the screen of each pane kept on its cursor, as follow does: the current buffer for the pane being edited, and the place that each other
--- pane keeps. The colors of a buffer are known down to the last line that any pane shows.
 defn FollowState(state)
+  (** The state with the screen of each pane kept on its cursor, as follow does: the current buffer for the pane being edited, and the place that each other
+      pane keeps. The colors of a buffer are known down to the last line that any pane shows. *)
   layouts = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run)), state)
   active = panes.Active(state)
   tree = panes.Tree(state)
@@ -155,14 +155,14 @@ defn FollowState(state)
   s
 end
 
--- A text command in the font code, or in the font of the theme if none.
+(** A text command in the font code, or in the font of the theme if none. *)
 textCommand(x, y, words, color) = {Kind: "text", X: x, Y: y, Text: words, Color: color}
 inside(font, x, y, words, color) = {Kind: "text", X: x, Y: y, Text: words, Color: color, Font: font}
 rectCommand(x, y, w, h, color) = {Kind: "rect", X: x, Y: y, Width: Max(0, w), Height: Max(0, h), Color: color}
 box(x, y, w, h, color, radius) = {Kind: "box", X: x, Y: y, Width: Max(0, w), Height: Max(0, h), Color: color, Radius: radius}
 
--- The tokens [role, text] of a line that are in the columns from left on, as [role, text, column], cutting the first one that straddles left.
 defn visible(tokens, left)
+  (** The tokens [role, text] of a line that are in the columns from left on, as [role, text, column], cutting the first one that straddles left. *)
   out = []
   column = 0
   for token in tokens
@@ -177,12 +177,12 @@ defn visible(tokens, left)
   out
 end
 
--- The state at the start of line n, or the first one if the colors don't reach it yet.
+(** The state at the start of line n, or the first one if the colors don't reach it yet. *)
 startOf(n, colors) = if n <= colors.Known colors.Starts[n] else color.FirstState end
 
--- The commands of line n of a buffer: its number, then one text per token, or one plain text for the row of a list. The line is cut to the columns on the
--- screen before it is read, since sdl has no clipping and the tail would not be seen.
 defn line(b, n, y, columns, rect, look)
+  (** The commands of line n of a buffer: its number, then one text per token, or one plain text for the row of a list. The line is cut to the columns on the
+      screen before it is read, since sdl has no clipping and the tail would not be seen. *)
   th = look.Theme
   cw = look.Width("M", "code")
   cs = Chars(rope.Line(n, b.Rope))
@@ -197,15 +197,15 @@ defn line(b, n, y, columns, rect, look)
   out
 end
 
--- The space between the top of the code area and its first line.
+(* The space between the top of the code area and its first line. *)
 inset = 4
 
--- The y of the row of the code area (0 is the first one) and the x of a column of the screen, in pixels. Drawing and the mouse both use them.
+(** The y of the row of the code area (0 is the first one) and the x of a column of the screen, in pixels. Drawing and the mouse both use them. *)
 rowY(row, rect, cell) = rect.Y + inset + row * cell.Height
 columnX(column, rect, cell) = rect.X + Gutter + column * cell.Width
 
--- The division of two whole numbers rounded down, also when the first is negative.
 defn floorDiv(a, b)
+  (** The division of two whole numbers rounded down, also when the first is negative. *)
   if a >= 0
     Div(a, b)
   else
@@ -213,19 +213,19 @@ defn floorDiv(a, b)
   end
 end
 
--- The row and the column of the screen under a point, rounding the column to the nearest edge between two characters. They may be
--- outside the text, even negative.
 defn cellAt(x, y, rect, cell)
+  (** The row and the column of the screen under a point, rounding the column to the nearest edge between two characters. They may be
+      outside the text, even negative. *)
   dy = y - rect.Y - inset
   dx = x - rect.X - Gutter + Div(cell.Width, 2)
   {Row: floorDiv(dy, cell.Height), Column: floorDiv(dx, cell.Width)}
 end
 
--- The layout of a state: the one of its window, with the output pane if a program runs, and the code, the mode line, the rows and the columns of the pane
--- being edited.
---
---   LayoutOf(Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Rows --> 28
 defn LayoutOf(state)
+  (** The layout of a state: the one of its window, with the output pane if a program runs, and the code, the mode line, the rows and the columns of the pane
+      being edited.
+
+        LayoutOf(Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Rows --> 28 *)
   lay = Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run))
   layouts = paneLayoutsIn(lay, state)
   one = layouts[Min(panes.Active(state), Len(layouts))]
@@ -236,44 +236,44 @@ defn LayoutOf(state)
   lay
 end
 
--- The pane under a point, its code or its mode line, or 0 out of the panes.
---
---   PaneAt(10, 10, Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> 1
+(** The pane under a point, its code or its mode line, or 0 out of the panes.
+
+      PaneAt(10, 10, Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> 1 *)
 PaneAt(x, y, state) = panes.IndexAt(x, y, panes.Rects(Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run)).Area, panes.Tree(state)))
 
--- Is a point inside the code area?
---
---   IsInCode(10, 100, Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> true
 defn IsInCode(x, y, state)
+  (** Is a point inside the code area?
+
+        IsInCode(10, 100, Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> true *)
   r = LayoutOf(state).Code
   x >= r.X and x < r.X + r.Width and y >= r.Y and y < r.Y + r.Height
 end
 
--- The position {Line, Column} of the current buffer under a point, brought inside the text. The point can be anywhere: in a drag past the edge of the
--- code, the screen then follows it.
---
---   PositionAt(0, 0, Start([text.Of("ab", missing)], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Line --> 1
 defn PositionAt(x, y, state)
+  (** The position {Line, Column} of the current buffer under a point, brought inside the text. The point can be anywhere: in a drag past the edge of the
+      code, the screen then follows it.
+
+        PositionAt(0, 0, Start([text.Of("ab", missing)], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Line --> 1 *)
   lay = LayoutOf(state)
   b = state.Buffers[state.Current]
   at = cellAt(x, y, lay.Code, state.Cell)
   text.Place(b.Top + at.Row, b.Left + at.Column, b).Cursor
 end
 
--- The position {Line, Column} of the current buffer under a click in the code area, which doesn't move the screen: in the gutter it is on the first
--- column shown, past the last column on that one, and in the margins above and under the rows on the nearest row.
---
---   ClickAt(0, 37, Start([text.Of("ab", missing)], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Column --> 0
 defn ClickAt(x, y, state)
+  (** The position {Line, Column} of the current buffer under a click in the code area, which doesn't move the screen: in the gutter it is on the first
+      column shown, past the last column on that one, and in the margins above and under the rows on the nearest row.
+
+        ClickAt(0, 37, Start([text.Of("ab", missing)], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Column --> 0 *)
   lay = LayoutOf(state)
   b = state.Buffers[state.Current]
   at = cellAt(x, y, lay.Code, state.Cell)
   text.Place(b.Top + Max(0, Min(at.Row, lay.Rows - 1)), b.Left + Max(0, Min(at.Column, lay.Columns - 1)), b).Cursor
 end
 
--- The selection of a buffer on the lines from first to last: one rectangle per line, from the mark to the cursor. A line that the selection
--- crosses is filled one character past its end, to show that its line end is selected.
 defn selection(b, first, last, lay, look)
+  (** The selection of a buffer on the lines from first to last: one rectangle per line, from the mark to the cursor. A line that the selection
+      crosses is filled one character past its end, to show that its line end is selected. *)
   ends = text.Selection(b)
   if IsMissing(ends)
     return []
@@ -293,9 +293,9 @@ defn selection(b, first, last, lay, look)
   out
 end
 
--- The code area of a buffer in a pane: the band of the current line, the lines on the screen and the cursor bar. Only the pane being edited, focused, has
--- the band and a bright bar.
 defn code(b, lay, look, focused)
+  (** The code area of a buffer in a pane: the band of the current line, the lines on the screen and the cursor bar. Only the pane being edited, focused, has
+      the band and a bright bar. *)
   th = look.Theme
   cell = lay.Cell
   rect = lay.Code
@@ -317,8 +317,8 @@ defn code(b, lay, look, focused)
   out
 end
 
--- The mode line of a pane: the name of the buffer, the position of the cursor, and the language. The one of the pane being edited, focused, is lighter.
 defn mode(b, lay, look, focused)
+  (** The mode line of a pane: the name of the buffer, the position of the cursor, and the language. The one of the pane being edited, focused, is lighter. *)
   th = look.Theme
   rect = lay.Mode
   y = rect.Y + Div(rect.Height - look.Height, 2)
@@ -330,8 +330,8 @@ defn mode(b, lay, look, focused)
     textCommand(right - look.Width(language, "body") - 24 - look.Width(position, "body"), y, position, th.Muted)]
 end
 
--- The prompt line: the question and the answer being typed, or else the last message, or else in a list its filter.
 defn prompt(state, lay, look)
+  (** The prompt line: the question and the answer being typed, or else the last message, or else in a list its filter. *)
   th = look.Theme
   rect = lay.Prompt
   y = rect.Y + Div(rect.Height - look.Height, 2)
@@ -342,8 +342,8 @@ defn prompt(state, lay, look)
   Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, th.Ink)], bar)
 end
 
--- The output pane, when there is room for it: its title and the status of the program.
 defn output(state, lay, look)
+  (** The output pane, when there is room for it: its title and the status of the program. *)
   th = look.Theme
   rect = lay.Output
   if rect.Height == 0 or IsMissing(state.Run)
@@ -355,9 +355,9 @@ defn output(state, lay, look)
   end
 end
 
--- The frame of a state: an array of commands for sdl. Only the lines on the screen are read, so a large file costs no more than a small one.
--- The screen of each pane (top, left and colors) is what follow gave it. A line on the left of a pane parts it from the one beside it.
 defn View(state)
+  (** The frame of a state: an array of commands for sdl. Only the lines on the screen are read, so a large file costs no more than a small one.
+      The screen of each pane (top, left and colors) is what follow gave it. A line on the left of a pane parts it from the one beside it. *)
   look = state.Look
   lay = Layout(state.Width, state.Height, state.Cell, not IsMissing(state.Run))
   layouts = paneLayoutsIn(lay, state)

@@ -1,11 +1,11 @@
--- Tests of panes: run with cesia test .
+(** Tests of panes: run with cesia test . *)
 use panes
 
 whole = {X: 0, Y: 0, Width: 800, Height: 600}
 
--- Two panes, one above the other, showing buffers 1 and 2.
+(** Two panes, one above the other, showing buffers 1 and 2. *)
 stacked() = panes.WithLeaf(2, panes.One(2), panes.Split(1, "rows", panes.One(1)))
--- Three panes: 1 on the left, and on the right 2 above 3.
+(** Three panes: 1 on the left, and on the right 2 above 3. *)
 three() = panes.WithLeaf(3, panes.One(3), panes.Split(2, "rows", panes.WithLeaf(2, panes.One(2), panes.Split(1, "columns", panes.One(1)))))
 
 buffersOf(tree) = Map(leaf -> leaf.Buffer, panes.Leaves(tree))

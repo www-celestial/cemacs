@@ -1,16 +1,16 @@
--- The files of the editor. Saving never loses text: the new words go to a file next to the old one, which a rename then replaces, so a
--- failure at any step leaves the old file whole. A disk is what the file looked like when it was read: {Modified, Size}, or missing for a
--- file that didn't exist.
+(** The files of the editor. Saving never loses text: the new words go to a file next to the old one, which a rename then replaces, so a
+    failure at any step leaves the old file whole. A disk is what the file looked like when it was read: {Modified, Size}, or missing for a
+    file that didn't exist. *)
 use sys
 
--- An Err of kind "changed": the file is not the one that was read.
+(** An Err of kind "changed": the file is not the one that was read. *)
 changed(path) = Err({Kind: "changed", Message: "$path changed on disk since it was read."})
 
--- The disk of a stat: the time of the file and its size. Two files that differ in either are not the same file.
+(** The disk of a stat: the time of the file and its size. Two files that differ in either are not the same file. *)
 disk(info) = {Modified: info.Modified, Size: info.Size}
 
--- The disk of the file at path: Ok(missing) for a file that doesn't exist, Ok of a disk, or an Err for a folder or an unreadable file.
 defn current(path)
+  (** The disk of the file at path: Ok(missing) for a file that doesn't exist, Ok of a disk, or an Err for a folder or an unreadable file. *)
   if not sys.Exists(path)
     return Ok(missing)
   end
@@ -21,18 +21,18 @@ defn current(path)
   Ok(disk(info))
 end
 
--- Does the text hold a zero byte?
+(** Does the text hold a zero byte? *)
 hasZero(words) = not IsMissing(ByteFind(FromBytes([0]), 1, words))
 
--- How many bytes after the lead byte b a sequence takes, or -1 if b can't start one. Continuation bytes are checked by validAt.
+(** How many bytes after the lead byte b a sequence takes, or -1 if b can't start one. Continuation bytes are checked by validAt. *)
 extra(b) = if b < 128 0 else if b >= 194 and b <= 223 1 else if b >= 224 and b <= 239 2 else if b >= 240 and b <= 244 3 else -1 end
 
--- The range a first continuation byte must be in after the lead byte b: it excludes overlong forms, surrogates and what is above U+10FFFF.
+(** The range a first continuation byte must be in after the lead byte b: it excludes overlong forms, surrogates and what is above U+10FFFF. *)
 low(b) = if b == 224 160 else if b == 240 144 else 128 end
 high(b) = if b == 237 159 else if b == 244 143 else 191 end
 
--- The position after the sequence starting at i in the bytes, or -1 if it is not valid UTF-8.
 defn validAt(i, bs)
+  (** The position after the sequence starting at i in the bytes, or -1 if it is not valid UTF-8. *)
   b = bs[i]
   n = extra(b)
   if n < 0 or i + n > Len(bs)
@@ -56,8 +56,8 @@ defn validAt(i, bs)
   i + n + 1
 end
 
--- Is every byte sequence of the bytes valid UTF-8? A byte under 128 costs one step, so an ASCII text never gets here.
 defn utf8(bs)
+  (** Is every byte sequence of the bytes valid UTF-8? A byte under 128 costs one step, so an ASCII text never gets here. *)
   i = 1
   total = Len(bs)
   while i <= total
@@ -69,10 +69,10 @@ defn utf8(bs)
   true
 end
 
--- Is this text one that the editor opens: valid UTF-8 and no zero byte? A text of bytes under 128 is checked natively.
---
---   IsText("é") --> true
 defn IsText(words)
+  (** Is this text one that the editor opens: valid UTF-8 and no zero byte? A text of bytes under 128 is checked natively.
+
+        IsText("é") --> true *)
   if hasZero(words)
     return false
   end
@@ -83,11 +83,11 @@ defn IsText(words)
   utf8(bs)
 end
 
--- A path without the parts . and a/.. and without doubled or trailing slashes. It doesn't follow symbolic links: it keeps a leading / and
--- the .. that nothing before it can cancel, except at the root, where .. stays at the root. An empty path is ".".
---
---   Normal("./a/../b.ce") --> "b.ce"
 defn Normal(path)
+  (** A path without the parts . and a/.. and without doubled or trailing slashes. It doesn't follow symbolic links: it keeps a leading / and
+      the .. that nothing before it can cancel, except at the root, where .. stays at the root. An empty path is ".".
+
+        Normal("./a/../b.ce") --> "b.ce" *)
   absolute = StartsWith("/", path)
   parts = []
   for part in Split("/", path)
@@ -111,15 +111,15 @@ defn Normal(path)
   end
 end
 
--- The largest file the editor opens, in bytes. Reading one too large for memory would panic and lose the text of every buffer. As measured, a file of
--- this size takes 2 to 5 seconds to open and 600 MiB for a moment, and one of 64 MiB takes 18 seconds and 2.3 GB.
+(* The largest file the editor opens, in bytes. Reading one too large for memory would panic and lose the text of every buffer. As measured, a file of
+   this size takes 2 to 5 seconds to open and 600 MiB for a moment, and one of 64 MiB takes 18 seconds and 2.3 GB. *)
 largest = 16 * 1024 * 1024
 
--- The file at path, in an Ok of {Words, Disk}. A file that doesn't exist is {Words: "", Disk: missing}. A folder, what isn't a regular file, a file
--- that can't be read, one too large, one with a zero byte and one that isn't valid UTF-8 are an Err, and the file is not touched. The disk is taken before
--- the read, so a file changed in between makes the next save ask instead of overwriting. A device or a FIFO has the size 0, and reading one never ends,
--- so sys.Stat must say what it is first.
 defn ReadFile(path)
+  (** The file at path, in an Ok of {Words, Disk}. A file that doesn't exist is {Words: "", Disk: missing}. A folder, what isn't a regular file, a file
+      that can't be read, one too large, one with a zero byte and one that isn't valid UTF-8 are an Err, and the file is not touched. The disk is taken before
+      the read, so a file changed in between makes the next save ask instead of overwriting. A device or a FIFO has the size 0, and reading one never ends,
+      so sys.Stat must say what it is first. *)
   disk = current(path)?
   if IsMissing(disk)
     return Ok({Words: "", Disk: missing})
@@ -137,9 +137,9 @@ defn ReadFile(path)
   Ok({Words: words, Disk: disk})
 end
 
--- A name next to path that nothing uses yet: it holds the time, and a counter if that name is taken. Gives Ok of the name, or an Err of kind
--- "io" after a few tries. Nothing at the name is touched.
 defn isFresh(path)
+  (** A name next to path that nothing uses yet: it holds the time, and a counter if that name is taken. Gives Ok of the name, or an Err of kind
+      "io" after a few tries. Nothing at the name is touched. *)
   stamp = Text(Floor(sys.Now() * 1000000))
   for n in Range(0, 20)
     name = if n == 0 "$path.cemacs-$stamp" else "$path.cemacs-$stamp-$n" end
@@ -150,13 +150,13 @@ defn isFresh(path)
   Err({Kind: "io", Message: "No free name next to $path for a new file."})
 end
 
--- A failure on the new file, as a failure on path: the person never heard of the new one.
+(** A failure on the new file, as a failure on path: the person never heard of the new one. *)
 named(path, fresh, failure) = Err({Kind: failure.Error.Kind, Message: Replace(fresh, path, failure.Error.Message)})
 
--- Writes the words to path through a new file next to it, then renames it over the file. The new file has a name that nothing used, and the
--- cleanup removes only it. On any failure the old file stays whole. Gives Ok of the new disk. If only the stat after the rename fails, the file
--- is saved and the Err has the kind "saved".
 defn replace(path, words)
+  (** Writes the words to path through a new file next to it, then renames it over the file. The new file has a name that nothing used, and the
+      cleanup removes only it. On any failure the old file stays whole. Gives Ok of the new disk. If only the stat after the rename fails, the file
+      is saved and the Err has the kind "saved". *)
   fresh = isFresh(path)?
   written = sys.Write(fresh, words)
   if IsErr(written)
@@ -174,12 +174,12 @@ defn replace(path, words)
   end
 end
 
--- Saves the words to path if the file is still the one that was read, that is if its disk is the given one. A file that appeared since a
--- read of a missing one counts as changed too. Gives Ok of the new disk, an Err of kind "changed" if the file is not the one that was
--- read (nothing is written), or another Err for a failure (the old file is whole). An Err of kind "saved" means the file was saved but its
--- time couldn't be read: a caller treats it as a save, with disk missing, so that the next save will ask. The file saved is a new one, so a
--- read-only file becomes writable, and a symbolic link is replaced by a file.
 defn SaveFile(path, words, disk)
+  (** Saves the words to path if the file is still the one that was read, that is if its disk is the given one. A file that appeared since a
+      read of a missing one counts as changed too. Gives Ok of the new disk, an Err of kind "changed" if the file is not the one that was
+      read (nothing is written), or another Err for a failure (the old file is whole). An Err of kind "saved" means the file was saved but its
+      time couldn't be read: a caller treats it as a save, with disk missing, so that the next save will ask. The file saved is a new one, so a
+      read-only file becomes writable, and a symbolic link is replaced by a file. *)
   now = current(path)?
   if now != disk
     return changed(path)
@@ -187,7 +187,7 @@ defn SaveFile(path, words, disk)
   replace(path, words)
 end
 
--- Saves the words to path with no check of the file there, in the same safe way. Gives Ok of the new disk, or an Err.
 defn ForceSave(path, words)
+  (** Saves the words to path with no check of the file there, in the same safe way. Gives Ok of the new disk, or an Err. *)
   replace(path, words)
 end

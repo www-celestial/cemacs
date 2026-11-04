@@ -1,4 +1,4 @@
--- Tests of view.ce and text.Of: run with cesia test .
+(** Tests of view.ce and text.Of: run with cesia test . *)
 use color
 use text
 use view
@@ -12,8 +12,7 @@ look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
 
 stateOf(buffers, width, height) = view.Start(buffers, look, cell, width, height)
 
--- A text of count lines, each one "word".
-manyLines(count) = Join("\n", Map(n -> "word", Range(1, count)))
+manyLines(count) = Join("\n", Map(n -> "word", Range(1, count)))   (** A text of count lines, each one "word". *)
 
 textsOf(commands) = Map(c -> c.Text, Filter(c -> c.Kind == "text", commands))
 
@@ -56,8 +55,8 @@ defn isTinyWindow()
   IsArray(view.View(s))
 end
 
--- No tabs: the code starts at the top of the window, and the name of a buffer that isn't current is nowhere on the screen. The mode line names the current one.
 defn isNoTabs()
+  (** No tabs: the code starts at the top of the window, and the name of a buffer that isn't current is nowhere on the screen. The mode line names the current one. *)
   a = text.Of("a", "/x/a.ce")
   b = text.Of("b", "/x/b.ce")
   b.Version = 3
@@ -76,17 +75,17 @@ defn isOfFields()
 end
 isOfRope() = rope.Text(text.Of("ab\ncd", "a.ce").Rope) == "ab\ncd"
 
--- The commands of a one-buffer window 102 pixels wide, so that 4 columns of code fit, showing words from column left.
 defn shownFrom(words, left)
+  (** The commands of a one-buffer window 102 pixels wide, so that 4 columns of code fit, showing words from column left. *)
   b = text.Of(words, "a.ce")
   b.Left = left
   view.View(stateOf([b], 102, 600))
 end
 
--- Is this command a text of the code area? The mode line and the prompt are not: the window is 600 high, and the first line is at 4.
+(** Is this command a text of the code area? The mode line and the prompt are not: the window is 600 high, and the first line is at 4. *)
 inCode(c) = c.Kind == "text" and c.Y < 100
 
--- The texts in the code area, the line number first.
+(** The texts in the code area, the line number first. *)
 codeTexts(commands) = Map(c -> c.Text, Filter(c -> inCode(c), commands))
 
 isFourColumns() = view.Layout(102, 600, cell, false).Columns == 4
@@ -139,7 +138,7 @@ defn isCursorBarInsideColumns()
   Len(bars) == 1 and bars[1].X < 102
 end
 
--- The rectangles of the theme fill color: the selection.
+(** The rectangles of the theme fill color: the selection. *)
 fills(commands) = Filter(c -> c.Kind == "rect" and c.Color == ui.Dark.Fill, commands)
 
 defn selectedState(words, mark, cursor)
@@ -246,8 +245,8 @@ defn isFollowStateMoves()
   s.Buffers[1].Top > 1
 end
 
--- M5 and M6: a click in the margins of the code area is on the nearest cell of the screen. A drag isn't kept there, so that the screen can follow it.
 defn scrolledSide()
+  (** M5 and M6: a click in the margins of the code area is on the nearest cell of the screen. A drag isn't kept there, so that the screen can follow it. *)
   b = text.Of(Join("", Map(n -> "x", Range(1, 100))), "a.ce")
   b.Left = 40
   stateOf([b], 800, 600)
@@ -263,11 +262,11 @@ defn isClickAboveFirstRow()
 end
 isClickWithNoRows() = view.ClickAt(view.Gutter, 37, stateOf([text.Of(manyLines(3), "a.ce")], 800, 60)).Line == 1
 
--- M12: the one layout of a state.
+(** M12: the one layout of a state. *)
 isLayoutOf() = view.LayoutOf(stateOf([text.Of("", "a.ce")], 800, 600)).Rows == 28 and view.LayoutOf(stateOf([text.Of("", "a.ce")], 800, 600)).Code.Height == 554
 
--- A window 800 wide shows 91 columns, from 0 to 90: a click past the last one stays on it, and a drag is not kept there, so that the screen can follow it.
 defn longLine(left)
+  (** A window 800 wide shows 91 columns, from 0 to 90: a click past the last one stays on it, and a drag is not kept there, so that the screen can follow it. *)
   b = text.Of(Repeat(200, "x"), "a.ce")
   b.Left = left
   stateOf([b], 800, 600)
@@ -278,32 +277,32 @@ isClickOnLastColumn() = view.ClickAt(view.Gutter + 90 * 8, 4, longLine(0)) == {L
 isDragPastLastColumn() = view.PositionAt(799, 4, longLine(0)) == {Line: 1, Column: 92}
 isClickWithNoColumns() = view.ClickAt(50, 4, stateOf([text.Of(Repeat(200, "x"), "a.ce")], 60, 600)) == {Line: 1, Column: 0}
 
--- A list shows its name in the mode line, its filter in the prompt line, and its rows in one plain color.
 defn fruitList(filter)
+  (** A list shows its name in the mode line, its filter in the prompt line, and its rows in one plain color. *)
   b = text.Of("apple\nend 12", missing)
   b.List = {Name: "Fruits", Rows: s -> [], Keys: () -> {}, Filter: filter, Items: [10, 20], Back: 1}
   b
 end
 isListNamed() = "Fruits" in textsOf(view.View(stateOf([fruitList("")], 800, 600))) and view.BufferName(fruitList("")) == "Fruits"
 isListFilterShown() = "Filter: an" in textsOf(view.View(stateOf([fruitList("an")], 800, 600)))
--- end 12 would be a keyword and a number in code: a row is one plain text.
+(** end 12 would be a keyword and a number in code: a row is one plain text. *)
 isListPlain() = Len(Filter(c -> c.Kind == "text" and c.Text == "end 12" and c.Color == look.Theme.Syntax[color.Plain], view.View(stateOf([fruitList("")], 800, 600)))) == 1
 
--- Panes. A state of two panes cut along "rows" or "columns", the first showing buffer 1 and the second the last buffer, with pane active being edited.
 defn twoPanes(along, buffers, active)
+  (** Panes. A state of two panes cut along "rows" or "columns", the first showing buffer 1 and the second the last buffer, with pane active being edited. *)
   s = stateOf(buffers, 800, 600)
   s.Panes = panes.WithLeaf(2, panes.One(Len(buffers)), panes.Split(1, along, panes.One(1)))
   s.Pane = active
   s.Current = panes.At(active, s.Panes).Buffer
   s
 end
--- A buffer of 100 lines with the cursor on a line.
 defn hundredAt(line)
+  (** A buffer of 100 lines with the cursor on a line. *)
   b = text.Of(manyLines(100), "a.ce")
   b.Cursor = {Line: line, Column: 0}
   b
 end
--- The cursor bars of a frame: rectangles 2 pixels wide.
+(** The cursor bars of a frame: rectangles 2 pixels wide. *)
 barsOf(commands) = Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Height == 19, commands)
 
 isStartHasOnePane() = panes.Count(stateOf([text.Of("", "a.ce")], 800, 600).Panes) == 1 and stateOf([text.Of("", "a.ce")], 800, 600).Pane == 1

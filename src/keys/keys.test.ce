@@ -1,4 +1,4 @@
--- Tests of keys.ce: run with cesia test .
+(** Tests of keys.ce: run with cesia test . *)
 use keys
 
 press(key, ctrl, alt, shift) = {Kind: "key", Key: key, Ctrl: ctrl, Alt: alt, Shift: shift, Super: false}
@@ -33,7 +33,7 @@ isCtrlSlashAlias() = keys.Chord(press("/", true, false, true)) == "C-S-/"
 isNoShiftForUnderscore() = keys.Chord(press("_", true, false, true)) == "C-_"
 isUpperLetterLowered() = keys.Chord(press("X", true, false, true)) == "C-S-x"
 
--- Bindings for the logic of pairs, which doesn't care what they run: the keys of the editor are tested with commands.
+(** Bindings for the logic of pairs, which doesn't care what they run: the keys of the editor are tested with commands. *)
 one(state) = state
 two(state) = state
 sample = {"C-f": one, "S-right": two, "C-x C-s": two, "C-c C-c": one, "C-t C-t": one}
@@ -47,9 +47,9 @@ isUnknownPair() = keys.Lookup("C-x", "C-q", sample) == {Unknown: "C-x C-q"}
 isSingle() = keys.Lookup("", "C-f", sample) == {Command: one}
 isNamedKey() = keys.Lookup("", "S-right", sample) == {Command: two}
 isNoPairAfterPair() = keys.Lookup("C-x", "C-x", sample) == {Unknown: "C-x C-x"}
--- The first key of a pair comes from the bindings, so binding a new pair is one line. The second key alone is nothing.
+(** The first key of a pair comes from the bindings, so binding a new pair is one line. The second key alone is nothing. *)
 isFirstFromBindings() = keys.Lookup("", "C-t", sample) == {Pending: "C-t"}
 isSecondAloneUnknown() = keys.Lookup("", "C-s", sample) == {Unknown: "C-s"}
 isNoFirstWithoutBinding() = keys.Lookup("", "C-x", {"C-f": one}) == {Unknown: "C-x"}
--- A chord bound alone runs, even if a pair begins with it.
+(** A chord bound alone runs, even if a pair begins with it. *)
 isSingleBeforeFirst() = keys.Lookup("", "C-x", {"C-x": one, "C-x C-s": two}) == {Command: one}

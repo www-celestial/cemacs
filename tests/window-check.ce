@@ -1,7 +1,7 @@
--- Checks of the editor in a window, under SDL_VIDEODRIVER=dummy, with events pushed to SDL as the keyboard and the mouse would send them.
--- Run it from the root of cemacs:
---   SDL_VIDEODRIVER=dummy cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/window-check.ce
--- It prints ok at the end and stops at the first failure.
+(** Checks of the editor in a window, under SDL_VIDEODRIVER=dummy, with events pushed to SDL as the keyboard and the mouse would send them.
+    Run it from the root of cemacs:
+      SDL_VIDEODRIVER=dummy cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/window-check.ce
+    It prints ok at the end and stops at the first failure. *)
 use c
 use apps/emacs
 use rope
@@ -12,15 +12,15 @@ use commands
 use text
 use view
 
--- Stops the script with the words if the condition is false.
 defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
   if not condition
     Panic("FAILED: $words")
   end
 end
 
--- Pushes an event of this type to SDL, with its fields as [type, offset, value].
 defn push(type, fields)
+  (** Pushes an event of this type to SDL, with its fields as [type, offset, value]. *)
   lib = Unwrap(c.Open("SDL3", version = 0))
   send = Unwrap(c.Fn("SDL_PushEvent", ["ptr"], "bool", lib))
   event = c.Alloc(128)
@@ -32,11 +32,11 @@ defn push(type, fields)
   c.Free(event)
 end
 
--- A key event with a key code and the modifiers of SDL: 0x1 shift, 0x40 control, 0x100 alt.
+(** A key event with a key code and the modifiers of SDL: 0x1 shift, 0x40 control, 0x100 alt. *)
 key(code, mods) = push(0x300, [["u32", 28, code], ["u16", 32, mods]])
 
--- A text event for the characters of a text. The blocks stay: SDL keeps their addresses until the events are read.
 defn typed(words)
+  (** A text event for the characters of a text. The blocks stay: SDL keeps their addresses until the events are read. *)
   held = c.Alloc(ByteLength(words) + 1)
   for k in 1:Len(Bytes(words))
     c.Set("u8", k - 1, Bytes(words)[k], held)
@@ -44,17 +44,17 @@ defn typed(words)
   push(0x303, [["ptr", 24, held]])
 end
 
--- A letter typed: its key event and then its text event.
 defn letter(words)
+  (** A letter typed: its key event and then its text event. *)
   key(Bytes(words)[1], 0)
   typed(words)
 end
 
--- A mouse button event on the point.
+(** A mouse button event on the point. *)
 mouse(type, x, y) = push(type, [["u8", 24, 1], ["f32", 28, x], ["f32", 32, y]])
 
--- The state after the events waiting in the window went through update. If update ends the editor, its state has ending true.
 defn played(state)
+  (** The state after the events waiting in the window went through update. If update ends the editor, its state has ending true. *)
   s = state
   for event in sdl.Events(state.Window)
     if s.Ending
@@ -66,8 +66,8 @@ defn played(state)
   s
 end
 
--- The state, ended.
 defn ended(state)
+  (** The state, ended. *)
   s = state
   s.Ending = true
   s
@@ -88,7 +88,7 @@ defn opened()
   sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", emacs.FontSize(), second)
 end
 
--- What the editor runs on in this check: the Emacs keys and the settings, as apps/cemacs.ce gives them without its apps.
+(** What the editor runs on in this check: the Emacs keys and the settings, as apps/cemacs.ce gives them without its apps. *)
 checkConfig() = emacs.Config(emacs.Keys)
 
 window = Unwrap(opened())
@@ -101,8 +101,7 @@ empty.Config = checkConfig
 state = commands.Settled(commands.OpenAll([path], empty))
 check(here(state).Path == path and wordsOf(state) == "alpha\n", "the file is open")
 
--- Typing, then C-x C-s: the file is written.
-letter("a")
+letter("a")   (** Typing, then C-x C-s: the file is written. *)
 typed("é")
 key(0x78, 0x40)
 key(0x73, 0x40)
@@ -111,8 +110,7 @@ check(wordsOf(state) == "aéalpha\n", "typed text: $(wordsOf(state))")
 check(read(path) == "aéalpha\n", "C-x C-s writes the file")
 check(not text.IsModified(here(state)), "the star is gone")
 
--- A file changed on disk: C-x C-s asks, and y writes over it.
-Unwrap(sys.Write(path, "theirs\n"))
+Unwrap(sys.Write(path, "theirs\n"))   (** A file changed on disk: C-x C-s asks, and y writes over it. *)
 letter("z")
 key(0x78, 0x40)
 key(0x73, 0x40)
@@ -124,8 +122,7 @@ state = played(state)
 check(IsMissing(state.Prompt) and read(path) == "aézalpha\n", "y writes over the file")
 check(not text.IsModified(here(state)), "the star is gone after y")
 
--- M-w then C-y goes through the clipboard of the system.
-key(0x40000050, 0x1)
+key(0x40000050, 0x1)   (** M-w then C-y goes through the clipboard of the system. *)
 key(0x40000050, 0x1)
 key(0x77, 0x100)
 state = played(state)
@@ -136,13 +133,12 @@ key(0x79, 0x40)
 state = played(state)
 check(wordsOf(state) == "aézalphaéz\n", "C-y pastes the clipboard: $(wordsOf(state))")
 
--- A click in the code places the cursor.
-mouse(0x401, 62.0 + 3.0 * cell.Width + 1.0, 4.0 + 2.0)
+mouse(0x401, 62.0 + 3.0 * cell.Width + 1.0, 4.0 + 2.0)   (** A click in the code places the cursor. *)
 mouse(0x402, 62.0 + 3.0 * cell.Width + 1.0, 4.0 + 2.0)
 state = played(state)
 check(here(state).Cursor == {Line: 1, Column: 3} and IsMissing(here(state).Mark), "a click places the cursor")
 
--- The window takes a few events and quits: sdl.Run returns when the window closes, and the text is saved by then, so it doesn't ask.
+(** The window takes a few events and quits: sdl.Run returns when the window closes, and the text is saved by then, so it doesn't ask. *)
 key(0x78, 0x40)
 key(0x73, 0x40)
 state = played(state)
