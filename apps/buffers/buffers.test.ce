@@ -1,11 +1,11 @@
 (** Tests of the buffer list: run with cesia test . *)
-use apps/buffers
-use apps/emacs
+use buffers
+use emacs
 use commands
 use press
-use rope
+use pkg/rope
 use text
-use ui
+use pkg/ui
 use view
 
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)

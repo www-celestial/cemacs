@@ -2,10 +2,10 @@
     printed.
     The state is one from before the fields Wheel and Pressed, as a session running under --watch keeps it through a reload. *)
 use c
-use sdl
+use pkg/sdl
 use sys
-use ui
-use apps/emacs
+use pkg/ui
+use emacs
 use commands
 use text
 use view

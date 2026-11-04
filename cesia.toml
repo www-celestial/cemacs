@@ -1,5 +1,6 @@
 [project]
 name = "cemacs"
+src = ["src", "apps"]
 native = ["SDL3", "SDL3_ttf"]
 
 [tasks.test]

@@ -1,7 +1,7 @@
 (** The frame: from a state to an array of commands for sdl. Everything here is pure and knows no window. The look of the state gives
     the theme and the widths of the proportional fonts; cell is the size of one character of the code font. *)
-use rope
-use ui
+use pkg/rope
+use pkg/ui
 use color
 use lists
 use panes

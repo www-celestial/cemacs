@@ -1,6 +1,6 @@
 (** The buffer of a file: a rope, a cursor, a mark and the history. Lines count from 1, columns from 0. *)
-use rope
-use history
+use pkg/rope
+use pkg/history
 use color
 
 defn Of(words, path)

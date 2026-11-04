@@ -3,11 +3,11 @@
       SDL_VIDEODRIVER=dummy cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/window-check.ce
     It prints ok at the end and stops at the first failure. *)
 use c
-use apps/emacs
-use rope
-use sdl
+use emacs
+use pkg/rope
+use pkg/sdl
 use sys
-use ui
+use pkg/ui
 use commands
 use text
 use view

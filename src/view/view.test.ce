@@ -2,10 +2,10 @@
 use color
 use text
 use view
-use rope
-use history
+use pkg/rope
+use pkg/history
 use panes
-use ui
+use pkg/ui
 
 cell = {Width: 8, Height: 19}
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)

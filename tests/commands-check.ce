@@ -1,9 +1,9 @@
 (** Checks of commands.ce against real files, in a new folder under /tmp. It is a script, not a test file: it needs permissions.
     Run it with cesia run --allow read,write tests/commands-check.ce. It prints ok at the end and stops at the first failure. *)
-use rope
+use pkg/rope
 use sys
-use ui
-use apps/emacs
+use pkg/ui
+use emacs
 use commands
 use press
 use text

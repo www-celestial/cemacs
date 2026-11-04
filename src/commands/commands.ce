@@ -1,8 +1,8 @@
 (** The editor: one small public function per command, from a state to a state, and update, which turns the events of the window into commands.
     No key is bound here: the Config of the state says which key runs which function, as apps/emacs/emacs.ce does, and cesia doc commands lists every command.
     Errors from the file system never panic: they become a message. *)
-use rope
-use sdl
+use pkg/rope
+use pkg/sdl
 use files
 use keys
 use lists

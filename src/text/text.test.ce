@@ -1,7 +1,7 @@
 (** Tests of the buffer in text.ce: run with cesia test . *)
 use text
 use color
-use rope
+use pkg/rope
 
 allText(b) = rope.Text(b.Rope)
 at(b) = [b.Cursor.Line, b.Cursor.Column]
