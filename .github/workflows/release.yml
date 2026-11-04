@@ -1,0 +1,26 @@
+name: release
+
+# A tag vX.Y.Z makes the release vX.Y.Z of Cemacs: its notes, from the messages of the commits since the tag before
+# (tools/notes.sh). No binary: GitHub joins the code as .zip and .tar.gz, and it runs on the Cesia that cesia.toml asks for.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Notes
+        run: |
+          tools/notes.sh > notes.md
+          cat notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "Cemacs ${GITHUB_REF_NAME#v}" --notes-file notes.md

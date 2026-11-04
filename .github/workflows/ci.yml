@@ -1,0 +1,40 @@
+name: ci
+
+# The suite of Cemacs on each push, against the latest stable Cesia and against the nightly one, as their releases give them:
+# a change of Cesia that breaks Cemacs shows before a release of Cesia.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        cesia: [stable, nightly]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cesia ${{ matrix.cesia }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ matrix.cesia }}
+        run: |
+          archive=cesia-linux-x86_64.tar.gz
+          tag=$([ "$CHANNEL" = nightly ] && echo nightly || true)
+          if ! gh release download $tag --repo www-celestial/cesia-lang --pattern "$archive*" --dir download; then
+            echo "Cesia has no $CHANNEL release yet: nothing to test against."
+            echo "NO_CESIA=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          (cd download && [ "$(sha256sum "$archive" | cut -d' ' -f1)" = "$(cut -d' ' -f1 < "$archive.sha256")" ])
+          mkdir -p "$HOME/.cesia"
+          tar -xzf "download/$archive" -C "$HOME/.cesia"
+          echo "$HOME/.cesia/bin" >> "$GITHUB_PATH"
+      - name: Tests
+        if: env.NO_CESIA != '1'
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: |
+          cesia version
+          tests/run.sh
