@@ -16,8 +16,13 @@ DragZone() = 4
 (** The size of the three fonts. The window reads it when it opens, so a change shows at the next start. *)
 FontSize() = 15
 
-(** The keys, with the function each one runs: one chord, or two with a space between for a pair. Any function from a state to a state will do, also an anonymous
-    one, as in "C-c C-x": s -> say("hi", s). A chord starts a pair as soon as a binding here does. C-g as the second key of a pair is bound for each first key. *)
+(** The seconds that the first keys of a pair or a group wait before the band above the prompt line shows what can follow them. *)
+HintDelay() = 0.5
+
+(** The keys, with the function each one runs: one chord, or more with a space between, as "C-x C-s" or "C-c f f". Any function from a state to a state will do,
+    also an anonymous one, as in "C-c C-x": s -> say("hi", s). A chord waits for the next one as soon as a binding here goes on after it, and C-g after it takes
+    the keys back. Under C-c, the keys are in groups as in Doom Emacs, each named by a text: f for files, b buffers, w windows, c code and q quit. Waiting
+    after C-c, or after a group, shows the band of what can follow. *)
 Keys() = {
   "C-f": commands.ForwardChar, "right": commands.ForwardChar,
   "C-b": commands.BackwardChar, "left": commands.BackwardChar,
@@ -63,7 +68,12 @@ Keys() = {
   "C-c C-k": commands.Stop,
   "C-c C-o": commands.ToggleOutput,
   "C-c C-g": commands.CancelPair,
-  "C-c c": OpenConfig
+  "C-c f": "files", "C-c f f": commands.FindFile, "C-c f s": commands.Save, "C-c f c": OpenConfig,
+  "C-c b": "buffers", "C-c b n": commands.NextBuffer, "C-c b k": commands.CloseBuffer,
+  "C-c w": "windows", "C-c w s": commands.SplitBelow, "C-c w v": commands.SplitRight, "C-c w o": commands.NextPane, "C-c w d": commands.ClosePane,
+  "C-c w m": commands.OnlyPane,
+  "C-c c": "code", "C-c c r": commands.Run, "C-c c k": commands.Stop, "C-c c o": commands.ToggleOutput,
+  "C-c q": "quit", "C-c q q": commands.Quit
 }
 
 (** The keys while a prompt is open. Any other key does nothing, and a prompt has no pairs. *)
@@ -90,4 +100,4 @@ ListKeys() = {"backspace": commands.ListBack, "S-backspace": commands.ListBack, 
 (** What the editor runs on, for the Config of a state: keys, the global keys given, and the other keys and the settings of this file. src/cemacs.ce gives
     it the keys of every app. Each field is a function, read at the next key, so that a change applies under --watch. *)
 Config(keys) = {Keys: keys, PromptKeys: PromptKeys, MouseKeys: MouseKeys, PromptMouseKeys: PromptMouseKeys, ListKeys: ListKeys, TabText: TabText,
-  WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize}
+  WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay}

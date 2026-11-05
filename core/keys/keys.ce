@@ -23,21 +23,56 @@ defn Chord(event)
   end
 end
 
-(** Does a binding begin with this chord, as "C-x C-s" begins with "C-x"? *)
-isFirst(chord, bindings) = Len(Filter(k -> StartsWith("$chord ", k), Keys(bindings))) > 0
+(** Does a binding begin with these keys, as "C-x C-s" begins with "C-x" and "C-c f f" with "C-c f"? *)
+isFirst(chords, bindings) = Any(Map(k -> StartsWith("$chords ", k), Keys(bindings)))
+
+(** Is this binding a command, rather than the name of a group, as "C-c f": "files"? *)
+isCommand(value) = not IsText(value)
 
 defn Lookup(pending, chord, bindings)
-  (** What a chord means in bindings, a dictionary from keys to functions, after the pending first key of a pair, which is "" if there is none: {Command} with the
-      function, {Pending} with the first key of a pair, or {Unknown} with the text of the keys that mean nothing. One chord alone is a key of bindings, and two with a space
-      between are a pair, so a chord begins a pair as soon as a binding says so. A chord bound alone runs, and a pair that begins with it can't be reached.
+  (** What a chord means in bindings, a dictionary from keys to functions, after the pending keys, which are "" if there are none: {Command} with the
+      function, {Pending} with the keys typed so far, or {Unknown} with the text of the keys that mean nothing. Keys are chords with a space between: one chord
+      alone, a pair as "C-x C-s", or more as "C-c f f", so a chord waits for the next one as soon as a binding goes on after it. A chord bound to a command
+      runs, and what begins with it can't be reached; a text there only names the group, as "C-c f": "files".
 
-        Lookup("C-x", "C-s", {"C-x C-s": Lower}) --> {Command: Lower} *)
+        Lookup("C-x", "C-s", {"C-x C-s": Lower}) --> {Command: Lower}
+        Lookup("C-c", "f", {"C-c f": "files", "C-c f f": Lower}) --> {Pending: "C-c f"} *)
   both = if pending == "" chord else "$pending $chord" end
-  if Has(both, bindings)
+  if Has(both, bindings) and isCommand(bindings[both])
     {Command: bindings[both]}
-  else if pending == "" and isFirst(chord, bindings)
-    {Pending: chord}
+  else if isFirst(both, bindings)
+    {Pending: both}
   else
     {Unknown: both}
+  end
+end
+
+defn NameOf(f)
+  (** The name of a command, as its documentation gives it: "FindFile" for commands.FindFile. A function without one, as s -> ..., is "a function".
+
+        NameOf(Lower) --> "Lower" *)
+  doc = Doc(f)
+  if IsMissing(doc) "a function" else Split("(", Split("\n", doc)[1])[1] end
+end
+
+(** The chord that comes after prefix in keys: "f" for "C-c" in "C-c f s". *)
+nextChord(prefix, keys) = Split(" ", Slice(Len(prefix) + 2, Len(keys), keys))[1]
+
+defn Hints(prefix, bindings)
+  (** What can follow the keys of prefix in bindings, one row for each next chord, in the order of the chords: {Key, Name, Group}. A group is named by its text in
+      bindings, or "more" without one, and shown with a +; a command by its name.
+
+        Hints("C-c", {"C-c f": "files", "C-c f f": Lower, "C-c q": Upper}) --> [{Key: "f", Name: "+files", Group: true}, {Key: "q", Name: "Upper", Group: false}] *)
+  nexts = Sort(Unique(Map(k -> nextChord(prefix, k), Filter(k -> StartsWith("$prefix ", k), Keys(bindings)))))
+  Map(c -> hint(c, "$prefix $c", bindings), nexts)
+end
+
+defn hint(chord, keys, bindings)
+  (** The row of Hints for the chord that gives keys. *)
+  bound = Has(keys, bindings)
+  if bound and isCommand(bindings[keys])
+    {Key: chord, Name: NameOf(bindings[keys]), Group: false}
+  else
+    {Key: chord, Name: "+$(if bound bindings[keys] else "more" end)", Group: true}
   end
 end

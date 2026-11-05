@@ -159,9 +159,9 @@ check(Len(closed.Buffers) == 2 and here(closed).Path == bPath, "y closes it")
 (** The title follows the current buffer. *)
 check(commands.Settled(commands.OpenFile(aPath, fresh())).Title == "a.ce", "the title is the name of the file")
 
-(* C-c c opens the entry point of the apps, under the home: run from the root of Cemacs, the home is ".". *)
-config = press.Press(["C-c", "c"], fresh())
-check(not IsMissing(here(config).Path) and EndsWith("src/cemacs.ce", here(config).Path), "C-c c opens src/cemacs.ce: $(here(config).Path) $(config.Message)")
-check(StartsWith("(** Cemacs", wordsOf(config)), "C-c c shows the text of src/cemacs.ce")
+(* C-c f c opens the entry point of the apps, under the home: run from the root of Cemacs, the home is ".". *)
+config = press.Press(["C-c", "f", "c"], fresh())
+check(not IsMissing(here(config).Path) and EndsWith("src/cemacs.ce", here(config).Path), "C-c f c opens src/cemacs.ce: $(here(config).Path) $(config.Message)")
+check(StartsWith("(** Cemacs", wordsOf(config)), "C-c f c shows the text of src/cemacs.ce")
 
 Print("ok")

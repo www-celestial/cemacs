@@ -30,3 +30,8 @@ isListNamedByThePair() = view.BufferName(here(listed())) == "C-x ?"
 isListHasThePairs() = Contains("C-x C-s", wordsOf(listed())) and Contains("Save", wordsOf(listed())) and not Contains("C-c c", wordsOf(listed()))
 isHelpNotListed() = not Contains("C-x ?", wordsOf(listed()))
 isEnterRunsTheKey() = press.Press(["nextbuf", "enter"], listed()).Current == 2
+
+isEveryGroupHasHelp() = Has("C-c f ?", help.WithHelp(emacs.Keys())) and Has("C-c w ?", help.WithHelp(emacs.Keys())) and not Has("C-c f f ?", help.WithHelp(emacs.Keys()))
+listedGroup() = updated(question, press.Press(["C-c", "f"], twoFiles()))   (** C-c f then ?. *)
+isGroupListNamed() = view.BufferName(here(listedGroup())) == "C-c f ?"
+isGroupListHasItsKeys() = Contains("C-c f s", wordsOf(listedGroup())) and Contains("Save", wordsOf(listedGroup())) and not Contains("C-c w", wordsOf(listedGroup()))

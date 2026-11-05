@@ -11,7 +11,7 @@ use pkg/encode
 use sys
 use text
 
-Keys() = {"C-x d": Open}   (** The keys that work everywhere. *)
+Keys() = {"C-x d": Open, "C-c f d": Open}   (** The keys that work everywhere: C-c f d in the group of the files. *)
 
 defn Open(state)
   (** Opens the folder of the current file, or the folder Cemacs started in. *)

@@ -53,3 +53,16 @@ isSecondAloneUnknown() = keys.Lookup("", "C-s", sample) == {Unknown: "C-s"}
 isNoFirstWithoutBinding() = keys.Lookup("", "C-x", {"C-f": one}) == {Unknown: "C-x"}
 (** A chord bound alone runs, even if a pair begins with it. *)
 isSingleBeforeFirst() = keys.Lookup("", "C-x", {"C-x": one, "C-x C-s": two}) == {Command: one}
+
+(** Keys in groups, as "C-c f f", with a text that names the group. *)
+grouped = {"C-c f": "files", "C-c f f": one, "C-c f s": two, "C-c q q": one, "C-c n": "empty"}
+isGroupFirst() = keys.Lookup("", "C-c", grouped) == {Pending: "C-c"}
+isGroupNamedWaits() = keys.Lookup("C-c", "f", grouped) == {Pending: "C-c f"}
+isGroupUnnamedWaits() = keys.Lookup("C-c", "q", grouped) == {Pending: "C-c q"}
+isGroupRuns() = keys.Lookup("C-c f", "s", grouped) == {Command: two}
+isGroupNameWithoutKeysUnknown() = keys.Lookup("C-c", "n", grouped) == {Unknown: "C-c n"}
+isHintsSorted() = Equal(Map(it.Key, keys.Hints("C-c", grouped)), ["f", "n", "q"])
+isHintsNamed() = keys.Hints("C-c", grouped)[1] == {Key: "f", Name: "+files", Group: true} and keys.Hints("C-c", grouped)[3].Name == "+more"
+isHintsOfCommands() = Equal(Map(it.Name, keys.Hints("C-c f", {"C-c f f": Lower, "C-c f s": Upper, "C-c f x": one})), ["Lower", "Upper", "a function"])
+isHintsNone() = Len(keys.Hints("C-x", grouped)) == 0
+isNameOfAnonymous() = keys.NameOf(s -> s) == "a function"

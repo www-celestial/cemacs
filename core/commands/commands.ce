@@ -126,7 +126,7 @@ defn Cancel(state)
   say("Quit", put(unmarked(current(state)), state))
 end
 
-(** C-g as the second key of a pair: the pair is already forgotten, and the selection stays. It is bound for each first key. *)
+(** C-g after the first keys of a pair or more: they are already forgotten, and the selection stays. Any C-g that no binding takes after them does it too. *)
 CancelPair(state) = say("Quit", state)
 
 (* ---- Edits *)
@@ -708,8 +708,42 @@ end
 
 (* ---- Keys and events *)
 
-(** Is a program running? Not for now. *)
-Moving(state) = false
+(** Does the editor need frames of its own? Only while keys wait for the next one and their hints aren't shown yet: the ticks count the time. *)
+Moving(state) = state.Pending != "" and Len(hintsOf(state)) == 0
+
+defn hintsOf(state)
+  (** The hints shown under the pending keys, or [] for none. A state from before this field has none, and reading one it lacks would panic. *)
+  match state
+    {Hints: shown} -> shown
+    else -> []
+  end
+end
+
+defn waitedOf(state)
+  (** The seconds since the last pending key, from the ticks. *)
+  match state
+    {Waited: seconds} -> seconds
+    else -> 0.0
+  end
+end
+
+defn onTick(event, state)
+  (** The state after a tick: once the pending keys have waited for HintDelay seconds of the config, the keys that can follow them, as keys.Hints gives them. *)
+  if state.Pending == "" or Len(hintsOf(state)) > 0
+    return state
+  end
+  s = state
+  s.Waited = waitedOf(state) + event.Seconds
+  if s.Waited >= config(state).HintDelay()
+    s.Hints = keys.Hints(state.Pending, bindingsHere(state))
+  end
+  s
+end
+
+defn bindingsHere(state)
+  (** The keys that a chord would be looked up in now: those of the list in the current buffer, or else those of the editor. A prompt has no pairs. *)
+  if lists.IsList(current(state)) listKeys(state) else config(state).Keys() end
+end
 
 (** What Chain holds while a command runs, if the command before it was a cut of a line: neither true, which only a new cut sets, nor false. *)
 wasCut() = "cut"
@@ -757,8 +791,23 @@ defn chorded(chord, bindings, state)
   s.Pending = ""
   match keys.Lookup(state.Pending, chord, bindings)
     {Pending: first} -> pending(first, s)
-    {Command: f} -> ran(f, s)
-    {Unknown: name} -> unbound(name, s)
+    {Command: f} -> ran(f, withChords(if state.Pending == "" chord else "$(state.Pending) $chord" end, s))
+    {Unknown: name} -> if state.Pending != "" and chord == "C-g" CancelPair(s) else unbound(name, s) end
+  end
+end
+
+defn withChords(chords, state)
+  (** The state with the keys of the command about to run, which Chords gives it, as "C-c f ?". *)
+  s = state
+  s.Chords = chords
+  s
+end
+
+defn Chords(state)
+  (** The keys that ran the command running now, as "C-x C-s", or "" if a command runs without a key. *)
+  match state
+    {Chords: chords} -> chords
+    else -> ""
   end
 end
 
@@ -770,10 +819,12 @@ defn unbound(name, state)
 end
 
 defn pending(first, state)
-  (** The state waiting for the second key of a pair. *)
+  (** The state waiting for the next key after first, its hints not shown until it has waited a while. *)
   s = state
   s.Pending = first
   s.Message = "$first -"
+  s.Waited = 0.0
+  s.Hints = []
   s
 end
 
@@ -962,6 +1013,7 @@ defn Update(event, state)
     "resize" -> resized(event, state)
     "key" -> onKey(event, state)
     "text" -> onText(event, state)
+    "tick" -> onTick(event, state)
     "mouse" -> onMouse(event, if IsMissing(state.Prompt) config(state).MouseKeys() else config(state).PromptMouseKeys() end, state)
     else -> state
   end

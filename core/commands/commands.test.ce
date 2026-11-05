@@ -32,8 +32,9 @@ mouse(action, x, y) = {Kind: "mouse", Action: action, X: x, Y: y, Button: 1, Amo
 (** The pixel under a character of the first line: the code starts at x = view.Gutter and the first line at y = 4. *)
 atChar(column) = view.Gutter + column * 8 + 1
 
-(** A binding holds the function itself, never a name. *)
-isEveryBindingAFunction() = Len(Filter(f -> not IsFunction(f), Concat(Concat(Values(emacs.Keys()), Values(emacs.PromptKeys())), Concat(Values(emacs.MouseKeys()), Values(emacs.PromptMouseKeys()))))) == 0
+(** A binding holds the function itself, never its name; a text only names a group, and keys go on after it. *)
+isEveryBindingAFunction() = Len(Filter(f -> not IsFunction(f), Concat(Values(emacs.PromptKeys()), Concat(Values(emacs.MouseKeys()), Values(emacs.PromptMouseKeys()))))) == 0 and
+  Len(Filter(k -> not IsFunction(emacs.Keys()[k]) and not (IsText(emacs.Keys()[k]) and Any(Map(j -> StartsWith("$k ", j), Keys(emacs.Keys())))), Keys(emacs.Keys()))) == 0
 isShiftKeysBound() = emacs.Keys()["S-backspace"] == commands.DeleteBefore and emacs.Keys()["S-enter"] == commands.NewLine and emacs.Keys()["S-delete"] == commands.DeleteAfter and emacs.Keys()["S-tab"] == commands.Tab
 isTypeAndMove() = wordsOf(press.Press(["a", "b", "C-b", "x"], stateOf(""))) == "axb"
 isTypeCursor() = here(press.Press(["a", "b", "C-b", "x"], stateOf(""))).Cursor.Column == 2
@@ -731,3 +732,24 @@ end
 isSecondKeyIsWhatItTypes() = updated(question, press.Press(["C-x"], stateOf(""))).Message == "C-x ? is not bound."
 isSecondKeyTypesNothing() = wordsOf(updated(question, press.Press(["C-x"], stateOf("")))) == ""
 isSecondKeyRunsItsBinding() = updated(question, press.Press(["C-x"], withQuestion())).Message == "help"
+
+(* ---- The groups of C-c and the band of hints *)
+
+tick(seconds) = {Kind: "tick", Seconds: seconds}
+ticked(times, seconds, state) = Reduce((s, k) -> commands.Update(tick(seconds), s), state, 1:times)   (** The state after a number of ticks. *)
+
+isGroupWaits() = press.Press(["C-c", "f"], stateOf("")).Pending == "C-c f"
+isGroupRuns() = press.Press(["C-c", "f", "f"], stateOf("")).Prompt.Label == press.Press(["C-x", "C-f"], stateOf("")).Prompt.Label
+isGroupSplits() = Len(panes.Leaves(press.Press(["C-c", "w", "v"], stateOf("")).Panes)) == 2
+isGroupCancel() = press.Press(["C-c", "f", "C-g"], stateOf("")).Pending == "" and press.Press(["C-c", "f", "C-g"], stateOf("")).Message == "Quit"
+isGroupUnknown() = Contains("C-c f z", press.Press(["C-c", "f", "z"], stateOf("")).Message)
+isGroupKeysOfTheCommand() = press.Press(["C-c", "f", "s"], stateOf("")).Chords == "C-c f s"
+isMovingWhileWaiting() = commands.Moving(press.Press(["C-c"], stateOf(""))) and not commands.Moving(stateOf(""))
+isNoHintsBeforeTheDelay() = Len(ticked(4, 0.1, press.Press(["C-c"], stateOf(""))).Hints) == 0
+isHintsAfterTheDelay() = Len(ticked(6, 0.1, press.Press(["C-c"], stateOf(""))).Hints) > 0 and not commands.Moving(ticked(6, 0.1, press.Press(["C-c"], stateOf(""))))
+isHintsOfTheGroups() = {Key: "f", Name: "+files", Group: true} in ticked(6, 0.1, press.Press(["C-c"], stateOf(""))).Hints
+isHintsOfAGroup() = {Key: "s", Name: "Save", Group: false} in ticked(6, 0.1, press.Press(["C-c", "f"], stateOf(""))).Hints
+isHintsWaitAgainInAGroup() = Len(ticked(6, 0.1, press.Press(["C-c"], stateOf(""))).Hints) > 0 and Len(press.Press(["f"], ticked(6, 0.1, press.Press(["C-c"], stateOf("")))).Hints) == 0
+isHintsDrawn() = Len(Filter(c -> c.Kind == "text" and c.Text == "+files", view.View(ticked(6, 0.1, press.Press(["C-c"], stateOf("")))))) == 1
+isHintsGoneAfterTheCommand() = Len(Filter(c -> c.Kind == "text" and c.Text == "+files", view.View(press.Press(["f", "s"], ticked(6, 0.1, press.Press(["C-c"], stateOf(""))))))) == 0
+isNoTickWithoutKeys() = Len(ticked(3, 0.5, stateOf("")).Hints) == 0 and not commands.Moving(ticked(3, 0.5, stateOf("")))

@@ -4,7 +4,7 @@ use lists
 use text
 use view
 
-Keys() = {"C-x C-b": Open}   (** The keys that work everywhere. *)
+Keys() = {"C-x C-b": Open, "C-c b b": Open}   (** The keys that work everywhere: C-c b b in the group of the buffers. *)
 
 (** The keys of the list. Letters filter it, and the ListKeys of the config take the filter back. *)
 Here() = {"enter": Visit}

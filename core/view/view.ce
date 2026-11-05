@@ -19,7 +19,8 @@ promptHeight = 22
 (** The state of the editor with its buffers, before any key: the first buffer is current, there is no pending key, no prompt, no run and no window yet.
     The editor adds its own fields: clip, the clipboard when there is no window; chorded, right after a key with Ctrl or Alt, the text of the event to ignore,
     or true for any text; chain, true while the last command was C-k; dragging, true while the mouse selects; pressed, the place of a mouse press until the mouse leaves
-    the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; and title. Config is the function
+    the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; title; waited, the seconds since
+    the last pending key; hints, the keys that can follow the pending ones once shown; and chords, the keys of the command that runs. Config is the function
     that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Cemacs, "." until the program says. Panes is
     the tree of the panes, see panes.ce, and Pane the one being edited, which shows the current buffer.
     Under --watch the code changes and the state stays, so a session can hold a state from before a field was added here. A field added after that
@@ -28,7 +29,7 @@ promptHeight = 22
       Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600).Current --> 1 *)
 Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pending: "", Prompt: missing, Message: "", Run: missing, Window: missing, Width: width, Height: height, Cell: cell, Look: look,
   Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: "", Config: missing, Home: ".", Second: false,
-  Panes: panes.One(1), Pane: 1}
+  Panes: panes.One(1), Pane: 1, Waited: 0.0, Hints: [], Chords: ""}
 
 defn Layout(width, height, cell, showingOutput)
   (** The rectangles of the screen {Area, Code, Output, Mode, Prompt}, and rows and columns, the lines and the characters that fit in code. Area is where the
@@ -360,6 +361,34 @@ defn prompt(state, lay, look)
   Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, th.Ink)], bar)
 end
 
+defn hints(state, lay, look)
+  (** The band above the prompt line, while keys wait for the next one and their hints are there: each chord that can follow, and the command it runs or the
+      group it opens, in columns read from the top down. *)
+  shown = match state
+    {Hints: rows} -> if state.Pending == "" [] else rows end
+    else -> []
+  end
+  if Len(shown) == 0
+    return []
+  end
+  th = look.Theme
+  keyWidth = Reduce((w, h) -> Max(w, look.Width(h.Key, "code")), 0, shown)
+  column = keyWidth + 12 + Reduce((w, h) -> Max(w, look.Width(h.Name, "body")), 0, shown) + 40
+  columns = Max(1, Div(lay.Prompt.Width - 24, column))
+  rows = Div(Len(shown) + columns - 1, columns)
+  line = look.Height + 6
+  height = rows * line + 12
+  top = lay.Prompt.Y - height
+  out = [rectCommand(lay.Prompt.X, top, lay.Prompt.Width, height, th.Panel), rectCommand(lay.Prompt.X, top, lay.Prompt.Width, 1, th.Line)]
+  for k in 1:Len(shown)
+    h = shown[k]
+    x = lay.Prompt.X + 12 + Div(k - 1, rows) * column
+    y = top + 6 + Mod(k - 1, rows) * line + 3
+    out = Concat(out, [inside("code", x, y, h.Key, th.Syntax[color.Keyword]), textCommand(x + keyWidth + 12, y, h.Name, if h.Group th.Accent else th.Ink end)])
+  end
+  out
+end
+
 defn output(state, lay, look)
   (** The output pane, when there is room for it: its title and the status of the program. *)
   th = look.Theme
@@ -390,5 +419,5 @@ defn View(state)
       drawn = Append(rectCommand(one.Code.X, one.Code.Y, 1, one.Code.Height + one.Mode.Height, look.Theme.Line), drawn)
     end
   end
-  Flatten([[{Kind: "clear", Color: look.Theme.Ground}], drawn, output(state, lay, look), prompt(state, lay, look)])
+  Flatten([[{Kind: "clear", Color: look.Theme.Ground}], drawn, output(state, lay, look), hints(state, lay, look), prompt(state, lay, look)])
 end
