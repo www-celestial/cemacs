@@ -497,20 +497,26 @@ defn withRun(r, state)
   s
 end
 
-defn Run(state)
-  (** Runs the file of the current buffer, as saved, under the debugger of Cemacs, with the breakpoints: its output shows below the panes. *)
+defn started(debug, state)
+  (** The state with the file of the current buffer run, as saved, with the debugger of Cemacs or without it. *)
   b = current(state)
   if running(state)
-    say("A program runs: C-c d k stops it.", state)
+    say("A program runs: C-c c k stops it.", state)
   else if value.IsMissing(b.Path)
     say("This buffer has no file to run: save it first.", state)
   else
-    match run.Start(Home(state), b.Path, view.BreaksOf(state))
+    match run.Start(Home(state), b.Path, view.BreaksOf(state), debug)
       result.Ok(r) -> say(if text.IsModified(b) "Running $(b.Path) as saved, without the changes here." else "Running $(b.Path)." end, withRun(r, state))
       result.Err(e) -> say("$(b.Path) doesn't run: $e", state)
     end
   end
 end
+
+(** Runs the file of the current buffer, as saved, as fast as cesia run does: its output shows below the panes. *)
+Run(state) = started(false, state)
+
+(** Runs the file of the current buffer, as saved, under the debugger of Cemacs: it stops at the breakpoints, and C-c d e runs code in it. *)
+DebugRun(state) = started(true, state)
 
 (** Ends the program that runs. *)
 Stop(state) = if running(state) say("Stopping the program.", withRun(run.Kill(state.Run), state)) else say("No program is running.", state) end
@@ -518,7 +524,7 @@ Stop(state) = if running(state) say("Stopping the program.", withRun(run.Kill(st
 defn ToggleOutput(state)
   (** Shows or hides the output of the last program run. *)
   if value.IsMissing(state.Run)
-    return say("There is no output yet: C-c d r runs the file.", state)
+    return say("There is no output yet: C-c c r runs the file.", state)
   end
   r = state.Run
   r.Shown = not r.Shown
@@ -546,8 +552,8 @@ defn Eval(state)
   (** Runs the selection, or else the line of the cursor, in the program, and shows its value at the end of that line: in the frame where the program
       stopped, or at the file level of its main file while it runs. *)
   b = current(state)
-  if not running(state)
-    return say("No program is running: C-c d r runs the file.", state)
+  if not running(state) or not state.Run.Debug
+    return say("No program runs under the debugger: C-c d r runs the file under it.", state)
   end
   code = if hasSelection(b) text.Region(b) else rope.Line(b.Cursor.Line, b.Rope) end
   line = if hasSelection(b) text.Selection(b).Last.Line else b.Cursor.Line end

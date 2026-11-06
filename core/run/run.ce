@@ -4,7 +4,7 @@
     for the person; Output, its lines, the last ones kept; Partial, a line not yet ended; Stop, where it stopped, with File,
     Line, Reason, Error and Vars, or missing while it runs; Values, the answers to the evals, under the path and line they
     came from; Asked, the place of each eval not yet answered; Next, the number of the next one; Shown, whether the output
-    pane shows; Ended. Start, Send and Drain touch the program; the rest is pure. *)
+    pane shows; Ended; Debug, whether it runs under the debugger. Start, Send and Drain touch the program; the rest is pure. *)
 use std/dict
 use std/fiber
 use std/json
@@ -24,7 +24,7 @@ Mark = str.Char(1)
 
       Empty().Status --> "running" *)
 Empty() = {Process: missing, Inbox: missing, Status: "running", Output: [], Partial: "", Stop: missing, Values: {}, Asked: {}, Next: 1,
-  Shown: true, Ended: false}
+  Shown: true, Ended: false, Debug: true}
 
 defn reading(p, inbox)
   (** Puts what the program writes on the channel, chunk by chunk, then its exit code once its output is closed. *)
@@ -37,19 +37,23 @@ defn reading(p, inbox)
 end
 
 defn Send(command, r)
-  (** Writes a command for the debugger, one line of JSON, and gives the run. A program that ended takes none. *)
-  if not r.Ended and not value.IsMissing(r.Process)
+  (** Writes a command for the debugger, one line of JSON, and gives the run. A run without the debugger, or that ended,
+      takes none: its input is the program's own. *)
+  if r.Debug and not r.Ended and not value.IsMissing(r.Process)
     _ = sys.WriteInput(r.Process, "$(json.Text(command))\n")
   end
   r
 end
 
-defn Start(home, path, breaks)
-  (** Starts the program of a file under the debugger of Cemacs, in its home, with breakpoints, each a Path and a Line: an Ok
-      of its run, or an Err. The program stops before its first line, takes the breakpoints and goes on. *)
-  p = sys.Start("cesia", ["run", "--debugger", "$home/tools/debugger.ce", path])?
+defn Start(home, path, breaks, debug)
+  (** Starts the program of a file: an Ok of its run, or an Err. With debug true, it runs under the debugger of Cemacs,
+      in its home, with breakpoints, each a Path and a Line: it stops before its first line, takes the breakpoints and
+      goes on. Else it runs as cesia run runs it, as fast, and only its output comes. *)
+  args = if debug ["run", "--debugger", "$home/tools/debugger.ce", path] else ["run", path] end
+  p = sys.Start("cesia", args)?
   r = Empty()
   r.Process = p
+  r.Debug = debug
   r.Inbox = fiber.Channel()
   inbox = r.Inbox
   _ = fiber.Spawn(() -> reading(p, inbox))

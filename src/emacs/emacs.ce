@@ -76,7 +76,7 @@ Keys() = {
   "C-c w": "windows", "C-c w s": commands.SplitBelow, "C-c w v": commands.SplitRight, "C-c w o": commands.NextPane, "C-c w d": commands.ClosePane,
   "C-c w m": commands.OnlyPane,
   "C-c c": "code", "C-c c r": commands.Run, "C-c c k": commands.Stop, "C-c c o": commands.ToggleOutput,
-  "C-c d": "debug", "C-c d b": commands.ToggleBreak, "C-c d e": commands.Eval, "C-c d c": commands.Continue, "C-c d n": commands.StepOver,
+  "C-c d": "debug", "C-c d r": commands.DebugRun, "C-c d b": commands.ToggleBreak, "C-c d e": commands.Eval, "C-c d c": commands.Continue, "C-c d n": commands.StepOver,
   "C-c d s": commands.StepInto, "C-c d u": commands.StepOut,
   "C-c q": "quit", "C-c q q": commands.Quit
 }

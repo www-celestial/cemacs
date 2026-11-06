@@ -584,7 +584,7 @@ defn isEveryCommandVisible()
   names = ["ForwardChar", "BackwardChar", "NextLine", "PreviousLine", "ForwardWord", "BackwardWord", "LineStart", "LineEnd", "PageDown", "PageUp", "FileStart", "FileEnd",
     "SelectForwardChar", "SelectBackwardChar", "SelectNextLine", "SelectPreviousLine", "SelectLineStart", "SelectLineEnd", "SelectPageDown", "SelectPageUp",
     "SetMark", "Cancel", "CancelPair", "DeleteBefore", "DeleteAfter", "NewLine", "Tab", "Undo", "Redo", "Cut", "Copy", "Paste", "CutLine",
-    "Save", "FindFile", "NextBuffer", "CloseBuffer", "Quit", "Run", "Stop", "ToggleOutput", "ToggleBreak", "Eval", "Continue", "StepOver", "StepInto", "StepOut",
+    "Save", "FindFile", "NextBuffer", "CloseBuffer", "Quit", "Run", "Stop", "ToggleOutput", "DebugRun", "ToggleBreak", "Eval", "Continue", "StepOver", "StepInto", "StepOut",
     "PromptAccept", "PromptDeleteBefore", "PromptPaste", "PromptCancel", "Press", "Drag", "Release", "Wheel"]
   value.Len(list.Filter(name -> not ("commands.$name" in shown), names)) == 0
 end
@@ -765,7 +765,7 @@ inFile(words) = begun([text.Of(words, "a.ce")], look, cell, 800, 600)   (** A st
 isBreakSet() = value.Equal(view.BreaksOf(press.Press(["C-c", "d", "b"], inFile("x = 1\n"))), [{Path: "a.ce", Line: 1}])   (** C-c d b sets one. *)
 isBreakCleared() = value.Len(view.BreaksOf(press.Press(["C-c", "d", "b", "C-c", "d", "b"], inFile("x = 1\n")))) == 0   (** Again, it goes. *)
 isBreakNeedsFile() = value.Len(view.BreaksOf(press.Press(["C-c", "d", "b"], stateOf("x")))) == 0   (** A buffer without a file has none. *)
-isEvalNeedsRun() = str.StartsWith("No program", press.Press(["C-c", "d", "e"], inFile("1 + 1")).Message)   (** C-c d e without a program says so. *)
+isEvalNeedsRun() = str.StartsWith("No program runs under the debugger", press.Press(["C-c", "d", "e"], inFile("1 + 1")).Message)   (** C-c d e without a program says so. *)
 isContinueNeedsStop() = press.Press(["C-c", "d", "c"], inFile("1")).Message == "The program isn't stopped."   (** Nothing to go on from. *)
 isNoOutputYet() = str.StartsWith("There is no output", press.Press(["C-c", "c", "o"], inFile("1")).Message)   (** C-c c o before any run. *)
 isRunNeedsFile() = str.StartsWith("This buffer has no file", press.Press(["C-c", "c", "r"], stateOf("1")).Message)   (** A buffer never saved can't run. *)
