@@ -182,11 +182,11 @@ ValueAt(path, line, r) = dict.Get(Place(path, line), r.Values)
 (** The line where the program stopped, in that file, or missing.
 
       StoppedAt("a.ce", Empty()) --> missing *)
-StoppedAt(path, r) = if not value.IsMissing(r.Stop) and same(r.Stop.File, path) r.Stop.Line else missing end
+StoppedAt(path, r) = if not value.IsMissing(r.Stop) and Same(r.Stop.File, path) r.Stop.Line else missing end
 
 (** Do two paths name one file, written with or without ./ before them?
 
-      same("./a.ce", "a.ce") --> true *)
-same(a, b) = bare(a) == bare(b)
+      Same("./a.ce", "a.ce") --> true *)
+Same(a, b) = bare(a) == bare(b)
 
 bare(p) = if str.StartsWith("./", p) str.Slice(3, value.Len(p), p) else p end   (** A path without ./ before it. *)

@@ -1,0 +1,56 @@
+(** Checks of a program run under the debugger of Cemacs, as C-c c r runs it, against a real program in a new folder under /tmp: its output, a stop
+    at a breakpoint with its variables, an eval at the stop and one while it runs, the line of the stop, the end. It is a script, not a test file: it
+    needs permissions. Run it from the root of cemacs with cesia run --allow read,write,exec=cesia,exec=mktemp tests/run-check.ce. It prints ok at the
+    end and stops at the first failure. *)
+use core/run
+use std/bug
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+defn until(test, r)
+  (** The run once test is true of it, read as the ticks of the editor read it, or a failure after five seconds. *)
+  out = run.Drain(r)
+  waited = 0.0
+  while not test(out)
+    check(waited < 5.0, "the program never got there: $(out.Status), $(out.Output)")
+    sys.Sleep(0.01)
+    waited = waited + 0.01
+    out = run.Drain(out)
+  end
+  out
+end
+
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/app.ce"
+program = "defn Double(x)\n  x * 2\nend\ntotal = 0\nfor i in 1..3\n  total = total + Double(i)\n  io.Print(\"step\", i)\nend\nsys.Sleep(0.3)\nio.Print(total)\nuse std/io\nuse std/sys\n"
+_ = result.Unwrap(sys.Write(path, program))
+
+started = result.Unwrap(run.Start(".", path, [{Path: path, Line: 7}]))
+stopped = until(r -> not value.IsMissing(r.Stop) and r.Stop.Reason == "break", started)
+check(run.StoppedAt(path, stopped) == 7, "the stop is on the breakpoint")
+check(value.Len(list.Filter(v -> v.Name == "i" and v.Value == "1", stopped.Stop.Vars)) == 1, "the stop has i = 1")
+asked = run.Ask("i * 100", path, 7, stopped)
+answered = until(r -> not value.IsMissing(run.ValueAt(path, 7, r)), asked)
+check(run.ValueAt(path, 7, answered) == "100", "the eval at the stop runs in its frame")
+cleared = run.Send({Do: "clear", File: path, Line: 7}, answered)
+going = run.Resume("continue", cleared)
+check(value.IsMissing(going.Stop), "continue ends the stop")
+printed = until(r -> list.IndexOf("step 3", r.Output) != missing, going)
+live = until(r -> not value.IsMissing(run.ValueAt(path, 1, r)), run.Ask("Double(21)", path, 1, printed))
+check(run.ValueAt(path, 1, live) == "42", "an eval while the program runs sees its functions")
+ended = until(r -> r.Ended, live)
+check(list.IndexOf("12", ended.Output) != missing, "the program printed its total")
+check(ended.Status == "ended, code 0", "the program ended well: $(ended.Status)")
+_ = sys.Run("rm", ["-r", folder])
+io.Print("ok")

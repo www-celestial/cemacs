@@ -7,6 +7,7 @@ use core/files
 use core/keys
 use core/lists
 use core/panes
+use core/run
 use core/text
 use core/view
 use std/text as str
@@ -485,10 +486,90 @@ defn Quit(state)
   end
 end
 
-(** Running a program: not there yet, like the two after it, which only say so. *)
-Run(state) = say("Running a program is not there yet.", state)
-Stop(state) = say("No program is running.", state)   (** Stopping a program: not there yet. *)
-ToggleOutput(state) = say("There is no output yet.", state)   (** Showing the output: not there yet. *)
+(* ---- Running a program, under the debugger of Cemacs: see core/run. *)
+
+running(state) = not value.IsMissing(state.Run) and not state.Run.Ended   (** Does a program run, or wait at a stop? *)
+
+defn withRun(r, state)
+  (** The state with a run in place of the one before. *)
+  s = state
+  s.Run = r
+  s
+end
+
+defn Run(state)
+  (** Runs the file of the current buffer, as saved, under the debugger of Cemacs, with the breakpoints: its output shows below the panes. *)
+  b = current(state)
+  if running(state)
+    say("A program runs: C-c d k stops it.", state)
+  else if value.IsMissing(b.Path)
+    say("This buffer has no file to run: save it first.", state)
+  else
+    match run.Start(Home(state), b.Path, view.BreaksOf(state))
+      result.Ok(r) -> say(if text.IsModified(b) "Running $(b.Path) as saved, without the changes here." else "Running $(b.Path)." end, withRun(r, state))
+      result.Err(e) -> say("$(b.Path) doesn't run: $e", state)
+    end
+  end
+end
+
+(** Ends the program that runs. *)
+Stop(state) = if running(state) say("Stopping the program.", withRun(run.Kill(state.Run), state)) else say("No program is running.", state) end
+
+defn ToggleOutput(state)
+  (** Shows or hides the output of the last program run. *)
+  if value.IsMissing(state.Run)
+    return say("There is no output yet: C-c d r runs the file.", state)
+  end
+  r = state.Run
+  r.Shown = not r.Shown
+  withRun(r, state)
+end
+
+defn ToggleBreak(state)
+  (** A breakpoint on the line of the cursor, or none if it had one: the program that runs takes it at once. *)
+  b = current(state)
+  if value.IsMissing(b.Path)
+    return say("A breakpoint needs a file: save the buffer first.", state)
+  end
+  here = {Path: b.Path, Line: b.Cursor.Line}
+  breaks = view.BreaksOf(state)
+  had = value.Len(list.Filter(x -> x.Path == here.Path and x.Line == here.Line, breaks)) > 0
+  s = state
+  s.Breaks = if had list.Filter(x -> x.Path != here.Path or x.Line != here.Line, breaks) else list.Append(here, breaks) end
+  if running(state)
+    s = withRun(run.Send({Do: if had "clear" else "break" end, File: here.Path, Line: here.Line}, state.Run), s)
+  end
+  say(if had "Breakpoint removed." else "Breakpoint on line $(here.Line)." end, s)
+end
+
+defn Eval(state)
+  (** Runs the selection, or else the line of the cursor, in the program, and shows its value at the end of that line: in the frame where the program
+      stopped, or at the file level of its main file while it runs. *)
+  b = current(state)
+  if not running(state)
+    return say("No program is running: C-c d r runs the file.", state)
+  end
+  code = if hasSelection(b) text.Region(b) else rope.Line(b.Cursor.Line, b.Rope) end
+  line = if hasSelection(b) text.Selection(b).Last.Line else b.Cursor.Line end
+  withRun(run.Ask(code, b.Path, line, state.Run), state)
+end
+
+defn resumed(word, state)
+  (** The program going on from its stop, as continue, step, next or out say. *)
+  if running(state) and not value.IsMissing(state.Run.Stop)
+    withRun(run.Resume(word, state.Run), state)
+  else
+    say("The program isn't stopped.", state)
+  end
+end
+
+Continue(state) = resumed("continue", state)   (** The program going on to its next stop. *)
+StepOver(state) = resumed("next", state)   (** One line, a call as a whole. *)
+StepInto(state) = resumed("step", state)   (** One line, into a call. *)
+StepOut(state) = resumed("out", state)   (** On to the return of the function. *)
+
+(** The state with what the program wrote since the last tick. *)
+drained(state) = if running(state) withRun(run.Drain(state.Run), state) else state end
 
 (* ---- Panes: the pane being edited holds its place in the current buffer, and each other pane keeps its own in its leaf, see panes.ce. *)
 
@@ -715,8 +796,8 @@ end
 (* ---- Keys and events *)
 
 (** Does the editor need frames of its own? Only while keys wait for the next one and their hints aren't shown yet, or while an app waits for time to
-    pass, as a check does: the ticks count the time. *)
-Moving(state) = (state.Pending != "" and value.Len(hintsOf(state)) == 0) or hooks(state).Moving(state)
+    pass, as a check does: the ticks count the time; and while a program runs, since they read what it writes. *)
+Moving(state) = (state.Pending != "" and value.Len(hintsOf(state)) == 0) or hooks(state).Moving(state) or running(state)
 
 defn hooks(state)
   (** What an app adds to the config to hear of time and saves, as src/check does: Idle(state) at each tick, Saved(state) after a save, and Moving(state),
@@ -752,8 +833,9 @@ defn waitedOf(state)
 end
 
 defn onTick(event, state)
-  (** The state after a tick: the time counted since the last event, the hints of the pending keys, then the Idle hook of an app. *)
-  s = state
+  (** The state after a tick: what the program that runs wrote, the time counted since the last event, the hints of the pending keys, then the Idle hook
+      of an app. *)
+  s = drained(state)
   s.Still = Still(state) + event.Seconds
   hooks(s).Idle(hinted(event, s))
 end

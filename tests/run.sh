@@ -13,6 +13,7 @@ tests/sdl/run.sh
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo tests/files-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo tests/commands-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia tests/check-check.ce
+timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm tests/run-check.ce
 trash=$(mktemp -d)
 XDG_DATA_HOME="$trash" timeout -s KILL 60 cesia run --allow read,write,env=HOME,env=PWD,env=XDG_DATA_HOME tests/folders-check.ce
 rm -rf "$trash"

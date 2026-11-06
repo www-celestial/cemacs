@@ -5,6 +5,7 @@ use src/ui
 use core/color
 use core/lists
 use core/panes
+use core/run
 use core/text
 use std/text as str
 use std/list
@@ -41,6 +42,30 @@ Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pendi
   Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: "", Config: missing, Home: ".", Second: false,
   Panes: panes.One(1), Pane: 1, Waited: 0.0, Hints: [], Chords: ""}
 
+(** Is the output of a program shown below the panes? Once a program ran, until C-c d o hides it. *)
+ShowsOutput(state) = not value.IsMissing(state.Run) and state.Run.Shown
+
+defn BreaksOf(state)
+  (** The breakpoints, each a Path and a Line, which stay while no program runs. A state from before this field has none. *)
+  match state
+    {Breaks: b} -> b
+    else -> []
+  end
+end
+
+(* The color of a breakpoint in the gutter. *)
+breakColor = 0xE06C75
+
+defn marksOf(b, state)
+  (** What a run puts on the lines of a buffer: the lines of its breakpoints, the line where the program stopped, and the run, for the answers of the evals. *)
+  if value.IsMissing(b.Path)
+    return {Breaks: [], Stopped: missing, Run: missing}
+  end
+  r = state.Run
+  lines = list.Map(x -> x.Line, list.Filter(x -> run.Same(x.Path, b.Path), BreaksOf(state)))
+  {Breaks: lines, Stopped: if value.IsMissing(r) missing else run.StoppedAt(b.Path, r) end, Run: r}
+end
+
 defn Layout(width, height, cell, showingOutput)
   (** The rectangles of the screen {Area, Code, Output, Mode, Prompt}, and rows and columns, the lines and the characters that fit in code. Area is where the
       panes go, above the output and the prompt line, and code and mode are those of one pane that fills it. With showing_output false, output is empty.
@@ -68,7 +93,7 @@ end
 paneLayoutsIn(lay, state) = list.Map(r -> PaneLayout(r, state.Cell), panes.Rects(lay.Area, panes.Tree(state)))
 
 (** The layout of each pane of a state, as PaneLayout gives it, in the order of the panes. *)
-PaneLayouts(state) = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, not value.IsMissing(state.Run)), state)
+PaneLayouts(state) = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, ShowsOutput(state)), state)
 
 (** The place of a buffer on the screen, which a pane keeps while another one is edited: the cursor, the mark and where it came from, the top and the left of
     the screen, and free. *)
@@ -147,7 +172,7 @@ end
 defn FollowState(state)
   (** The state with the screen of each pane kept on its cursor, as follow does: the current buffer for the pane being edited, and the place that each other
       pane keeps. The colors of a buffer are known down to the last line that any pane shows. *)
-  layouts = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, not value.IsMissing(state.Run)), state)
+  layouts = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, ShowsOutput(state)), state)
   active = panes.Active(state)
   tree = panes.Tree(state)
   s = state
@@ -263,7 +288,7 @@ defn LayoutOf(state)
       being edited.
 
         LayoutOf(Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)).Rows --> 28 *)
-  lay = Layout(state.Width, state.Height, state.Cell, not value.IsMissing(state.Run))
+  lay = Layout(state.Width, state.Height, state.Cell, ShowsOutput(state))
   layouts = paneLayoutsIn(lay, state)
   one = layouts[list.Min(panes.Active(state), value.Len(layouts))]
   lay.Code = one.Code
@@ -276,7 +301,7 @@ end
 (** The pane under a point, its code or its mode line, or 0 out of the panes.
 
       PaneAt(10, 10, Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> 1 *)
-PaneAt(x, y, state) = panes.IndexAt(x, y, panes.Rects(Layout(state.Width, state.Height, state.Cell, not value.IsMissing(state.Run)).Area, panes.Tree(state)))
+PaneAt(x, y, state) = panes.IndexAt(x, y, panes.Rects(Layout(state.Width, state.Height, state.Cell, ShowsOutput(state)).Area, panes.Tree(state)))
 
 defn IsInCode(x, y, state)
   (** Is a point inside the code area?
@@ -330,9 +355,10 @@ defn selection(b, first, last, lay, look)
   out
 end
 
-defn code(b, lay, look, focused)
+defn code(b, lay, look, focused, marks)
   (** The code area of a buffer in a pane: the band of the current line, the lines on the screen and the cursor bar. Only the pane being edited, focused, has
-      the band and a bright bar. *)
+      the band and a bright bar. Marks are those of a run: a dot in the gutter for a breakpoint, a band of color on the line where the program stopped,
+      and the value of an eval at the end of its line, in grey and not in the file. *)
   th = look.Theme
   cell = lay.Cell
   rect = lay.Code
@@ -344,9 +370,17 @@ defn code(b, lay, look, focused)
   if focused and here >= first and here <= last
     out = list.Append(box(rect.X + 4, lineY(here), rect.Width - 8, cell.Height, th.Hover, 4), out)
   end
+  stopped = marks.Stopped
+  if not value.IsMissing(stopped) and stopped >= first and stopped <= last
+    out = list.Append(box(rect.X + 4, lineY(stopped), rect.Width - 8, cell.Height, th.Picked, 4), out)
+  end
   out = list.Concat(out, selection(b, first, last, lay, look))
   for n in first..last
     out = list.Concat(out, line(b, n, lineY(n), lay.Columns, rect, look))
+    if not value.IsMissing(list.IndexOf(n, marks.Breaks))
+      out = list.Append(box(rect.X + 6, lineY(n) + math.Div(cell.Height, 2) - 4, 8, 8, breakColor, 4), out)
+    end
+    out = list.Concat(out, answer(b, n, marks.Run, lineY(n), lay.Columns, rect, cell, th))
   end
   out = list.Concat(out, marked(b, first, last, lay, look))
   if here >= first and here <= last and b.Cursor.Column >= b.Left and b.Cursor.Column - b.Left < lay.Columns
@@ -459,16 +493,54 @@ defn hints(state, lay, look)
   out
 end
 
+defn answer(b, n, r, y, columns, rect, cell, th)
+  (** The value of the eval asked from line n, two cells after its end, when the line ends on the screen. *)
+  if value.IsMissing(r)
+    return []
+  end
+  shown = run.ValueAt(b.Path, n, r)
+  at = value.Len(str.Chars(rope.Line(n, b.Rope))) + 2 - b.Left
+  if value.IsMissing(shown) or at < 0 or at >= columns
+    []
+  else
+    room = columns - at - 2
+    words = str.Join("", list.Take(list.Max(0, room), str.Chars(str.Replace("\n", " ", "= $shown"))))
+    [textCommand(columnX(at, rect, cell), y, words, th.Faint)]
+  end
+end
+
+defn outputLines(r)
+  (** What the output pane lists: at a stop, the variables of the innermost frame; else the output of the program, its last line too. *)
+  if not value.IsMissing(r.Stop)
+    error = if r.Stop.Error == "" [] else [r.Stop.Error] end
+    list.Concat(error, list.Map(v -> "$(v.Name) = $(v.Value)", r.Stop.Vars))
+  else if r.Partial != ""
+    list.Append(r.Partial, r.Output)
+  else
+    r.Output
+  end
+end
+
 defn output(state, lay, look)
   (** The output pane, when there is room for it: its title and the status of the program. *)
   th = look.Theme
   rect = lay.Output
-  if rect.Height == 0 or value.IsMissing(state.Run)
+  if rect.Height == 0 or not ShowsOutput(state)
     []
   else
     y = rect.Y + 4
-    [rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Well), rectCommand(rect.X, rect.Y, rect.Width, 1, th.Line), inside("strong", rect.X + 12, y, "Output", th.Ink),
-      textCommand(rect.X + 24 + look.Width("Output", "strong"), y, state.Run.Status, th.Muted)]
+    r = state.Run
+    title = if value.IsMissing(r.Stop) "Output" else "Variables" end
+    out = [rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Well), rectCommand(rect.X, rect.Y, rect.Width, 1, th.Line), inside("strong", rect.X + 12, y, title, th.Ink),
+      textCommand(rect.X + 24 + look.Width(title, "strong"), y, r.Status, th.Muted)]
+    rows = list.Max(0, math.Div(rect.Height - 28, lay.Cell.Height))
+    columns = list.Max(0, math.Div(rect.Width - 24, lay.Cell.Width))
+    shown = outputLines(r)
+    last = list.Skip(list.Max(0, value.Len(shown) - rows), shown)
+    for k in 1..value.Len(last)
+      out = list.Append(inside("code", rect.X + 12, y + 24 + (k - 1) * lay.Cell.Height, str.Join("", list.Take(columns, str.Chars(last[k]))), th.Ink), out)
+    end
+    out
   end
 end
 
@@ -476,7 +548,7 @@ defn View(state)
   (** The frame of a state: an array of commands for sdl. Only the lines on the screen are read, so a large file costs no more than a small one.
       The screen of each pane (top, left and colors) is what follow gave it. A line on the left of a pane parts it from the one beside it. *)
   look = state.Look
-  lay = Layout(state.Width, state.Height, state.Cell, not value.IsMissing(state.Run))
+  lay = Layout(state.Width, state.Height, state.Cell, ShowsOutput(state))
   layouts = paneLayoutsIn(lay, state)
   active = panes.Active(state)
   drawn = []
@@ -484,10 +556,12 @@ defn View(state)
     one = layouts[j]
     one.Cell = state.Cell
     b = shownIn(j, state)
-    drawn = list.Concat(drawn, list.Concat(code(b, one, look, j == active), mode(b, one, look, j == active)))
+    drawn = list.Concat(drawn, list.Concat(code(b, one, look, j == active, marksOf(b, state)), mode(b, one, look, j == active)))
     if one.Code.X > lay.Area.X
       drawn = list.Append(rectCommand(one.Code.X, one.Code.Y, 1, one.Code.Height + one.Mode.Height, look.Theme.Line), drawn)
     end
   end
-  list.Flatten([[{Kind: "clear", Color: look.Theme.Ground}], drawn, output(state, lay, look), hints(state, lay, look), prompt(state, lay, look)])
+  outLay = lay
+  outLay.Cell = state.Cell
+  list.Flatten([[{Kind: "clear", Color: look.Theme.Ground}], drawn, output(state, outLay, look), hints(state, lay, look), prompt(state, lay, look)])
 end
