@@ -32,7 +32,7 @@ jobs:
           mkdir -p "$HOME/.cesia"
           tar -xzf "download/$archive" -C "$HOME/.cesia"
           echo "$HOME/.cesia/bin" >> "$GITHUB_PATH"
-          need=$(sed -n 's/^cesia = "\(.*\)"$/\1/p' cesia.toml)
+          need=$(sed -n 's/^cesia = "\(.*\)"$/\1/p' cesia.toml | sed 's/[-+].*//')
           have=$("$HOME/.cesia/bin/cesia" version | cut -d' ' -f2 | sed 's/[-+].*//')
           if [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -1)" != "$need" ]; then
             echo "Cesia $CHANNEL is $have, older than the $need that cesia.toml asks for: nothing to test against."
