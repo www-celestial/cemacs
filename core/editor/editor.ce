@@ -4,6 +4,10 @@ use std/ui
 use core/commands
 use core/text
 use core/view
+use std/list
+use std/result
+use std/sys
+use std/value
 
 defn opened(home, size)
   (** The window, with the three fonts of Cemacs found in fonts/ under its home, all of this size: body, strong and code. *)
@@ -15,7 +19,7 @@ end
 defn Start(config)
   (** Opens the window with config, the function that gives the keys and the settings, opens the files given after the home or one empty buffer, and runs until
       the editor ends. bin/cemacs gives the home of Cemacs first, then the files to open; cesia do dev runs from the home and gives nothing. *)
-  home = if Len(Args) == 0 "." else Args[1] end
+  home = if value.Len(sys.Args) == 0 "." else sys.Args[1] end
   window = opened(home, config().FontSize())?
   measured = sdl.Measure(window)
   look = ui.Look(ui.Dark, measured.Width, measured.Height)
@@ -24,8 +28,8 @@ defn Start(config)
   empty.Window = window
   empty.Config = config
   empty.Home = home
-  state = commands.Settled(commands.OpenAll(Skip(1, Args), empty))
+  state = commands.Settled(commands.OpenAll(list.Skip(1, sys.Args), empty))
   sdl.Run(state, commands.Update, view.View, window, moving = commands.Moving)
   sdl.Close(window)
-  Ok(missing)
+  result.Ok(missing)
 end

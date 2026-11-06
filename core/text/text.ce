@@ -3,6 +3,9 @@ use std/rope
 use std/history
 use core/color
 use std/text as str
+use std/list
+use std/math
+use std/value
 
 defn Of(words, path)
   (** A buffer holding words, for the file at path (or missing for a text with no file). The cursor is at the start, nothing is selected,
@@ -21,7 +24,7 @@ defn Of(words, path)
 end
 
 (** Does line n end with a CRLF? Then its \r belongs to the line end. A \r anywhere else, or at the end of the last line, is an ordinary character. *)
-hasCr(n, b) = n < rope.LineCount(b.Rope) and EndsWith("\r", rope.Line(n, b.Rope))
+hasCr(n, b) = n < rope.LineCount(b.Rope) and str.EndsWith("\r", rope.Line(n, b.Rope))
 
 defn line(n, b)
   (** The text of line n, without its line end: a \r before the line end is not part of it. *)
@@ -29,7 +32,7 @@ defn line(n, b)
   if hasCr(n, b) withoutLast(s) else s end
 end
 
-withoutLast(s) = Join("", Take(Len(s) - 1, Chars(s)))   (** A text without its last character. *)
+withoutLast(s) = str.Join("", list.Take(value.Len(s) - 1, str.Chars(s)))   (** A text without its last character. *)
 
 defn eol(n, b)
   (** The line end of line n: \r\n or \n. The last line has none, so it takes the one of the line above, or \n if it is alone. *)
@@ -41,12 +44,12 @@ defn eol(n, b)
     "\n"
   end
 end
-width(n, b) = Len(line(n, b))   (** The number of characters of line n. *)
+width(n, b) = value.Len(line(n, b))   (** The number of characters of line n. *)
 
 defn clamp(pos, b)
   (** A position {Line, Column} brought inside the text. *)
-  line = Min(Max(1, pos.Line), rope.LineCount(b.Rope))
-  {Line: line, Column: Min(Max(0, pos.Column), width(line, b))}
+  line = list.Min(list.Max(1, pos.Line), rope.LineCount(b.Rope))
+  {Line: line, Column: list.Min(list.Max(0, pos.Column), width(line, b))}
 end
 
 defn byte(pos, b)
@@ -55,7 +58,7 @@ defn byte(pos, b)
   if pos.Column == 0
     start
   else
-    start + ByteLength(Slice(1, pos.Column, line(pos.Line, b)))
+    start + str.ByteLength(str.Slice(1, pos.Column, line(pos.Line, b)))
   end
 end
 
@@ -94,14 +97,14 @@ end
 
 (** A letter, a digit or an underscore. Cesia knows the case of the ASCII letters only, so any character of more than one byte counts as a letter,
     as in color.ce: accents and other alphabets are in words, and so are the rare symbols outside ASCII. *)
-isWord(c) = c == "_" or (c >= "0" and c <= "9") or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or ByteLength(c) > 1
+isWord(c) = c == "_" or (c >= "0" and c <= "9") or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or str.ByteLength(c) > 1
 
 defn charAfter(pos, b)
   (** The character after a position, or a line end at the end of a line. *)
   if pos.Column >= width(pos.Line, b)
     "\n"
   else
-    Slice(pos.Column + 1, pos.Column + 1, line(pos.Line, b))
+    str.Slice(pos.Column + 1, pos.Column + 1, line(pos.Line, b))
   end
 end
 
@@ -111,7 +114,7 @@ defn skip(forward, test, pos, b)
   go = true
   while go
     next = if forward forwardFrom(p, b) else back(p, b) end
-    if IsMissing(next)
+    if value.IsMissing(next)
       go = false
     else
       c = if forward charAfter(p, b) else charAfter(next, b) end
@@ -130,10 +133,10 @@ defn MoveChar(by, b)
 
         MoveChar(1, Of("ab", missing)).Cursor.Column --> 1 *)
   p = b.Cursor
-  n = Abs(by)
+  n = math.Abs(by)
   while n > 0
     next = if by > 0 forwardFrom(p, b) else back(p, b) end
-    if IsMissing(next)
+    if value.IsMissing(next)
       n = 0
     else
       p = next
@@ -149,7 +152,7 @@ defn MoveWord(by, b)
 
         MoveWord(1, Of("foo bar", missing)).Cursor.Column --> 3 *)
   p = b.Cursor
-  for i in Range(1, Abs(by))
+  for i in list.Range(1, math.Abs(by))
     if by > 0
       p = skip(true, isWord, skip(true, c -> not isWord(c), p, b), b)
     else
@@ -163,9 +166,9 @@ defn MoveLine(by, b)
   (** The cursor moved by lines, keeping the column the person wanted through shorter lines. At the first and last lines it stays there.
 
         MoveLine(1, Of("ab\ncd", missing)).Cursor.Line --> 2 *)
-  wanted = if IsMissing(b.Wanted) b.Cursor.Column else b.Wanted end
-  line = Min(Max(1, b.Cursor.Line + by), rope.LineCount(b.Rope))
-  b.Cursor = {Line: line, Column: Min(wanted, width(line, b))}
+  wanted = if value.IsMissing(b.Wanted) b.Cursor.Column else b.Wanted end
+  line = list.Min(list.Max(1, b.Cursor.Line + by), rope.LineCount(b.Rope))
+  b.Cursor = {Line: line, Column: list.Min(wanted, width(line, b))}
   b.Wanted = wanted
   b.Typing = false
   b
@@ -174,7 +177,7 @@ end
 (** The cursor moved by pages of rows lines: forward for a positive number, back for a negative one. It keeps the wanted column as MoveLine does.
 
       MovePage(1, 2, Of("a\nb\nc", missing)).Cursor.Line --> 3 *)
-MovePage(by, rows, b) = MoveLine(by * Max(1, rows), b)
+MovePage(by, rows, b) = MoveLine(by * list.Max(1, rows), b)
 
 (** The cursor at the start of its line.
 
@@ -210,7 +213,7 @@ defn edit(r, cursor, line, continues, typing, b)
   now = b.History.Present
   b.Rope = r
   inside = clamp(cursor, b)
-  state = {Rope: r, Cursor: inside, Version: version, Before: if merging now.Before else b.Cursor end, Line: if merging Min(line, now.Line) else line end}
+  state = {Rope: r, Cursor: inside, Version: version, Before: if merging now.Before else b.Cursor end, Line: if merging list.Min(line, now.Line) else line end}
   h = if merging history.Record(state, history.Undo(b.History)) else history.Record(state, b.History) end
   b.Cursor = inside
   b.Version = version
@@ -224,22 +227,22 @@ end
 
 defn indent(n, column, b)
   (** The leading spaces and tabs of line n, up to the column. *)
-  cs = Take(column, Chars(line(n, b)))
-  Join("", TakeWhile(c -> c == " " or c == "\t", cs))
+  cs = list.Take(column, str.Chars(line(n, b)))
+  str.Join("", list.TakeWhile(c -> c == " " or c == "\t", cs))
 end
 
 defn insert(words, continues, b)
   (** Inserts a text at the cursor. Only one character typed continues the step of undo, and a space or a line end ends it. *)
-  pieces = Split("\n", words)
+  pieces = str.Split("\n", words)
   at = b.Cursor
-  cursor = if Len(pieces) == 1
-    {Line: at.Line, Column: at.Column + Len(words)}
+  cursor = if value.Len(pieces) == 1
+    {Line: at.Line, Column: at.Column + value.Len(words)}
   else
-    {Line: at.Line + Len(pieces) - 1, Column: Len(Last(pieces))}
+    {Line: at.Line + value.Len(pieces) - 1, Column: value.Len(list.Last(pieces))}
   end
   r = rope.Insert(byte(at, b), words, b.Rope)
-  typing = Len(words) == 1 and not (words == " " or words == "\t" or words == "\n")
-  edit(r, cursor, at.Line, continues and Len(words) == 1, typing, b)
+  typing = value.Len(words) == 1 and not (words == " " or words == "\t" or words == "\n")
+  edit(r, cursor, at.Line, continues and value.Len(words) == 1, typing, b)
 end
 
 (** The text typed at the cursor. The cursor goes after it. Typing one character at a time makes words of undo: a step ends at a space, at a line end
@@ -265,7 +268,7 @@ defn DeleteBefore(b)
 
         DeleteBefore(Place(1, 1, Of("ab", missing))).Cursor.Column --> 0 *)
   p = back(b.Cursor, b)
-  if IsMissing(p)
+  if value.IsMissing(p)
     b
   else
     delete(p, b.Cursor, b)
@@ -277,7 +280,7 @@ defn DeleteAfter(b)
 
         DeleteAfter(Of("ab", missing)).Cursor.Column --> 0 *)
   q = forwardFrom(b.Cursor, b)
-  if IsMissing(q)
+  if value.IsMissing(q)
     b
   else
     delete(b.Cursor, q, b)
@@ -303,7 +306,7 @@ end
 defn ends(b)
   (** The two ends of the selection {First, Last}, the first being the one that comes first in the text, or missing if there is no mark. A mark that
       an edit left outside the text is brought back inside. *)
-  if IsMissing(b.Mark)
+  if value.IsMissing(b.Mark)
     missing
   else
     m = clamp(b.Mark, b)
@@ -326,7 +329,7 @@ defn Region(b)
 
         Region(MoveChar(1, SetMark(Of("ab", missing)))) --> "a" *)
   e = ends(b)
-  if IsMissing(e)
+  if value.IsMissing(e)
     ""
   else
     rope.Slice(byte(e.First, b), byte(e.Last, b), b.Rope)
@@ -336,7 +339,7 @@ end
 defn CutRegion(b)
   (** The selected text removed. The cursor goes to its start and the mark is taken away. Without a mark, nothing is removed. *)
   e = ends(b)
-  if IsMissing(e) or not before(e.First, e.Last)
+  if value.IsMissing(e) or not before(e.First, e.Last)
     ClearMark(b)
   else
     ClearMark(delete(e.First, e.Last, b))
@@ -349,7 +352,7 @@ defn joinSteps(b)
   h = history.Undo(b.History)
   first = h.Present
   second.Before = first.Before
-  second.Line = Min(first.Line, second.Line)
+  second.Line = list.Min(first.Line, second.Line)
   b.History = history.Record(second, history.Undo(h))
   b
 end
@@ -359,7 +362,7 @@ defn ReplaceRegion(f, b)
 
         ReplaceRegion(b -> InsertWords("x", b), MoveChar(1, SetMark(Of("ab", missing)))).Cursor.Column --> 1 *)
   e = ends(b)
-  if IsMissing(e) or not before(e.First, e.Last)
+  if value.IsMissing(e) or not before(e.First, e.Last)
     return f(b)
   end
   gone = CutRegion(b)
@@ -374,7 +377,7 @@ defn CutLine(b)
         CutLine(Of("ab", missing)).Cut --> "ab" *)
   at = b.Cursor
   q = if at.Column < width(at.Line, b) {Line: at.Line, Column: width(at.Line, b)} else forwardFrom(at, b) end
-  if IsMissing(q)
+  if value.IsMissing(q)
     {Buffer: b, Cut: ""}
   else
     {Buffer: delete(at, q, b), Cut: rope.Slice(byte(at, b), byte(q, b), b.Rope)}

@@ -1,21 +1,23 @@
 (** A helper for tests: plays keys and texts through update, as the window would send them. It holds no test, so cesia test finds nothing here. *)
 use core/commands
 use std/text as str
+use std/list
+use std/value
 
 (* The names of the keys that are not one character. *)
 named = ["enter", "tab", "backspace", "delete", "left", "right", "up", "down", "home", "end", "pageup", "pagedown", "space"]
 
 (** Is this item a chord such as "C-f" or "enter", and not a text to type? *)
-isChord(item) = item in named or (Len(item) > 2 and (StartsWith("C-", item) or StartsWith("M-", item) or StartsWith("S-", item)))
+isChord(item) = item in named or (value.Len(item) > 2 and (str.StartsWith("C-", item) or str.StartsWith("M-", item) or str.StartsWith("S-", item)))
 
-drop(n, words) = Join("", Skip(n, Chars(words)))   (** A text without its first n characters. *)
+drop(n, words) = str.Join("", list.Skip(n, str.Chars(words)))   (** A text without its first n characters. *)
 
 defn keyEvent(chord)
   (** The key event of a chord such as "C-M-x" or "S-left". *)
   rest = chord
   held = {Ctrl: false, Alt: false, Shift: false}
-  while Len(rest) > 2 and Slice(2, 2, rest) == "-" and (Slice(1, 1, rest) in ["C", "M", "S"])
-    letter = Slice(1, 1, rest)
+  while value.Len(rest) > 2 and str.Slice(2, 2, rest) == "-" and (str.Slice(1, 1, rest) in ["C", "M", "S"])
+    letter = str.Slice(1, 1, rest)
     if letter == "C" held.Ctrl = true else if letter == "M" held.Alt = true else held.Shift = true end
     rest = drop(2, rest)
   end
@@ -27,16 +29,16 @@ defn events(item)
   if isChord(item)
     [keyEvent(item)]
   else
-    Flatten(Map(c -> [{Kind: "key", Key: c, Ctrl: false, Alt: false, Shift: false, Super: false}, {Kind: "text", Text: c}], Chars(item)))
+    list.Flatten(list.Map(c -> [{Kind: "key", Key: c, Ctrl: false, Alt: false, Shift: false, Super: false}, {Kind: "text", Text: c}], str.Chars(item)))
   end
 end
 
 defn Press(items, state)
   (** The state after playing the items: chords such as "C-f" or "enter", and texts to type. If the editor ends on the way, its state has ending true. *)
   s = state
-  for event in Flatten(Map(events, items))
+  for event in list.Flatten(list.Map(events, items))
     next = commands.Update(event, s)
-    if IsMissing(next)
+    if value.IsMissing(next)
       s.Ending = true
       return s
     end

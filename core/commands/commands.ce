@@ -10,6 +10,11 @@ use core/panes
 use core/text
 use core/view
 use std/text as str
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/value
 
 current(state) = state.Buffers[state.Current]   (** The buffer being edited. *)
 
@@ -48,14 +53,14 @@ end
 defn hasSelection(b)
   (** Is something selected? A mark with nothing between it and the cursor selects nothing. *)
   e = text.Selection(b)
-  not IsMissing(e) and e.First != e.Last
+  not value.IsMissing(e) and e.First != e.Last
 end
 
 (* ---- The clipboard: the one of the system when there is a window, else the state's own. *)
 
 defn clip(words, state)
   (** The state with words in the clipboard. *)
-  if not IsMissing(state.Window)
+  if not value.IsMissing(state.Window)
     sdl.Copy(words, state.Window)
     state
   else
@@ -66,7 +71,7 @@ defn clip(words, state)
 end
 
 (** The words in the clipboard. *)
-clipped(state) = if IsMissing(state.Window) state.Clip else sdl.Paste(state.Window) end
+clipped(state) = if value.IsMissing(state.Window) state.Clip else sdl.Paste(state.Window) end
 
 (* ---- Moves *)
 
@@ -83,7 +88,7 @@ defn select(f, state)
   (** The current buffer moved by f, selecting: a mark is put where the cursor was, if there is none. *)
   before = current(state)
   b = f(before)
-  if IsMissing(before.Mark)
+  if value.IsMissing(before.Mark)
     b.Mark = before.Cursor
     b.Origin = "shift"
   end
@@ -242,13 +247,13 @@ defn closed(state)
 end
 
 (** The state after f on the prompt that is open. With none, as when a global key is bound to one of these commands, nothing changes. *)
-inPrompt(f, state) = if IsMissing(state.Prompt) state else f(state.Prompt, state) end
+inPrompt(f, state) = if value.IsMissing(state.Prompt) state else f(state.Prompt, state) end
 
 (** Accepts the answer of a prompt. A prompt of y or n waits for one of the two. *)
 PromptAccept(state) = inPrompt((p, s) -> if p.Choice s else accept(s) end, state)
 
 (** The last character of the answer of a prompt removed. *)
-PromptDeleteBefore(state) = inPrompt((p, s) -> withAnswer(Join("", Take(Max(0, Len(p.Answer) - 1), Chars(p.Answer))), s), state)
+PromptDeleteBefore(state) = inPrompt((p, s) -> withAnswer(str.Join("", list.Take(list.Max(0, value.Len(p.Answer) - 1), str.Chars(p.Answer))), s), state)
 
 defn withAnswer(answer, state)
   (** The state with this answer in the prompt. *)
@@ -258,7 +263,7 @@ defn withAnswer(answer, state)
 end
 
 (** The first line of the clipboard added to the answer of a prompt, since an answer has one. A prompt of y or n takes no paste. *)
-PromptPaste(state) = inPrompt((p, s) -> if p.Choice s else promptText(Join("", Take(1, Lines(clipped(s)))), s) end, state)
+PromptPaste(state) = inPrompt((p, s) -> if p.Choice s else promptText(str.Join("", list.Take(1, str.Lines(clipped(s)))), s) end, state)
 
 PromptCancel(state) = inPrompt((p, s) -> say("Quit", closed(s)), state)   (** Closes the prompt with no answer. *)
 
@@ -274,7 +279,7 @@ defn promptText(words, state)
   (** Text while a prompt is open: it goes to the answer. A prompt of y or n takes one of the two and ends. *)
   p = state.Prompt
   if p.Choice
-    answer = Lower(words)
+    answer = str.Lower(words)
     if answer == "y" or answer == "n" p.Done(answer, closed(state)) else state end
   else
     withAnswer("$(p.Answer)$words", state)
@@ -286,40 +291,40 @@ end
 defn withBuffers(buffers, current, state)
   (** The state with the buffers. At least one is kept, and current stays among them. *)
   s = state
-  s.Buffers = if Len(buffers) == 0 [text.Of("", missing)] else buffers end
-  s.Current = Min(Max(1, current), Len(s.Buffers))
+  s.Buffers = if value.Len(buffers) == 0 [text.Of("", missing)] else buffers end
+  s.Current = list.Min(list.Max(1, current), value.Len(s.Buffers))
   s
 end
 
-without(k, items) = Concat(Take(k - 1, items), Skip(k, items))   (** An array without its element k. *)
+without(k, items) = list.Concat(list.Take(k - 1, items), list.Skip(k, items))   (** An array without its element k. *)
 
 defn dropped(k, current, state)
   (** The state without buffer k, and current the current one, as withBuffers keeps it. A pane that showed buffer k shows the buffer that takes its place, at
       the place that one holds, and a pane on a buffer after it counts one less. *)
   s = withBuffers(without(k, state.Buffers), current, state)
-  n = Len(s.Buffers)
+  n = value.Len(s.Buffers)
   s.Panes = panes.MapLeaves(leaf -> renumbered(k, n, leaf), panes.Tree(state))
   s
 end
 
 (** A leaf of a pane after buffer k went, of the n buffers left. *)
-renumbered(k, n, leaf) = if leaf.Buffer > k {Buffer: leaf.Buffer - 1, View: leaf.View} else if leaf.Buffer == k panes.One(Min(k, n)) else leaf end
+renumbered(k, n, leaf) = if leaf.Buffer > k {Buffer: leaf.Buffer - 1, View: leaf.View} else if leaf.Buffer == k panes.One(list.Min(k, n)) else leaf end
 
 defn folder(path)
   (** The folder of a path with its slash, or an empty text for a path with no folder. *)
-  if IsMissing(path) or not Contains("/", path)
+  if value.IsMissing(path) or not str.Contains("/", path)
     ""
   else
-    "$(Join("/", Take(Len(Split("/", path)) - 1, Split("/", path))))/"
+    "$(str.Join("/", list.Take(value.Len(str.Split("/", path)) - 1, str.Split("/", path))))/"
   end
 end
 
 defn indexOfFile(path, state)
   (** The index of the buffer for this file, or 0. *)
   wanted = files.Normal(path)
-  for k in 1..Len(state.Buffers)
+  for k in 1..value.Len(state.Buffers)
     b = state.Buffers[k]
-    if not IsMissing(b.Path) and files.Normal(b.Path) == wanted
+    if not value.IsMissing(b.Path) and files.Normal(b.Path) == wanted
       return k
     end
   end
@@ -338,8 +343,8 @@ defn OpenFile(path, state)
     return s
   end
   match files.ReadFile(path)
-    Ok(read) -> opened(path, read, state)
-    Err(e) -> say(e.Message, state)
+    result.Ok(read) -> opened(path, read, state)
+    result.Err(e) -> say(e.Message, state)
   end
 end
 
@@ -348,25 +353,25 @@ defn opened(path, read, state)
   b = text.Of(read.Words, path)
   b.Disk = read.Disk
   s = state
-  s.Buffers = Append(b, state.Buffers)
-  s.Current = Len(s.Buffers)
+  s.Buffers = list.Append(b, state.Buffers)
+  s.Current = value.Len(s.Buffers)
   s
 end
 
 defn OpenAll(paths, state)
   (** Opens every file in order, in new buffers, and stays in the first one that was opened. An empty buffer that nothing touched makes room. *)
-  s = Reduce((acc, path) -> OpenFile(path, acc), state, paths)
-  if Len(s.Buffers) == Len(state.Buffers)
+  s = list.Reduce((acc, path) -> OpenFile(path, acc), state, paths)
+  if value.Len(s.Buffers) == value.Len(state.Buffers)
     s
   else if isPlaceholder(state)
     dropped(1, 1, s)
   else
-    withBuffers(s.Buffers, Len(state.Buffers) + 1, s)
+    withBuffers(s.Buffers, value.Len(state.Buffers) + 1, s)
   end
 end
 
 (** Does the state have only an untouched empty buffer with no file, which a first file replaces? *)
-isPlaceholder(state) = Len(state.Buffers) == 1 and IsMissing(state.Buffers[1].Path) and not text.IsModified(state.Buffers[1]) and rope.Text(state.Buffers[1].Rope) == ""
+isPlaceholder(state) = value.Len(state.Buffers) == 1 and value.IsMissing(state.Buffers[1].Path) and not text.IsModified(state.Buffers[1]) and rope.Text(state.Buffers[1].Rope) == ""
 
 (** Asks for a file to open, with the folder of the current file as the start of the answer. *)
 FindFile(state) = ask("Find file: ", folder(current(state).Path), (answer, s) -> OpenFile(answer, s), state)
@@ -374,7 +379,7 @@ FindFile(state) = ask("Find file: ", folder(current(state).Path), (answer, s) ->
 defn NextBuffer(state)
   (** Goes to the next buffer, from the last to the first. *)
   s = state
-  s.Current = Mod(state.Current, Len(state.Buffers)) + 1
+  s.Current = math.Mod(state.Current, value.Len(state.Buffers)) + 1
   s
 end
 
@@ -420,8 +425,8 @@ defn store(k, path, force, disk, state)
   words = rope.Text(state.Buffers[k].Rope)
   r = if force files.ForceSave(path, words) else files.SaveFile(path, words, disk) end
   match r
-    Ok(now) -> saved(k, path, now, "Saved $path", state)
-    Err(e) -> failed(k, path, disk, e, state)
+    result.Ok(now) -> saved(k, path, now, "Saved $path", state)
+    result.Err(e) -> failed(k, path, disk, e, state)
   end
 end
 
@@ -454,7 +459,7 @@ defn Save(state)
   k = state.Current
   if lists.IsList(b)
     say("A list has no file.", state)
-  else if IsMissing(b.Path)
+  else if value.IsMissing(b.Path)
     ask("Save as: ", "", (answer, s) -> saveAs(k, answer, s), state)
   else
     store(k, b.Path, false, b.Disk, state)
@@ -473,7 +478,7 @@ quitIfYes(answer, state) = if answer == "y" ended(state) else state end
 
 defn Quit(state)
   (** Ends the editor, asking first if any text isn't saved. *)
-  if Len(Filter(text.IsModified, state.Buffers)) > 0
+  if value.Len(list.Filter(text.IsModified, state.Buffers)) > 0
     confirm("Text not saved. Quit anyway? (y or n)", quitIfYes, state)
   else
     ended(state)
@@ -503,7 +508,7 @@ end
 defn showing(j, tree, state)
   (** The state with the panes of tree and pane j being edited: its buffer becomes the current one, at the place its leaf keeps. *)
   leaf = panes.At(j, tree)
-  k = Min(leaf.Buffer, Len(state.Buffers))
+  k = list.Min(leaf.Buffer, value.Len(state.Buffers))
   s = state
   s.Buffers[k] = view.WithView(leaf.View, state.Buffers[k])
   s.Current = k
@@ -531,8 +536,8 @@ defn split(along, state)
   cut = panes.Split(i, along, panes.Tree(s))
   s.Panes = panes.WithLeaf(i + 1, {Buffer: s.Current, View: view.ViewOf(current(s))}, cut)
   s.Pane = i
-  halves = Skip(i - 1, Take(i + 1, view.PaneLayouts(s)))
-  if Len(Filter(one -> one.Rows < 2 or one.Columns < 8, halves)) == 0
+  halves = list.Skip(i - 1, list.Take(i + 1, view.PaneLayouts(s)))
+  if value.Len(list.Filter(one -> one.Rows < 2 or one.Columns < 8, halves)) == 0
     s
   else
     say("This pane is too small to split.", state)
@@ -543,7 +548,7 @@ SplitBelow(state) = split("rows", state)   (** The pane being edited split in tw
 SplitRight(state) = split("columns", state)   (** The pane being edited split in two, side by side. *)
 
 (** The next pane, from the last to the first. *)
-NextPane(state) = focused(Mod(panes.Active(state), panes.Count(panes.Tree(state))) + 1, state)
+NextPane(state) = focused(math.Mod(panes.Active(state), panes.Count(panes.Tree(state))) + 1, state)
 
 defn ClosePane(state)
   (** The pane being edited closed: the other side of its split takes its place, and the pane there is edited. The last pane stays. *)
@@ -553,7 +558,7 @@ defn ClosePane(state)
   end
   i = panes.Active(state)
   rest = panes.Remove(i, tree)
-  showing(Min(i, panes.Count(rest)), rest, state)
+  showing(list.Min(i, panes.Count(rest)), rest, state)
 end
 
 defn OnlyPane(state)
@@ -570,21 +575,21 @@ defn config(state)
   (** What the editor runs on: the record that the function in the Config of the state gives, with the keys and the settings, as emacs.Config in src/ makes it.
       A state with none, as one from a session before this field, has no key and the settings of unconfigured: see view.Start. *)
   match state
-    {Config: f} -> if IsMissing(f) unconfigured() else f() end
+    {Config: f} -> if value.IsMissing(f) unconfigured() else f() end
     else -> unconfigured()
   end
 end
 
 (** The config of a state that has none: no key, so that nothing runs that nobody bound, and plain settings. *)
-unconfigured() = {Keys: () -> Dict(), PromptKeys: () -> Dict(), MouseKeys: () -> Dict(), PromptMouseKeys: () -> Dict(), ListKeys: () -> Dict(), TabText: () -> "  ",
+unconfigured() = {Keys: () -> dict.Dict(), PromptKeys: () -> dict.Dict(), MouseKeys: () -> dict.Dict(), PromptMouseKeys: () -> dict.Dict(), ListKeys: () -> dict.Dict(), TabText: () -> "  ",
   WheelLines: () -> 3.0, DragZone: () -> 4, FontSize: () -> 15}
 
 (* ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.ce for what a list holds. *)
 
-defn ShowList(name, rows, keys, state, free = missing, label = missing, typed = missing)
+defn ShowList(name, rows, rowKeys, state, free = missing, label = missing, typed = missing)
   (** Opens a list named name. rows is the rows, each {Words, Item} and maybe a Key, which the filter reads in place of the words, or a function that gives
       them from the state, for rows that change with it.
-      keys is a function that gives the keys of the list, whose functions take the item under the cursor and the state; free, if given, gives keys that take
+      rowKeys is a function that gives the keys of the list, whose functions take the item under the cursor and the state; free, if given, gives keys that take
       only the state, and so run with no row left. Typing filters the rows, and the ListKeys of the config take the filter back; label, if given, takes the
       place of "Filter: " before it, and typed gets each typed text and the state in place of the filter, which AddToFilter can still grow. A list open
       already gives its place to this one. *)
@@ -592,15 +597,15 @@ defn ShowList(name, rows, keys, state, free = missing, label = missing, typed = 
   back = if lists.IsList(here) lists.Of(here).Back else state.Current end
   s = withoutList(state)
   b = text.Of("", missing)
-  b.List = {Name: name, Rows: rows, Keys: keys, Free: free, Filter: "", Items: [], Back: Min(back, Len(s.Buffers)), Shown: missing, Label: label, Typed: typed}
-  s.Buffers = Append(b, s.Buffers)
-  s.Current = Len(s.Buffers)
+  b.List = {Name: name, Rows: rows, Keys: rowKeys, Free: free, Filter: "", Items: [], Back: list.Min(back, value.Len(s.Buffers)), Shown: missing, Label: label, Typed: typed}
+  s.Buffers = list.Append(b, s.Buffers)
+  s.Current = value.Len(s.Buffers)
   refreshed(s)
 end
 
 defn withoutList(state)
   (** The state without its list, if one is open, and current on the same buffer as before. *)
-  for k in 1..Len(state.Buffers)
+  for k in 1..value.Len(state.Buffers)
     if lists.IsList(state.Buffers[k])
       return dropped(k, if state.Current > k state.Current - 1 else state.Current end, state)
     end
@@ -637,13 +642,13 @@ Bindings(state) = config(state).Keys()   (** Every key of the editor and the fun
 defn ListBack(state)
   (** The last character of the filter of a list taken back. Out of a list, nothing changes. *)
   l = lists.Of(current(state))
-  if IsMissing(l) state else withFilter(Join("", Take(Max(0, Len(l.Filter) - 1), Chars(l.Filter))), state) end
+  if value.IsMissing(l) state else withFilter(str.Join("", list.Take(list.Max(0, value.Len(l.Filter) - 1), str.Chars(l.Filter))), state) end
 end
 
 defn ListCancel(state)
   (** The filter of a list cleared, or with none the list closed, back to the buffer it was opened from. Out of a list, nothing changes. *)
   l = lists.Of(current(state))
-  if IsMissing(l)
+  if value.IsMissing(l)
     state
   else if l.Filter != ""
     withFilter("", state)
@@ -658,18 +663,18 @@ defn refreshed(state)
       filter changed, and from the rows shown when it only grew: every event comes here, and a folder can have ten thousand rows. *)
   b = current(state)
   l = lists.Of(b)
-  if IsMissing(l)
+  if value.IsMissing(l)
     return state
   end
-  fixed = not IsFunction(l.Rows)
+  fixed = not value.IsFunction(l.Rows)
   last = if fixed lists.ShownOf(l) else missing end
-  if not IsMissing(last) and last.Filter == l.Filter
+  if not value.IsMissing(last) and last.Filter == l.Filter
     return state
   end
-  from = if fixed and not IsMissing(last) and StartsWith(last.Filter, l.Filter) last.Rows else if fixed l.Rows else l.Rows(state) end
+  from = if fixed and not value.IsMissing(last) and str.StartsWith(last.Filter, l.Filter) last.Rows else if fixed l.Rows else l.Rows(state) end
   shown = lists.Filtered(l.Filter, from)
   words = lists.Words(shown)
-  items = Map(r -> r.Item, shown)
+  items = list.Map(r -> r.Item, shown)
   out = b
   if words != rope.Text(b.Rope)
     was = lists.ItemAt(b)
@@ -677,7 +682,7 @@ defn refreshed(state)
     out.Top = b.Top
   end
   l.Items = items
-  l.Parts = Map(lists.PartsOf, shown)
+  l.Parts = list.Map(lists.PartsOf, shown)
   if fixed
     l.Shown = {Filter: l.Filter, Rows: shown}
   end
@@ -688,19 +693,19 @@ end
 defn listKeys(state)
   (** The keys of the list in the current buffer, over the keys of the config and its ListKeys: a key of the list gets the item under the cursor. *)
   l = lists.Of(current(state))
-  own = MapValues(f -> (s -> withItem(f, s)), l.Keys())
-  Merge(Merge(Merge(config(state).Keys(), config(state).ListKeys()), lists.FreeKeys(l)), own)
+  own = dict.MapValues(f -> (s -> withItem(f, s)), l.Keys())
+  dict.Merge(dict.Merge(dict.Merge(config(state).Keys(), config(state).ListKeys()), lists.FreeKeys(l)), own)
 end
 
 defn withItem(f, state)
   (** The state after f on the item under the cursor of the list, or a message when no row is left. *)
   item = lists.ItemAt(current(state))
-  if IsMissing(item) say("Nothing here.", state) else f(item, state) end
+  if value.IsMissing(item) say("Nothing here.", state) else f(item, state) end
 end
 
 defn guarded(after, before)
   (** A list is read only: after a command that changed its text, as a cut or an undo, its buffer is put back as it was, with a message. *)
-  if after.Current == before.Current and Len(after.Buffers) == Len(before.Buffers) and lists.IsList(current(after)) and current(after).Version != current(before).Version
+  if after.Current == before.Current and value.Len(after.Buffers) == value.Len(before.Buffers) and lists.IsList(current(after)) and current(after).Version != current(before).Version
     say("This list is read only.", put(current(before), after))
   else
     after
@@ -710,7 +715,7 @@ end
 (* ---- Keys and events *)
 
 (** Does the editor need frames of its own? Only while keys wait for the next one and their hints aren't shown yet: the ticks count the time. *)
-Moving(state) = state.Pending != "" and Len(hintsOf(state)) == 0
+Moving(state) = state.Pending != "" and value.Len(hintsOf(state)) == 0
 
 defn hintsOf(state)
   (** The hints shown under the pending keys, or [] for none. A state from before this field has none, and reading one it lacks would panic. *)
@@ -730,7 +735,7 @@ end
 
 defn onTick(event, state)
   (** The state after a tick: once the pending keys have waited for HintDelay seconds of the config, the keys that can follow them, as keys.Hints gives them. *)
-  if state.Pending == "" or Len(hintsOf(state)) > 0
+  if state.Pending == "" or value.Len(hintsOf(state)) > 0
     return state
   end
   s = state
@@ -771,11 +776,11 @@ end
 
 (** The chord of the second key of a pair from the text it typed: in lower case, as C-x b for Shift and b, and space for a space. Shift and / on a US
     keyboard type ?, so they give C-x ?: the name of the key would say /. *)
-secondOf(words) = if words == " " "space" else Lower(words) end
+secondOf(words) = if words == " " "space" else str.Lower(words) end
 
 defn routed(chord, state)
   (** The state after a chord: in the prompt if one is open, in the list of the current buffer, or else in the buffer. *)
-  if not IsMissing(state.Prompt)
+  if not value.IsMissing(state.Prompt)
     promptChord(chord, config(state).PromptKeys(), state)
   else if lists.IsList(current(state))
     guarded(chorded(chord, listKeys(state), state), state)
@@ -839,7 +844,7 @@ defn onKey(event, state)
   chord = keys.Chord(event)
   held = event.Ctrl or event.Alt
   s.Chorded = if held and not event.Shift echo(event.Key) else held end
-  if IsMissing(chord)
+  if value.IsMissing(chord)
     s.Second = isSecond(event, state)
     s
   else
@@ -849,13 +854,13 @@ defn onKey(event, state)
 end
 
 (** The text that a key with Ctrl or Alt may also send, which is only the same key again. Most systems send none. *)
-echo(key) = if key == "space" " " else Lower(key) end
+echo(key) = if key == "space" " " else str.Lower(key) end
 
 defn onText(event, state)
   (** The state after a text event: typed at the cursor, or into the prompt. Right after a key with Ctrl or Alt it is only the same key again, and so is any
       text after such a key with Shift, or after the second key of a pair, whose text the key doesn't tell. A key of the numeric keypad comes only as a text. *)
   s = state
-  same = state.Chorded == true or state.Chorded == Lower(event.Text)
+  same = state.Chorded == true or state.Chorded == str.Lower(event.Text)
   s.Chorded = false
   if awaitsSecond(state)
     s.Second = false
@@ -863,10 +868,10 @@ defn onText(event, state)
     routed(secondOf(event.Text), s)
   else if same
     s
-  else if not IsMissing(state.Prompt)
+  else if not value.IsMissing(state.Prompt)
     promptText(event.Text, s)
   else if lists.IsList(current(s))
-    if IsMissing(lists.TypedOf(lists.Of(current(s)))) AddToFilter(event.Text, s) else lists.TypedOf(lists.Of(current(s)))(event.Text, s) end
+    if value.IsMissing(lists.TypedOf(lists.Of(current(s)))) AddToFilter(event.Text, s) else lists.TypedOf(lists.Of(current(s)))(event.Text, s) end
   else
     s.Chain = false
     s.Buffers[state.Current].Free = false
@@ -898,8 +903,8 @@ defn wheeled(event, state)
   (** The screen of the current buffer moved by the wheel. *)
   b = current(state)
   wanted = wheelRest(state) - event.Amount * config(state).WheelLines()
-  lines = Div(Floor(wanted + 0.5), 1)
-  b.Top = Min(Max(1, b.Top + lines), rope.LineCount(b.Rope))
+  lines = math.Div(math.Floor(wanted + 0.5), 1)
+  b.Top = list.Min(list.Max(1, b.Top + lines), rope.LineCount(b.Rope))
   b.Free = true
   s = put(b, state)
   s.Wheel = wanted - lines
@@ -934,7 +939,7 @@ defn pressPoint(state)
 end
 
 (** Is this event still in the zone around the press at this point? A hand that moves one pixel during a click means no drag. *)
-inZone(event, at, zone) = not IsMissing(at) and Abs(event.X - at.X) <= zone and Abs(event.Y - at.Y) <= zone
+inZone(event, at, zone) = not value.IsMissing(at) and math.Abs(event.X - at.X) <= zone and math.Abs(event.Y - at.Y) <= zone
 
 defn Drag(event, state)
   (** The mouse moved: with the button held, the cursor follows it once it has left the zone around the press, even if it comes back. *)
@@ -999,7 +1004,7 @@ defn Settled(state)
   s = view.FollowState(synced(refreshed(state)))
   name = view.BufferName(current(s))
   if name != s.Title
-    if not IsMissing(s.Window)
+    if not value.IsMissing(s.Window)
       sdl.SetTitle(name, s.Window)
     end
     s.Title = name
@@ -1015,7 +1020,7 @@ defn Update(event, state)
     "key" -> onKey(event, state)
     "text" -> onText(event, state)
     "tick" -> onTick(event, state)
-    "mouse" -> onMouse(event, if IsMissing(state.Prompt) config(state).MouseKeys() else config(state).PromptMouseKeys() end, state)
+    "mouse" -> onMouse(event, if value.IsMissing(state.Prompt) config(state).MouseKeys() else config(state).PromptMouseKeys() end, state)
     else -> state
   end
   if next.Ending missing else Settled(next) end

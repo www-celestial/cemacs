@@ -3,6 +3,9 @@
     Second}: along "rows" puts First above Second, and "columns" puts it on the left. Panes count from 1 in the order of the leaves, from the top left.
     Everything here is pure: commands moves between panes, and view draws them. *)
 use std/ui
+use std/list
+use std/math
+use std/value
 
 (** One pane showing buffer k, at the place the buffer holds.
 
@@ -23,7 +26,7 @@ end
 Count(tree) = if isCut(tree) Count(tree.First) + Count(tree.Second) else 1 end
 
 (** The leaves of a tree, in the order of the panes. *)
-Leaves(tree) = if isCut(tree) Concat(Leaves(tree.First), Leaves(tree.Second)) else [tree] end
+Leaves(tree) = if isCut(tree) list.Concat(Leaves(tree.First), Leaves(tree.Second)) else [tree] end
 
 At(i, tree) = Leaves(tree)[i]   (** Pane i of a tree. *)
 
@@ -85,13 +88,13 @@ defn Rects(rect, tree)
   if not isCut(tree)
     return [rect]
   end
-  halves = if tree.Along == "rows" ui.Top(Div(rect.Height, 2), rect) else ui.Left(Div(rect.Width, 2), rect) end
-  Concat(Rects(halves.Part, tree.First), Rects(halves.Rest, tree.Second))
+  halves = if tree.Along == "rows" ui.Top(math.Div(rect.Height, 2), rect) else ui.Left(math.Div(rect.Width, 2), rect) end
+  list.Concat(Rects(halves.Part, tree.First), Rects(halves.Rest, tree.Second))
 end
 
 defn IndexAt(x, y, rects)
   (** The pane whose rectangle holds the point, or 0. The right and bottom edges of a rectangle belong to the next one. *)
-  for i in 1..Len(rects)
+  for i in 1..value.Len(rects)
     if ui.Contains({X: x, Y: y}, rects[i])
       return i
     end

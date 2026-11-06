@@ -10,6 +10,11 @@ use core/text
 use core/view
 use std/text as str
 use std/text as str
+use std/io
+use std/list
+use std/math
+use std/result
+use std/value
 
 (* The number of passes measured for each goal. *)
 passes = 300
@@ -20,20 +25,20 @@ stdFolder = "../cesia/src/std"
 
 defn stdText()
   (** The text of every file of the Cesia std, one after the other. *)
-  names = Filter(n -> EndsWith(".ce", n), sys.List(stdFolder)?)
-  Ok(Join("\n", Map(n -> sys.Read("$stdFolder/$n")?, names)))
+  names = list.Filter(n -> str.EndsWith(".ce", n), sys.List(stdFolder)?)
+  result.Ok(str.Join("\n", list.Map(n -> sys.Read("$stdFolder/$n")?, names)))
 end
 
 defn readFourTimes()
   (** The text of the std read four times, as a file of about 22,000 lines would be read. *)
-  Ok(Join("\n", Map(n -> stdText()?, Range(1, 4))))
+  result.Ok(str.Join("\n", list.Map(n -> stdText()?, list.Range(1, 4))))
 end
 
 defn longText(words)
   (** The text with wantedLines lines: the std, repeated until it is long enough, and cut. *)
-  once = Lines(words)
-  copies = Div(wantedLines, Len(once)) + 1
-  Join("\n", Take(wantedLines, Flatten(Map(n -> once, Range(1, copies)))))
+  once = str.Lines(words)
+  copies = math.Div(wantedLines, value.Len(once)) + 1
+  str.Join("\n", list.Take(wantedLines, list.Flatten(list.Map(n -> once, list.Range(1, copies)))))
 end
 
 defn opened()
@@ -95,21 +100,21 @@ defn measure(step, state, window)
     r = step(s, w)
     s = r.State
     w = r.Window
-    times = Append((sys.Now() - start) * 1000.0, times)
-    parts = Append(r.Parts, parts)
+    times = list.Append((sys.Now() - start) * 1000.0, times)
+    parts = list.Append(r.Parts, parts)
   end
   {Times: times, Parts: parts, Window: w}
 end
 
-round1(x) = Floor(x * 10.0) / 10.0   (** A number with one decimal. *)
+round1(x) = math.Floor(x * 10.0) / 10.0   (** A number with one decimal. *)
 
-medianOf(times) = Sort(times)[Div(Len(times), 2)]   (** The middle value of the times. *)
+medianOf(times) = list.Sort(times)[math.Div(value.Len(times), 2)]   (** The middle value of the times. *)
 
 defn report(name, run)
   (** Prints the median and the worst pass, and the median of follow, view and frame. *)
   median = medianOf(run.Times)
-  splitUp = Map(k -> round1(medianOf(Map(p -> p[k], run.Parts))), [1, 2, 3])
-  Print("$name: median $(round1(median)) ms, worst $(round1(Last(Sort(run.Times)))) ms; medians of the parts: follow $(splitUp[1]) ms, view $(splitUp[2]) ms, frame $(splitUp[3]) ms")
+  splitUp = list.Map(k -> round1(medianOf(list.Map(p -> p[k], run.Parts))), [1, 2, 3])
+  io.Print("$name: median $(round1(median)) ms, worst $(round1(list.Last(list.Sort(run.Times)))) ms; medians of the parts: follow $(splitUp[1]) ms, view $(splitUp[2]) ms, frame $(splitUp[3]) ms")
 end
 
 verdict(met) = if met "ok" else "FAIL" end   (** The word that tells whether a goal is met. *)
@@ -121,7 +126,7 @@ defn opening(look, cell, window)
   state = view.Start([text.Of(words, "std.ce")], look, cell, 1920, 1080)
   state = view.FollowState(state)
   sdl.Frame(view.View(state), window)
-  Ok((sys.Now() - start) * 1000.0)
+  result.Ok((sys.Now() - start) * 1000.0)
 end
 
 defn main()
@@ -130,10 +135,10 @@ defn main()
   measured = sdl.Measure(window)
   look = ui.Look(ui.Dark, measured.Width, measured.Height)
   cell = {Width: look.Width("M", "code"), Height: sdl.TextSize("Ag", window, font = "code").Height + view.LineGap}
-  Print("text: $(wantedLines) lines, cell $(cell.Width) x $(cell.Height)")
+  io.Print("text: $(wantedLines) lines, cell $(cell.Width) x $(cell.Height)")
   start = sys.Now()
   whole = rope.Of(words)
-  Print("rope.of on the whole text: $(round1((sys.Now() - start) * 1000.0)) ms ($(rope.LineCount(whole)) lines)")
+  io.Print("rope.of on the whole text: $(round1((sys.Now() - start) * 1000.0)) ms ($(rope.LineCount(whole)) lines)")
   openMs = opening(look, cell, window)?
   state = stateAt(words, 19000, look, cell)
   start = sys.Now()
@@ -144,14 +149,14 @@ defn main()
   scrolling = measure(scrolled, state, typing.Window)
   report("one typed character at line 19,000", typing)
   report("one scrolled line", scrolling)
-  Print("jump to line 19,000, colors read from the start: $(round1(jumpMs)) ms")
+  io.Print("jump to line 19,000, colors read from the start: $(round1(jumpMs)) ms")
   key = medianOf(typing.Times)
   scroll = medianOf(scrolling.Times)
-  Print("one key under 16 ms at the median: $(verdict(key < 16.0)) ($(round1(key)) ms)")
-  Print("scrolling at 60 per second or more: $(verdict(1000.0 / scroll >= 60.0)) ($(Floor(1000.0 / scroll)) per second)")
-  Print("opening under 300 ms: $(verdict(openMs < 300.0)) ($(round1(openMs)) ms)")
+  io.Print("one key under 16 ms at the median: $(verdict(key < 16.0)) ($(round1(key)) ms)")
+  io.Print("scrolling at 60 per second or more: $(verdict(1000.0 / scroll >= 60.0)) ($(math.Floor(1000.0 / scroll)) per second)")
+  io.Print("opening under 300 ms: $(verdict(openMs < 300.0)) ($(round1(openMs)) ms)")
   sdl.Close(scrolling.Window)
-  Ok(missing)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

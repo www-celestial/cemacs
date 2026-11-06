@@ -1,5 +1,7 @@
 (** Tests of panes: run with cesia test . *)
 use core/panes
+use std/list
+use std/value
 
 whole = {X: 0, Y: 0, Width: 800, Height: 600}
 
@@ -8,30 +10,30 @@ stacked() = panes.WithLeaf(2, panes.One(2), panes.Split(1, "rows", panes.One(1))
 (** Three panes: 1 on the left, and on the right 2 above 3. *)
 three() = panes.WithLeaf(3, panes.One(3), panes.Split(2, "rows", panes.WithLeaf(2, panes.One(2), panes.Split(1, "columns", panes.One(1)))))
 
-buffersOf(tree) = Map(leaf -> leaf.Buffer, panes.Leaves(tree))
+buffersOf(tree) = list.Map(leaf -> leaf.Buffer, panes.Leaves(tree))
 
 isOneIsOnePane() = panes.Count(panes.One(4)) == 1 and panes.At(1, panes.One(4)).Buffer == 4
-isOneHasNoView() = IsMissing(panes.One(4).View)
+isOneHasNoView() = value.IsMissing(panes.One(4).View)
 isSplitMakesTwo() = panes.Count(panes.Split(1, "rows", panes.One(4))) == 2
-isSplitCopiesTheLeaf() = Equal(buffersOf(panes.Split(1, "rows", panes.One(4))), [4, 4])
-isSplitOfASecondPane() = Equal(buffersOf(panes.Split(2, "columns", stacked())), [1, 2, 2])
-isLeavesInOrder() = Equal(buffersOf(three()), [1, 2, 3])
-isWithLeafReplacesOnlyOne() = Equal(buffersOf(panes.WithLeaf(2, panes.One(9), three())), [1, 9, 3])
-isRemoveFirst() = Equal(buffersOf(panes.Remove(1, three())), [2, 3])
-isRemoveMiddle() = Equal(buffersOf(panes.Remove(2, three())), [1, 3])
-isRemoveLast() = Equal(buffersOf(panes.Remove(3, three())), [1, 2])
+isSplitCopiesTheLeaf() = value.Equal(buffersOf(panes.Split(1, "rows", panes.One(4))), [4, 4])
+isSplitOfASecondPane() = value.Equal(buffersOf(panes.Split(2, "columns", stacked())), [1, 2, 2])
+isLeavesInOrder() = value.Equal(buffersOf(three()), [1, 2, 3])
+isWithLeafReplacesOnlyOne() = value.Equal(buffersOf(panes.WithLeaf(2, panes.One(9), three())), [1, 9, 3])
+isRemoveFirst() = value.Equal(buffersOf(panes.Remove(1, three())), [2, 3])
+isRemoveMiddle() = value.Equal(buffersOf(panes.Remove(2, three())), [1, 3])
+isRemoveLast() = value.Equal(buffersOf(panes.Remove(3, three())), [1, 2])
 isRemoveLastPaneKeepsIt() = panes.Count(panes.Remove(1, panes.One(4))) == 1
-isMapLeaves() = Equal(buffersOf(panes.MapLeaves(leaf -> panes.One(leaf.Buffer * 10), three())), [10, 20, 30])
+isMapLeaves() = value.Equal(buffersOf(panes.MapLeaves(leaf -> panes.One(leaf.Buffer * 10), three())), [10, 20, 30])
 
-isOneRectIsWhole() = Equal(panes.Rects(whole, panes.One(1)), [whole])
-isRowsSplitInHalves() = Equal(panes.Rects(whole, stacked()), [{X: 0, Y: 0, Width: 800, Height: 300}, {X: 0, Y: 300, Width: 800, Height: 300}])
-isColumnsSplitInHalves() = Equal(panes.Rects(whole, panes.Split(1, "columns", panes.One(1))), [{X: 0, Y: 0, Width: 400, Height: 600}, {X: 400, Y: 0, Width: 400, Height: 600}])
-isOddSizeGoesToSecond() = Equal(Map(r -> r.Height, panes.Rects({X: 0, Y: 0, Width: 10, Height: 7}, stacked())), [3, 4])
-isNestedRects() = Equal(panes.Rects(whole, three()), [{X: 0, Y: 0, Width: 400, Height: 600}, {X: 400, Y: 0, Width: 400, Height: 300}, {X: 400, Y: 300, Width: 400, Height: 300}])
+isOneRectIsWhole() = value.Equal(panes.Rects(whole, panes.One(1)), [whole])
+isRowsSplitInHalves() = value.Equal(panes.Rects(whole, stacked()), [{X: 0, Y: 0, Width: 800, Height: 300}, {X: 0, Y: 300, Width: 800, Height: 300}])
+isColumnsSplitInHalves() = value.Equal(panes.Rects(whole, panes.Split(1, "columns", panes.One(1))), [{X: 0, Y: 0, Width: 400, Height: 600}, {X: 400, Y: 0, Width: 400, Height: 600}])
+isOddSizeGoesToSecond() = value.Equal(list.Map(r -> r.Height, panes.Rects({X: 0, Y: 0, Width: 10, Height: 7}, stacked())), [3, 4])
+isNestedRects() = value.Equal(panes.Rects(whole, three()), [{X: 0, Y: 0, Width: 400, Height: 600}, {X: 400, Y: 0, Width: 400, Height: 300}, {X: 400, Y: 300, Width: 400, Height: 300}])
 
 isIndexAt() = panes.IndexAt(500, 400, panes.Rects(whole, three())) == 3 and panes.IndexAt(10, 10, panes.Rects(whole, three())) == 1
 isIndexAtEdgeGoesToSecond() = panes.IndexAt(400, 0, panes.Rects(whole, three())) == 2
 isIndexAtOutside() = panes.IndexAt(900, 10, panes.Rects(whole, three())) == 0
 
-isTreeOfOldState() = Equal(buffersOf(panes.Tree({Current: 3})), [3]) and panes.Active({Current: 3}) == 1
+isTreeOfOldState() = value.Equal(buffersOf(panes.Tree({Current: 3})), [3]) and panes.Active({Current: 3}) == 1
 isTreeOfState() = panes.Count(panes.Tree({Current: 1, Panes: stacked(), Pane: 2})) == 2 and panes.Active({Current: 1, Panes: stacked(), Pane: 2}) == 2

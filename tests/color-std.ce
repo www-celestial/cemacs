@@ -3,17 +3,22 @@
 use std/sys
 use core/color
 use std/text as str
+use std/bug
+use std/io
+use std/list
+use std/result
+use std/value
 
 stdFolder = "../cesia/src/std"
 
 defn lostIn(path, text)
   state = color.FirstState
   bad = []
-  for line in Lines(text)
+  for line in str.Lines(text)
     r = color.Tokens(line, state)
     state = r.State
-    if Join("", Map(t -> t[2], r.Tokens)) != line
-      bad = Append("$(path): $(line)", bad)
+    if str.Join("", list.Map(t -> t[2], r.Tokens)) != line
+      bad = list.Append("$(path): $(line)", bad)
     end
   end
   bad
@@ -21,37 +26,37 @@ end
 
 defn statesDifferIn(path, text)
   (** The states at the start of every line given by colored_to must equal the ones given by reading every line with tokens. *)
-  allLines = Lines(text)
+  allLines = str.Lines(text)
   state = color.FirstState
   expected = [state]
   for line in allLines
     state = color.Tokens(line, state).State
-    expected = Append(state, expected)
+    expected = list.Append(state, expected)
   end
-  count = Len(allLines)
+  count = value.Len(allLines)
   if count == 0
     []
   else
     got = color.ColoredTo(count, n -> allLines[n], color.BlankColors()).Starts
-    if Equal(got, Take(count, expected)) [] else ["$(path)"] end
+    if value.Equal(got, list.Take(count, expected)) [] else ["$(path)"] end
   end
 end
 
 defn kpFiles(folder)
   (** The paths of the .ce files of the folder. No file at all is a bug of the test. *)
-  names = Filter(f -> EndsWith(".ce", f), Unwrap(sys.List(folder)))
-  if Len(names) == 0
-    Panic("no .ce file in $(folder)")
+  names = list.Filter(f -> str.EndsWith(".ce", f), result.Unwrap(sys.List(folder)))
+  if value.Len(names) == 0
+    bug.Panic("no .ce file in $(folder)")
   end
   names
 end
 
-bad = FlatMap(f -> lostIn(f, Unwrap(sys.Read("$(stdFolder)/$(f)"))), kpFiles(stdFolder))
-if Len(bad) > 0
-  Panic("lines that lose a character:\n$(Join("\n", Take(5, bad)))")
+bad = list.FlatMap(f -> lostIn(f, result.Unwrap(sys.Read("$(stdFolder)/$(f)"))), kpFiles(stdFolder))
+if value.Len(bad) > 0
+  bug.Panic("lines that lose a character:\n$(str.Join("\n", list.Take(5, bad)))")
 end
-differ = FlatMap(f -> statesDifferIn(f, Unwrap(sys.Read("$(stdFolder)/$(f)"))), kpFiles(stdFolder))
-if Len(differ) > 0
-  Panic("colored_to differs from tokens in:\n$(Join("\n", differ))")
+differ = list.FlatMap(f -> statesDifferIn(f, result.Unwrap(sys.Read("$(stdFolder)/$(f)"))), kpFiles(stdFolder))
+if value.Len(differ) > 0
+  bug.Panic("colored_to differs from tokens in:\n$(str.Join("\n", differ))")
 end
-Print("ok")
+io.Print("ok")

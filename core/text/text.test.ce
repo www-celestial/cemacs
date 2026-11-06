@@ -3,11 +3,13 @@ use core/text
 use core/color
 use std/rope
 use std/text as str
+use std/list
+use std/value
 
 allText(b) = rope.Text(b.Rope)
 at(b) = [b.Cursor.Line, b.Cursor.Column]
 same(a, b) = "$a" == "$b"
-typed(words, b) = Reduce((acc, c) -> text.InsertWords(c, acc), b, Chars(words))
+typed(words, b) = list.Reduce((acc, c) -> text.InsertWords(c, acc), b, str.Chars(words))
 atPlace(line, column, words) = text.Place(line, column, text.Of(words, missing))
 
 isTyping() = allText(text.InsertWords("a", text.Of("", missing))) == "a" and text.InsertWords("a", text.Of("", missing)).Cursor.Column == 1
@@ -59,7 +61,7 @@ isMoveWord() = same(at(text.MoveWord(1, text.Of("foo bar", missing))), [1, 3]) a
 isMoveWordBack() = same(at(text.MoveWord(-1, atPlace(1, 7, "foo bar"))), [1, 4]) and same(at(text.MoveWord(-1, atPlace(1, 4, "foo bar"))), [1, 0])
 isMoveWordAccent() = same(at(text.MoveWord(1, text.Of("été_1 x", missing))), [1, 5])
 isMoveWordLines() = same(at(text.MoveWord(1, atPlace(1, 3, "ab\ncd"))), [2, 2])
-isMovePage() = same(at(text.MovePage(1, 3, text.Of(Join("\n", Map(n -> "l", Range(1, 10))), missing))), [4, 0]) and same(at(text.MovePage(-1, 3, atPlace(2, 0, Join("\n", Map(n -> "l", Range(1, 10)))))), [1, 0])
+isMovePage() = same(at(text.MovePage(1, 3, text.Of(str.Join("\n", list.Map(n -> "l", list.Range(1, 10))), missing))), [4, 0]) and same(at(text.MovePage(-1, 3, atPlace(2, 0, str.Join("\n", list.Map(n -> "l", list.Range(1, 10)))))), [1, 0])
 isMovePageKeepsColumn() = same(at(text.MovePage(1, 2, text.MoveLine(1, atPlace(1, 3, "abcd\nx\nabcd\nabcd")))), [4, 3])
 isColorsForgotten() = text.InsertWords("x", text.Of("a\nb\nc", missing)).Colors.Known == 1 and color.ColoredTo(3, n -> "x", text.Of("a", missing).Colors).Known == 3
 isColorsForgottenBelow() = text.InsertWords("x", colorTo3(atPlace(2, 0, "a\nb\nc"))).Colors.Known == 2
@@ -76,7 +78,7 @@ defn colorTo3(b)
 end
 
 crlf = "ab\r\ncd"
-longText = Join("\n", Map(n -> "x", Range(1, 100)))
+longText = str.Join("\n", list.Map(n -> "x", list.Range(1, 100)))
 
 isCrlfRoundtrip() = allText(text.Of(crlf, missing)) == crlf and allText(text.Undo(text.Redo(text.InsertWords("z", text.Of(crlf, missing))))) == crlf
 isCrlfLineEndType() = allText(text.InsertWords("X", text.ToLineEnd(text.Of(crlf, missing)))) == "abX\r\ncd"
@@ -106,7 +108,7 @@ defn isSelectionEnds()
   b = text.Place(1, 3, text.Of("abcdef", missing))
   b.Mark = {Line: 1, Column: 1}
   e = text.Selection(b)
-  e.First.Column == 1 and e.Last.Column == 3 and IsMissing(text.Selection(text.Of("a", missing)))
+  e.First.Column == 1 and e.Last.Column == 3 and value.IsMissing(text.Selection(text.Of("a", missing)))
 end
 
 isLineWidth() = text.LineWidth(1, text.Of("abc\r\nde", missing)) == 3 and text.LineWidth(2, text.Of("abc\r\nde", missing)) == 2
@@ -125,7 +127,7 @@ isEditAfterDeleteMakesCrlf() = allText(text.InsertWords("z", text.DeleteAfter(at
 markedTwo(words) = text.MoveChar(2, text.SetMark(text.Of(words, missing)))
 xyInPlace(b) = text.ReplaceRegion(c -> text.InsertWords("xy", c), b)
 
-isReplaceRegion() = allText(xyInPlace(markedTwo("abcd"))) == "xycd" and IsMissing(xyInPlace(markedTwo("abcd")).Mark)
+isReplaceRegion() = allText(xyInPlace(markedTwo("abcd"))) == "xycd" and value.IsMissing(xyInPlace(markedTwo("abcd")).Mark)
 isReplaceRegionOneUndo() = allText(text.Undo(xyInPlace(markedTwo("abcd")))) == "abcd" and same(at(text.Undo(xyInPlace(markedTwo("abcd")))), [1, 2])
 isReplaceRegionRedo() = allText(text.Redo(text.Undo(xyInPlace(markedTwo("abcd"))))) == "xycd" and same(at(text.Redo(text.Undo(xyInPlace(markedTwo("abcd"))))), [1, 2])
 isReplaceRegionNoSelection() = allText(xyInPlace(text.Of("ab", missing))) == "xyab" and allText(text.Undo(xyInPlace(text.Of("ab", missing)))) == "ab"

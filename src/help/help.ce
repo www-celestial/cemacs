@@ -4,54 +4,58 @@ use core/color
 use core/commands
 use core/lists
 use std/text as str
+use std/cesia
+use std/dict
+use std/list
+use std/value
 
 defn WithHelp(keys)
   (** The keys, with ? after the first keys of every pair or group, which lists what follows them: C-x ? for C-x, C-c f ? for C-c f. src/cemacs.ce gives it
       every key of the editor. *)
-  firsts = Unique(FlatMap(prefixes, Filter(k -> Contains(" ", k), Keys(keys))))
-  Merge(keys, Dict([{Key: "$first ?", Value: ShowKeys} for first in firsts]))
+  firsts = list.Unique(list.FlatMap(prefixes, list.Filter(k -> str.Contains(" ", k), dict.Keys(keys))))
+  dict.Merge(keys, dict.Dict([{Key: "$first ?", Value: ShowKeys} for first in firsts]))
 end
 
 defn prefixes(k)
   (** The first keys of k that a key can follow: "C-c" and "C-c f" for "C-c f f". *)
-  chords = Split(" ", k)
-  [Join(" ", Take(n, chords)) for n in 1..(Len(chords) - 1)]
+  chords = str.Split(" ", k)
+  [str.Join(" ", list.Take(n, chords)) for n in 1..(value.Len(chords) - 1)]
 end
 
 defn ShowKeys(state)
   (** Lists the keys that start with those typed before ?, with the command each one runs. *)
   chords = commands.Chords(state)
-  Show(Slice(1, Len(chords) - 2, chords), state)
+  Show(str.Slice(1, value.Len(chords) - 2, chords), state)
 end
 
 defn about(f)
   (** The name of a function and the first sentence of its doc, as cesia doc shows them; a function without a name, as s -> ..., has neither. *)
-  doc = Doc(f)
-  if IsMissing(doc)
+  doc = cesia.Doc(f)
+  if value.IsMissing(doc)
     return {Name: "(a function)", Text: ""}
   end
-  parts = Split("\n\n", doc)
-  name = Split("(", parts[1])[1]
-  text = if Len(parts) > 1 Split("\n", parts[2])[1] else "" end
+  parts = str.Split("\n\n", doc)
+  name = str.Split("(", parts[1])[1]
+  text = if value.Len(parts) > 1 str.Split("\n", parts[2])[1] else "" end
   {Name: name, Text: text}
 end
 
 defn Show(first, state)
   (** Opens the list of the keys that start with first, but this one. Each row shows the key, the name of its command and what it does, in colors. *)
   bindings = commands.Bindings(state)
-  wanted = Sort(Filter(k -> StartsWith("$first ", k) and not EndsWith(" ?", k) and not IsText(bindings[k]), Keys(bindings)))
-  known = Map(k -> {Key: k, About: about(bindings[k])}, wanted)
-  keyWidth = Reduce((w, r) -> Max(w, Len(r.Key)), 0, known)
-  nameWidth = Reduce((w, r) -> Max(w, Len(r.About.Name)), 0, known)
-  rows = Map(r -> rowOf(r, keyWidth, nameWidth), known)
+  wanted = list.Sort(list.Filter(k -> str.StartsWith("$first ", k) and not str.EndsWith(" ?", k) and not value.IsText(bindings[k]), dict.Keys(bindings)))
+  known = list.Map(k -> {Key: k, About: about(bindings[k])}, wanted)
+  keyWidth = list.Reduce((w, r) -> list.Max(w, value.Len(r.Key)), 0, known)
+  nameWidth = list.Reduce((w, r) -> list.Max(w, value.Len(r.About.Name)), 0, known)
+  rows = list.Map(r -> rowOf(r, keyWidth, nameWidth), known)
   commands.ShowList("$first ?", rows, () -> {"enter": run}, state)
 end
 
 defn rowOf(r, keyWidth, nameWidth)
   (** The row of a key: the key, the name of its command, and what it does. *)
-  parts = [[color.Keyword, PadRight(keyWidth, " ", r.Key)], [color.Plain, "  "], [color.Name, PadRight(nameWidth, " ", r.About.Name)], [color.Plain, "  "],
+  parts = [[color.Keyword, str.PadRight(keyWidth, " ", r.Key)], [color.Plain, "  "], [color.Name, str.PadRight(nameWidth, " ", r.About.Name)], [color.Plain, "  "],
     [color.Comment, r.About.Text]]
-  {Words: Trim(Join("", Map(p -> p[2], parts))), Parts: parts, Item: r.Key}
+  {Words: str.Trim(str.Join("", list.Map(p -> p[2], parts))), Parts: parts, Item: r.Key}
 end
 
 defn run(key, state)

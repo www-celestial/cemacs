@@ -3,9 +3,13 @@
     file that didn't exist. *)
 use std/sys
 use std/text as str
+use std/list
+use std/math
+use std/result
+use std/value
 
 (** An Err of kind "changed": the file is not the one that was read. *)
-changed(path) = Err({Kind: "changed", Message: "$path changed on disk since it was read."})
+changed(path) = result.Err({Kind: "changed", Message: "$path changed on disk since it was read."})
 
 (** The disk of a stat: the time of the file and its size. Two files that differ in either are not the same file. *)
 disk(info) = {Modified: info.Modified, Size: info.Size}
@@ -13,17 +17,17 @@ disk(info) = {Modified: info.Modified, Size: info.Size}
 defn current(path)
   (** The disk of the file at path: Ok(missing) for a file that doesn't exist, Ok of a disk, or an Err for a folder or an unreadable file. *)
   if not sys.Exists(path)
-    return Ok(missing)
+    return result.Ok(missing)
   end
   info = sys.Stat(path)?
   if info.IsDir
-    return Err({Kind: "folder", Message: "$path is a folder."})
+    return result.Err({Kind: "folder", Message: "$path is a folder."})
   end
-  Ok(disk(info))
+  result.Ok(disk(info))
 end
 
 (** Does the text hold a zero byte? *)
-hasZero(words) = not IsMissing(ByteFind(FromBytes([0]), 1, words))
+hasZero(words) = not value.IsMissing(str.ByteFind(str.FromBytes([0]), 1, words))
 
 (** How many bytes after the lead byte b a sequence takes, or -1 if b can't start one. Continuation bytes are checked by validAt. *)
 extra(b) = if b < 128 0 else if b >= 194 and b <= 223 1 else if b >= 224 and b <= 239 2 else if b >= 240 and b <= 244 3 else -1 end
@@ -36,7 +40,7 @@ defn validAt(i, bs)
   (** The position after the sequence starting at i in the bytes, or -1 if it is not valid UTF-8. *)
   b = bs[i]
   n = extra(b)
-  if n < 0 or i + n > Len(bs)
+  if n < 0 or i + n > value.Len(bs)
     return -1
   end
   if n == 0
@@ -60,7 +64,7 @@ end
 defn utf8(bs)
   (** Is every byte sequence of the bytes valid UTF-8? A byte under 128 costs one step, so an ASCII text never gets here. *)
   i = 1
-  total = Len(bs)
+  total = value.Len(bs)
   while i <= total
     i = validAt(i, bs)
     if i < 0
@@ -77,8 +81,8 @@ defn IsText(words)
   if hasZero(words)
     return false
   end
-  bs = Bytes(words)
-  if Len(bs) == 0 or Max(bs) < 128
+  bs = str.Bytes(words)
+  if value.Len(bs) == 0 or list.Max(bs) < 128
     return true
   end
   utf8(bs)
@@ -89,20 +93,20 @@ defn Normal(path)
       the .. that nothing before it can cancel, except at the root, where .. stays at the root. An empty path is ".".
 
         Normal("./a/../b.ce") --> "b.ce" *)
-  absolute = StartsWith("/", path)
+  absolute = str.StartsWith("/", path)
   parts = []
-  for part in Split("/", path)
+  for part in str.Split("/", path)
     if part == "" or part == "."
       parts = parts
     else if part != ".."
-      parts = Append(part, parts)
-    else if Len(parts) > 0 and parts[Len(parts)] != ".."
-      parts = Take(Len(parts) - 1, parts)
+      parts = list.Append(part, parts)
+    else if value.Len(parts) > 0 and parts[value.Len(parts)] != ".."
+      parts = list.Take(value.Len(parts) - 1, parts)
     else if not absolute
-      parts = Append(part, parts)
+      parts = list.Append(part, parts)
     end
   end
-  joined = Join("/", parts)
+  joined = str.Join("/", parts)
   if absolute
     "/$joined"
   else if joined == ""
@@ -122,37 +126,37 @@ defn ReadFile(path)
       the read, so a file changed in between makes the next save ask instead of overwriting. A device or a FIFO has the size 0, and reading one never ends,
       so sys.Stat must say what it is first. *)
   disk = current(path)?
-  if IsMissing(disk)
-    return Ok({Words: "", Disk: missing})
+  if value.IsMissing(disk)
+    return result.Ok({Words: "", Disk: missing})
   end
   if not sys.Stat(path)?.IsFile
-    return Err({Kind: "special", Message: "$path is not a regular file: it may be a device, a pipe or a socket."})
+    return result.Err({Kind: "special", Message: "$path is not a regular file: it may be a device, a pipe or a socket."})
   end
   if disk.Size > largest
-    return Err({Kind: "large", Message: "$path is too large to open: $(disk.Size) bytes, and the limit is $largest."})
+    return result.Err({Kind: "large", Message: "$path is too large to open: $(disk.Size) bytes, and the limit is $largest."})
   end
   words = sys.Read(path)?
   if not IsText(words)
-    return Err({Kind: "text", Message: "$path is not valid UTF-8 text, or holds a zero byte."})
+    return result.Err({Kind: "text", Message: "$path is not valid UTF-8 text, or holds a zero byte."})
   end
-  Ok({Words: words, Disk: disk})
+  result.Ok({Words: words, Disk: disk})
 end
 
 defn isFresh(path)
   (** A name next to path that nothing uses yet: it holds the time, and a counter if that name is taken. Gives Ok of the name, or an Err of kind
       "io" after a few tries. Nothing at the name is touched. *)
-  stamp = Text(Floor(sys.Now() * 1000000))
-  for n in Range(0, 20)
+  stamp = value.Text(math.Floor(sys.Now() * 1000000))
+  for n in list.Range(0, 20)
     name = if n == 0 "$path.cemacs-$stamp" else "$path.cemacs-$stamp-$n" end
     if not sys.Exists(name)
-      return Ok(name)
+      return result.Ok(name)
     end
   end
-  Err({Kind: "io", Message: "No free name next to $path for a new file."})
+  result.Err({Kind: "io", Message: "No free name next to $path for a new file."})
 end
 
 (** A failure on the new file, as a failure on path: the person never heard of the new one. *)
-named(path, fresh, failure) = Err({Kind: failure.Error.Kind, Message: Replace(fresh, path, failure.Error.Message)})
+named(path, fresh, failure) = result.Err({Kind: failure.Error.Kind, Message: str.Replace(fresh, path, failure.Error.Message)})
 
 defn replace(path, words)
   (** Writes the words to path through a new file next to it, then renames it over the file. The new file has a name that nothing used, and the
@@ -160,18 +164,18 @@ defn replace(path, words)
       is saved and the Err has the kind "saved". *)
   fresh = isFresh(path)?
   written = sys.Write(fresh, words)
-  if IsErr(written)
+  if result.IsErr(written)
     sys.Remove(fresh)
     return named(path, fresh, written)
   end
   moved = sys.Rename(fresh, path)
-  if IsErr(moved)
+  if result.IsErr(moved)
     sys.Remove(fresh)
     return named(path, fresh, moved)
   end
   match current(path)
-    Ok(disk) -> Ok(disk)
-    Err(e) -> Err({Kind: "saved", Message: "$path was saved, but its time couldn't be read: $(e.Message)"})
+    result.Ok(disk) -> result.Ok(disk)
+    result.Err(e) -> result.Err({Kind: "saved", Message: "$path was saved, but its time couldn't be read: $(e.Message)"})
   end
 end
 

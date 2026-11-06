@@ -12,18 +12,22 @@ use core/commands
 use core/text
 use core/view
 use std/text as str
+use std/bug
+use std/io
+use std/result
+use std/value
 
 defn check(condition, words)
   (** Stops the script with the words if the condition is false. *)
   if not condition
-    Panic("FAILED: $words")
+    bug.Panic("FAILED: $words")
   end
 end
 
 defn push(type, fields)
   (** Pushes an event of this type to SDL, with its fields as [type, offset, value]. *)
-  lib = Unwrap(c.Open("SDL3", version = 0))
-  send = Unwrap(c.Fn("SDL_PushEvent", ["ptr"], "bool", lib))
+  lib = result.Unwrap(c.Open("SDL3", version = 0))
+  send = result.Unwrap(c.Fn("SDL_PushEvent", ["ptr"], "bool", lib))
   event = c.Alloc(128)
   c.Set("u32", 0, type, event)
   for field in fields
@@ -38,16 +42,16 @@ key(code, mods) = push(0x300, [["u32", 28, code], ["u16", 32, mods]])
 
 defn typed(words)
   (** A text event for the characters of a text. The blocks stay: SDL keeps their addresses until the events are read. *)
-  held = c.Alloc(ByteLength(words) + 1)
-  for k in 1..Len(Bytes(words))
-    c.Set("u8", k - 1, Bytes(words)[k], held)
+  held = c.Alloc(str.ByteLength(words) + 1)
+  for k in 1..value.Len(str.Bytes(words))
+    c.Set("u8", k - 1, str.Bytes(words)[k], held)
   end
   push(0x303, [["ptr", 24, held]])
 end
 
 defn letter(words)
   (** A letter typed: its key event and then its text event. *)
-  key(Bytes(words)[1], 0)
+  key(str.Bytes(words)[1], 0)
   typed(words)
 end
 
@@ -62,7 +66,7 @@ defn played(state)
       return s
     end
     next = commands.Update(event, s)
-    s = if IsMissing(next) ended(s) else next end
+    s = if value.IsMissing(next) ended(s) else next end
   end
   s
 end
@@ -76,12 +80,12 @@ end
 
 here(state) = state.Buffers[state.Current]
 wordsOf(state) = rope.Text(here(state).Rope)
-read(path) = Unwrap(sys.Read(path))
+read(path) = result.Unwrap(sys.Read(path))
 
-folder = "/tmp/cemacs-window-check-$(Text(sys.Now()))"
-check(IsOk(sys.Mkdir(folder)), "the folder is made")
+folder = "/tmp/cemacs-window-check-$(value.Text(sys.Now()))"
+check(result.IsOk(sys.Mkdir(folder)), "the folder is made")
 path = "$folder/a.ce"
-Unwrap(sys.Write(path, "alpha\n"))
+result.Unwrap(sys.Write(path, "alpha\n"))
 
 defn opened()
   first = sdl.Open("Cemacs check", 800, 600, "fonts/AdwaitaSans-Regular.ttf", size = emacs.FontSize(), light = true)?
@@ -92,7 +96,7 @@ end
 (** What the editor runs on in this check: the Emacs keys and the settings, as src/cemacs.ce gives them without its apps. *)
 checkConfig() = emacs.Config(emacs.Keys)
 
-window = Unwrap(opened())
+window = result.Unwrap(opened())
 measured = sdl.Measure(window)
 look = ui.Look(ui.Dark, measured.Width, measured.Height)
 cell = {Width: look.Width("M", "code"), Height: sdl.TextSize("Ag", window, font = "code").Height + view.LineGap}
@@ -111,16 +115,16 @@ check(wordsOf(state) == "aéalpha\n", "typed text: $(wordsOf(state))")
 check(read(path) == "aéalpha\n", "C-x C-s writes the file")
 check(not text.IsModified(here(state)), "the star is gone")
 
-Unwrap(sys.Write(path, "theirs\n"))   (** A file changed on disk: C-x C-s asks, and y writes over it. *)
+result.Unwrap(sys.Write(path, "theirs\n"))   (** A file changed on disk: C-x C-s asks, and y writes over it. *)
 letter("z")
 key(0x78, 0x40)
 key(0x73, 0x40)
 state = played(state)
-check(not IsMissing(state.Prompt) and state.Prompt.Label == "File changed on disk. Overwrite? (y or n)", "a changed file asks")
+check(not value.IsMissing(state.Prompt) and state.Prompt.Label == "File changed on disk. Overwrite? (y or n)", "a changed file asks")
 check(read(path) == "theirs\n", "nothing is written before the answer")
 letter("y")
 state = played(state)
-check(IsMissing(state.Prompt) and read(path) == "aézalpha\n", "y writes over the file")
+check(value.IsMissing(state.Prompt) and read(path) == "aézalpha\n", "y writes over the file")
 check(not text.IsModified(here(state)), "the star is gone after y")
 
 key(0x40000050, 0x1)   (** M-w then C-y goes through the clipboard of the system. *)
@@ -128,7 +132,7 @@ key(0x40000050, 0x1)
 key(0x77, 0x100)
 state = played(state)
 check(sdl.Paste(window) == "éz", "M-w puts the selection in the clipboard of the system: $(sdl.Paste(window))")
-check(IsMissing(here(state).Mark), "M-w ends the selection")
+check(value.IsMissing(here(state).Mark), "M-w ends the selection")
 key(0x65, 0x40)
 key(0x79, 0x40)
 state = played(state)
@@ -137,7 +141,7 @@ check(wordsOf(state) == "aézalphaéz\n", "C-y pastes the clipboard: $(wordsOf(s
 mouse(0x401, 62.0 + 3.0 * cell.Width + 1.0, 4.0 + 2.0)   (** A click in the code places the cursor. *)
 mouse(0x402, 62.0 + 3.0 * cell.Width + 1.0, 4.0 + 2.0)
 state = played(state)
-check(here(state).Cursor == {Line: 1, Column: 3} and IsMissing(here(state).Mark), "a click places the cursor")
+check(here(state).Cursor == {Line: 1, Column: 3} and value.IsMissing(here(state).Mark), "a click places the cursor")
 
 (** The window takes a few events and quits: sdl.Run returns when the window closes, and the text is saved by then, so it doesn't ask. *)
 key(0x78, 0x40)
@@ -153,4 +157,4 @@ last = sdl.Run(state, commands.Update, view.View, window, moving = commands.Movi
 check(wordsOf(last) == "aézqalphaéz\n", "run took the events: $(wordsOf(last))")
 check(last.Width == 640 and last.Height == 480, "run took the resize")
 sdl.Close(window)
-Print("ok")
+io.Print("ok")

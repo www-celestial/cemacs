@@ -1,5 +1,10 @@
 (** The keys: how a key event of sdl becomes a chord such as "C-x", and how chords find a function in bindings. The bindings themselves are code, in commands.ce.
     Nothing here knows of a window or a file. *)
+use std/cesia
+use std/dict
+use std/list
+use std/text as str
+use std/value
 
 (* The keys that make no difference with Shift, because the character already holds it: "<" is Shift and ",". *)
 shifted = ["<", ">", "?", "_"]
@@ -8,12 +13,12 @@ shifted = ["<", ">", "?", "_"]
 prefix(ctrl, alt, shift) = "$(if ctrl "C-" else "" end)$(if alt "M-" else "" end)$(if shift "S-" else "" end)"
 
 (** Has this key a name, as "enter" or "right", rather than being one character? *)
-isNamed(key) = Len(key) > 1
+isNamed(key) = value.Len(key) > 1
 
 defn Chord(event)
   (** The chord of an event, such as "C-f", "M-w", "enter" or "S-right", or missing if the key only types: the text event types it.
       A key that types is a character or the space bar with no Ctrl and no Alt, with or without Shift. A key with Super is not ours. *)
-  key = if isNamed(event.Key) event.Key else Lower(event.Key) end
+  key = if isNamed(event.Key) event.Key else str.Lower(event.Key) end
   types = (not isNamed(event.Key) or key == "space") and not event.Ctrl and not event.Alt
   if event.Super or types
     missing
@@ -24,10 +29,10 @@ defn Chord(event)
 end
 
 (** Does a binding begin with these keys, as "C-x C-s" begins with "C-x" and "C-c f f" with "C-c f"? *)
-isFirst(chords, bindings) = Any(Map(k -> StartsWith("$chords ", k), Keys(bindings)))
+isFirst(chords, bindings) = list.Any(list.Map(k -> str.StartsWith("$chords ", k), dict.Keys(bindings)))
 
 (** Is this binding a command, rather than the name of a group, as "C-c f": "files"? *)
-isCommand(v) = not IsText(v)
+isCommand(v) = not value.IsText(v)
 
 defn Lookup(pending, chord, bindings)
   (** What a chord means in bindings, a dictionary from keys to functions, after the pending keys, which are "" if there are none: {Command} with the
@@ -35,10 +40,10 @@ defn Lookup(pending, chord, bindings)
       alone, a pair as "C-x C-s", or more as "C-c f f", so a chord waits for the next one as soon as a binding goes on after it. A chord bound to a command
       runs, and what begins with it can't be reached; a text there only names the group, as "C-c f": "files".
 
-        Lookup("C-x", "C-s", {"C-x C-s": Lower}) --> {Command: Lower}
-        Lookup("C-c", "f", {"C-c f": "files", "C-c f f": Lower}) --> {Pending: "C-c f"} *)
+        Lookup("C-x", "C-s", {"C-x C-s": str.Lower}) --> {Command: str.Lower}
+        Lookup("C-c", "f", {"C-c f": "files", "C-c f f": str.Lower}) --> {Pending: "C-c f"} *)
   both = if pending == "" chord else "$pending $chord" end
-  if Has(both, bindings) and isCommand(bindings[both])
+  if dict.Has(both, bindings) and isCommand(bindings[both])
     {Command: bindings[both]}
   else if isFirst(both, bindings)
     {Pending: both}
@@ -48,28 +53,29 @@ defn Lookup(pending, chord, bindings)
 end
 
 defn NameOf(f)
-  (** The name of a command, as its documentation gives it: "FindFile" for commands.FindFile. A function without one, as s -> ..., is "a function".
+  (** The name of a command, as its documentation gives it, without its package: "FindFile" for commands.FindFile. A function without one, as s -> ...,
+      is "a function".
 
-        NameOf(Lower) --> "Lower" *)
-  doc = Doc(f)
-  if IsMissing(doc) "a function" else Split("(", Split("\n", doc)[1])[1] end
+        NameOf(str.Lower) --> "Lower" *)
+  doc = cesia.Doc(f)
+  if value.IsMissing(doc) "a function" else list.Last(str.Split(".", str.Split("(", str.Split("\n", doc)[1])[1])) end
 end
 
 (** The chord that comes after prefix in keys: "f" for "C-c" in "C-c f s". *)
-nextChord(prefix, keys) = Split(" ", Slice(Len(prefix) + 2, Len(keys), keys))[1]
+nextChord(prefix, keys) = str.Split(" ", str.Slice(value.Len(prefix) + 2, value.Len(keys), keys))[1]
 
 defn Hints(prefix, bindings)
   (** What can follow the keys of prefix in bindings, one row for each next chord, in the order of the chords: {Key, Name, Group}. A group is named by its text in
       bindings, or "more" without one, and shown with a +; a command by its name.
 
-        Hints("C-c", {"C-c f": "files", "C-c f f": Lower, "C-c q": Upper}) --> [{Key: "f", Name: "+files", Group: true}, {Key: "q", Name: "Upper", Group: false}] *)
-  nexts = Sort(Unique(Map(k -> nextChord(prefix, k), Filter(k -> StartsWith("$prefix ", k), Keys(bindings)))))
-  Map(c -> hint(c, "$prefix $c", bindings), nexts)
+        Hints("C-c", {"C-c f": "files", "C-c f f": str.Lower, "C-c q": str.Upper}) --> [{Key: "f", Name: "+files", Group: true}, {Key: "q", Name: "Upper", Group: false}] *)
+  nexts = list.Sort(list.Unique(list.Map(k -> nextChord(prefix, k), list.Filter(k -> str.StartsWith("$prefix ", k), dict.Keys(bindings)))))
+  list.Map(c -> hint(c, "$prefix $c", bindings), nexts)
 end
 
 defn hint(chord, keys, bindings)
   (** The row of Hints for the chord that gives keys. *)
-  bound = Has(keys, bindings)
+  bound = dict.Has(keys, bindings)
   if bound and isCommand(bindings[keys])
     {Key: chord, Name: NameOf(bindings[keys]), Group: false}
   else

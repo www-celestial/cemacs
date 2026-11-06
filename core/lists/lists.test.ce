@@ -1,14 +1,16 @@
 (** Tests of lists: run with cesia test . *)
 use core/lists
 use core/text
+use std/list
+use std/value
 
 isMatchInOrder() = lists.Matches("cmd", "commands.ce") and not lists.Matches("dmc", "commands.ce")
 isMatchSideBySideToo() = lists.Matches("comm", "commands.ce")
 isMatchIgnoresCase() = lists.Matches("CMD", "commands.ce") and lists.Matches("cmd", "COMMANDS.CE")
 isEmptyFilterMatchesAll() = lists.Matches("", "anything") and lists.Matches("", "")
 isNoMatchPastTheEnd() = not lists.Matches("commands.cee", "commands.ce")
-isFilteredKeepsOrder() = Equal(Map(r -> r.Item, lists.Filtered("a", [{Words: "b", Item: 1}, {Words: "a2", Item: 2}, {Words: "xa", Item: 3}])), [2, 3])
+isFilteredKeepsOrder() = value.Equal(list.Map(r -> r.Item, lists.Filtered("a", [{Words: "b", Item: 1}, {Words: "a2", Item: 2}, {Words: "xa", Item: 3}])), [2, 3])
 isWordsOnePerLine() = lists.Words([{Words: "a", Item: 1}, {Words: "b", Item: 2}]) == "a\nb" and lists.Words([]) == ""
 isLineOfItem() = lists.LineOf(30, [10, 30, 40], 3) == 2
 isLineOfGoneItem() = lists.LineOf(20, [10, 30, 40], 3) == 3 and lists.LineOf(20, [10], 3) == 1 and lists.LineOf(20, [], 3) == 1
-isTextIsNoList() = not lists.IsList(text.Of("a", missing)) and IsMissing(lists.Of(text.Of("a", missing)))
+isTextIsNoList() = not lists.IsList(text.Of("a", missing)) and value.IsMissing(lists.Of(text.Of("a", missing)))

@@ -10,11 +10,16 @@ use core/commands
 use core/text
 use core/view
 use std/text as str
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/value
 
 defn push(type, fields)
   (** Pushes an event of this type to SDL, with its fields as [type, offset, value]. *)
-  lib = Unwrap(c.Open("SDL3", version = 0))
-  send = Unwrap(c.Fn("SDL_PushEvent", ["ptr"], "bool", lib))
+  lib = result.Unwrap(c.Open("SDL3", version = 0))
+  send = result.Unwrap(c.Fn("SDL_PushEvent", ["ptr"], "bool", lib))
   event = c.Alloc(128)
   c.Set("u32", 0, type, event)
   for field in fields
@@ -56,12 +61,12 @@ defn note(event, before, after)
   was = before.Buffers[before.Current]
   now = after.Buffers[after.Current]
   if event.Kind == "key" and event.Key == "t"
-    place = if not IsMissing(before.Prompt) "in a prompt" else if before.Pending != "" "in a pair" else "alone" end
-    Print("C-t $place: $(after.Message)")
+    place = if not value.IsMissing(before.Prompt) "in a prompt" else if before.Pending != "" "in a pair" else "alone" end
+    io.Print("C-t $place: $(after.Message)")
   else if event.Kind == "key" and event.Key == "tab"
-    Print("tab: $(now.Cursor.Column - was.Cursor.Column)")
+    io.Print("tab: $(now.Cursor.Column - was.Cursor.Column)")
   else if event.Kind == "mouse" and event.Action == "wheel"
-    Print("wheel: $(now.Top - was.Top) $(after.Message)")
+    io.Print("wheel: $(now.Top - was.Top) $(after.Message)")
   end
 end
 
@@ -94,13 +99,13 @@ defn main()
   measured = sdl.Measure(window)
   look = ui.Look(ui.Dark, measured.Width, measured.Height)
   cell = {Width: look.Width("M", "code"), Height: sdl.TextSize("Ag", window, font = "code").Height + view.LineGap}
-  words = Join("\n", Map(n -> "line", Range(1, 1000)))
+  words = str.Join("\n", list.Map(n -> "line", list.Range(1, 1000)))
   state = older(view.Start([text.Of(words, missing)], look, cell, 800, 600))
   state.Window = window
-  Spawn(sending)
+  fiber.Spawn(sending)
   sdl.Run(commands.Settled(state), update, view.View, window, moving = commands.Moving)
   sdl.Close(window)
-  Ok(missing)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

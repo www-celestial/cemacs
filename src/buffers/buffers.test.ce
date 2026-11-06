@@ -7,11 +7,13 @@ use std/rope
 use core/text
 use std/ui
 use core/view
+use std/dict
+use std/value
 
-look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}
 (** The Emacs keys with the keys of this app, as src/cemacs.ce merges them. *)
-withApp() = emacs.Config(() -> Merge(emacs.Keys(), buffers.Keys()))
+withApp() = emacs.Config(() -> dict.Merge(emacs.Keys(), buffers.Keys()))
 defn twoFiles()
   (** Two files, the second one modified, with the second current. *)
   y = text.Of("b", "/p/y.ce")
@@ -27,9 +29,9 @@ played(items) = press.Press(items, twoFiles())
 
 isKeyBound() = buffers.Keys()["C-x C-b"] == buffers.Open
 isListOfBuffers() = wordsOf(played(["C-x", "C-b"])) == "  x.ce  /p/x.ce\n* y.ce  /p/y.ce" and view.BufferName(here(played(["C-x", "C-b"]))) == "Buffers"
-isEnterVisits() = played(["C-x", "C-b", "enter"]).Current == 1 and Len(played(["C-x", "C-b", "enter"]).Buffers) == 2
+isEnterVisits() = played(["C-x", "C-b", "enter"]).Current == 1 and value.Len(played(["C-x", "C-b", "enter"]).Buffers) == 2
 isFilterThenVisit() = played(["C-x", "C-b", "y", "enter"]).Current == 2 and wordsOf(played(["C-x", "C-b", "y", "enter"])) == "b"
-isCancelGoesBack() = played(["C-x", "C-b", "C-g"]).Current == 2 and Len(played(["C-x", "C-b", "C-g"]).Buffers) == 2
+isCancelGoesBack() = played(["C-x", "C-b", "C-g"]).Current == 2 and value.Len(played(["C-x", "C-b", "C-g"]).Buffers) == 2
 (** An untitled buffer has no path, and its name is padded only when a path follows. *)
 isUntitledRow() = wordsOf(press.Press(["C-x", "C-b"], withUntitled())) == "  untitled\n  x.ce      /p/x.ce"
 defn withUntitled()

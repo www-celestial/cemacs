@@ -8,8 +8,11 @@ use core/text
 use std/ui
 use core/view
 use std/text as str
+use std/dict
+use std/list
+use std/value
 
-look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}
 (** The Emacs keys with the help of every pair, as src/cemacs.ce gives them. *)
 withHelp() = emacs.Config(() -> help.WithHelp(emacs.Keys()))
@@ -23,16 +26,16 @@ here(state) = state.Buffers[state.Current]
 wordsOf(state) = rope.Text(here(state).Rope)
 (** What SDL sends for ? on a US keyboard: the key / with Shift, then the text ?. *)
 question = [{Kind: "key", Key: "/", Ctrl: false, Alt: false, Shift: true, Super: false}, {Kind: "text", Text: "?"}]
-updated(events, state) = Reduce((s, e) -> commands.Update(e, s), state, events)   (** The state after these events. *)
+updated(events, state) = list.Reduce((s, e) -> commands.Update(e, s), state, events)   (** The state after these events. *)
 listed() = updated(question, press.Press(["C-x"], twoFiles()))   (** C-x then ?, as the window sends them. *)
 
-isEveryPairHasHelp() = Has("C-x ?", help.WithHelp(emacs.Keys())) and Has("C-c ?", help.WithHelp(emacs.Keys())) and not Has("C-f ?", help.WithHelp(emacs.Keys()))
+isEveryPairHasHelp() = dict.Has("C-x ?", help.WithHelp(emacs.Keys())) and dict.Has("C-c ?", help.WithHelp(emacs.Keys())) and not dict.Has("C-f ?", help.WithHelp(emacs.Keys()))
 isListNamedByThePair() = view.BufferName(here(listed())) == "C-x ?"
-isListHasThePairs() = Contains("C-x C-s", wordsOf(listed())) and Contains("Save", wordsOf(listed())) and not Contains("C-c c", wordsOf(listed()))
-isHelpNotListed() = not Contains("C-x ?", wordsOf(listed()))
+isListHasThePairs() = str.Contains("C-x C-s", wordsOf(listed())) and str.Contains("Save", wordsOf(listed())) and not str.Contains("C-c c", wordsOf(listed()))
+isHelpNotListed() = not str.Contains("C-x ?", wordsOf(listed()))
 isEnterRunsTheKey() = press.Press(["nextbuf", "enter"], listed()).Current == 2
 
-isEveryGroupHasHelp() = Has("C-c f ?", help.WithHelp(emacs.Keys())) and Has("C-c w ?", help.WithHelp(emacs.Keys())) and not Has("C-c f f ?", help.WithHelp(emacs.Keys()))
+isEveryGroupHasHelp() = dict.Has("C-c f ?", help.WithHelp(emacs.Keys())) and dict.Has("C-c w ?", help.WithHelp(emacs.Keys())) and not dict.Has("C-c f f ?", help.WithHelp(emacs.Keys()))
 listedGroup() = updated(question, press.Press(["C-c", "f"], twoFiles()))   (** C-c f then ?. *)
 isGroupListNamed() = view.BufferName(here(listedGroup())) == "C-c f ?"
-isGroupListHasItsKeys() = Contains("C-c f s", wordsOf(listedGroup())) and Contains("Save", wordsOf(listedGroup())) and not Contains("C-c w", wordsOf(listedGroup()))
+isGroupListHasItsKeys() = str.Contains("C-c f s", wordsOf(listedGroup())) and str.Contains("Save", wordsOf(listedGroup())) and not str.Contains("C-c w", wordsOf(listedGroup()))

@@ -4,6 +4,8 @@ use core/lists
 use core/text
 use core/view
 use std/text as str
+use std/list
+use std/value
 
 Keys() = {"C-x C-b": Open, "C-c b b": Open}   (** The keys that work everywhere: C-c b b in the group of the buffers. *)
 
@@ -16,18 +18,18 @@ Visit(item, state) = commands.ToBuffer(item, state)   (** Goes to the buffer und
 
 defn Rows(state)
   (** One row for each buffer that isn't a list, standing for its index: a star if its text isn't saved, its name, and its path. *)
-  shown = Filter(k -> not lists.IsList(state.Buffers[k]), Range(1, Len(state.Buffers)))
-  width = Reduce((w, k) -> Max(w, Len(view.BufferName(state.Buffers[k]))), 0, shown)
-  Map(k -> {Words: row(state.Buffers[k], width), Item: k}, shown)
+  shown = list.Filter(k -> not lists.IsList(state.Buffers[k]), list.Range(1, value.Len(state.Buffers)))
+  width = list.Reduce((w, k) -> list.Max(w, value.Len(view.BufferName(state.Buffers[k]))), 0, shown)
+  list.Map(k -> {Words: row(state.Buffers[k], width), Item: k}, shown)
 end
 
 defn row(b, width)
   (** The words of the row of a buffer, with its name padded to width when a path follows it. *)
   name = view.BufferName(b)
   star = if text.IsModified(b) "*" else " " end
-  if IsMissing(b.Path)
+  if value.IsMissing(b.Path)
     "$star $name"
   else
-    "$star $name$(Repeat(width - Len(name), " "))  $(b.Path)"
+    "$star $name$(str.Repeat(width - value.Len(name), " "))  $(b.Path)"
   end
 end

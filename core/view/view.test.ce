@@ -7,15 +7,17 @@ use std/history
 use core/panes
 use std/ui
 use std/text as str
+use std/list
+use std/value
 
 cell = {Width: 8, Height: 19}
-look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
 
 stateOf(buffers, width, height) = view.Start(buffers, look, cell, width, height)
 
-manyLines(count) = Join("\n", Map(n -> "word", Range(1, count)))   (** A text of count lines, each one "word". *)
+manyLines(count) = str.Join("\n", list.Map(n -> "word", list.Range(1, count)))   (** A text of count lines, each one "word". *)
 
-textsOf(commands) = Map(c -> c.Text, Filter(c -> c.Kind == "text", commands))
+textsOf(commands) = list.Map(c -> c.Text, list.Filter(c -> c.Kind == "text", commands))
 
 isOnlyVisibleLines() = isOnlyVisible(stateOf([text.Of(manyLines(20000), "a.ce")], 800, 600))
 
@@ -24,12 +26,12 @@ defn isOnlyVisible(state)
   b = view.Follow(layout.Rows, layout.Columns, state.Buffers[1])
   s = state
   s.Buffers = [b]
-  shown = Len(Filter(t -> t == "word", textsOf(view.View(s))))
+  shown = value.Len(list.Filter(t -> t == "word", textsOf(view.View(s))))
   shown > 0 and shown <= layout.Rows
 end
 
 defn isLongLineFollows()
-  b = text.Of(Join("", Map(n -> "x", Range(1, 600))), "a.ce")
+  b = text.Of(str.Join("", list.Map(n -> "x", list.Range(1, 600))), "a.ce")
   b.Cursor = {Line: 1, Column: 500}
   f = view.Follow(10, 80, b)
   f.Left <= 500 and 500 < f.Left + 80
@@ -53,7 +55,7 @@ defn isTinyWindow()
   s = stateOf([text.Of("a\nb", "a.ce")], 10, 10)
   lay = view.Layout(s.Width, s.Height, s.Cell, false)
   s.Buffers = [view.Follow(lay.Rows, lay.Columns, s.Buffers[1])]
-  IsArray(view.View(s))
+  value.IsArray(view.View(s))
 end
 
 defn isNoTabs()
@@ -63,7 +65,7 @@ defn isNoTabs()
   b.Version = 3
   commands = view.View(stateOf([a, b], 800, 600))
   shown = textsOf(commands)
-  "a.ce" in shown and not ("b.ce" in shown) and not ("b.ce *" in shown) and Len(Filter(c -> c.Kind == "box" and c.Width == 7, commands)) == 0
+  "a.ce" in shown and not ("b.ce" in shown) and not ("b.ce *" in shown) and value.Len(list.Filter(c -> c.Kind == "box" and c.Width == 7, commands)) == 0
 end
 isCodeAtTop() = view.Layout(800, 600, cell, false).Code.Y == 0 and view.Layout(800, 600, cell, false).Rows == 28
 
@@ -72,7 +74,7 @@ isOutputPane() = view.Layout(800, 600, cell, true).Output.Height > 0
 isRowsFit() = view.Layout(800, 600, cell, false).Rows * 19 <= view.Layout(800, 600, cell, false).Code.Height
 defn isOfFields()
   b = text.Of("a", "a.ce")
-  IsMissing(b.Mark) and IsMissing(b.Disk) and b.Version == 0 and b.Saved == 0 and b.Top == 1 and b.Left == 0 and b.Path == "a.ce" and b.Colors.Known == 1 and b.Cursor.Line == 1 and b.Cursor.Column == 0 and history.CanUndo(b.History) == false
+  value.IsMissing(b.Mark) and value.IsMissing(b.Disk) and b.Version == 0 and b.Saved == 0 and b.Top == 1 and b.Left == 0 and b.Path == "a.ce" and b.Colors.Known == 1 and b.Cursor.Line == 1 and b.Cursor.Column == 0 and history.CanUndo(b.History) == false
 end
 isOfRope() = rope.Text(text.Of("ab\ncd", "a.ce").Rope) == "ab\ncd"
 
@@ -87,30 +89,30 @@ end
 inCode(c) = c.Kind == "text" and c.Y < 100
 
 (** The texts in the code area, the line number first. *)
-codeTexts(commands) = Map(c -> c.Text, Filter(c -> inCode(c), commands))
+codeTexts(commands) = list.Map(c -> c.Text, list.Filter(c -> inCode(c), commands))
 
 isFourColumns() = view.Layout(102, 600, cell, false).Columns == 4
-isCutToColumns() = Equal(codeTexts(shownFrom("abcdefghij", 3)), ["1", "defg"])
+isCutToColumns() = value.Equal(codeTexts(shownFrom("abcdefghij", 3)), ["1", "defg"])
 
 defn isCutX()
-  first = Filter(c -> inCode(c) and c.Text == "defg", shownFrom("abcdefghij", 3))[1]
+  first = list.Filter(c -> inCode(c) and c.Text == "defg", shownFrom("abcdefghij", 3))[1]
   first.X == view.Gutter
 end
 
 defn isTokenStraddlingLeft()
-  commands = Filter(c -> inCode(c) and c.Text != "1", shownFrom("defn x", 2))
-  Equal(Map(c -> c.Text, commands), ["fn", " x"]) and commands[2].X == view.Gutter + 16 and commands[1].Color == ui.Dark.Syntax[color.Keyword]
+  commands = list.Filter(c -> inCode(c) and c.Text != "1", shownFrom("defn x", 2))
+  value.Equal(list.Map(c -> c.Text, commands), ["fn", " x"]) and commands[2].X == view.Gutter + 16 and commands[1].Color == ui.Dark.Syntax[color.Keyword]
 end
 
-isLineShorterThanLeft() = Equal(codeTexts(shownFrom("ab", 5)), ["1"])
-isMultibyteCutLikeAscii() = Equal(Map(t -> Len(t), codeTexts(shownFrom("ééééé", 2))), Map(t -> Len(t), codeTexts(shownFrom("eeeee", 2))))
-isMultibyteText() = Equal(codeTexts(shownFrom("ééééé", 2)), ["1", "ééé"])
+isLineShorterThanLeft() = value.Equal(codeTexts(shownFrom("ab", 5)), ["1"])
+isMultibyteCutLikeAscii() = value.Equal(list.Map(t -> value.Len(t), codeTexts(shownFrom("ééééé", 2))), list.Map(t -> value.Len(t), codeTexts(shownFrom("eeeee", 2))))
+isMultibyteText() = value.Equal(codeTexts(shownFrom("ééééé", 2)), ["1", "ééé"])
 
 defn isEmptyFile()
   s = stateOf([text.Of("", "a.ce")], 800, 600)
   lay = view.Layout(s.Width, s.Height, s.Cell, false)
   s.Buffers = [view.Follow(lay.Rows, lay.Columns, s.Buffers[1])]
-  IsArray(view.View(s)) and s.Buffers[1].Top == 1
+  value.IsArray(view.View(s)) and s.Buffers[1].Top == 1
 end
 
 defn isCursorOnLastLine()
@@ -119,8 +121,8 @@ defn isCursorOnLastLine()
   s = stateOf([b], 800, 600)
   lay = view.Layout(s.Width, s.Height, s.Cell, false)
   s.Buffers = [view.Follow(lay.Rows, lay.Columns, b)]
-  bars = Filter(c -> c.Kind == "rect" and c.Width == 2, view.View(s))
-  Len(bars) == 1 and Len(Filter(t -> t == "word", textsOf(view.View(s)))) == 3
+  bars = list.Filter(c -> c.Kind == "rect" and c.Width == 2, view.View(s))
+  value.Len(bars) == 1 and value.Len(list.Filter(t -> t == "word", textsOf(view.View(s)))) == 3
 end
 
 defn isFollowWithoutRows()
@@ -135,12 +137,12 @@ defn isCursorBarInsideColumns()
   b.Cursor = {Line: 1, Column: 4}
   s = stateOf([b], 102, 600)
   s.Buffers = [view.Follow(4, 4, b)]
-  bars = Filter(c -> c.Kind == "rect" and c.Width == 2, view.View(s))
-  Len(bars) == 1 and bars[1].X < 102
+  bars = list.Filter(c -> c.Kind == "rect" and c.Width == 2, view.View(s))
+  value.Len(bars) == 1 and bars[1].X < 102
 end
 
 (** The rectangles of the theme fill color: the selection. *)
-fills(commands) = Filter(c -> c.Kind == "rect" and c.Color == ui.Dark.Fill, commands)
+fills(commands) = list.Filter(c -> c.Kind == "rect" and c.Color == ui.Dark.Fill, commands)
 
 defn selectedState(words, mark, cursor)
   b = text.Of(words, "a.ce")
@@ -152,28 +154,28 @@ end
 defn isSelectionOneLine()
   s = selectedState("abcdef", {Line: 1, Column: 1}, {Line: 1, Column: 4})
   f = fills(view.View(s))
-  Len(f) == 1 and f[1].X == view.Gutter + 8 and f[1].Width == 24 and f[1].Height == 19
+  value.Len(f) == 1 and f[1].X == view.Gutter + 8 and f[1].Width == 24 and f[1].Height == 19
 end
 
 defn isSelectionBackwards()
   s = selectedState("abcdef", {Line: 1, Column: 4}, {Line: 1, Column: 1})
   f = fills(view.View(s))
-  Len(f) == 1 and f[1].X == view.Gutter + 8 and f[1].Width == 24
+  value.Len(f) == 1 and f[1].X == view.Gutter + 8 and f[1].Width == 24
 end
 
 defn isSelectionLines()
   s = selectedState("abc\ndef\nghi", {Line: 1, Column: 2}, {Line: 3, Column: 1})
   f = fills(view.View(s))
-  Len(f) == 3 and f[1].Width == 16 and f[2].Width == 32 and f[3].Width == 8 and f[2].Y == f[1].Y + 19
+  value.Len(f) == 3 and f[1].Width == 16 and f[2].Width == 32 and f[3].Width == 8 and f[2].Y == f[1].Y + 19
 end
 
-isNoSelectionNoFill() = Len(fills(view.View(selectedState("abc", missing, {Line: 1, Column: 1})))) == 0
-isEmptySelectionNoFill() = Len(fills(view.View(selectedState("abc", {Line: 1, Column: 1}, {Line: 1, Column: 1})))) == 0
+isNoSelectionNoFill() = value.Len(fills(view.View(selectedState("abc", missing, {Line: 1, Column: 1})))) == 0
+isEmptySelectionNoFill() = value.Len(fills(view.View(selectedState("abc", {Line: 1, Column: 1}, {Line: 1, Column: 1})))) == 0
 
 defn isSelectionUnderText()
   commands = view.View(selectedState("abc", {Line: 1, Column: 0}, {Line: 1, Column: 2}))
-  firstFill = IndexOf(fills(commands)[1], commands)
-  firstText = IndexOf(Filter(c -> c.Kind == "text" and c.Text == "abc", commands)[1], commands)
+  firstFill = list.IndexOf(fills(commands)[1], commands)
+  firstText = list.IndexOf(list.Filter(c -> c.Kind == "text" and c.Text == "abc", commands)[1], commands)
   firstFill < firstText
 end
 
@@ -183,22 +185,22 @@ defn isSelectionCutToScreen()
   b.Cursor = {Line: 1, Column: 10}
   b.Left = 3
   f = fills(view.View(stateOf([b], 102, 600)))
-  Len(f) == 1 and f[1].X == view.Gutter and f[1].Width == 32
+  value.Len(f) == 1 and f[1].X == view.Gutter and f[1].Width == 32
 end
 
 defn isPromptDrawn()
   s = stateOf([text.Of("a", "a.ce")], 800, 600)
   s.Prompt = {Label: "Find file: ", Answer: "a.ce", Done: (a, t) -> t, Choice: false}
   commands = view.View(s)
-  bars = Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y > 500, commands)
-  "Find file: a.ce" in textsOf(commands) and Len(bars) == 1 and bars[1].X == 12 + Len("Find file: a.ce") * 8
+  bars = list.Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y > 500, commands)
+  "Find file: a.ce" in textsOf(commands) and value.Len(bars) == 1 and bars[1].X == 12 + value.Len("Find file: a.ce") * 8
 end
 
 defn isMessageDrawn()
   s = stateOf([text.Of("a", "a.ce")], 800, 600)
   s.Message = "Saved a.ce"
   commands = view.View(s)
-  "Saved a.ce" in textsOf(commands) and Len(Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y > 500, commands)) == 0
+  "Saved a.ce" in textsOf(commands) and value.Len(list.Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y > 500, commands)) == 0
 end
 
 defn isPositionAt()
@@ -221,7 +223,7 @@ defn isPositionOnCursorBar()
   b = text.Of("abcdef", "a.ce")
   b.Cursor = {Line: 1, Column: 3}
   s = stateOf([b], 800, 600)
-  bar = Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y < 100, view.View(s))[1]
+  bar = list.Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Y < 100, view.View(s))[1]
   view.PositionAt(bar.X + 1, bar.Y + 1, s).Column == 3
 end
 
@@ -248,7 +250,7 @@ end
 
 defn scrolledSide()
   (** M5 and M6: a click in the margins of the code area is on the nearest cell of the screen. A drag isn't kept there, so that the screen can follow it. *)
-  b = text.Of(Join("", Map(n -> "x", Range(1, 100))), "a.ce")
+  b = text.Of(str.Join("", list.Map(n -> "x", list.Range(1, 100))), "a.ce")
   b.Left = 40
   stateOf([b], 800, 600)
 end
@@ -268,7 +270,7 @@ isLayoutOf() = view.LayoutOf(stateOf([text.Of("", "a.ce")], 800, 600)).Rows == 2
 
 defn longLine(left)
   (** A window 800 wide shows 91 columns, from 0 to 90: a click past the last one stays on it, and a drag is not kept there, so that the screen can follow it. *)
-  b = text.Of(Repeat(200, "x"), "a.ce")
+  b = text.Of(str.Repeat(200, "x"), "a.ce")
   b.Left = left
   stateOf([b], 800, 600)
 end
@@ -276,7 +278,7 @@ isClickPastLastColumn() = view.ClickAt(799, 4, longLine(0)) == {Line: 1, Column:
 isClickPastLastColumnScrolled() = view.ClickAt(799, 4, longLine(40)) == {Line: 1, Column: 130}
 isClickOnLastColumn() = view.ClickAt(view.Gutter + 90 * 8, 4, longLine(0)) == {Line: 1, Column: 90}
 isDragPastLastColumn() = view.PositionAt(799, 4, longLine(0)) == {Line: 1, Column: 92}
-isClickWithNoColumns() = view.ClickAt(50, 4, stateOf([text.Of(Repeat(200, "x"), "a.ce")], 60, 600)) == {Line: 1, Column: 0}
+isClickWithNoColumns() = view.ClickAt(50, 4, stateOf([text.Of(str.Repeat(200, "x"), "a.ce")], 60, 600)) == {Line: 1, Column: 0}
 
 defn fruitList(filter)
   (** A list shows its name in the mode line, its filter in the prompt line, and its rows in one plain color. *)
@@ -296,7 +298,7 @@ defn labelled(filter)
 end
 isListLabelShown() = "/p/an" in textsOf(view.View(stateOf([labelled("an")], 800, 600))) and not ("Filter: an" in textsOf(view.View(stateOf([labelled("an")], 800, 600))))
 (** end 12 would be a keyword and a number in code: a row is one plain text. *)
-isListPlain() = Len(Filter(c -> c.Kind == "text" and c.Text == "end 12" and c.Color == look.Theme.Syntax[color.Plain], view.View(stateOf([fruitList("")], 800, 600)))) == 1
+isListPlain() = value.Len(list.Filter(c -> c.Kind == "text" and c.Text == "end 12" and c.Color == look.Theme.Syntax[color.Plain], view.View(stateOf([fruitList("")], 800, 600)))) == 1
 
 defn partedList()
   (** A list whose second row gives its parts, each with its color, as the folders color a name and a size. *)
@@ -306,13 +308,13 @@ defn partedList()
   b.List = l
   b
 end
-drawn(words, role, b) = Len(Filter(c -> c.Kind == "text" and c.Text == words and c.Color == look.Theme.Syntax[role], view.View(stateOf([b], 800, 600)))) == 1
+drawn(words, role, b) = value.Len(list.Filter(c -> c.Kind == "text" and c.Text == words and c.Color == look.Theme.Syntax[role], view.View(stateOf([b], 800, 600)))) == 1
 isListRowParts() = drawn("end", color.Number, partedList()) and drawn(" 12", color.Plain, partedList()) and drawn("apple", color.Plain, partedList())
 
 defn twoPanes(along, buffers, active)
   (** Panes. A state of two panes cut along "rows" or "columns", the first showing buffer 1 and the second the last buffer, with pane active being edited. *)
   s = stateOf(buffers, 800, 600)
-  s.Panes = panes.WithLeaf(2, panes.One(Len(buffers)), panes.Split(1, along, panes.One(1)))
+  s.Panes = panes.WithLeaf(2, panes.One(value.Len(buffers)), panes.Split(1, along, panes.One(1)))
   s.Pane = active
   s.Current = panes.At(active, s.Panes).Buffer
   s
@@ -324,7 +326,7 @@ defn hundredAt(line)
   b
 end
 (** The cursor bars of a frame: rectangles 2 pixels wide. *)
-barsOf(commands) = Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Height == 19, commands)
+barsOf(commands) = list.Filter(c -> c.Kind == "rect" and c.Width == 2 and c.Height == 19, commands)
 
 isStartHasOnePane() = panes.Count(stateOf([text.Of("", "a.ce")], 800, 600).Panes) == 1 and stateOf([text.Of("", "a.ce")], 800, 600).Pane == 1
 defn isViewOfKeepsPlace()
@@ -334,7 +336,7 @@ defn isViewOfKeepsPlace()
   b.Free = true
   v = view.ViewOf(b)
   put = view.WithView(v, text.Of(manyLines(100), "a.ce"))
-  put.Cursor == {Line: 40, Column: 0} and put.Top == 30 and put.Left == 2 and put.Free and IsMissing(put.Mark)
+  put.Cursor == {Line: 40, Column: 0} and put.Top == 30 and put.Left == 2 and put.Free and value.IsMissing(put.Mark)
 end
 defn isWithViewClamps()
   v = view.ViewOf(hundredAt(90))
@@ -361,15 +363,15 @@ defn isInactivePaneShowsItsPlace()
   v = view.ViewOf(hundredAt(60))
   v.Top = 55
   s.Panes = panes.WithLeaf(2, {Buffer: 1, View: v}, s.Panes)
-  shown = Filter(c -> c.Kind == "text" and c.Y >= 289 and c.Y < 289 + 265, view.View(s))
-  "55" in Map(c -> c.Text, shown) and not ("1" in Map(c -> c.Text, shown))
+  shown = list.Filter(c -> c.Kind == "text" and c.Y >= 289 and c.Y < 289 + 265, view.View(s))
+  "55" in list.Map(c -> c.Text, shown) and not ("1" in list.Map(c -> c.Text, shown))
 end
 defn isOneBrightBar()
   bars = barsOf(view.View(view.FollowState(twoPanes("rows", [hundredAt(1)], 1))))
-  Len(bars) == 2 and Len(Filter(c -> c.Color == look.Theme.Bright, bars)) == 1 and Filter(c -> c.Color == look.Theme.Bright, bars)[1].Y < 289
+  value.Len(bars) == 2 and value.Len(list.Filter(c -> c.Color == look.Theme.Bright, bars)) == 1 and list.Filter(c -> c.Color == look.Theme.Bright, bars)[1].Y < 289
 end
-isDividerBetweenColumns() = Len(Filter(c -> c.Kind == "rect" and c.X == 400 and c.Width == 1, view.View(twoPanes("columns", [hundredAt(1)], 1)))) == 1
-isNoDividerAlone() = Len(Filter(c -> c.Kind == "rect" and c.Width == 1 and c.Height > 100, view.View(stateOf([hundredAt(1)], 800, 600)))) == 0
+isDividerBetweenColumns() = value.Len(list.Filter(c -> c.Kind == "rect" and c.X == 400 and c.Width == 1, view.View(twoPanes("columns", [hundredAt(1)], 1)))) == 1
+isNoDividerAlone() = value.Len(list.Filter(c -> c.Kind == "rect" and c.Width == 1 and c.Height > 100, view.View(stateOf([hundredAt(1)], 800, 600)))) == 0
 defn isFollowStateFollowsEveryPane()
   s = twoPanes("rows", [hundredAt(1)], 1)
   s.Panes = panes.WithLeaf(2, {Buffer: 1, View: view.ViewOf(hundredAt(80))}, s.Panes)

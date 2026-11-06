@@ -12,36 +12,42 @@ use core/text
 use std/ui
 use core/view
 use std/text as str
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/value
 
 defn check(condition, words)
   (** Stops the script with the words if the condition is false. *)
   if not condition
-    Panic("FAILED: $words")
+    bug.Panic("FAILED: $words")
   end
 end
 
-look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}
-withApps() = emacs.Config(() -> Merge(Merge(emacs.Keys(), buffers.Keys()), folders.Keys()))   (** The keys as src/cemacs.ce merges them. *)
+withApps() = emacs.Config(() -> dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()))   (** The keys as src/cemacs.ce merges them. *)
 here(state) = state.Buffers[state.Current]   (** The current buffer. *)
-names(state) = Join(",", Map(l -> Split(" ", l)[1], Lines(rope.Text(here(state).Rope))))   (** The first word of each row of the list. *)
+names(state) = str.Join(",", list.Map(l -> str.Split(" ", l)[1], str.Lines(rope.Text(here(state).Rope))))   (** The first word of each row of the list. *)
 nameOf(state) = view.BufferName(here(state))   (** The name of the current buffer: for a list, its folder. *)
 
 defn removed(path)
   (** Removes a file or a folder and all it holds. *)
-  if Unwrap(sys.Stat(path)).IsDir
-    for name in Unwrap(sys.List(path))
+  if result.Unwrap(sys.Stat(path)).IsDir
+    for name in result.Unwrap(sys.List(path))
       removed("$path/$name")
     end
   end
-  Unwrap(sys.Remove(path))
+  result.Unwrap(sys.Remove(path))
 end
 
-folder = "/tmp/cemacs-folders-check-$(Text(sys.Now()))"
+folder = "/tmp/cemacs-folders-check-$(value.Text(sys.Now()))"
 trash = "$(sys.Env("XDG_DATA_HOME"))/Trash"
-check(not IsMissing(sys.Env("XDG_DATA_HOME")), "XDG_DATA_HOME is set")
-check(IsOk(sys.Mkdir("$folder/sub")), "the folders are made")
-check(IsOk(sys.Write("$folder/a.ce", "a")) and IsOk(sys.Write("$folder/.hidden", "")), "the files are made")
+check(not value.IsMissing(sys.Env("XDG_DATA_HOME")), "XDG_DATA_HOME is set")
+check(result.IsOk(sys.Mkdir("$folder/sub")), "the folders are made")
+check(result.IsOk(sys.Write("$folder/a.ce", "a")) and result.IsOk(sys.Write("$folder/.hidden", "")), "the files are made")
 start = view.Start([text.Of("a", "$folder/a.ce")], look, cell, 800, 600)
 start.Config = withApps
 
@@ -64,7 +70,7 @@ check(nameOf(s) == folder and here(s).Cursor.Line == 1, "backspace goes up, onto
 
 (* C-c n with a slash makes a folder; a name that exists is refused. *)
 s = press.Press(["C-c", "n", "dir2/", "enter"], s)
-check(Unwrap(sys.Stat("$folder/dir2")).IsDir and names(s) == "dir2/,sub/,a.ce", "C-c n with a slash makes a folder")
+check(result.Unwrap(sys.Stat("$folder/dir2")).IsDir and names(s) == "dir2/,sub/,a.ce", "C-c n with a slash makes a folder")
 s = press.Press(["C-c", "n", "a.ce", "enter"], s)
 check(s.Message == "a.ce already exists.", "an existing name is refused")
 
@@ -78,8 +84,8 @@ s = press.Press(["C-c", "k", "n"], s)
 check(sys.Exists("$folder/b.ce"), "n keeps the file")
 s = press.Press(["C-c", "k", "y"], s)
 check(not sys.Exists("$folder/b.ce") and sys.Exists("$trash/files/b.ce"), "y moves the file to the trash")
-info = Unwrap(sys.Read("$trash/info/b.ce.trashinfo"))
-check(StartsWith("[Trash Info]\nPath=$folder/b.ce\nDeletionDate=", info), "the info of the trash: $info")
+info = result.Unwrap(sys.Read("$trash/info/b.ce.trashinfo"))
+check(str.StartsWith("[Trash Info]\nPath=$folder/b.ce\nDeletionDate=", info), "the info of the trash: $info")
 check(names(s) == "dir2/,sub/", "the list no longer shows it")
 
 (* A second file of that name gets another name in the trash. *)
@@ -88,7 +94,7 @@ check(sys.Exists("$trash/files/b.ce.2") and sys.Exists("$trash/info/b.ce.2.trash
 
 (* The line under the panes is the path: / goes into the folder under the cursor, / alone to the root, ~/ to the home, and C-y to a pasted path. *)
 s = press.Press(["C-x", "d"], start)
-check("$folder/" in Map(c -> c.Text, Filter(c -> c.Kind == "text", view.View(s))), "the path is the filter line")
+check("$folder/" in list.Map(c -> c.Text, list.Filter(c -> c.Kind == "text", view.View(s))), "the path is the filter line")
 check(nameOf(press.Press(["su", "/"], s)) == "$folder/sub", "su then / goes into sub")
 check(nameOf(press.Press(["/"], s)) == "/", "/ alone goes to the root")
 check(nameOf(press.Press(["~", "/"], s)) == sys.Env("HOME"), "~/ goes to the home")
@@ -99,8 +105,8 @@ check(nameOf(press.Press(["C-y"], pasting)) == "$folder/sub" and names(press.Pre
 (* Enter on a file opens it in a buffer, and the list closes. *)
 s = press.Press(["C-c", "n", "c.ce", "enter", "enter"], s)
 check(here(s).Path == "$folder/c.ce", "enter opens the file")
-check(Len(Filter(b -> lists.IsList(b), s.Buffers)) == 0, "the list is closed")
+check(value.Len(list.Filter(b -> lists.IsList(b), s.Buffers)) == 0, "the list is closed")
 
 removed(folder)
 check(not sys.Exists(folder), "the folder is gone")
-Print("ok")
+io.Print("ok")

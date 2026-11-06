@@ -1,6 +1,8 @@
 (** Tests of keys.ce: run with cesia test . *)
 use core/keys
 use std/text as str
+use std/list
+use std/value
 
 press(key, ctrl, alt, shift) = {Kind: "key", Key: key, Ctrl: ctrl, Alt: alt, Shift: shift, Super: false}
 plain(key) = press(key, false, false, false)
@@ -10,9 +12,9 @@ withShift(key) = press(key, false, false, true)
 
 isCtrl() = keys.Chord(withCtrl("f")) == "C-f"
 isAlt() = keys.Chord(withAlt("w")) == "M-w"
-isPlainLetterTypes() = IsMissing(keys.Chord(plain("a")))
-isShiftLetterTypes() = IsMissing(keys.Chord(withShift("a")))
-isPlainSpaceTypes() = IsMissing(keys.Chord(plain("space")))
+isPlainLetterTypes() = value.IsMissing(keys.Chord(plain("a")))
+isShiftLetterTypes() = value.IsMissing(keys.Chord(withShift("a")))
+isPlainSpaceTypes() = value.IsMissing(keys.Chord(plain("space")))
 isCtrlSpace() = keys.Chord(withCtrl("space")) == "C-space"
 isEnter() = keys.Chord(plain("enter")) == "enter"
 isTab() = keys.Chord(plain("tab")) == "tab"
@@ -21,7 +23,7 @@ isShiftMove() = keys.Chord(withShift("right")) == "S-right"
 isCtrlShiftMove() = keys.Chord(press("right", true, false, true)) == "C-S-right"
 isCtrlShiftLetter() = keys.Chord(press("x", true, false, true)) == "C-S-x"
 isCtrlAlt() = keys.Chord(press("f", true, true, false)) == "C-M-f"
-isSuperMissing() = IsMissing(keys.Chord({Kind: "key", Key: "f", Ctrl: true, Alt: false, Shift: false, Super: true}))
+isSuperMissing() = value.IsMissing(keys.Chord({Kind: "key", Key: "f", Ctrl: true, Alt: false, Shift: false, Super: true}))
 isFunctionKey() = keys.Chord(plain("f5")) == "f5"
 isAltLessThan() = keys.Chord(press("<", false, true, true)) == "M-<"
 isAltLessThanPlain() = keys.Chord(withAlt("<")) == "M-<"
@@ -62,8 +64,8 @@ isGroupNamedWaits() = keys.Lookup("C-c", "f", grouped) == {Pending: "C-c f"}
 isGroupUnnamedWaits() = keys.Lookup("C-c", "q", grouped) == {Pending: "C-c q"}
 isGroupRuns() = keys.Lookup("C-c f", "s", grouped) == {Command: two}
 isGroupNameWithoutKeysUnknown() = keys.Lookup("C-c", "n", grouped) == {Unknown: "C-c n"}
-isHintsSorted() = Equal(Map(it.Key, keys.Hints("C-c", grouped)), ["f", "n", "q"])
+isHintsSorted() = value.Equal(list.Map(it.Key, keys.Hints("C-c", grouped)), ["f", "n", "q"])
 isHintsNamed() = keys.Hints("C-c", grouped)[1] == {Key: "f", Name: "+files", Group: true} and keys.Hints("C-c", grouped)[3].Name == "+more"
-isHintsOfCommands() = Equal(Map(it.Name, keys.Hints("C-c f", {"C-c f f": Lower, "C-c f s": Upper, "C-c f x": one})), ["Lower", "Upper", "a function"])
-isHintsNone() = Len(keys.Hints("C-x", grouped)) == 0
+isHintsOfCommands() = value.Equal(list.Map(it.Name, keys.Hints("C-c f", {"C-c f f": str.Lower, "C-c f s": str.Upper, "C-c f x": one})), ["Lower", "Upper", "a function"])
+isHintsNone() = value.Len(keys.Hints("C-x", grouped)) == 0
 isNameOfAnonymous() = keys.NameOf(s -> s) == "a function"

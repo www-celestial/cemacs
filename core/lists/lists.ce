@@ -4,6 +4,10 @@
     Parts their colors, Back the buffer to go back to, Shown, for fixed rows, what the last filter showed, Label missing or the words before the filter, and
     Typed missing or what to do with a typed text in place of filtering. A row may give Parts, [role, words] each with a
     role of color.ce, whose words joined are its Words. Everything here is pure: commands opens and runs lists. *)
+use std/dict
+use std/list
+use std/text as str
+use std/value
 
 defn Of(b)
   (** The list of a buffer, or missing for a buffer of text. A buffer from before this field has none, and reading a field it lacks would panic. *)
@@ -14,20 +18,20 @@ defn Of(b)
 end
 
 (** Is this buffer a list? *)
-IsList(b) = not IsMissing(Of(b))
+IsList(b) = not value.IsMissing(Of(b))
 
 defn Matches(filter, words)
   (** Does the filter match the words? Its characters must come in the words in order, side by side or not, and case doesn't count.
 
         Matches("cmd", "commands.ce") --> true *)
-  wanted = Chars(Lower(filter))
+  wanted = str.Chars(str.Lower(filter))
   k = 1
-  for c in Chars(Lower(words))
-    if k <= Len(wanted) and c == wanted[k]
+  for c in str.Chars(str.Lower(words))
+    if k <= value.Len(wanted) and c == wanted[k]
       k += 1
     end
   end
-  k > Len(wanted)
+  k > value.Len(wanted)
 end
 
 defn keyOf(row)
@@ -42,10 +46,10 @@ defn Filtered(filter, rows)
   (** The rows whose words, or keys, the filter matches, in their order. An empty filter keeps them all at once, and one character is a native search. *)
   if filter == ""
     rows
-  else if Len(filter) == 1
-    Filter(r -> Contains(Lower(filter), Lower(keyOf(r))), rows)
+  else if value.Len(filter) == 1
+    list.Filter(r -> str.Contains(str.Lower(filter), str.Lower(keyOf(r))), rows)
   else
-    Filter(r -> Matches(filter, keyOf(r)), rows)
+    list.Filter(r -> Matches(filter, keyOf(r)), rows)
   end
 end
 
@@ -60,7 +64,7 @@ end
 defn PartsAt(line, b)
   (** The colored parts of a line of a list, or missing: for a plain row, or a list from before this field. *)
   match Of(b)
-    {Parts: all} -> if line <= Len(all) all[line] else missing end
+    {Parts: all} -> if line <= value.Len(all) all[line] else missing end
     else -> missing
   end
 end
@@ -68,7 +72,7 @@ end
 defn LabelOf(l)
   (** The words before the filter in the line under the panes: the list's own, as a path, or "Filter: ". *)
   match l
-    {Label: label} -> if IsMissing(label) "Filter: " else label end
+    {Label: label} -> if value.IsMissing(label) "Filter: " else label end
     else -> "Filter: "
   end
 end
@@ -92,26 +96,26 @@ end
 defn FreeKeys(l)
   (** The keys of a list that take only the state: none for a list without any, or from before this field. *)
   match l
-    {Free: f} -> if IsMissing(f) Dict() else f() end
-    else -> Dict()
+    {Free: f} -> if value.IsMissing(f) dict.Dict() else f() end
+    else -> dict.Dict()
   end
 end
 
-Words(rows) = Join("\n", Map(r -> r.Words, rows))   (** The text of the rows, one per line. *)
+Words(rows) = str.Join("\n", list.Map(r -> r.Words, rows))   (** The text of the rows, one per line. *)
 
 defn LineOf(item, items, line)
   (** The line of an item among the items shown, or else the line given, brought inside them. *)
-  for k in 1..Len(items)
+  for k in 1..value.Len(items)
     if items[k] == item
       return k
     end
   end
-  Max(1, Min(line, Len(items)))
+  list.Max(1, list.Min(line, value.Len(items)))
 end
 
 defn ItemAt(b)
   (** The item under the cursor of a list, or missing when no row is left. *)
   l = Of(b)
   line = b.Cursor.Line
-  if IsMissing(l) or line > Len(l.Items) missing else l.Items[line] end
+  if value.IsMissing(l) or line > value.Len(l.Items) missing else l.Items[line] end
 end
