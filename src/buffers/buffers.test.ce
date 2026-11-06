@@ -3,9 +3,9 @@ use src/buffers
 use src/emacs
 use core/commands
 use core/press
-use std/rope
+use src/rope
 use core/text
-use std/ui
+use src/ui
 use core/view
 use std/dict
 use std/value

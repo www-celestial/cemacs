@@ -2,10 +2,10 @@
 use core/color
 use core/text
 use core/view
-use std/rope
-use std/history
+use src/rope
+use src/history
 use core/panes
-use std/ui
+use src/ui
 use std/text as str
 use std/list
 use std/value

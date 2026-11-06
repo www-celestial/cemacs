@@ -1,7 +1,7 @@
 (** Tests of the buffer in text.ce: run with cesia test . *)
 use core/text
 use core/color
-use std/rope
+use src/rope
 use std/text as str
 use std/list
 use std/value

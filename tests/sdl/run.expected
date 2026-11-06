@@ -1,0 +1,5 @@
+view ""
+view "ab"
+{Typed: "abc"}
+Ok(Value = missing)
+exit 0

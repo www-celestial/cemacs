@@ -1,6 +1,6 @@
 (** The buffer of a file: a rope, a cursor, a mark and the history. Lines count from 1, columns from 0. *)
-use std/rope
-use std/history
+use src/rope
+use src/history
 use core/color
 use std/text as str
 use std/list

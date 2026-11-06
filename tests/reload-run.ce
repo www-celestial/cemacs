@@ -2,9 +2,9 @@
     printed.
     The state is one from before the fields Wheel and Pressed, as a session running under --watch keeps it through a reload. *)
 use std/c
-use std/sdl
+use src/sdl
 use std/sys
-use std/ui
+use src/ui
 use src/emacs
 use core/commands
 use core/text

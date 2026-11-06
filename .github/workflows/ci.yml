@@ -38,6 +38,23 @@ jobs:
             echo "Cesia $CHANNEL is $have, older than the $need that cesia.toml asks for: nothing to test against."
             echo "NO_CESIA=1" >> "$GITHUB_ENV"
           fi
+      # Cesia no longer ships SDL: built here once, kept in the cache while tools/sdl-libs.sh stays the same.
+      - name: SDL3 and SDL3_ttf, cached
+        if: env.NO_CESIA != '1'
+        uses: actions/cache@v4
+        with:
+          path: .sdl
+          key: sdl-${{ hashFiles('tools/sdl-libs.sh') }}
+      - name: SDL3 and SDL3_ttf
+        if: env.NO_CESIA != '1'
+        run: |
+          if [ ! -d .sdl/lib ]; then
+            sudo apt-get update
+            sudo apt-get install -y cmake libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev \
+              libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libdrm-dev libgbm-dev
+            tools/sdl-libs.sh .sdl
+          fi
+          echo "LD_LIBRARY_PATH=$PWD/.sdl/lib" >> "$GITHUB_ENV"
       - name: Tests
         if: env.NO_CESIA != '1'
         env:

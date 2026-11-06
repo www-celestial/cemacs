@@ -4,10 +4,10 @@
     It prints ok at the end and stops at the first failure. *)
 use std/c
 use src/emacs
-use std/rope
-use std/sdl
+use src/rope
+use src/sdl
 use std/sys
-use std/ui
+use src/ui
 use core/commands
 use core/text
 use core/view

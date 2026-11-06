@@ -1,6 +1,6 @@
 (** The window of Cemacs and its loop. A program starts it with a config, as src/cemacs.ce does: the core knows no app, so the keys and the settings come from there. *)
-use std/sdl
-use std/ui
+use src/sdl
+use src/ui
 use core/commands
 use core/text
 use core/view

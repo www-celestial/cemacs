@@ -1,10 +1,10 @@
 (** The speed gate of Cemacs: a text of 20,000 lines in a real window of 1920 by 1080, without vsync.
     Run from the root of cemacs: cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce
     It prints the median and the worst of 300 passes for one typed character, and for one scrolled line, and the time to build the rope. *)
-use std/rope
-use std/sdl
+use src/rope
+use src/sdl
 use std/sys
-use std/ui
+use src/ui
 use core/color
 use core/text
 use core/view

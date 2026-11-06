@@ -6,10 +6,10 @@ use src/emacs
 use src/folders
 use core/lists
 use core/press
-use std/rope
+use src/rope
 use std/sys
 use core/text
-use std/ui
+use src/ui
 use core/view
 use std/text as str
 use std/bug
