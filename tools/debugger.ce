@@ -20,11 +20,19 @@ defn send(message)
   io.Print("$(text.Char(1))$(json.Text(message))")
 end
 
+defn shown(e)
+  (** An error of an eval, for the end of a line: its first line, without its place when that is the code sent, as
+      <prompt>:1:5:. The other lines show that code again, with a ^ under the place. *)
+  first = text.Lines(e)[1]
+  parts = text.Split(": ", first)
+  if text.StartsWith("<prompt>:", parts[1]) text.Join(": ", list.Skip(1, parts)) else first end
+end
+
 defn answer(id, r)
   (** Sends the answer to an eval: its value as the program would print it, or its error. *)
   match r
     result.Ok(v) -> send({Kind: "value", Id: id, Ok: true, Text: "$v"})
-    result.Err(e) -> send({Kind: "value", Id: id, Ok: false, Text: e})
+    result.Err(e) -> send({Kind: "value", Id: id, Ok: false, Text: shown(e)})
   end
 end
 
