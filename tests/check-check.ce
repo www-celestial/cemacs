@@ -1,0 +1,71 @@
+(** Checks of src/check against the real cesia check, in a new folder under /tmp: the editor, given ticks, checks a buffer once no key came, shows its
+    marks and goes to them. It is a script, not a test file: it needs permissions. Run it with cesia run --allow read,write,exec=cesia tests/check-check.ce.
+    It prints ok at the end and stops at the first failure. *)
+use src/rope
+use std/sys
+use src/ui
+use src/check
+use src/emacs
+use core/commands
+use core/press
+use core/text
+use core/view
+use std/bug
+use std/dict
+use std/list
+use std/io
+use std/value
+
+defn expect(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+checkConfig() = check.Hooked(emacs.Config(() -> dict.Merge(emacs.Keys(), check.Keys())))
+here(state) = state.Buffers[state.Current]
+
+defn ticked(state)
+  (** The state after ticks, until the check has ended or 10 seconds have gone. *)
+  s = commands.Update({Kind: "tick", Seconds: 0.6}, state)
+  waited = 0.0
+  while not value.IsMissing(check.Running(s)) and waited < 10.0
+    sys.Sleep(0.02)
+    waited += 0.02
+    s = commands.Update({Kind: "tick", Seconds: 0.02}, s)
+  end
+  s
+end
+
+folder = "/tmp/cemacs-check-check-$(value.Text(sys.Now()))"
+_ = sys.Mkdir(folder)
+path = "$folder/a.ce"
+_ = sys.Write(path, "use std/io\nio.Print(1)\n")
+start = view.Start([text.Of("", missing)], look, cell, 800, 600)
+start.Config = checkConfig
+opened = commands.OpenFile(path, start)
+expect(check.IsDue(here(opened)) and commands.Moving(opened), "an opened Cesia file is due, and the editor ticks")
+expect(value.IsMissing(check.Running(commands.Update({Kind: "tick", Seconds: 0.1}, opened))), "no check before the delay")
+
+(* The text not saved is what is checked: a wrong name on line 2. *)
+typed = press.Press(["M->", "io.Prnt(2)"], opened)
+done = ticked(typed)
+marks = text.MarksOf(here(done))
+expect(value.Len(marks) == 1 and marks[1].Line == 3 and marks[1].Column == 0 and marks[1].End == 7, "one mark under io.Prnt: $marks $(done.Message)")
+expect(not check.IsDue(here(done)) and not commands.Moving(done), "checked, the editor stops ticking")
+expect("1 error" in list.Map(c -> c.Text, list.Filter(c -> c.Kind == "text", view.View(done))), "the mode line counts it")
+
+(* M-g n goes to it and says it; typing on its line takes it away. *)
+went = press.Press(["M-<", "M-g", "n"], done)
+expect(here(went).Cursor.Line == 3 and here(went).Cursor.Column == 0 and went.Message == "Module \"io\" has no name \"Prnt\".", "M-g n: $(went.Message)")
+fixed = press.Press(["C-f", "C-f", "C-f", "C-f", "C-f", "i"], went)
+expect(value.Len(text.MarksOf(here(fixed))) == 0, "typing on the line drops its mark")
+again = ticked(fixed)
+expect(value.Len(text.MarksOf(here(again))) == 0 and not check.IsDue(here(again)), "io.Print is right: no mark")
+
+_ = sys.Remove(path)
+_ = sys.Remove(folder)
+io.Print("ok")

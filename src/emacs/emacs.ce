@@ -19,6 +19,9 @@ FontSize() = 15
 (** The seconds that the first keys of a pair or a group wait before the band above the prompt line shows what can follow them. *)
 HintDelay() = 0.5
 
+(** The seconds with no key after which a Cesia buffer that changed is checked: see src/check. *)
+CheckDelay() = 0.5
+
 (** The keys, with the function each one runs: one chord, or more with a space between, as "C-x C-s" or "C-c f f". Any function from a state to a state will do,
     also an anonymous one, as in "C-c C-x": s -> say("hi", s). A chord waits for the next one as soon as a binding here goes on after it, and C-g after it takes
     the keys back. Under C-c, the keys are in groups as in Doom Emacs, each named by a text: f for files, b buffers, w windows, c code and q quit. Waiting
@@ -100,4 +103,4 @@ ListKeys() = {"backspace": commands.ListBack, "S-backspace": commands.ListBack, 
 (** What the editor runs on, for the Config of a state: keys, the global keys given, and the other keys and the settings of this file. src/cemacs.ce gives
     it the keys of every app. Each field is a function, read at the next key, so that a change applies under --watch. *)
 Config(keys) = {Keys: keys, PromptKeys: PromptKeys, MouseKeys: MouseKeys, PromptMouseKeys: PromptMouseKeys, ListKeys: ListKeys, TabText: TabText,
-  WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay}
+  WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay, CheckDelay: CheckDelay}

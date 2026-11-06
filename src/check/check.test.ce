@@ -1,0 +1,59 @@
+(** Tests of the check: run with cesia test . The process itself runs in tests/check-check.ce. *)
+use src/check
+use core/commands
+use src/emacs
+use core/text
+use src/ui
+use core/view
+use std/fiber
+use std/list
+use std/result
+use std/value
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+jsonLine(line, column, severity, message) = "{\"file\": \"a.ce\", \"line\": $line, \"column\": $column, \"end\": $(column + 4), \"severity\": \"$severity\", \"message\": \"$message\", \"hint\": null}"
+out = "$(jsonLine(1, 1, "error", "first"))\n$(jsonLine(3, 3, "warning", "second"))\n{\"file\": \"b.ce\", \"line\": 1, \"column\": 1, \"end\": 2, \"severity\": \"error\", \"message\": \"other\", \"hint\": null}\n"
+stateOf(words) = view.Start([text.Of(words, "a.ce")], look, cell, 800, 600)
+
+defn ended(words, given)
+  (** A state whose check of a.ce has ended with what the process gave. *)
+  s = stateOf(words)
+  ch = fiber.Channel()
+  fiber.Send(given, ch)
+  s.Checking = {Path: "a.ce", Version: s.Buffers[1].Version, Channel: ch}
+  check.Finished(s)
+end
+
+marksOf(s) = text.MarksOf(s.Buffers[1])
+isMarksOfTheFile() = value.Len(check.Marks(out, "a.ce")) == 2 and check.Marks(out, "a.ce")[2].Column == 2 and check.Marks(out, "a.ce")[2].End == 6
+isFinished() = value.Len(marksOf(ended("x\ny\nz", result.Ok({Code: 1, Out: out, Err: ""})))) == 2
+isFinishedNotDue() = not check.IsDue(ended("x", result.Ok({Code: 0, Out: "", Err: ""})).Buffers[1])
+isFinishedEndsRunning() = value.IsMissing(check.Running(ended("x", result.Ok({Code: 0, Out: "", Err: ""}))))
+isCantRunSaid() = ended("x", result.Err("no cesia")).Message == "cesia check can't run: no cesia"
+defn isStaleDropped()
+  s = stateOf("x")
+  ch = fiber.Channel()
+  fiber.Send(result.Ok({Code: 1, Out: out, Err: ""}), ch)
+  s.Checking = {Path: "a.ce", Version: s.Buffers[1].Version, Channel: ch}
+  s.Buffers[1] = text.InsertWords("y", s.Buffers[1])
+  after = check.Finished(s)
+  value.Len(marksOf(after)) == 0 and check.IsDue(after.Buffers[1])
+end
+isStillRunning() = not value.IsMissing(check.Running(check.Finished(stateOf("x") then withRunning())))
+defn withRunning(s)
+  out = s
+  out.Checking = {Path: "a.ce", Version: 0, Channel: fiber.Channel()}
+  out
+end
+isWaitingBeforeTheDelay() = value.IsMissing(check.Running(check.Idle(0.5, stateOf("x"))))
+isDueMoves() = check.Moving(stateOf("x")) and not check.Moving(view.Start([text.Of("x", "a.txt")], look, cell, 800, 600))
+isSavedMakesDue() = check.IsDue(check.Saved(ended("x", result.Ok({Code: 0, Out: "", Err: ""}))).Buffers[1])
+isHooked() = value.IsFunction(check.Hooked(emacs.Config(emacs.Keys)).Idle) and value.IsFunction(check.Hooked(emacs.Config(emacs.Keys)).Saved)
+
+marked() = ended("x\ny\nzzzz", result.Ok({Code: 1, Out: out, Err: ""}))
+at(s) = [s.Buffers[1].Cursor.Line, s.Buffers[1].Cursor.Column]
+isNextError() = value.Equal(at(check.NextError(marked())), [3, 2]) and check.NextError(marked()).Message == "second"
+isNextErrorAround() = value.Equal(at(check.NextError(check.NextError(marked()))), [1, 0]) and check.NextError(check.NextError(marked())).Message == "first"
+isPreviousErrorAround() = value.Equal(at(check.PreviousError(marked())), [3, 2]) and check.PreviousError(marked()).Message == "second"
+isNoError() = check.NextError(stateOf("x")).Message == "No error here."

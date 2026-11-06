@@ -1,0 +1,168 @@
+(** The errors of Cesia in the lines of a buffer, as cesia check finds them: a red or amber line under each, its words at the end of the line, and the
+    count in the mode line. A Cesia buffer that changed is checked once no key came for CheckDelay seconds of the config, and every Cesia buffer after a
+    save, since the others read it from the disk. The check runs in a process, cesia check --json --stdin, from a fiber, so that typing never waits: one at
+    a time, and a result for a text that changed since is dropped, the next pause asking again. M-g n and M-g p, or C-c c n and C-c c p, go to the next
+    and the previous mark, around the end, and say it. src/cemacs.ce adds the hooks of Hooked to the config and these Keys. *)
+use core/commands
+use core/text
+use src/rope
+use std/fiber
+use std/json
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** Is a buffer a file of Cesia?
+
+      IsCesia(text.Of("", "a.ce")) --> true *)
+IsCesia(b) = not value.IsMissing(b.Path) and str.EndsWith(".ce", b.Path)
+
+defn checkedOf(b)
+  (** The version of the text that the last check read, or -1: a buffer from before this field has none, and reading one it lacks would panic. *)
+  match b
+    {Checked: version} -> version
+    else -> -1
+  end
+end
+
+(** Has a Cesia buffer changed since its last check?
+
+      IsDue(text.Of("", "a.ce")) --> true *)
+IsDue(b) = IsCesia(b) and checkedOf(b) != b.Version
+
+defn Running(state)
+  (** The check that runs, {Path, Version, Channel}, or missing: a state from before this field has none. *)
+  match state
+    {Checking: c} -> c
+    else -> missing
+  end
+end
+
+defn Marks(out, path)
+  (** The marks of a file in what cesia check --json wrote, one object per line, with columns from 0 as a buffer counts them.
+
+        value.Len(Marks("{\"file\": \"a.ce\", \"line\": 2, \"column\": 3, \"end\": 7, \"severity\": \"error\", \"message\": \"m\", \"hint\": null}", "a.ce")) --> 1 *)
+  found = []
+  for line in str.Lines(out)
+    r = json.Parse(line)
+    if result.IsOk(r) and value.IsDict(r.Value) and r.Value["file"] == path
+      m = r.Value
+      found = list.Append({Line: m["line"], Column: m["column"] - 1, End: m["end"] - 1, Severity: m["severity"], Message: m["message"], Hint: m["hint"]}, found)
+    end
+  end
+  found
+end
+
+defn start(k, state)
+  (** The state with the check of buffer k started, in a fiber that sends what the process gave to a channel. *)
+  b = state.Buffers[k]
+  ch = fiber.Channel()
+  words = rope.Text(b.Rope)
+  path = b.Path
+  _ = fiber.Spawn(() -> fiber.Send(sys.Run("cesia", ["check", "--json", "--stdin", path], input = words), ch))
+  s = state
+  s.Checking = {Path: path, Version: b.Version, Channel: ch}
+  s
+end
+
+indexOf(path, state) = list.Reduce((found, k) -> if found == 0 and state.Buffers[k].Path == path k else found end, 0, 1..value.Len(state.Buffers))   (** The buffer of a path, or 0. *)
+
+defn Finished(state)
+  (** The state once the running check has ended, if it has: the marks in its buffer, unless its text changed since. A check that couldn't run says why
+      once, and the buffer counts as checked. *)
+  c = Running(state)
+  if value.IsMissing(c)
+    return state
+  end
+  got = fiber.Receive(c.Channel, timeout = 0)
+  if result.IsErr(got)
+    return state
+  end
+  s = state
+  s.Checking = missing
+  k = indexOf(c.Path, s)
+  if k == 0 or s.Buffers[k].Version != c.Version
+    return s
+  end
+  b = s.Buffers[k]
+  b.Checked = c.Version
+  ran = got.Value
+  if result.IsErr(ran)
+    s.Buffers[k] = b
+    return commands.Say("cesia check can't run: $(if value.IsText(ran.Error) ran.Error else ran.Error.Message end)", s)
+  end
+  s.Buffers[k] = text.WithMarks(Marks(ran.Value.Out, c.Path), b)
+  s
+end
+
+defn due(state)
+  (** The buffer to check next: the current one if it is due, else the first one due, else 0. *)
+  if IsDue(state.Buffers[state.Current])
+    return state.Current
+  end
+  list.Reduce((found, k) -> if found == 0 and IsDue(state.Buffers[k]) k else found end, 0, 1..value.Len(state.Buffers))
+end
+
+defn Idle(delay, state)
+  (** The state at a tick: the end of the running check, or else, after delay seconds with no key, the check of the buffer due. *)
+  s = Finished(state)
+  if not value.IsMissing(Running(s)) or commands.Still(s) < delay
+    return s
+  end
+  k = due(s)
+  if k == 0 s else start(k, s) end
+end
+
+defn Saved(state)
+  (** After a save, every Cesia buffer is due: the others may read the file saved. *)
+  s = state
+  for k in 1..value.Len(s.Buffers)
+    if IsCesia(s.Buffers[k])
+      s.Buffers[k].Checked = -1
+    end
+  end
+  s
+end
+
+(** Does the check need ticks: one runs, or a buffer is due? *)
+Moving(state) = not value.IsMissing(Running(state)) or due(state) > 0
+
+defn Hooked(config)
+  (** A config with the hooks of the check, which the core calls: Idle, after the CheckDelay of the config, Saved and Moving. *)
+  c = config
+  c.Idle = s -> Idle(config.CheckDelay(), s)
+  c.Saved = Saved
+  c.Moving = Moving
+  c
+end
+
+(** The words of a mark on the prompt line. *)
+said(m) = if value.IsMissing(m.Hint) m.Message else "$(m.Message)  $(m.Hint)" end
+
+defn jump(by, state)
+  (** The cursor on the next mark of the buffer after it, by 1, or before it, by -1, around the end, and the mark said. *)
+  b = state.Buffers[state.Current]
+  marks = text.MarksOf(b)
+  if value.Len(marks) == 0
+    return commands.Say("No error here.", state)
+  end
+  c = b.Cursor
+  after = [m for m in marks if m.Line > c.Line or (m.Line == c.Line and m.Column > c.Column)]
+  before = [m for m in marks if m.Line < c.Line or (m.Line == c.Line and m.Column < c.Column)]
+  m = if by > 0
+    if value.Len(after) > 0 after[1] else marks[1] end
+  else
+    if value.Len(before) > 0 list.Last(before) else list.Last(marks) end
+  end
+  s = state
+  s.Buffers[state.Current] = text.Place(m.Line, m.Column, b)
+  commands.Say(said(m), s)
+end
+
+NextError(state) = jump(1, state)   (** The cursor on the next mark of the buffer, and its words. *)
+PreviousError(state) = jump(-1, state)   (** The cursor on the previous mark of the buffer, and its words. *)
+
+(** The keys of the check: M-g n and M-g p as in Emacs, and the same in the code group of C-c. *)
+Keys() = {"M-g": "errors", "M-g n": NextError, "M-g p": PreviousError, "C-c c n": NextError, "C-c c p": PreviousError}
