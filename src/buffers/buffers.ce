@@ -1,8 +1,9 @@
 (** The buffer list: every open buffer, one per line, with a star for a text that isn't saved. Typing filters it, and enter goes to the buffer under the cursor. *)
-use commands
-use lists
-use text
-use view
+use core/commands
+use core/lists
+use core/text
+use core/view
+use std/text as str
 
 Keys() = {"C-x C-b": Open, "C-c b b": Open}   (** The keys that work everywhere: C-c b b in the group of the buffers. *)
 

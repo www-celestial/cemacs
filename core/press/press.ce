@@ -1,5 +1,6 @@
 (** A helper for tests: plays keys and texts through update, as the window would send them. It holds no test, so cesia test finds nothing here. *)
-use commands
+use core/commands
+use std/text as str
 
 (* The names of the keys that are not one character. *)
 named = ["enter", "tab", "backspace", "delete", "left", "right", "up", "down", "home", "end", "pageup", "pagedown", "space"]

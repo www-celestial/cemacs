@@ -1,8 +1,9 @@
 (** The keys of a pair: C-x ? lists every key that starts with C-x, with the command it runs and what that command does, and so for each first key of a pair.
     Typing filters them, and enter runs the one under the cursor. *)
-use color
-use commands
-use lists
+use core/color
+use core/commands
+use core/lists
+use std/text as str
 
 defn WithHelp(keys)
   (** The keys, with ? after the first keys of every pair or group, which lists what follows them: C-x ? for C-x, C-c f ? for C-c f. src/cemacs.ce gives it
@@ -14,7 +15,7 @@ end
 defn prefixes(k)
   (** The first keys of k that a key can follow: "C-c" and "C-c f" for "C-c f f". *)
   chords = Split(" ", k)
-  [Join(" ", Take(n, chords)) for n in 1:(Len(chords) - 1)]
+  [Join(" ", Take(n, chords)) for n in 1..(Len(chords) - 1)]
 end
 
 defn ShowKeys(state)

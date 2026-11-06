@@ -2,7 +2,7 @@
     buffer it shows, and the place of its cursor and its screen, which view.ViewOf gives, or missing for the place the buffer holds. A cut is {Along, First,
     Second}: along "rows" puts First above Second, and "columns" puts it on the left. Panes count from 1 in the order of the leaves, from the top left.
     Everything here is pure: commands moves between panes, and view draws them. *)
-use pkg/ui
+use std/ui
 
 (** One pane showing buffer k, at the place the buffer holds.
 
@@ -91,7 +91,7 @@ end
 
 defn IndexAt(x, y, rects)
   (** The pane whose rectangle holds the point, or 0. The right and bottom edges of a rectangle belong to the next one. *)
-  for i in 1:Len(rects)
+  for i in 1..Len(rects)
     if ui.Contains({X: x, Y: y}, rects[i])
       return i
     end

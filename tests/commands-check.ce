@@ -1,13 +1,14 @@
 (** Checks of commands.ce against real files, in a new folder under /tmp. It is a script, not a test file: it needs permissions.
     Run it with cesia run --allow read,write tests/commands-check.ce. It prints ok at the end and stops at the first failure. *)
-use pkg/rope
-use sys
-use pkg/ui
-use emacs
-use commands
-use press
-use text
-use view
+use std/rope
+use std/sys
+use std/ui
+use src/emacs
+use core/commands
+use core/press
+use core/text
+use core/view
+use std/text as str
 
 defn check(condition, words)
   (** Stops the script with the words if the condition is false. *)

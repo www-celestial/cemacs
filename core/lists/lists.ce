@@ -101,7 +101,7 @@ Words(rows) = Join("\n", Map(r -> r.Words, rows))   (** The text of the rows, on
 
 defn LineOf(item, items, line)
   (** The line of an item among the items shown, or else the line given, brought inside them. *)
-  for k in 1:Len(items)
+  for k in 1..Len(items)
     if items[k] == item
       return k
     end

@@ -1,13 +1,15 @@
 (** The speed gate of Cemacs: a text of 20,000 lines in a real window of 1920 by 1080, without vsync.
     Run from the root of cemacs: cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce
     It prints the median and the worst of 300 passes for one typed character, and for one scrolled line, and the time to build the rope. *)
-use pkg/rope
-use pkg/sdl
-use sys
-use pkg/ui
-use color
-use text
-use view
+use std/rope
+use std/sdl
+use std/sys
+use std/ui
+use core/color
+use core/text
+use core/view
+use std/text as str
+use std/text as str
 
 (* The number of passes measured for each goal. *)
 passes = 300
@@ -88,7 +90,7 @@ defn measure(step, state, window)
   w = window
   times = []
   parts = []
-  for n in 1:passes
+  for n in 1..passes
     start = sys.Now()
     r = step(s, w)
     s = r.State

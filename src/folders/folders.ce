@@ -2,14 +2,15 @@
     filter the names, / goes into the folder under the cursor, ~/ to the home and / alone to the root, and backspace takes back a letter or, with none, goes up.
     C-y goes to a pasted path. Enter opens, C-c n makes a file or a folder, C-c r renames and C-c k moves to the trash. Names that start with a dot stay hidden
     until C-c . shows them. *)
-use color
-use commands
-use files
-use lists
-use pkg/date
-use pkg/encode
-use sys
-use text
+use core/color
+use core/commands
+use core/files
+use core/lists
+use std/date
+use std/encode
+use std/sys
+use core/text
+use std/text as str
 
 Keys() = {"C-x d": Open, "C-c f d": Open}   (** The keys that work everywhere: C-c f d in the group of the files. *)
 
@@ -157,7 +158,7 @@ defn onName(at, state)
   (** The state with the cursor of the list on the row of this name, if there is one. *)
   b = state.Buffers[state.Current]
   items = lists.Of(b).Items
-  for k in 1:Len(items)
+  for k in 1..Len(items)
     if items[k].Name == at
       s = state
       s.Buffers[state.Current] = text.Place(k, 0, b)

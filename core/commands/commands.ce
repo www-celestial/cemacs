@@ -1,14 +1,15 @@
 (** The editor: one small public function per command, from a state to a state, and update, which turns the events of the window into commands.
     No key is bound here: the Config of the state says which key runs which function, as src/emacs/emacs.ce does, and cesia doc commands lists every command.
     Errors from the file system never panic: they become a message. *)
-use pkg/rope
-use pkg/sdl
-use files
-use keys
-use lists
-use panes
-use text
-use view
+use std/rope
+use std/sdl
+use core/files
+use core/keys
+use core/lists
+use core/panes
+use core/text
+use core/view
+use std/text as str
 
 current(state) = state.Buffers[state.Current]   (** The buffer being edited. *)
 
@@ -316,7 +317,7 @@ end
 defn indexOfFile(path, state)
   (** The index of the buffer for this file, or 0. *)
   wanted = files.Normal(path)
-  for k in 1:Len(state.Buffers)
+  for k in 1..Len(state.Buffers)
     b = state.Buffers[k]
     if not IsMissing(b.Path) and files.Normal(b.Path) == wanted
       return k
@@ -599,7 +600,7 @@ end
 
 defn withoutList(state)
   (** The state without its list, if one is open, and current on the same buffer as before. *)
-  for k in 1:Len(state.Buffers)
+  for k in 1..Len(state.Buffers)
     if lists.IsList(state.Buffers[k])
       return dropped(k, if state.Current > k state.Current - 1 else state.Current end, state)
     end

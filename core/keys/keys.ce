@@ -27,7 +27,7 @@ end
 isFirst(chords, bindings) = Any(Map(k -> StartsWith("$chords ", k), Keys(bindings)))
 
 (** Is this binding a command, rather than the name of a group, as "C-c f": "files"? *)
-isCommand(value) = not IsText(value)
+isCommand(v) = not IsText(v)
 
 defn Lookup(pending, chord, bindings)
   (** What a chord means in bindings, a dictionary from keys to functions, after the pending keys, which are "" if there are none: {Command} with the

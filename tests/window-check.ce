@@ -2,15 +2,16 @@
     Run it from the root of cemacs:
       SDL_VIDEODRIVER=dummy cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/window-check.ce
     It prints ok at the end and stops at the first failure. *)
-use c
-use emacs
-use pkg/rope
-use pkg/sdl
-use sys
-use pkg/ui
-use commands
-use text
-use view
+use std/c
+use src/emacs
+use std/rope
+use std/sdl
+use std/sys
+use std/ui
+use core/commands
+use core/text
+use core/view
+use std/text as str
 
 defn check(condition, words)
   (** Stops the script with the words if the condition is false. *)
@@ -38,7 +39,7 @@ key(code, mods) = push(0x300, [["u32", 28, code], ["u16", 32, mods]])
 defn typed(words)
   (** A text event for the characters of a text. The blocks stay: SDL keeps their addresses until the events are read. *)
   held = c.Alloc(ByteLength(words) + 1)
-  for k in 1:Len(Bytes(words))
+  for k in 1..Len(Bytes(words))
     c.Set("u8", k - 1, Bytes(words)[k], held)
   end
   push(0x303, [["ptr", 24, held]])

@@ -1,11 +1,12 @@
 (** Tests of view.ce and text.Of: run with cesia test . *)
-use color
-use text
-use view
-use pkg/rope
-use pkg/history
-use panes
-use pkg/ui
+use core/color
+use core/text
+use core/view
+use std/rope
+use std/history
+use core/panes
+use std/ui
+use std/text as str
 
 cell = {Width: 8, Height: 19}
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)

@@ -1,7 +1,8 @@
 (** The files of the editor. Saving never loses text: the new words go to a file next to the old one, which a rename then replaces, so a
     failure at any step leaves the old file whole. A disk is what the file looked like when it was read: {Modified, Size}, or missing for a
     file that didn't exist. *)
-use sys
+use std/sys
+use std/text as str
 
 (** An Err of kind "changed": the file is not the one that was read. *)
 changed(path) = Err({Kind: "changed", Message: "$path changed on disk since it was read."})

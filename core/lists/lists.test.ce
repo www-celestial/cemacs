@@ -1,6 +1,6 @@
 (** Tests of lists: run with cesia test . *)
-use lists
-use text
+use core/lists
+use core/text
 
 isMatchInOrder() = lists.Matches("cmd", "commands.ce") and not lists.Matches("dmc", "commands.ce")
 isMatchSideBySideToo() = lists.Matches("comm", "commands.ce")

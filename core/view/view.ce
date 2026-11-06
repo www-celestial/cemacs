@@ -1,11 +1,12 @@
 (** The frame: from a state to an array of commands for sdl. Everything here is pure and knows no window. The look of the state gives
     the theme and the widths of the proportional fonts; cell is the size of one character of the code font. *)
-use pkg/rope
-use pkg/ui
-use color
-use lists
-use panes
-use text
+use std/rope
+use std/ui
+use core/color
+use core/lists
+use core/panes
+use core/text
+use std/text as str
 
 (* The width of the line numbers and the space around them, before the first column of text. *)
 Gutter = 62
@@ -141,7 +142,7 @@ defn FollowState(state)
   active = panes.Active(state)
   tree = panes.Tree(state)
   s = state
-  for j in 1:Len(layouts)
+  for j in 1..Len(layouts)
     if j != active
       leaf = panes.At(j, tree)
       k = Min(leaf.Buffer, Len(s.Buffers))
@@ -300,7 +301,7 @@ defn selection(b, first, last, lay, look)
   rect = lay.Code
   cell = lay.Cell
   out = []
-  for n in Max(first, ends.First.Line):Min(last, ends.Last.Line)
+  for n in Max(first, ends.First.Line)..Min(last, ends.Last.Line)
     from = if n == ends.First.Line ends.First.Column else 0 end
     to = if n == ends.Last.Line ends.Last.Column else text.LineWidth(n, b) + 1 end
     a = Max(from, b.Left)
@@ -327,7 +328,7 @@ defn code(b, lay, look, focused)
     out = Append(box(rect.X + 4, lineY(here), rect.Width - 8, cell.Height, th.Hover, 4), out)
   end
   out = Concat(out, selection(b, first, last, lay, look))
-  for n in first:last
+  for n in first..last
     out = Concat(out, line(b, n, lineY(n), lay.Columns, rect, look))
   end
   if here >= first and here <= last and b.Cursor.Column >= b.Left and b.Cursor.Column - b.Left < lay.Columns
@@ -380,7 +381,7 @@ defn hints(state, lay, look)
   height = rows * line + 12
   top = lay.Prompt.Y - height
   out = [rectCommand(lay.Prompt.X, top, lay.Prompt.Width, height, th.Panel), rectCommand(lay.Prompt.X, top, lay.Prompt.Width, 1, th.Line)]
-  for k in 1:Len(shown)
+  for k in 1..Len(shown)
     h = shown[k]
     x = lay.Prompt.X + 12 + Div(k - 1, rows) * column
     y = top + 6 + Mod(k - 1, rows) * line + 3
@@ -410,7 +411,7 @@ defn View(state)
   layouts = paneLayoutsIn(lay, state)
   active = panes.Active(state)
   drawn = []
-  for j in 1:Len(layouts)
+  for j in 1..Len(layouts)
     one = layouts[j]
     one.Cell = state.Cell
     b = shownIn(j, state)

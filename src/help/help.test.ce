@@ -1,12 +1,13 @@
 (** Tests of the keys of a pair: run with cesia test . *)
-use commands
-use emacs
-use help
-use press
-use pkg/rope
-use text
-use pkg/ui
-use view
+use core/commands
+use src/emacs
+use src/help
+use core/press
+use std/rope
+use core/text
+use std/ui
+use core/view
+use std/text as str
 
 look = ui.Look(ui.Dark, (words, font) -> Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}

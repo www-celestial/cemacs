@@ -1,10 +1,10 @@
 (** Cemacs: the editor with its apps. bin/cemacs and cesia do dev run this file, and C-c c opens it. An app lives in a folder of src/ and brings its keys:
     add its use here and its keys to Keys. Loading this file opens the window, so no test uses it. *)
-use buffers
-use emacs
-use editor
-use folders
-use help
+use src/buffers
+use src/emacs
+use core/editor
+use src/folders
+use src/help
 
 (** Every key of the editor: the Emacs keys, then the keys of each app, and ? after the first key of every pair, which lists it. For a key in two, the later
     one wins. *)

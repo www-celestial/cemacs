@@ -1,7 +1,8 @@
 (** The buffer of a file: a rope, a cursor, a mark and the history. Lines count from 1, columns from 0. *)
-use pkg/rope
-use pkg/history
-use color
+use std/rope
+use std/history
+use core/color
+use std/text as str
 
 defn Of(words, path)
   (** A buffer holding words, for the file at path (or missing for a text with no file). The cursor is at the start, nothing is selected,

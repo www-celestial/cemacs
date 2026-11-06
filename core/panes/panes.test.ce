@@ -1,5 +1,5 @@
 (** Tests of panes: run with cesia test . *)
-use panes
+use core/panes
 
 whole = {X: 0, Y: 0, Width: 800, Height: 600}
 

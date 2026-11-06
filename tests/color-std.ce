@@ -1,7 +1,8 @@
 (** Every line of every .ce file of the Cesia std goes through color.Tokens, keeping the state: no line may lose a character.
     Run from the root of cemacs with: cesia run --allow read tests/color-std.ce *)
-use sys
-use color
+use std/sys
+use core/color
+use std/text as str
 
 stdFolder = "../cesia/src/std"
 

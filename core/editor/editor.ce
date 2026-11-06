@@ -1,9 +1,9 @@
 (** The window of Cemacs and its loop. A program starts it with a config, as src/cemacs.ce does: the core knows no app, so the keys and the settings come from there. *)
-use pkg/sdl
-use pkg/ui
-use commands
-use text
-use view
+use std/sdl
+use std/ui
+use core/commands
+use core/text
+use core/view
 
 defn opened(home, size)
   (** The window, with the three fonts of Cemacs found in fonts/ under its home, all of this size: body, strong and code. *)

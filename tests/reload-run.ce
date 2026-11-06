@@ -1,14 +1,15 @@
 (** The editor in a window, as src/cemacs.ce runs it, for tests/reload-check.sh: a fiber sends the same keys again and again through SDL, and what each one did is
     printed.
     The state is one from before the fields Wheel and Pressed, as a session running under --watch keeps it through a reload. *)
-use c
-use pkg/sdl
-use sys
-use pkg/ui
-use emacs
-use commands
-use text
-use view
+use std/c
+use std/sdl
+use std/sys
+use std/ui
+use src/emacs
+use core/commands
+use core/text
+use core/view
+use std/text as str
 
 defn push(type, fields)
   (** Pushes an event of this type to SDL, with its fields as [type, offset, value]. *)
@@ -44,7 +45,7 @@ end
 
 defn sending()
   (** Sends the keys until the window closes, and for 30 seconds at most. *)
-  for n in 1:1500
+  for n in 1..1500
     pass()
     sys.Sleep(0.02)
   end

@@ -2,7 +2,7 @@
     Every binding holds the function itself, so any function can be bound, and cesia doc emacs lists them all.
     These are functions and not variables, for --watch: a reload changes functions and reruns no file-level statement. Keys = {...} would keep its old value
     until a restart, and a new variable would be read before it has a value, which panics. A function gives what the code says at the next key. *)
-use commands
+use core/commands
 
 (** What Tab types. *)
 TabText() = "  "

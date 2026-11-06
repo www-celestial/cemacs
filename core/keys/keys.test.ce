@@ -1,5 +1,6 @@
 (** Tests of keys.ce: run with cesia test . *)
-use keys
+use core/keys
+use std/text as str
 
 press(key, ctrl, alt, shift) = {Kind: "key", Key: key, Ctrl: ctrl, Alt: alt, Shift: shift, Super: false}
 plain(key) = press(key, false, false, false)

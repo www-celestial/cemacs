@@ -1,16 +1,17 @@
 (** Checks of the folders app against real folders, in a new folder under /tmp, with the trash where XDG_DATA_HOME says. It is a script, not a test file: it
     needs permissions. tests/run.sh runs it with XDG_DATA_HOME in a new folder and cesia run --allow read,write,env=HOME,env=PWD,env=XDG_DATA_HOME. It prints ok
     at the end and stops at the first failure. *)
-use buffers
-use emacs
-use folders
-use lists
-use press
-use pkg/rope
-use sys
-use text
-use pkg/ui
-use view
+use src/buffers
+use src/emacs
+use src/folders
+use core/lists
+use core/press
+use std/rope
+use std/sys
+use core/text
+use std/ui
+use core/view
+use std/text as str
 
 defn check(condition, words)
   (** Stops the script with the words if the condition is false. *)

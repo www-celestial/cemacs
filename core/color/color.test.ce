@@ -1,5 +1,6 @@
 (** Tests of color.ce: run with cesia test . *)
-use color
+use core/color
+use std/text as str
 
 roles(line) = Map(t -> t[1], color.Tokens(line, color.FirstState).Tokens)
 joined(tokens) = Join("", Map(t -> t[2], tokens))
