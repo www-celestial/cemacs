@@ -11,6 +11,7 @@ defn Of(words, path)
   (** A buffer holding words, for the file at path (or missing for a text with no file). The cursor is at the start, nothing is selected,
       nothing is colored yet, and the text counts as saved. The editor owns two more fields: free, true while the wheel has moved the screen away
       from the cursor, and origin, where the mark came from: "" for no mark, "key" for C-space, "shift" for a selection with Shift, "mouse" for a drag.
+      Marks are the errors and warnings that a check found, each {Line, Column, End, Severity, Message, Hint}: see MarksOf.
       Besides the fields of the state, a buffer has three private ones: wanted, the column that
       MoveLine and MovePage try to keep through shorter lines (a column, or missing, and every other move and every edit clears it); clock, the
       highest version given so far, so that a new edit never gets the number of a state that was undone; and typing, which is true while the last
@@ -20,7 +21,7 @@ defn Of(words, path)
   r = rope.Of(words)
   cursor = {Line: 1, Column: 0}
   {Rope: r, Cursor: cursor, Mark: missing, History: history.Of({Rope: r, Cursor: cursor, Version: 0, Before: cursor, Line: 1}), Version: 0, Top: 1, Left: 0, Path: path, Saved: 0, Disk: missing,
-    Colors: color.BlankColors(), Wanted: missing, Clock: 0, Typing: false, Free: false, Origin: ""}
+    Colors: color.BlankColors(), Wanted: missing, Clock: 0, Typing: false, Free: false, Origin: "", Marks: []}
 end
 
 (** Does line n end with a CRLF? Then its \r belongs to the line end. A \r anywhere else, or at the end of the last line, is an ordinary character. *)
@@ -204,6 +205,40 @@ ToFileEnd(b) = moved(clamp({Line: rope.LineCount(b.Rope), Column: width(rope.Lin
       Place(9, 9, Of("ab", missing)).Cursor.Column --> 2 *)
 Place(line, column, b) = moved(clamp({Line: line, Column: column}, b), b)
 
+defn MarksOf(b)
+  (** The marks of a buffer, each {Line, Column, End, Severity, Message, Hint}: a line from 1, the columns from 0 with End after the span, the severity
+      "error" or "warning", and a hint or missing. A buffer from before this field has none, and reading one it lacks would panic.
+
+        MarksOf(Of("a", missing)) --> [] *)
+  match b
+    {Marks: marks} -> marks
+    else -> []
+  end
+end
+
+defn WithMarks(marks, b)
+  (** The buffer with these marks, as a check gives them.
+
+        value.Len(MarksOf(WithMarks([{Line: 1, Column: 0, End: 1, Severity: "error", Message: "m", Hint: missing}], Of("a", missing)))) --> 1 *)
+  out = b
+  out.Marks = marks
+  out
+end
+
+defn lineMoved(by, m)
+  (** A mark moved by some lines. *)
+  out = m
+  out.Line = m.Line + by
+  out
+end
+
+defn shifted(line, before, after, marks)
+  (** The marks after an edit at line that took the text from before lines to after: those of the lines it changed go, so that a fix being typed loses its
+      mark, and those below move with their lines. *)
+  last = line + list.Max(0, before - after)
+  [if m.Line > last lineMoved(after - before, m) else m end for m in marks if m.Line < line or m.Line > last]
+end
+
 defn edit(r, cursor, line, continues, typing, b)
   (** The buffer with a new rope, a new cursor and the history that records it. A step that continues typing replaces the last state of the history
       instead of adding one. line is the first line that changed, where the colors stop being known. The cursor is brought inside the new text, also in
@@ -211,6 +246,7 @@ defn edit(r, cursor, line, continues, typing, b)
   version = b.Clock + 1
   merging = continues and b.Typing
   now = b.History.Present
+  b.Marks = shifted(line, rope.LineCount(b.Rope), rope.LineCount(r), MarksOf(b))
   b.Rope = r
   inside = clamp(cursor, b)
   state = {Rope: r, Cursor: inside, Version: version, Before: if merging now.Before else b.Cursor end, Line: if merging list.Min(line, now.Line) else line end}
@@ -385,7 +421,8 @@ defn CutLine(b)
 end
 
 defn travel(h, s, cursor, line, b)
-  (** The buffer with the text and version of a state of the history, the cursor given, and the colors known only up to the line given. *)
+  (** The buffer with the text and version of a state of the history, the cursor given, and the colors and the marks known only up to the line given. *)
+  b.Marks = shifted(line, rope.LineCount(b.Rope), rope.LineCount(s.Rope), MarksOf(b))
   b.Rope = s.Rope
   b.Cursor = cursor
   b.Version = s.Version

@@ -141,3 +141,13 @@ defn isReplaceRegionKeepsStepBefore()
 end
 (** An f that adds no step leaves the cut as the only step: the state before stays in the history. *)
 isReplaceRegionFAddsNothing() = allText(text.ReplaceRegion(c -> c, markedTwo("abcd"))) == "cd" and allText(text.Undo(text.ReplaceRegion(c -> c, markedTwo("abcd")))) == "abcd"
+
+(* The marks of a check move with their lines, and an edit drops those of the lines it changes. *)
+markAt(line) = {Line: line, Column: 0, End: 1, Severity: "error", Message: "m$line", Hint: missing}
+marked(words) = text.WithMarks([markAt(1), markAt(2), markAt(3)], text.Of(words, missing))
+linesOf(b) = list.Map(m -> m.Line, text.MarksOf(b))
+isMarksOfOldBuffer() = value.Len(text.MarksOf({Rope: rope.Of("a")})) == 0
+isMarksKeptAbove() = same(linesOf(text.InsertWords("x", text.Place(3, 0, marked("a\nb\nc")))), [1, 2])
+isMarksMovedByANewLine() = same(linesOf(text.NewLine(text.Place(1, 1, marked("a\nb\nc")))), [3, 4])
+isMarksMovedByADeletedLine() = same(linesOf(text.DeleteBefore(text.Place(2, 0, marked("a\nb\nc")))), [2])
+isMarksBackAfterUndo() = same(linesOf(text.Undo(text.NewLine(text.Place(3, 1, marked("a\nb\nc"))))), [1, 2])
