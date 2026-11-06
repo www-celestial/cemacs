@@ -9,7 +9,6 @@ use core/color
 use core/text
 use core/view
 use std/text as str
-use std/text as str
 use std/io
 use std/list
 use std/math
