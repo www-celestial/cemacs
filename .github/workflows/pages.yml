@@ -1,0 +1,71 @@
+name: pages
+
+# The site of Cemacs, its book and the reference of its packages, as cesia doc --site makes them from this commit: built
+# for each pull request, and published on GitHub Pages from main. It runs on the nightly Cesia, which Cemacs follows, as its
+# release gives it. A block of the book that gives another value, or a [Name] that leads nowhere, stops the build, and the
+# site in place stays as it was. Until Cesia has a nightly release, there is nothing to build with, and the build says so.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    outputs:
+      built: ${{ steps.site.outputs.built }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cesia nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive=cesia-linux-x86_64.tar.gz
+          if ! gh release download nightly --repo www-celestial/cesia-lang --pattern "$archive*" --dir download; then
+            echo "Cesia has no nightly release yet: nothing to build the site with."
+            echo "NO_CESIA=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          (cd download && [ "$(sha256sum "$archive" | cut -d' ' -f1)" = "$(cut -d' ' -f1 < "$archive.sha256")" ])
+          mkdir -p "$HOME/.cesia"
+          tar -xzf "download/$archive" -C "$HOME/.cesia"
+          echo "$HOME/.cesia/bin" >> "$GITHUB_PATH"
+      - name: Site
+        id: site
+        if: env.NO_CESIA != '1'
+        run: |
+          cesia version
+          cesia doc --site _site
+          echo "built=1" >> "$GITHUB_OUTPUT"
+      # What the build keeps for itself: the programs of the book's pages and their folders, and what lets the next build
+      # skip a page that didn't change.
+      - name: Only the pages
+        if: env.NO_CESIA != '1'
+        run: rm -rf _site/.run _site/.pages _site/.reference _site/.book
+      - uses: actions/upload-pages-artifact@v3
+        if: env.NO_CESIA != '1'
+        with:
+          path: _site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.built == '1'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

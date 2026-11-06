@@ -1,4 +1,4 @@
-(** Cemacs: the editor with its apps. bin/cemacs and cesia do dev run this file, and C-c c opens it. An app lives in a folder of src/ and brings its keys:
+(** Cemacs: the editor with its apps. bin/cemacs and cesia do dev run this file, and C-c f c opens it. An app lives in a folder of src/ and brings its keys:
     add its use here and its keys to Keys. Loading this file opens the window, so no test uses it. *)
 use src/buffers
 use src/check
