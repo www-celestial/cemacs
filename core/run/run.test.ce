@@ -1,0 +1,31 @@
+(** The tests of run: what the program writes, read without a program. *)
+use core/run
+use std/text as str
+
+(** A stop of the debugger, as one line of its output. *)
+stopLine = "$(run.Mark){\"Kind\":\"stop\",\"File\":\"a.ce\",\"Line\":3,\"Reason\":\"break\",\"Error\":\"\",\"Fiber\":0,\"Vars\":[{\"Name\":\"n\",\"Value\":\"4\"}]}\n"
+
+isStopRead() = run.Read(stopLine, run.Empty()).Stop.Line == 3   (** A message of the debugger becomes the stop. *)
+isStopNotOutput() = value.Len(run.Read(stopLine, run.Empty()).Output) == 0   (** A message of the debugger is no output. *)
+isStoppedHere() = run.StoppedAt("./a.ce", run.Read(stopLine, run.Empty())) == 3   (** ./a.ce and a.ce are one file. *)
+isVarsRead() = run.Read(stopLine, run.Empty()).Stop.Vars[1].Value == "4"   (** The variables of the stop. *)
+isLineCut() = value.Equal(run.Read("b\n", run.Read("a", run.Empty())).Output, ["ab"])   (** A line comes in two chunks. *)
+isPartialKept() = run.Read("abc", run.Empty()).Partial == "abc"   (** A line not ended waits for the rest. *)
+
+defn isAnswerPlaced()
+  (** The answer of an eval goes under the line it was asked from. *)
+  asked = run.Ask("1 + 1", "a.ce", 7, run.Empty())
+  answered = run.Read("$(run.Mark){\"Kind\":\"value\",\"Id\":1,\"Ok\":true,\"Text\":\"2\"}\n", asked)
+  run.ValueAt("a.ce", 7, answered) == "2"
+end
+
+defn isErrorAnswered()
+  (** An eval that fails says so, under its line. *)
+  asked = run.Ask("nope", "a.ce", 2, run.Empty())
+  answered = run.Read("$(run.Mark){\"Kind\":\"value\",\"Id\":1,\"Ok\":false,\"Text\":\"no\"}\n", asked)
+  str.StartsWith("error", run.ValueAt("a.ce", 2, answered))
+end
+
+isResumeClears() = value.IsMissing(run.Resume("continue", run.Read(stopLine, run.Empty())).Stop)   (** Continue ends the stop. *)
+isEndedSaid() = run.Ended(1, run.Empty()).Ended   (** A program that ended. *)
+use std/value

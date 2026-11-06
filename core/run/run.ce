@@ -1,0 +1,192 @@
+(** A program run from the editor, under the debugger of Cemacs, tools/debugger.ce, which speaks over the input and the
+    output of the program: a line that starts with the byte 1 is one of its messages, in JSON, and the other lines are what
+    the program prints. A run is a map: Process, the program; Inbox, the channel where a fiber puts what it writes; Status,
+    for the person; Output, its lines, the last ones kept; Partial, a line not yet ended; Stop, where it stopped, with File,
+    Line, Reason, Error and Vars, or missing while it runs; Values, the answers to the evals, under the path and line they
+    came from; Asked, the place of each eval not yet answered; Next, the number of the next one; Shown, whether the output
+    pane shows; Ended. Start, Send and Drain touch the program; the rest is pure. *)
+use std/dict
+use std/fiber
+use std/json
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(* The output lines a run keeps. *)
+kept = 1000
+
+(** The byte that starts a message of the debugger. *)
+Mark = str.Char(1)
+
+(** A run of no program yet, as Start makes one: what the tests read without a process.
+
+      Empty().Status --> "running" *)
+Empty() = {Process: missing, Inbox: missing, Status: "running", Output: [], Partial: "", Stop: missing, Values: {}, Asked: {}, Next: 1,
+  Shown: true, Ended: false}
+
+defn reading(p, inbox)
+  (** Puts what the program writes on the channel, chunk by chunk, then its exit code once its output is closed. *)
+  chunk = result.Unwrap(sys.ReadOutput(p))
+  while chunk != ""
+    fiber.Send(chunk, inbox)
+    chunk = result.Unwrap(sys.ReadOutput(p))
+  end
+  fiber.Send({Code: sys.WaitExit(p)}, inbox)
+end
+
+defn Send(command, r)
+  (** Writes a command for the debugger, one line of JSON, and gives the run. A program that ended takes none. *)
+  if not r.Ended and not value.IsMissing(r.Process)
+    _ = sys.WriteInput(r.Process, "$(json.Text(command))\n")
+  end
+  r
+end
+
+defn Start(home, path, breaks)
+  (** Starts the program of a file under the debugger of Cemacs, in its home, with breakpoints, each a Path and a Line: an Ok
+      of its run, or an Err. The program stops before its first line, takes the breakpoints and goes on. *)
+  p = sys.Start("cesia", ["run", "--debugger", "$home/tools/debugger.ce", path])?
+  r = Empty()
+  r.Process = p
+  r.Inbox = fiber.Channel()
+  inbox = r.Inbox
+  _ = fiber.Spawn(() -> reading(p, inbox))
+  for b in breaks
+    r = Send({Do: "break", File: b.Path, Line: b.Line}, r)
+  end
+  result.Ok(Send({Do: "continue"}, r))
+end
+
+(** The key of a place in Values: the path and the line.
+
+      Place("a.ce", 3) --> "a.ce:3" *)
+Place(path, line) = "$path:$line"
+
+defn printed(line, r)
+  (** The run with one more line of output, the oldest gone past what a run keeps. *)
+  out = r
+  out.Output = list.Append(line, r.Output)
+  if value.Len(out.Output) > kept
+    out.Output = list.Skip(value.Len(out.Output) - kept, out.Output)
+  end
+  out
+end
+
+defn answered(m, r)
+  (** The run after the answer to an eval: its text under the place it was asked from. *)
+  place = dict.Get("$(m.Id)", r.Asked)
+  out = r
+  if not value.IsMissing(place)
+    out.Values = dict.Put(place, if m.Ok m.Text else "error: $(m.Text)" end, r.Values)
+  end
+  out
+end
+
+defn heard(m, r)
+  (** The run after a message of the debugger. *)
+  out = r
+  if m.Kind == "stop"
+    out.Stop = m
+    out.Status = if m.Reason == "error" "stopped on an error at $(m.File):$(m.Line)" else "stopped at $(m.File):$(m.Line)" end
+  else if m.Kind == "value"
+    out = answered(m, r)
+  else if m.Kind == "reload"
+    out.Status = "the fix doesn't load"
+    for line in str.Lines(m.Text)
+      out = printed(line, out)
+    end
+  end
+  out
+end
+
+defn Read(chunk, r)
+  (** The run after a chunk of what the program wrote: lines of output, and the messages of the debugger.
+
+        Read("hi\n", Empty()).Output --> ["hi"] *)
+  pieces = str.Split("\n", "$(r.Partial)$chunk")
+  out = r
+  out.Partial = pieces[value.Len(pieces)]
+  for line in list.Take(value.Len(pieces) - 1, pieces)
+    out = if str.StartsWith(Mark, line) heard(result.Unwrap(json.Parse(str.Slice(2, value.Len(line), line))), out) else printed(line, out) end
+  end
+  out
+end
+
+defn Ended(code, r)
+  (** The run once the program ended with an exit code.
+
+        Ended(0, Empty()).Status --> "ended, code 0" *)
+  out = r
+  out.Ended = true
+  out.Stop = missing
+  out.Status = "ended, code $code"
+  out
+end
+
+defn waiting(inbox)
+  (** The oldest of what the fiber put on the channel, or missing. *)
+  match fiber.Receive(inbox, 0)
+    result.Ok(v) -> v
+    result.Err(e) -> missing
+  end
+end
+
+defn Drain(r)
+  (** The run after all that the program wrote since the last time. It never waits. *)
+  out = r
+  if r.Ended or value.IsMissing(r.Inbox)
+    return out
+  end
+  got = waiting(r.Inbox)
+  while not value.IsMissing(got)
+    out = if value.IsText(got) Read(got, out) else Ended(got.Code, out) end
+    got = waiting(r.Inbox)
+  end
+  out
+end
+
+defn Ask(code, path, line, r)
+  (** Sends code to run in the program, an eval whose answer goes under the place it came from. *)
+  out = r
+  out.Asked = dict.Put("$(r.Next)", Place(path, line), r.Asked)
+  out.Next = r.Next + 1
+  Send({Do: "eval", Id: r.Next, Code: code}, out)
+end
+
+defn Resume(word, r)
+  (** The run going on after a stop, by continue, step, next or out; one that runs doesn't change. *)
+  if value.IsMissing(r.Stop)
+    return r
+  end
+  out = Send({Do: word}, r)
+  out.Stop = missing
+  out.Status = "running"
+  out
+end
+
+defn Kill(r)
+  (** Asks the program to end. *)
+  if not r.Ended and not value.IsMissing(r.Process)
+    sys.Stop(r.Process)
+  end
+  r
+end
+
+(** The answer of the eval run from a line of a file, or missing.
+
+      ValueAt("a.ce", 3, Empty()) --> missing *)
+ValueAt(path, line, r) = dict.Get(Place(path, line), r.Values)
+
+(** The line where the program stopped, in that file, or missing.
+
+      StoppedAt("a.ce", Empty()) --> missing *)
+StoppedAt(path, r) = if not value.IsMissing(r.Stop) and same(r.Stop.File, path) r.Stop.Line else missing end
+
+(** Do two paths name one file, written with or without ./ before them?
+
+      same("./a.ce", "a.ce") --> true *)
+same(a, b) = bare(a) == bare(b)
+
+bare(p) = if str.StartsWith("./", p) str.Slice(3, value.Len(p), p) else p end   (** A path without ./ before it. *)

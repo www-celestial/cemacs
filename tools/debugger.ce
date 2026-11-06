@@ -1,0 +1,103 @@
+(** The debugger that Cemacs gives to the programs it runs, cesia run --debugger HOME/tools/debugger.ce FILE: it speaks
+    with Cemacs over the standard input and output of the program. Each of its messages is one line that starts with the
+    byte 1, then a map in JSON: Kind "stop", with File, Line, Reason, Error, Fiber and the Vars of the innermost frame;
+    "value", the answer to an eval, with Id, Ok and Text; or "reload", with Ok and Text, when a fix doesn't load. Cemacs
+    writes one command per line, a map in JSON whose Do is "eval" (with Id and Code), "break" or "clear" (with File and
+    Line), or "continue", "step", "next" or "out". While the program runs, a fiber reads the commands, and an eval runs
+    at the file level of the main file; at a stop, OnStop reads them, and an eval runs in the innermost frame. It lives
+    outside core/ and src/, so that no package of Cemacs loads it. *)
+use std/debug
+use std/fiber
+use std/io
+use std/json
+use std/list
+use std/result
+use std/text
+use std/value
+
+defn send(message)
+  (** Writes a message for Cemacs, on one line that starts with the byte 1. *)
+  io.Print("$(text.Char(1))$(json.Text(message))")
+end
+
+defn answer(id, r)
+  (** Sends the answer to an eval: its value as the program would print it, or its error. *)
+  match r
+    result.Ok(v) -> send({Kind: "value", Id: id, Ok: true, Text: "$v"})
+    result.Err(e) -> send({Kind: "value", Id: id, Ok: false, Text: e})
+  end
+end
+
+defn command(line)
+  (** The command of a line from Cemacs, or missing for a line that isn't one. *)
+  match json.Parse(line)
+    result.Ok(c) -> if value.IsDict(c) c else missing end
+    result.Err(e) -> missing
+  end
+end
+
+defn apply(c, frame)
+  (** Runs a command that doesn't resume the program: an eval in the frame, or at the file level when frame is missing, or a
+      breakpoint. *)
+  if c.Do == "eval"
+    answer(c.Id, if value.IsMissing(frame) debug.Eval(c.Code) else debug.Eval(c.Code, frame) end)
+  else if c.Do == "break"
+    debug.SetBreak(c.File, c.Line)
+  else if c.Do == "clear"
+    debug.ClearBreak(c.File, c.Line)
+  end
+end
+
+defn Listen()
+  (** Reads the commands that come while the program runs, until the end of the input. *)
+  line = debug.ReadLine()
+  while not value.IsMissing(line)
+    c = command(line)
+    if not value.IsMissing(c)
+      apply(c, missing)
+    end
+    line = debug.ReadLine()
+  end
+end
+
+defn resumes(c)
+  (** Does the command resume the program? *)
+  not value.IsMissing(c) and (c.Do == "continue" or c.Do == "step" or c.Do == "next" or c.Do == "out")
+end
+
+defn reloaded()
+  (** Reloads the files changed since they were loaded: false, after telling Cemacs the errors, when one doesn't load. *)
+  match debug.Reload()
+    result.Ok(paths) -> true
+    result.Err(e) -> failed(e)
+  end
+end
+
+defn failed(e)
+  (** Tells Cemacs the errors of a reload: false. *)
+  send({Kind: "reload", Ok: false, Text: e})
+  false
+end
+
+defn OnStop(stop)
+  (** Tells Cemacs where the program stopped, then runs its commands until one resumes the program: gives its word. *)
+  error = if value.IsMissing(stop.Error) "" else stop.Error end
+  vars = list.Map(v -> {Name: v.Name, Value: "$(v.Value)"}, stop.Frames[1].Vars)
+  send({Kind: "stop", File: stop.File, Line: stop.Line, Reason: stop.Reason, Error: error, Fiber: stop.Fiber, Vars: vars})
+  while true
+    line = debug.ReadLine()
+    if value.IsMissing(line)
+      return "continue"
+    end
+    c = command(line)
+    if resumes(c)
+      if reloaded()
+        return c.Do
+      end
+    else if not value.IsMissing(c)
+      apply(c, stop.Frames[1])
+    end
+  end
+end
+
+listening = fiber.Spawn(Listen)
