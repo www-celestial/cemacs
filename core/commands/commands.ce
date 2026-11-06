@@ -407,7 +407,7 @@ defn saved(k, path, disk, words, state)
   b.Path = path
   s = state
   s.Buffers[k] = b
-  say(words, s)
+  hooks(s).Saved(say(words, s))
 end
 
 defn overwrite(k, path, answer, state)
@@ -714,8 +714,26 @@ end
 
 (* ---- Keys and events *)
 
-(** Does the editor need frames of its own? Only while keys wait for the next one and their hints aren't shown yet: the ticks count the time. *)
-Moving(state) = state.Pending != "" and value.Len(hintsOf(state)) == 0
+(** Does the editor need frames of its own? Only while keys wait for the next one and their hints aren't shown yet, or while an app waits for time to
+    pass, as a check does: the ticks count the time. *)
+Moving(state) = (state.Pending != "" and value.Len(hintsOf(state)) == 0) or hooks(state).Moving(state)
+
+defn hooks(state)
+  (** What an app adds to the config to hear of time and saves, as src/check does: Idle(state) at each tick, Saved(state) after a save, and Moving(state),
+      whether it needs ticks. A config without them has hooks that do nothing. *)
+  match config(state)
+    {Idle: idle, Saved: done, Moving: moving} -> {Idle: idle, Saved: done, Moving: moving}
+    else -> {Idle: s -> s, Saved: s -> s, Moving: s -> false}
+  end
+end
+
+defn Still(state)
+  (** The seconds since the last key, text or mouse event, from the ticks. A state from before this field has none, and reading one it lacks would panic. *)
+  match state
+    {Still: seconds} -> seconds
+    else -> 0.0
+  end
+end
 
 defn hintsOf(state)
   (** The hints shown under the pending keys, or [] for none. A state from before this field has none, and reading one it lacks would panic. *)
@@ -734,7 +752,14 @@ defn waitedOf(state)
 end
 
 defn onTick(event, state)
-  (** The state after a tick: once the pending keys have waited for HintDelay seconds of the config, the keys that can follow them, as keys.Hints gives them. *)
+  (** The state after a tick: the time counted since the last event, the hints of the pending keys, then the Idle hook of an app. *)
+  s = state
+  s.Still = Still(state) + event.Seconds
+  hooks(s).Idle(hinted(event, s))
+end
+
+defn hinted(event, state)
+  (** Once the pending keys have waited for HintDelay seconds of the config, the keys that can follow them, as keys.Hints gives them. *)
   if state.Pending == "" or value.Len(hintsOf(state)) > 0
     return state
   end
@@ -1022,6 +1047,9 @@ defn Update(event, state)
     "tick" -> onTick(event, state)
     "mouse" -> onMouse(event, if value.IsMissing(state.Prompt) config(state).MouseKeys() else config(state).PromptMouseKeys() end, state)
     else -> state
+  end
+  if event.Kind == "key" or event.Kind == "text" or event.Kind == "mouse"
+    next.Still = 0.0
   end
   if next.Ending missing else Settled(next) end
 end

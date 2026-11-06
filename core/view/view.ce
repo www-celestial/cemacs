@@ -17,6 +17,12 @@ Gutter = 62
 (* Pixels added under the height of the code font to space the lines: JetBrains Mono at 13 is 18 high, and the 19 of ui.Code reads less tight. *)
 LineGap = 1
 
+(* The marks of a check: red for an error, amber for a warning, and a quieter tone of each for their words. *)
+ErrorColor = 0xE5534B
+WarningColor = 0xD29922
+errorWords = 0xB8615E
+warningWords = 0xA88A45
+
 modeHeight = 24
 promptHeight = 22
 
@@ -203,6 +209,13 @@ end
 (** The state at the start of line n, or the first one if the colors don't reach it yet. *)
 startOf(n, colors) = if n <= colors.Known colors.Starts[n] else color.FirstState end
 
+(** The marks of line n of a buffer, the errors first. *)
+marksAt(n, b) = list.Concat([m for m in text.MarksOf(b) if m.Line == n and m.Severity == "error"], [m for m in text.MarksOf(b) if m.Line == n and m.Severity != "error"])
+
+isError(m) = m.Severity == "error"
+markColor(m) = if isError(m) ErrorColor else WarningColor end
+markWords(m) = if isError(m) errorWords else warningWords end
+
 defn line(b, n, y, columns, rect, look)
   (** The commands of line n of a buffer: its number, then one text per token, or one plain text for the row of a list. The line is cut to the columns on the
       screen before it is read, since sdl has no clipping and the tail would not be seen. *)
@@ -212,7 +225,8 @@ defn line(b, n, y, columns, rect, look)
   words = if value.Len(cs) > b.Left + columns str.Join("", list.Take(b.Left + columns, cs)) else str.Join("", cs) end
   read = if lists.IsList(b) {Tokens: rowTokens(lists.PartsAt(n, b), words)} else color.Tokens(words, startOf(n, b.Colors)) end
   x0 = rect.X + Gutter
-  numbered = inside("code", rect.X + Gutter - 16 - value.Len("$n") * cw, y, "$n", th.Faint)
+  here = marksAt(n, b)
+  numbered = inside("code", rect.X + Gutter - 16 - value.Len("$n") * cw, y, "$n", if value.Len(here) > 0 markColor(here[1]) else th.Faint end)
   out = [numbered]
   for token in visible(read.Tokens, b.Left)
     out = list.Append(inside("code", x0 + (token[3] - b.Left) * cw, y, token[2], th.Syntax[token[1]]), out)
@@ -334,10 +348,50 @@ defn code(b, lay, look, focused)
   for n in first..last
     out = list.Concat(out, line(b, n, lineY(n), lay.Columns, rect, look))
   end
+  out = list.Concat(out, marked(b, first, last, lay, look))
   if here >= first and here <= last and b.Cursor.Column >= b.Left and b.Cursor.Column - b.Left < lay.Columns
     out = list.Append(rectCommand(columnX(b.Cursor.Column - b.Left, rect, cell), lineY(here), 2, cell.Height, if focused th.Bright else th.Faint end), out)
   end
   out
+end
+
+defn marked(b, first, last, lay, look)
+  (** The marks of the lines on the screen: a line of two pixels under each span, and after the end of the line, two spaces after it, the words of its first
+      mark, cut at the edge, with (+2) when the line has two more. No row is added: a full line keeps only the underline and the color of its number. *)
+  cell = lay.Cell
+  rect = lay.Code
+  out = []
+  for n in first..last
+    here = marksAt(n, b)
+    if value.Len(here) > 0
+      y = rowY(n - b.Top, rect, cell)
+      for m in here
+        from = list.Max(m.Column, b.Left)
+        to = list.Min(list.Max(m.End, m.Column + 1), b.Left + lay.Columns)
+        if to > from
+          out = list.Append(rectCommand(columnX(from - b.Left, rect, cell), y + cell.Height - 2, (to - from) * cell.Width, 2, markColor(m)), out)
+        end
+      end
+      at = text.LineWidth(n, b) - b.Left + 2
+      room = lay.Columns - list.Max(0, at)
+      words = if value.Len(here) > 1 "$(here[1].Message) (+$(value.Len(here) - 1))" else here[1].Message end
+      if room > 3
+        cut = if value.Len(words) > room str.Join("", list.Take(room, str.Chars(words))) else words end
+        out = list.Append(inside("code", columnX(list.Max(0, at), rect, cell), y, cut, markWords(here[1])), out)
+      end
+    end
+  end
+  out
+end
+
+(** The words of the marks of a buffer for its mode line, as "2 errors, 1 warning", or "" with none. *)
+defn MarkCount(b)
+  marks = text.MarksOf(b)
+  errors = value.Len([m for m in marks if isError(m)])
+  warnings = value.Len(marks) - errors
+  counted(k, word) = if k == 1 "1 $word" else "$k $(word)s" end
+  parts = list.Concat(if errors > 0 [counted(errors, "error")] else [] end, if warnings > 0 [counted(warnings, "warning")] else [] end)
+  str.Join(", ", parts)
 end
 
 defn mode(b, lay, look, focused)
@@ -348,9 +402,16 @@ defn mode(b, lay, look, focused)
   position = "$(b.Cursor.Line):$(b.Cursor.Column)"
   language = if lists.IsList(b) "List" else "Cesia" end
   right = rect.X + rect.Width - 12
-  [rectCommand(rect.X, rect.Y, rect.Width, rect.Height, if focused th.Header else th.Panel end), textCommand(rect.X + 12, y, label(b), if focused th.Ink else th.Muted end),
+  count = MarkCount(b)
+  shown = [rectCommand(rect.X, rect.Y, rect.Width, rect.Height, if focused th.Header else th.Panel end), textCommand(rect.X + 12, y, label(b), if focused th.Ink else th.Muted end),
     textCommand(right - look.Width(language, "body"), y, language, th.Muted),
     textCommand(right - look.Width(language, "body") - 24 - look.Width(position, "body"), y, position, th.Muted)]
+  if count == ""
+    shown
+  else
+    errors = value.Len([m for m in text.MarksOf(b) if isError(m)]) > 0
+    list.Append(textCommand(right - look.Width(language, "body") - 48 - look.Width(position, "body") - look.Width(count, "body"), y, count, if errors ErrorColor else WarningColor end), shown)
+  end
 end
 
 defn prompt(state, lay, look)
@@ -360,10 +421,15 @@ defn prompt(state, lay, look)
   y = rect.Y + math.Div(rect.Height - look.Height, 2)
   b = state.Buffers[state.Current]
   filtering = value.IsMissing(state.Prompt) and state.Message == "" and lists.IsList(b)
-  words = if not value.IsMissing(state.Prompt) "$(state.Prompt.Label)$(state.Prompt.Answer)" else if filtering "$(lists.LabelOf(lists.Of(b)))$(lists.Of(b).Filter)" else state.Message end
+  (* With nothing else to say, the line tells the first mark of the cursor's line, with its hint. *)
+  here = if value.IsMissing(state.Prompt) and state.Message == "" and not filtering marksAt(b.Cursor.Line, b) else [] end
+  words = if not value.IsMissing(state.Prompt) "$(state.Prompt.Label)$(state.Prompt.Answer)" else if filtering "$(lists.LabelOf(lists.Of(b)))$(lists.Of(b).Filter)" else if value.Len(here) > 0 markText(here[1]) else state.Message end
   bar = if value.IsMissing(state.Prompt) and not filtering [] else [rectCommand(rect.X + 12 + look.Width(words, "body"), y, 2, look.Height, th.Bright)] end
-  list.Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, th.Ink)], bar)
+  list.Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, if value.Len(here) > 0 markColor(here[1]) else th.Ink end)], bar)
 end
+
+(** The words of a mark on the prompt line: its message, then its hint. *)
+markText(m) = if value.IsMissing(m.Hint) m.Message else "$(m.Message)  $(m.Hint)" end
 
 defn hints(state, lay, look)
   (** The band above the prompt line, while keys wait for the next one and their hints are there: each chord that can follow, and the command it runs or the

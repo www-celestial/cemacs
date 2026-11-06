@@ -379,3 +379,21 @@ defn isFollowStateFollowsEveryPane()
   leaf = panes.At(2, f.Panes)
   leaf.View.Top > 60 and f.Buffers[1].Top == 1 and f.Buffers[1].Colors.Known >= 80
 end
+
+(* The marks of a check: an underline, the number in color, the words after the line, the count in the mode line, and the prompt line on the cursor's line. *)
+markOf(line, column, stop, severity, message) = {Line: line, Column: column, End: stop, Severity: severity, Message: message, Hint: "a hint"}
+markedState() = stateOf([text.WithMarks([markOf(1, 0, 4, "error", "Name \"Prnt\" doesn't exist."), markOf(1, 5, 6, "warning", "w"), markOf(2, 0, 1, "warning", "late")],
+  text.Of("Prnt(1)\nx", "a.ce"))], 800, 600)
+framed() = view.View(markedState())
+isMarkUnderlined() = value.Len(list.Filter(c -> c.Kind == "rect" and c.Color == view.ErrorColor and c.Height == 2 and c.Width == 32, framed())) == 1
+isMarkNumberColored() = value.Len(list.Filter(c -> c.Kind == "text" and c.Text == "1" and c.Color == view.ErrorColor, framed())) == 1
+isMarkWordsAfterLine() = "Name \"Prnt\" doesn't exist. (+1)" in textsOf(framed())
+isMarkCountInMode() = view.MarkCount(markedState().Buffers[1]) == "1 error, 2 warnings" and "1 error, 2 warnings" in textsOf(framed())
+isMarkOnPromptLine() = "Name \"Prnt\" doesn't exist.  a hint" in textsOf(framed())
+isNoMarkNoCount() = view.MarkCount(text.Of("", missing)) == ""
+defn isMarkWordsCut()
+  s = markedState()
+  s.Width = 200
+  texts = textsOf(view.View(s))
+  not ("Name \"Prnt\" doesn't exist. (+1)" in texts) and value.Len(list.Filter(t -> str.StartsWith("Name", t), texts)) >= 1
+end
