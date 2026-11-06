@@ -397,3 +397,30 @@ defn isMarkWordsCut()
   texts = textsOf(view.View(s))
   not ("Name \"Prnt\" doesn't exist. (+1)" in texts) and value.Len(list.Filter(t -> str.StartsWith("Name", t), texts)) >= 1
 end
+
+(* ---- What a run shows: a breakpoint in the gutter, the value of an eval after its line, the variables at a stop. *)
+
+defn ranOn(words)
+  (** A state on a file with a run that stopped on its line 2, i = 4 there, and the answer of an eval on its line 1. *)
+  s = stateOf([text.Of(words, "a.ce")], 800, 600)
+  stop = "$(run.Mark){\"Kind\":\"stop\",\"File\":\"a.ce\",\"Line\":2,\"Reason\":\"break\",\"Error\":\"\",\"Fiber\":0,\"Vars\":[{\"Name\":\"i\",\"Value\":\"4\"}]}\n"
+  answer = "$(run.Mark){\"Kind\":\"value\",\"Id\":1,\"Ok\":true,\"Text\":\"42\"}\n"
+  s.Run = run.Read(answer, run.Read(stop, run.Ask("x", "a.ce", 1, run.Empty())))
+  s.Breaks = [{Path: "a.ce", Line: 2}]
+  s
+end
+
+isValueAfterLine() = not value.IsMissing(list.IndexOf("= 42", textsOf(view.View(ranOn("x = 1\ny = 2\n")))))   (** The answer, grey, after line 1. *)
+isVariablesShown() = not value.IsMissing(list.IndexOf("i = 4", textsOf(view.View(ranOn("x = 1\ny = 2\n")))))   (** The pane lists the variables at a stop. *)
+isBreakDotDrawn() = value.Len(list.Filter(c -> c.Kind == "box" and c.Color == 0xE06C75, view.View(ranOn("x = 1\ny = 2\n")))) == 1   (** One dot, on line 2. *)
+isOutputHidden() = not view.ShowsOutput(hidden(ranOn("x")))   (** C-c c o hides the pane. *)
+
+defn hidden(state)
+  (** The state with its output hidden. *)
+  s = state
+  r = s.Run
+  r.Shown = false
+  s.Run = r
+  s
+end
+use core/run

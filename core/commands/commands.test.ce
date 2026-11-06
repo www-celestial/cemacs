@@ -584,7 +584,7 @@ defn isEveryCommandVisible()
   names = ["ForwardChar", "BackwardChar", "NextLine", "PreviousLine", "ForwardWord", "BackwardWord", "LineStart", "LineEnd", "PageDown", "PageUp", "FileStart", "FileEnd",
     "SelectForwardChar", "SelectBackwardChar", "SelectNextLine", "SelectPreviousLine", "SelectLineStart", "SelectLineEnd", "SelectPageDown", "SelectPageUp",
     "SetMark", "Cancel", "CancelPair", "DeleteBefore", "DeleteAfter", "NewLine", "Tab", "Undo", "Redo", "Cut", "Copy", "Paste", "CutLine",
-    "Save", "FindFile", "NextBuffer", "CloseBuffer", "Quit", "Run", "Stop", "ToggleOutput",
+    "Save", "FindFile", "NextBuffer", "CloseBuffer", "Quit", "Run", "Stop", "ToggleOutput", "ToggleBreak", "Eval", "Continue", "StepOver", "StepInto", "StepOut",
     "PromptAccept", "PromptDeleteBefore", "PromptPaste", "PromptCancel", "Press", "Drag", "Release", "Wheel"]
   value.Len(list.Filter(name -> not ("commands.$name" in shown), names)) == 0
 end
@@ -758,3 +758,14 @@ isHintsWaitAgainInAGroup() = value.Len(ticked(6, 0.1, press.Press(["C-c"], state
 isHintsDrawn() = value.Len(list.Filter(c -> c.Kind == "text" and c.Text == "+files", view.View(ticked(6, 0.1, press.Press(["C-c"], stateOf("")))))) == 1
 isHintsGoneAfterTheCommand() = value.Len(list.Filter(c -> c.Kind == "text" and c.Text == "+files", view.View(press.Press(["f", "s"], ticked(6, 0.1, press.Press(["C-c"], stateOf(""))))))) == 0
 isNoTickWithoutKeys() = value.Len(ticked(3, 0.5, stateOf("")).Hints) == 0 and not commands.Moving(ticked(3, 0.5, stateOf("")))
+
+(* ---- Running a program, without one: the commands that need it say so; the breakpoints stay in the state. *)
+
+inFile(words) = begun([text.Of(words, "a.ce")], look, cell, 800, 600)   (** A state on a buffer of a file. *)
+isBreakSet() = value.Equal(view.BreaksOf(press.Press(["C-c", "d", "b"], inFile("x = 1\n"))), [{Path: "a.ce", Line: 1}])   (** C-c d b sets one. *)
+isBreakCleared() = value.Len(view.BreaksOf(press.Press(["C-c", "d", "b", "C-c", "d", "b"], inFile("x = 1\n")))) == 0   (** Again, it goes. *)
+isBreakNeedsFile() = value.Len(view.BreaksOf(press.Press(["C-c", "d", "b"], stateOf("x")))) == 0   (** A buffer without a file has none. *)
+isEvalNeedsRun() = str.StartsWith("No program", press.Press(["C-c", "d", "e"], inFile("1 + 1")).Message)   (** C-c d e without a program says so. *)
+isContinueNeedsStop() = press.Press(["C-c", "d", "c"], inFile("1")).Message == "The program isn't stopped."   (** Nothing to go on from. *)
+isNoOutputYet() = str.StartsWith("There is no output", press.Press(["C-c", "c", "o"], inFile("1")).Message)   (** C-c c o before any run. *)
+isRunNeedsFile() = str.StartsWith("This buffer has no file", press.Press(["C-c", "c", "r"], stateOf("1")).Message)   (** A buffer never saved can't run. *)
