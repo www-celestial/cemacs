@@ -498,19 +498,16 @@ defn withRun(r, state)
   s
 end
 
-(* The seconds that a new run waits for the program that runs to end. *)
-endWait = 2.0
-
 defn started(debug, state)
   (** The state with the file of the current buffer run, as saved, with the debugger of Cemacs or without it. A program that runs is stopped first, and the
-      new one starts once it has ended, so that a server gives back its port. *)
+      new one starts once it has ended, so that a server gives back its port: it has two seconds. *)
   b = current(state)
   if value.IsMissing(b.Path)
     return say("This buffer has no file to run: save it first.", state)
   end
   s = state
   if running(state)
-    s = withRun(run.Finish(endWait, state.Run), state)
+    s = withRun(run.Finish(2.0, state.Run), state)
     if not s.Run.Ended
       return say("The program that runs doesn't end: C-c c k asks it again.", s)
     end
