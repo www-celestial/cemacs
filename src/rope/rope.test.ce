@@ -32,7 +32,7 @@ defn isAgainstAModel()
   (** Random edits against a plain text. *)
   r = rope.Of(big)
   model = big
-  dice = num.Uniform(3000, num.Seeded(5)).Values
+  dice = num.Uniform(3000)
   for k in 1..1000
     n = text.ByteLength(model)
     at = math.Floor(dice[3 * k - 2] * n)
