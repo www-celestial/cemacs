@@ -390,6 +390,14 @@ isMarkNumberColored() = value.Len(list.Filter(c -> c.Kind == "text" and c.Text =
 isMarkWordsAfterLine() = "Name \"Prnt\" doesn't exist. (+1)" in textsOf(framed())
 isMarkCountInMode() = view.MarkCount(markedState().Buffers[1]) == "1 error, 2 warnings" and "1 error, 2 warnings" in textsOf(framed())
 isMarkOnPromptLine() = "Name \"Prnt\" doesn't exist.  a hint" in textsOf(framed())
+defn isMarkUnderCursorOnPromptLine()
+  (** On the span of the second mark of a line, the prompt line tells that one, and past every span the first one again. *)
+  s = markedState()
+  s.Buffers[1] = text.Place(1, 5, s.Buffers[1])
+  far = s
+  far.Buffers[1] = text.Place(1, 7, s.Buffers[1])
+  "w  a hint" in textsOf(view.View(s)) and "Name \"Prnt\" doesn't exist.  a hint" in textsOf(view.View(far))
+end
 isNoMarkNoCount() = view.MarkCount(text.Of("", missing)) == ""
 defn isMarkWordsCut()
   s = markedState()

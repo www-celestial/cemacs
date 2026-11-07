@@ -455,11 +455,20 @@ defn prompt(state, lay, look)
   y = rect.Y + math.Div(rect.Height - look.Height, 2)
   b = state.Buffers[state.Current]
   filtering = value.IsMissing(state.Prompt) and state.Message == "" and lists.IsList(b)
-  (* With nothing else to say, the line tells the first mark of the cursor's line, with its hint. *)
-  here = if value.IsMissing(state.Prompt) and state.Message == "" and not filtering marksAt(b.Cursor.Line, b) else [] end
+  (* With nothing else to say, the line tells the mark under the cursor, or else the first one of its line, with its hint. *)
+  here = if value.IsMissing(state.Prompt) and state.Message == "" and not filtering underCursor(b) else [] end
   words = if not value.IsMissing(state.Prompt) "$(state.Prompt.Label)$(state.Prompt.Answer)" else if filtering "$(lists.LabelOf(lists.Of(b)))$(lists.Of(b).Filter)" else if value.Len(here) > 0 markText(here[1]) else state.Message end
   bar = if value.IsMissing(state.Prompt) and not filtering [] else [rectCommand(rect.X + 12 + look.Width(words, "body"), y, 2, look.Height, th.Bright)] end
   list.Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, if value.Len(here) > 0 markColor(here[1]) else th.Ink end)], bar)
+end
+
+defn underCursor(b)
+  (** The marks for the prompt line: those under the cursor, from the start of their span to just after it, or else those of the cursor's line, the errors
+      first. A span takes at least one character. *)
+  marks = marksAt(b.Cursor.Line, b)
+  c = b.Cursor.Column
+  under = [m for m in marks if m.Column <= c and c <= list.Max(m.End, m.Column + 1)]
+  if value.Len(under) == 0 marks else under end
 end
 
 (** The words of a mark on the prompt line: its message, then its hint. *)
