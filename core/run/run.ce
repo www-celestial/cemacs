@@ -178,6 +178,19 @@ defn Kill(r)
   r
 end
 
+defn Finish(seconds, r)
+  (** The run after asking its program to end and waiting for it up to seconds, with what it wrote meanwhile: Ended once it has. A run without a
+      program has nothing to wait for. *)
+  out = Drain(Kill(r))
+  waited = 0.0
+  while not out.Ended and not value.IsMissing(out.Inbox) and waited < seconds
+    sys.Sleep(0.01)
+    waited = waited + 0.01
+    out = Drain(out)
+  end
+  out
+end
+
 (** The answer of the eval run from a line of a file, or missing.
 
       ValueAt("a.ce", 3, Empty()) --> missing *)

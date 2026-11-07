@@ -497,18 +497,26 @@ defn withRun(r, state)
   s
 end
 
+(* The seconds that a new run waits for the program that runs to end. *)
+endWait = 2.0
+
 defn started(debug, state)
-  (** The state with the file of the current buffer run, as saved, with the debugger of Cemacs or without it. *)
+  (** The state with the file of the current buffer run, as saved, with the debugger of Cemacs or without it. A program that runs is stopped first, and the
+      new one starts once it has ended, so that a server gives back its port. *)
   b = current(state)
+  if value.IsMissing(b.Path)
+    return say("This buffer has no file to run: save it first.", state)
+  end
+  s = state
   if running(state)
-    say("A program runs: C-c c k stops it.", state)
-  else if value.IsMissing(b.Path)
-    say("This buffer has no file to run: save it first.", state)
-  else
-    match run.Start(Home(state), b.Path, view.BreaksOf(state), debug)
-      result.Ok(r) -> say(if text.IsModified(b) "Running $(b.Path) as saved, without the changes here." else "Running $(b.Path)." end, withRun(r, state))
-      result.Err(e) -> say("$(b.Path) doesn't run: $e", state)
+    s = withRun(run.Finish(endWait, state.Run), state)
+    if not s.Run.Ended
+      return say("The program that runs doesn't end: C-c c k asks it again.", s)
     end
+  end
+  match run.Start(Home(s), b.Path, view.BreaksOf(s), debug)
+    result.Ok(r) -> say(if text.IsModified(b) "Running $(b.Path) as saved, without the changes here." else "Running $(b.Path)." end, withRun(r, s))
+    result.Err(e) -> say("$(b.Path) doesn't run: $e", s)
   end
 end
 
