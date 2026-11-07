@@ -1,7 +1,7 @@
 # First steps
 
 In this chapter you install Cemacs, open a file, and learn the few keys that get you going. Then you write Cesia in it: the
-errors show in the lines, a key runs the file, and another runs it under the debugger. Last, you change Cemacs itself.
+errors show in the lines, a key runs the file with the permissions of its project, and another runs it under the debugger. Last, you change Cemacs itself.
 
 ## Getting Cemacs
 
@@ -99,7 +99,7 @@ a second: a band at the bottom shows each group. Press a group's letter and wait
 | `C-c f`, files | `f` open, `s` save, `d` the folder, `c` the settings of Cemacs |
 | `C-c b`, buffers | `b` the list, `n` the next one, `k` close |
 | `C-c w`, windows | `s` split below, `v` split to the right, `o` the next pane, `d` close it, `m` keep only this one |
-| `C-c c`, code | `r` run the file, `k` stop it, `o` its output, `n` and `p` the next and the previous error |
+| `C-c c`, code | `r` run the file, `k` stop it, `o` its output, `h` hide or show the pane of the output, `n` and `p` the next and the previous error |
 | `C-c d`, debug | `r` run under the debugger, `b` a breakpoint, `e` evaluate, `c` continue, `n` next, `s` step, `u` out |
 | `C-c q`, quit | `q` quit |
 
@@ -116,8 +116,8 @@ Cemacs colours Cesia's code with `std/syntax`, as Cesia's own book does.
 
 Cemacs checks a Cesia file while you write it, as `cesia check` does, without running it. Half a second after your last
 key, and at each save, it reads the buffer, even before it is saved. An error is underlined in red, a warning in amber,
-their line number takes the same colour, and the words of the message show at the end of the line. The mode line counts
-them.
+their line number takes the same colour, and the words of the message show at the end of the line. The line under the
+panes tells the error under the cursor, with its hint: the one that says how to fix it. The mode line counts them.
 
 | Keys | What they do |
 |---|---|
@@ -130,23 +130,38 @@ each kind, in its chapter on errors.
 ### Running a file
 
 `C-c c r` runs the file of the current buffer, as saved, as `cesia run` would, and as fast. What it prints shows in a pane
-below the others. `C-c c o` hides or shows that pane, and `C-c c k` stops a program that keeps running, as a server.
+below the others, as it comes, its errors too; the first line is the command that runs it. `C-c c k` stops a program that
+keeps running, as a server, and `C-c c r` again stops it and runs the file anew. `C-c c h` hides or shows the pane.
 
-The program runs with no permission, as `cesia run file.ce` does: it computes and prints. A program that reads files or
-listens on a port runs in a terminal, with its `--allow`, or as a task of its `cesia.toml`.
+`C-c c o` opens the whole output as a list, on its last error. Typing filters it, and Enter on a line that names a place
+goes there: an error of Cesia starts with its file, line and column, as `src/main.ce:4:11:`, and each call under it ends
+with its file and line.
+
+### Permissions
+
+A program runs with no permission, as `cesia run file.ce` does: it computes and prints. A program that reads a file stops,
+and the output says which permission it lacks. Permissions are written once, in a task of `cesia.toml`, as Cesia's book
+shows in its chapter on permissions:
+
+```toml
+[tasks.serve]
+file = "src/server.ce"
+allow = ["read=data", "net=:8080"]
+```
+
+When the `cesia.toml` of the folder where you started Cemacs has a task whose `file` is the current file, `C-c c r` runs
+that task, as `cesia do serve` does: with its permissions, and the tasks it `needs` first. The first line of the output shows
+the command, with its `--allow`.
 
 ### Seeing changes live
 
-To see a program change while you write it, keep a terminal beside Cemacs with `--watch`. Cesia loads your changes each
-time you save, and a program that has ended runs again:
-
-```bash
-cesia run --watch notes.ce
-```
+Add `watch = true` to the task, and `C-c c r` runs it under `--watch`: each save loads your changes into the program that
+runs, without stopping it, and a program that has ended runs again.
 
 ## Debugging
 
-`C-c d r` runs the file under the debugger. It runs as fast as without it until it reaches a breakpoint.
+`C-c d r` runs the file under the debugger. It runs as fast as without it until it reaches a breakpoint. It runs with no
+permission, even when a task runs the file: `cesia do` can't start a debugger yet.
 
 - `C-c d b` puts a breakpoint on the line of the cursor, a dot in the margin, or takes it away. A program that runs takes it
   at once.
