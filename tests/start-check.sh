@@ -16,7 +16,7 @@ trap 'rm -f "$output"' EXIT
 started() {
   SDL_VIDEODRIVER=dummy timeout -s TERM -k 1 0.5 "$@" > "$output" 2>&1
   local status=$?
-  if [ "$status" -ne 124 ] || ! grep -qxF 'Ok(Value = missing)' "$output" || grep -qv -e '^> ' -e '^Ok(Value = missing)$' -e '^$' "$output"; then
+  if [ "$status" -ne 124 ] || ! grep -qxF 'Ok(missing)' "$output" || grep -qv -e '^> ' -e '^Ok(missing)$' -e '^$' "$output"; then
     printf 'FAILED: %s\nexit %s\n' "$*" "$status"
     head -c 2000 "$output"
     exit 1
