@@ -1,0 +1,82 @@
+(** The output of the last run as a list: all the lines the run keeps, which grow as the program writes, and typing filters. Enter on a line that names a
+    place of a file goes there: path:line:column at the start of an error of Cesia, or (path:line) at the end of a call under it. The list opens on the
+    last error, and the pane below the others still shows the last lines. *)
+use core/commands
+use core/files
+use core/lists
+use core/run
+use core/text
+use std/list
+use std/regex
+use std/sys
+use std/text as str
+use std/value
+
+(** The keys that work everywhere: C-c c o in the group of the code, and C-c C-o beside C-c C-c and C-c C-k. *)
+Keys() = {"C-c c o": ShowOutput, "C-c C-o": ShowOutput}
+
+Here() = {"enter": Visit}   (** The keys of the list. Letters filter it, and the ListKeys of the config take the filter back. *)
+
+(** What starts an error of Cesia: its path, line and column. A function, so that a reload under --watch reads it at once. *)
+errorStart() = "^([^ :][^:]*):([0-9]+):([0-9]+): "
+
+defn PlaceIn(line)
+  (** The place of a file that a line of output names, {Path, Line, Column} with columns from 1, or missing. The calls under an error name a line only.
+
+        PlaceIn("src/a.ce:4:11: Index 5 is outside this array of 2 elements.") --> {Path: "src/a.ce", Line: 4, Column: 11}
+        PlaceIn("  called from f (a.ce:3)") --> {Path: "a.ce", Line: 3, Column: 1}
+        PlaceIn("> cesia run a.ce") --> missing *)
+  error = regex.Find(errorStart(), line)
+  if not value.IsMissing(error)
+    return {Path: error.Groups[1], Line: str.Number(error.Groups[2]), Column: str.Number(error.Groups[3])}
+  end
+  call = regex.Find("\\(([^() :][^():]*):([0-9]+)\\)$", line)
+  if value.IsMissing(call) missing else {Path: call.Groups[1], Line: str.Number(call.Groups[2]), Column: 1} end
+end
+
+defn Rows(state)
+  (** One row for each line of the output, standing for its number. *)
+  lines = run.Lines(state.Run)
+  [{Words: lines[k], Item: k} for k in 1..value.Len(lines)]
+end
+
+defn lastError(lines)
+  (** The line of the last error, path:line:column, or else the last line. *)
+  k = value.Len(lines)
+  while k > 0
+    if not value.IsMissing(regex.Find(errorStart(), lines[k]))
+      return k
+    end
+    k = k - 1
+  end
+  list.Max(1, value.Len(lines))
+end
+
+defn ShowOutput(state)
+  (** Opens the output of the last run as a list, on its last error. *)
+  if value.IsMissing(state.Run)
+    return commands.Say("There is no output yet: C-c c r runs the file.", state)
+  end
+  s = commands.ShowList("Output", Rows, Here, state)
+  s.Buffers[s.Current] = text.Place(lastError(run.Lines(state.Run)), 0, s.Buffers[s.Current])
+  s
+end
+
+defn Visit(k, state)
+  (** Goes to the place that line k of the output names, and the list closes. A line that names none, or a file that isn't there, is a message. *)
+  lines = run.Lines(state.Run)
+  place = if k <= value.Len(lines) PlaceIn(lines[k]) else missing end
+  if value.IsMissing(place)
+    return commands.Say("This line names no place of a file.", state)
+  end
+  if not sys.Exists(place.Path)
+    return commands.Say("$(place.Path) isn't there.", state)
+  end
+  s = commands.OpenFile(place.Path, commands.ToBuffer(lists.Of(state.Buffers[state.Current]).Back, state))
+  b = s.Buffers[s.Current]
+  if value.IsMissing(b.Path) or files.Normal(b.Path) != files.Normal(place.Path)
+    return s
+  end
+  s.Buffers[s.Current] = text.Place(place.Line, place.Column - 1, b)
+  s
+end

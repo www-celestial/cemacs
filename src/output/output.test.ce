@@ -1,0 +1,52 @@
+(** Tests of the output list: run with cesia test . The places are in this file, so that Enter has a file to open. *)
+use src/emacs
+use src/output
+use core/commands
+use core/press
+use core/run
+use core/text
+use core/view
+use src/rope
+use src/ui
+use std/dict
+use std/text as str
+use std/value
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+(** The Emacs keys with the keys of this app, as src/cemacs.ce merges them. *)
+withApp() = emacs.Config(() -> dict.Merge(emacs.Keys(), output.Keys()))
+here(state) = state.Buffers[state.Current]
+wordsOf(state) = rope.Text(here(state).Rope)
+
+(** What a run wrote: a line, an error with its place, the call under it, and a place of a file that isn't there. *)
+written = "hello\nsrc/output/output.test.ce:3:5: boom\n  in F (src/output/output.test.ce:2)\nnope.ce:1:1: gone\n"
+
+defn ran()
+  (** A state on a file, after a run that wrote the lines above. *)
+  s = view.Start([text.Of("x", "a.ce")], look, cell, 800, 600)
+  s.Config = withApp
+  s.Run = run.Read(written, run.Empty())
+  s
+end
+played(items) = press.Press(items, ran())
+
+isKeyBound() = output.Keys()["C-c c o"] == output.ShowOutput
+isNoOutputYet() = output.ShowOutput(view.Start([text.Of("x", "a.ce")], look, cell, 800, 600)).Message == "There is no output yet: C-c c r runs the file."
+isListOfLines() = wordsOf(played(["C-c", "c", "o"])) == "hello\nsrc/output/output.test.ce:3:5: boom\n  in F (src/output/output.test.ce:2)\nnope.ce:1:1: gone" and view.BufferName(here(played(["C-c", "c", "o"]))) == "Output"
+isOnLastError() = here(played(["C-c", "c", "o"])).Cursor.Line == 4
+defn isEnterGoesToError()
+  (** Enter on an error opens its file, on its line and column, and the list closes. *)
+  s = played(["C-c", "c", "o", "C-p", "C-p", "enter"])
+  here(s).Path == "src/output/output.test.ce" and here(s).Cursor == {Line: 3, Column: 4} and value.Len(s.Buffers) == 2
+end
+isEnterGoesToCall() = here(played(["C-c", "c", "o", "C-p", "enter"])).Cursor == {Line: 2, Column: 0}
+isFilterThenEnter() = here(played(["C-c", "c", "o", "in F", "enter"])).Cursor.Line == 2
+isNoPlaceSaid() = played(["C-c", "c", "o", "M-<", "enter"]).Message == "This line names no place of a file." and view.BufferName(here(played(["C-c", "c", "o", "M-<", "enter"]))) == "Output"
+isFileNotThereSaid() = played(["C-c", "c", "o", "enter"]).Message == "nope.ce isn't there."
+defn isListGrows()
+  (** What the program writes after the list opened shows in it at the next tick. *)
+  s = played(["C-c", "c", "o"])
+  s.Run = run.Read("more\n", s.Run)
+  str.EndsWith("gone\nmore", wordsOf(commands.Update({Kind: "tick", Seconds: 0.01}, s)))
+end

@@ -530,7 +530,7 @@ DebugRun(state) = started(true, state)
 Stop(state) = if running(state) say("Stopping the program.", withRun(run.Kill(state.Run), state)) else say("No program is running.", state) end
 
 defn ToggleOutput(state)
-  (** Shows or hides the output of the last program run. *)
+  (** Hides or shows the pane below the others, where the output of the last run shows. *)
   if value.IsMissing(state.Run)
     return say("There is no output yet: C-c c r runs the file.", state)
   end

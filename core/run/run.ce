@@ -191,6 +191,11 @@ defn Finish(seconds, r)
   out
 end
 
+(** The lines of output a run keeps, with the last one, not yet ended.
+
+      Lines(Read("a\nb", Empty())) --> ["a", "b"] *)
+Lines(r) = if r.Partial == "" r.Output else list.Append(r.Partial, r.Output) end
+
 (** The answer of the eval run from a line of a file, or missing.
 
       ValueAt("a.ce", 3, Empty()) --> missing *)

@@ -44,6 +44,15 @@ defn isFollowScrollsDown()
   f.Top <= 50 and 50 < f.Top + 10 and f.Colors.Known >= 50
 end
 
+defn isFollowSkipsColorsOfList()
+  (** A list draws its rows with their parts: following its cursor reads no color, as the rows of an output change at each tick. *)
+  b = text.Of(manyLines(100), missing)
+  b.List = {Name: "Output"}
+  b.Cursor = {Line: 50, Column: 0}
+  f = view.Follow(10, 80, b)
+  f.Top <= 50 and 50 < f.Top + 10 and f.Colors.Known == b.Colors.Known
+end
+
 defn isFollowKeepsTop()
   b = text.Of(manyLines(100), "a.ce")
   b.Cursor = {Line: 3, Column: 2}
@@ -421,7 +430,7 @@ end
 isValueAfterLine() = not value.IsMissing(list.IndexOf("= 42", textsOf(view.View(ranOn("x = 1\ny = 2\n")))))   (** The answer, grey, after line 1. *)
 isVariablesShown() = not value.IsMissing(list.IndexOf("i = 4", textsOf(view.View(ranOn("x = 1\ny = 2\n")))))   (** The pane lists the variables at a stop. *)
 isBreakDotDrawn() = value.Len(list.Filter(c -> c.Kind == "box" and c.Color == 0xE06C75, view.View(ranOn("x = 1\ny = 2\n")))) == 1   (** One dot, on line 2. *)
-isOutputHidden() = not view.ShowsOutput(hidden(ranOn("x")))   (** C-c c o hides the pane. *)
+isOutputHidden() = not view.ShowsOutput(hidden(ranOn("x")))   (** C-c c h hides the pane. *)
 
 defn hidden(state)
   (** The state with its output hidden. *)

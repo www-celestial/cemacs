@@ -42,7 +42,7 @@ Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pendi
   Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: "", Config: missing, Home: ".", Second: false,
   Panes: panes.One(1), Pane: 1, Waited: 0.0, Hints: [], Chords: ""}
 
-(** Is the output of a program shown below the panes? Once a program ran, until C-c d o hides it. *)
+(** Is the output of a program shown below the panes? Once a program ran, until C-c c h hides it. *)
 ShowsOutput(state) = not value.IsMissing(state.Run) and state.Run.Shown
 
 defn BreaksOf(state)
@@ -135,7 +135,8 @@ BufferName(b) = bufferName(b)
 label(b) = if text.IsModified(b) "$(bufferName(b)) *" else bufferName(b) end
 
 defn Follow(rows, columns, b)
-  (** A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, and whose colors are known up to the last line on the screen.
+  (** A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, and whose colors are known up to the last line on the screen,
+      but for a list.
       It is the only place that moves the screen: view only reads. A buffer that is free, after the wheel, keeps its top and left: the cursor may be off the screen.
 
         Follow(2, 10, {Rope: rope.Of("a\nb\nc"), Cursor: {Line: 3, Column: 0}, Top: 1, Left: 0, Free: false, Colors: color.BlankColors()}).Top --> 2 *)
@@ -165,7 +166,8 @@ defn Follow(rows, columns, b)
   out = b
   out.Top = top
   out.Left = left
-  out.Colors = color.ColoredTo(lastLine, n -> rope.Line(n, b.Rope), b.Colors)
+  (* A list draws its rows with their own parts, so its colors would be read for nothing: the rows of a growing output change at each tick. *)
+  out.Colors = if lists.IsList(b) b.Colors else color.ColoredTo(lastLine, n -> rope.Line(n, b.Rope), b.Colors) end
   out
 end
 
@@ -523,10 +525,8 @@ defn outputLines(r)
   if not value.IsMissing(r.Stop)
     error = if r.Stop.Error == "" [] else [r.Stop.Error] end
     list.Concat(error, list.Map(v -> "$(v.Name) = $(v.Value)", r.Stop.Vars))
-  else if r.Partial != ""
-    list.Append(r.Partial, r.Output)
   else
-    r.Output
+    run.Lines(r)
   end
 end
 

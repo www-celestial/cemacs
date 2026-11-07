@@ -524,7 +524,7 @@ isCancelInPair() = keys.Lookup("C-x", "C-g", global()) == {Command: commands.Can
 isArrowBound() = keys.Lookup("", "S-right", global()) == {Command: commands.SelectForwardChar}
 isChordThenBound() = keys.Lookup("", keys.Chord(keyWith("<", false, true, true)), global()) == {Command: commands.FileStart}
 isAliasesBound() = keys.Lookup("", "M-S-,", global()) == {Command: commands.FileStart} and keys.Lookup("", "C-S-/", global()) == {Command: commands.Redo}
-isEveryPairBound() = global()["C-c C-c"] == commands.Run and global()["C-c C-k"] == commands.Stop and global()["C-c C-o"] == commands.ToggleOutput and global()["C-x C-s"] == commands.Save and global()["C-x C-f"] == commands.FindFile and global()["C-x b"] == commands.NextBuffer and global()["C-x k"] == commands.CloseBuffer and global()["C-x C-c"] == commands.Quit
+isEveryPairBound() = global()["C-c C-c"] == commands.Run and global()["C-c C-k"] == commands.Stop and global()["C-c c h"] == commands.ToggleOutput and global()["C-x C-s"] == commands.Save and global()["C-x C-f"] == commands.FindFile and global()["C-x b"] == commands.NextBuffer and global()["C-x k"] == commands.CloseBuffer and global()["C-x C-c"] == commands.Quit
 isFirstKeysFromBindings() = keys.Lookup("", "C-x", global()) == {Pending: "C-x"} and keys.Lookup("", "C-c", global()) == {Pending: "C-c"}
 
 (** A binding can be any function: a state after a chord, with bindings of the test. *)
@@ -767,5 +767,5 @@ isBreakCleared() = value.Len(view.BreaksOf(press.Press(["C-c", "d", "b", "C-c", 
 isBreakNeedsFile() = value.Len(view.BreaksOf(press.Press(["C-c", "d", "b"], stateOf("x")))) == 0   (** A buffer without a file has none. *)
 isEvalNeedsRun() = str.StartsWith("No program runs under the debugger", press.Press(["C-c", "d", "e"], inFile("1 + 1")).Message)   (** C-c d e without a program says so. *)
 isContinueNeedsStop() = press.Press(["C-c", "d", "c"], inFile("1")).Message == "The program isn't stopped."   (** Nothing to go on from. *)
-isNoOutputYet() = str.StartsWith("There is no output", press.Press(["C-c", "c", "o"], inFile("1")).Message)   (** C-c c o before any run. *)
+isNoOutputYet() = str.StartsWith("There is no output", press.Press(["C-c", "c", "h"], inFile("1")).Message)   (** C-c c h before any run. *)
 isRunNeedsFile() = str.StartsWith("This buffer has no file", press.Press(["C-c", "c", "r"], stateOf("1")).Message)   (** A buffer never saved can't run. *)
