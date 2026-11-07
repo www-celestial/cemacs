@@ -24,7 +24,7 @@ jobs:
     outputs:
       built: ${{ steps.site.outputs.built }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Cesia nightly
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,7 +51,7 @@ jobs:
       - name: Only the pages
         if: env.NO_CESIA != '1'
         run: rm -rf _site/.run _site/.pages _site/.reference _site/.book
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: env.NO_CESIA != '1'
         with:
           path: _site
@@ -68,4 +68,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

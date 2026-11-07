@@ -15,7 +15,7 @@ jobs:
         cesia: [stable, nightly]
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Cesia ${{ matrix.cesia }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,7 +41,7 @@ jobs:
       # Cesia no longer ships SDL: built here once, kept in the cache while tools/sdl-libs.sh stays the same.
       - name: SDL3 and SDL3_ttf, cached
         if: env.NO_CESIA != '1'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .sdl
           key: sdl-${{ hashFiles('tools/sdl-libs.sh') }}
