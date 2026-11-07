@@ -1,4 +1,4 @@
 drawn
 This text has a zero byte, which C would read as its end.
-Ok(Value = missing)
+Ok(missing)
 exit 0

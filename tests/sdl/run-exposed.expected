@@ -3,5 +3,5 @@ view
 exposed
 view
 quit
-Ok(Value = "ran")
+Ok("ran")
 exit 0

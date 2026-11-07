@@ -11,5 +11,5 @@
 {Kind: "resize", Width: 640, Height: 480}
 {Kind: "quit"}
 []
-Ok(Value = missing)
+Ok(missing)
 exit 0

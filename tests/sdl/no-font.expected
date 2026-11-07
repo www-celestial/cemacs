@@ -1,2 +1,2 @@
-Err(Error = "sdl")
+Err("sdl")
 exit 0

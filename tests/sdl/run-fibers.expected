@@ -1,4 +1,4 @@
 the worker ran
 state
-Ok(Value = missing)
+Ok(missing)
 exit 0
