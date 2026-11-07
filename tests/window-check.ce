@@ -1,7 +1,7 @@
 (** Checks of the editor in a window, under SDL_VIDEODRIVER=dummy, with events pushed to SDL as the keyboard and the mouse would send them.
-    Run it from the root of cemacs:
-      SDL_VIDEODRIVER=dummy cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/window-check.ce
-    It prints ok at the end and stops at the first failure. *)
+    It is a script, not a test file: it needs permissions and a window. Run it from the root of cemacs with
+    SDL_VIDEODRIVER=dummy cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/window-check.ce. It prints ok
+    at the end and stops at the first failure. *)
 use std/c
 use src/emacs
 use src/rope
