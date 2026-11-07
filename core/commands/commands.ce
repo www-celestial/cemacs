@@ -15,6 +15,7 @@ use std/dict
 use std/list
 use std/math
 use std/result
+use std/sys
 use std/value
 
 current(state) = state.Buffers[state.Current]   (** The buffer being edited. *)
@@ -514,13 +515,24 @@ defn started(debug, state)
       return say("The program that runs doesn't end: C-c c k asks it again.", s)
     end
   end
-  match run.Start(Home(s), b.Path, view.BreaksOf(s), debug)
-    result.Ok(r) -> say(if text.IsModified(b) "Running $(b.Path) as saved, without the changes here." else "Running $(b.Path)." end, withRun(r, s))
+  task = if debug missing else taskOf(b.Path) end
+  how = if value.IsMissing(task) "" else " as the task $task" end
+  match run.Start(Home(s), b.Path, view.BreaksOf(s), debug, task = task)
+    result.Ok(r) -> say(if text.IsModified(b) "Running $(b.Path)$how as saved, without the changes here." else "Running $(b.Path)$how." end, withRun(r, s))
     result.Err(e) -> say("$(b.Path) doesn't run: $e", s)
   end
 end
 
-(** Runs the file of the current buffer, as saved, as fast as cesia run does: its output shows below the panes. *)
+defn taskOf(path)
+  (** The task of the cesia.toml of the folder where the editor started that runs the file at path, or missing: cesia do runs it from there. *)
+  match files.ReadFile("cesia.toml")
+    result.Ok(read) -> if read.Words == "" missing else run.TaskFor(read.Words, path, sys.Env("PWD")) end
+    result.Err(e) -> missing
+  end
+end
+
+(** Runs the file of the current buffer, as saved, as fast as cesia run does: as the task of cesia.toml that runs it, with the permissions it gives, or else
+    with none. Its output shows below the panes. *)
 Run(state) = started(false, state)
 
 (** Runs the file of the current buffer, as saved, under the debugger of Cemacs: it stops at the breakpoints, and C-c d e runs code in it. *)

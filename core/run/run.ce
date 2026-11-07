@@ -5,6 +5,8 @@
     Line, Reason, Error and Vars, or missing while it runs; Values, the answers to the evals, under the path and line they
     came from; Asked, the place of each eval not yet answered; Next, the number of the next one; Shown, whether the output
     pane shows; Ended; Debug, whether it runs under the debugger. Start, Send and Drain touch the program; the rest is pure. *)
+use core/files
+use std/cesia
 use std/dict
 use std/fiber
 use std/json
@@ -45,13 +47,18 @@ defn Send(command, r)
   r
 end
 
-defn Start(home, path, breaks, debug)
+defn Start(home, path, breaks, debug, task = missing)
   (** Starts the program of a file: an Ok of its run, or an Err. With debug true, it runs under the debugger of Cemacs,
       in its home, with breakpoints, each a Path and a Line: it stops before its first line, takes the breakpoints and
-      goes on. Else it runs as cesia run runs it, as fast, and only its output comes. *)
-  args = if debug ["run", "--debugger", "$home/tools/debugger.ce", path] else ["run", path] end
+      goes on. Else it runs as cesia run runs it, as fast, and only its output comes: as the task of cesia.toml named,
+      with its permissions, if one is, through cesia do, which writes its command first. The command of any other run is
+      the first line of its output, so that the permissions it has show. *)
+  args = if debug ["run", "--debugger", "$home/tools/debugger.ce", path] else if value.IsMissing(task) ["run", path] else ["do", task] end
   p = sys.Start("cesia", args)?
   r = Empty()
+  if value.IsMissing(task) or debug
+    r = printed("> cesia $(str.Join(" ", args))", r)
+  end
   r.Process = p
   r.Debug = debug
   r.Inbox = fiber.Channel()
@@ -61,6 +68,32 @@ defn Start(home, path, breaks, debug)
     r = Send({Do: "break", File: b.Path, Line: b.Line}, r)
   end
   result.Ok(Send({Do: "continue"}, r))
+end
+
+(** A path from the root of the files, from the folder pwd for a relative one, or as it is without pwd. *)
+absolute(path, pwd) = files.Normal(if str.StartsWith("/", path) or value.IsMissing(pwd) path else "$pwd/$path" end)
+
+defn TaskFor(toml, path, pwd)
+  (** The name of the first task of a cesia.toml, given as its text, whose file is the one at path, or missing: both are read from the folder pwd, where
+      the editor started and cesia do runs. A text that isn't the TOML of Cesia has no task.
+
+        TaskFor("[tasks.serve]\nfile = \"src/a.ce\"\n", "/p/src/a.ce", "/p") --> "serve"
+        TaskFor("[tasks.all]\nfile = \".\"\n", "a.ce", "/p") --> missing *)
+  tables = cesia.Toml(toml)
+  if result.IsErr(tables)
+    return missing
+  end
+  wanted = absolute(path, pwd)
+  for t in tables.Value
+    if value.Len(t.Path) == 2 and t.Path[1] == "tasks"
+      for e in t.Entries
+        if e.Key == "file" and value.IsText(e.Value) and e.Value != "." and absolute(e.Value, pwd) == wanted
+          return t.Path[2]
+        end
+      end
+    end
+  end
+  missing
 end
 
 (** The key of a place in Values: the path and the line.

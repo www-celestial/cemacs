@@ -29,3 +29,10 @@ end
 isResumeClears() = value.IsMissing(run.Resume("continue", run.Read(stopLine, run.Empty())).Stop)   (** Continue ends the stop. *)
 isEndedSaid() = run.Ended(1, run.Empty()).Ended   (** A program that ended. *)
 use std/value
+
+(* The task of cesia.toml that runs a file. *)
+tasks = "[project]\nname = \"p\"\n\n[tasks.test]\nrun = [\"tests/run.sh\"]\n\n[tasks.serve]\nfile = \"./src/a.ce\"\nallow = [\"read\"]\n\n[tasks.again]\nfile = \"src/a.ce\"\n"
+isTaskOfRelativePath() = run.TaskFor(tasks, "src/a.ce", "/p") == "serve"   (** The first task that runs the file, ./ or not. *)
+isTaskOfAbsolutePath() = run.TaskFor(tasks, "/p/src/a.ce", "/p") == "serve"   (** A path from the root names the same file. *)
+isNoTaskElsewhere() = value.IsMissing(run.TaskFor(tasks, "/q/src/a.ce", "/p")) and value.IsMissing(run.TaskFor(tasks, "src/b.ce", "/p"))   (** Another file has none. *)
+isNoTaskInBadToml() = value.IsMissing(run.TaskFor("[tasks.serve\nfile = \"src/a.ce\"", "src/a.ce", "/p"))   (** A text that isn't TOML has none. *)

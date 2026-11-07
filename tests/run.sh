@@ -13,7 +13,12 @@ tests/sdl/run.sh
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo tests/files-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo tests/commands-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia tests/check-check.ce
-timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm tests/run-check.ce
+timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm,env=PWD tests/run-check.ce
+# C-c c r in a project of its own, made in a new folder, where cesia do finds its cesia.toml.
+root="$PWD"
+project=$(mktemp -d)
+(cd "$project" && timeout -s KILL 60 cesia run --allow read,write,exec=cesia,env=PWD "$root/tests/task-check.ce")
+rm -rf "$project"
 trash=$(mktemp -d)
 XDG_DATA_HOME="$trash" timeout -s KILL 60 cesia run --allow read,write,env=HOME,env=PWD,env=XDG_DATA_HOME tests/folders-check.ce
 rm -rf "$trash"

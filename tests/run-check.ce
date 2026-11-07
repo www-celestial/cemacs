@@ -1,6 +1,6 @@
 (** Checks of a program run under the debugger of Cemacs, as C-c d r runs it, and of a plain run, as C-c c r runs it, against a real program in a new folder under /tmp: its output, a stop
     at a breakpoint with its variables, an eval at the stop and one while it runs, the line of the stop, the end, and a run that ends the one before. It is a script, not
-    a test file: it needs permissions. Run it from the root of cemacs with cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm tests/run-check.ce. It prints ok at the
+    a test file: it needs permissions. Run it from the root of cemacs with cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm,env=PWD tests/run-check.ce. It prints ok at the
     end and stops at the first failure. *)
 use core/commands
 use core/run

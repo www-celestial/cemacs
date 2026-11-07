@@ -1,0 +1,63 @@
+(** Checks of C-c c r in a project, against real programs: a file that a task of cesia.toml runs has the permissions of the task, through cesia do, and
+    any other file has none, so that what it may not do stops it with the words of Cesia, whose place the output list goes to. It is a script, not a
+    test file: it writes a project in the folder it runs in, which must be an empty one, and it needs permissions. tests/run.sh runs it from a new
+    folder: cesia run --allow read,write,exec=cesia,env=PWD ROOT/tests/task-check.ce. It prints ok at the end and stops at the first failure. *)
+use src/output
+use core/commands
+use core/text
+use core/view
+use src/ui
+use std/bug
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+defn ended(state)
+  (** The state once its program has ended, read as the ticks of the editor read it, or a failure after ten seconds. *)
+  s = state
+  waited = 0.0
+  while not s.Run.Ended
+    check(waited < 10.0, "the program never ended: $(s.Run.Output)")
+    sys.Sleep(0.01)
+    waited = waited + 0.01
+    s = commands.Update({Kind: "tick", Seconds: 0.01}, s)
+  end
+  s
+end
+
+(** A state on a buffer of a file, as the editor has it. *)
+on(path) = view.Start([text.Of(result.Unwrap(sys.Read(path)), path)], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)
+
+reads(name) = "use std/io\nuse std/result\nuse std/sys\nio.Print(\"read:\", result.IsOk(sys.Read(\"$name\")))\n"   (** A program that reads its file. *)
+
+_ = result.Unwrap(sys.Write("cesia.toml", "[project]\nname = \"t\"\ncesia = \"1.0\"\n\n[tasks.reads]\nfile = \"reads.ce\"\nallow = [\"read=reads.ce\"]\n"))
+_ = result.Unwrap(sys.Write("reads.ce", reads("reads.ce")))
+_ = result.Unwrap(sys.Write("plain.ce", reads("plain.ce")))
+
+task = commands.Run(on("reads.ce"))
+check(task.Message == "Running reads.ce as the task reads.", "the task runs the file: $(task.Message)")
+done = ended(task)
+check(list.IndexOf("> cesia run --allow read=reads.ce reads.ce", done.Run.Output) != missing, "cesia do writes the command of the task: $(done.Run.Output)")
+check(list.IndexOf("read: true", done.Run.Output) != missing and done.Run.Status == "ended, code 0", "the task gives its permission: $(done.Run.Output)")
+check(ended(commands.Run(on("$(sys.Env("PWD"))/reads.ce"))).Run.Status == "ended, code 0", "a path from the root names the file of the task too")
+
+plain = commands.Run(on("plain.ce"))
+check(plain.Message == "Running plain.ce.", "a file of no task runs alone: $(plain.Message)")
+refused = ended(plain)
+check(refused.Run.Output[1] == "> cesia run plain.ce", "the command shows that it has no permission: $(refused.Run.Output)")
+check(list.Any(list.Map(line -> str.StartsWith("plain.ce:4:", line) and str.Contains("denied", line), refused.Run.Output)), "Cesia says what it may not do: $(refused.Run.Output)")
+check(list.Any(list.Map(line -> str.Contains("--allow read=plain.ce", line), refused.Run.Output)), "and how to allow it")
+listed = output.ShowOutput(refused)
+there = output.Visit(listed.Buffers[listed.Current].Cursor.Line, listed)
+check(there.Buffers[there.Current].Path == "plain.ce" and there.Buffers[there.Current].Cursor.Line == 4, "the output list goes to the line that was refused")
+io.Print("ok")
