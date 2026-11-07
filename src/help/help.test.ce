@@ -32,6 +32,7 @@ listed() = updated(question, press.Press(["C-x"], twoFiles()))   (** C-x then ?,
 isEveryPairHasHelp() = dict.Has("C-x ?", help.WithHelp(emacs.Keys())) and dict.Has("C-c ?", help.WithHelp(emacs.Keys())) and not dict.Has("C-f ?", help.WithHelp(emacs.Keys()))
 isListNamedByThePair() = view.BufferName(here(listed())) == "C-x ?"
 isListHasThePairs() = str.Contains("C-x C-s", wordsOf(listed())) and str.Contains("Save", wordsOf(listed())) and not str.Contains("C-c c", wordsOf(listed()))
+isListNamesWithoutPackage() = not str.Contains("commands.Save", wordsOf(listed()))   (** As the hint band: Save, not commands.Save, which cesia doc shows. *)
 isHelpNotListed() = not str.Contains("C-x ?", wordsOf(listed()))
 isEnterRunsTheKey() = press.Press(["nextbuf", "enter"], listed()).Current == 2
 

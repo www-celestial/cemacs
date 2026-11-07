@@ -2,6 +2,7 @@
     Typing filters them, and enter runs the one under the cursor. *)
 use core/color
 use core/commands
+use core/keys
 use core/lists
 use std/text as str
 use std/cesia
@@ -9,11 +10,11 @@ use std/dict
 use std/list
 use std/value
 
-defn WithHelp(keys)
-  (** The keys, with ? after the first keys of every pair or group, which lists what follows them: C-x ? for C-x, C-c f ? for C-c f. src/cemacs.ce gives it
+defn WithHelp(bindings)
+  (** The bindings, with ? after the first keys of every pair or group, which lists what follows them: C-x ? for C-x, C-c f ? for C-c f. src/cemacs.ce gives it
       every key of the editor. *)
-  firsts = list.Unique(list.FlatMap(prefixes, list.Filter(k -> str.Contains(" ", k), dict.Keys(keys))))
-  dict.Merge(keys, dict.Dict([{Key: "$first ?", Value: ShowKeys} for first in firsts]))
+  firsts = list.Unique(list.FlatMap(prefixes, list.Filter(k -> str.Contains(" ", k), dict.Keys(bindings))))
+  dict.Merge(bindings, dict.Dict([{Key: "$first ?", Value: ShowKeys} for first in firsts]))
 end
 
 defn prefixes(k)
@@ -29,15 +30,15 @@ defn ShowKeys(state)
 end
 
 defn about(f)
-  (** The name of a function and the first sentence of its doc, as cesia doc shows them; a function without a name, as s -> ..., has neither. *)
+  (** The name of a function without its package, as the hint band shows it, and the first sentence of its doc; a function without a name, as s -> ...,
+      has neither. *)
   doc = cesia.Doc(f)
   if value.IsMissing(doc)
     return {Name: "(a function)", Text: ""}
   end
   parts = str.Split("\n\n", doc)
-  name = str.Split("(", parts[1])[1]
   text = if value.Len(parts) > 1 str.Split("\n", parts[2])[1] else "" end
-  {Name: name, Text: text}
+  {Name: keys.NameOf(f), Text: text}
 end
 
 defn Show(first, state)
