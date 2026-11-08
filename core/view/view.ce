@@ -12,15 +12,15 @@ use std/list
 use std/math
 use std/value
 
-(* The width of the line numbers and the space around them, before the first column of text. *)
+(** The width of the line numbers and the space around them, before the first column of text. *)
 Gutter = 62
 
-(* Pixels added under the height of the code font to space the lines: JetBrains Mono at 13 is 18 high, and the 19 of ui.Code reads less tight. *)
+(** Pixels added under the height of the code font to space the lines: JetBrains Mono at 13 is 18 high, and the 19 of ui.Code reads less tight. *)
 LineGap = 1
 
 (* The marks of a check: red for an error, amber for a warning, and a quieter tone of each for their words. *)
-ErrorColor = 0xE5534B
-WarningColor = 0xD29922
+ErrorColor = 0xE5534B     (** The red of an error: the line under its span, and the number of its line. *)
+WarningColor = 0xD29922   (** The amber of a warning: the line under its span, and the number of its line. *)
 errorWords = 0xB8615E
 warningWords = 0xA88A45
 
@@ -420,8 +420,8 @@ defn marked(b, first, last, lay, look)
   out
 end
 
-(** The words of the marks of a buffer for its mode line, as "2 errors, 1 warning", or "" with none. *)
 defn MarkCount(b)
+  (** The words of the marks of a buffer for its mode line, as "2 errors, 1 warning", or "" with none. *)
   marks = text.MarksOf(b)
   errors = value.Len([m for m in marks if isError(m)])
   warnings = value.Len(marks) - errors

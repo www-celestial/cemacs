@@ -4,22 +4,22 @@ use std/list
 use std/text as str
 use std/value
 
-(* The role of a keyword: an index in the syntax colors of the theme. *)
+(** The role of a keyword: an index in the syntax colors of the theme. *)
 Keyword = 1
-(* The role of a name that is called. *)
+(** The role of a name that is called. *)
 Name = 2
-(* The role of a text, interpolations included. *)
+(** The role of a text, interpolations included. *)
 String = 3
-(* The role of a number. *)
+(** The role of a number. *)
 Number = 4
-(* The role of a comment. *)
+(** The role of a comment. *)
 Comment = 5
-(* The role of everything else. *)
+(** The role of everything else. *)
 Plain = 6
-(* The role of a name after a dot. *)
+(** The role of a name after a dot. *)
 Field = 7
 
-(* The state at the start of a file: in no comment and in no text. *)
+(** The state at the start of a file: in no comment and in no text. *)
 FirstState = {Comment: 0, Text: false}
 
 keywords = ["if", "else", "end", "for", "in", "while", "break", "return", "defn", "match", "struct", "and", "or", "not", "then", "use", "true", "false", "missing"]
