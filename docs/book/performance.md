@@ -142,10 +142,10 @@ Three runs of this version, each after a run of the version before it, `main` at
 
 | Run | One typed character at line 19,000: median, worst | One scrolled line: median, worst | First jump to line 19,000 |
 |---|---|---|---|
-| 1 | 10.5 ms, 26.2 ms | 15.5 ms, 20.3 ms | 344 ms |
-| 2 | 10.2 ms, 14.5 ms | 15.5 ms, 23.1 ms | 338 ms |
-| 3 | 10.3 ms, 17.7 ms | 15.4 ms, 21.4 ms | 340 ms |
-| before, 1 to 3 | 11.7, 11.3, 11.4 ms | 16.4, 16.0, 16.2 ms | 631, 626, 632 ms |
+| 1 | 10.2 ms, 14.6 ms | 15.3 ms, 19.2 ms | 22.9 ms |
+| 2 | 10.2 ms, 15.1 ms | 15.3 ms, 19.8 ms | 22.8 ms |
+| 3 | 10.3 ms, 16.1 ms | 15.6 ms, 19.2 ms | 22.8 ms |
+| before, 1 to 3 | 11.4, 11.4, 11.4 ms | 16.4, 16.3, 16.1 ms | 648, 628, 638 ms |
 
 - A key costs about 10.3 ms from the state to the frame, under the 16 ms of one frame at 60 a second: 0.2 ms to follow the
   cursor, 2.4 ms to make the frame's commands, and about 7.2 ms for SDL to draw them in software. The size of the file doesn't
@@ -153,8 +153,11 @@ Three runs of this version, each after a run of the version before it, `main` at
   nodes, two splits and their joins, where it now only reads the leaves; see [Inside Cemacs](internals.md).
 - Scrolling at 15.4 to 15.5 ms a line is 64 to 65 lines a second, over the goal of 60. The worst of the 300 passes takes up
   to about twice the median; the gate doesn't tell which part made it slow.
-- The first jump to line 19,000 costs 0.34 s, once: the colours of the lines before it are read then, 19,000 lines read from
-  the rope. After that, they are known.
+- The first jump to line 19,000 costs 23 ms, once: the state of the colours at the start of each line before it is read
+  then, and kept. It took 0.63 s before: each line was read alone from the rope, 13 µs a line, and each line holding a quote
+  or a comment mark went through the whole lexer of colours. Now the lines come 100,000 at a time, from one slice of the rope,
+  and [color.StateAfter] reads only the state, jumping from one quote or comment mark to the next with [text.ByteFind]: 1.2
+  µs a line in all. A test checks that it gives the state of the lexer on 2,000 random lines from every kind of state.
 - The gate's own opening, about 38 ms for 2.8 MB, makes the rope and the first frame from a text already in memory: it
   doesn't read a file, and doesn't check its UTF-8, which is what [opening a file](#opening-a-file) above costs.
 - Making the rope of the whole text, `rope.Of`, takes 2.7 ms, 6.5 ms before.
@@ -164,10 +167,28 @@ that watches the screen, such as Typometer, and none was used. These numbers are
 
 ## Search
 
-Cemacs has no search in a buffer. The others, measured in one process each, the file of 15.8 MB loaded and the cursor at its
-start, for one search of a word found only on its last line, n = 10: Emacs's `search-forward` in `emacs --batch`, 7.7 ms
-[7.4, 7.9]; Neovim's `search()` in `nvim --headless`, 29.3 ms [28.2, 30.3]; Vim's `search()` in `vim -es`, 35.5 ms
-[32.9, 38.6].
+One search of a word found only on the last line of the file, from its start: the others in one process each, the file
+loaded, Emacs's `search-forward` in `emacs --batch`, Neovim's `search()` in `nvim --headless`, Vim's `search()` in `vim -es`;
+Cemacs without a window, the file opened, then `C-s` and the word typed as one text through [commands.Update], up to the
+state that shows the place, n = 10 for 15.8 MB and n = 5 for 100 MB:
+
+| Measure | 15.8 MB | 100 MB |
+|---|---|---|
+| GNU Emacs 31.1, `search-forward` | 7.8 ms [7.4, 8.4] | 47.2 ms [46.7, 47.9] |
+| Neovim 0.12.6, `search()` | 27.8 ms [27.7, 29.6] | 178 ms [173, 179] |
+| Vim 9.2, `search()` | 34.0 ms [32.9, 40.2] | 233 ms [225, 239] |
+| Cemacs, finding the place, [rope.Find] alone | 101 ms [99.6, 103] | 629 ms [626, 634] |
+| Cemacs, `C-s` and the word, to the place shown | 692 ms [687, 722] | 4,754 ms [4,731, 4,782] |
+| Cemacs, the same typed one letter at a time | 699 ms [695, 708] | 4,883 ms [4,845, 4,887] |
+| Cemacs, `M->` alone, the colours down to the last line | 598 ms [590, 704] | 4,169 ms [4,163, 4,215] |
+
+The word has no capital, so every search here folds case. Finding the place costs Cemacs about 6 ns a byte: each window of
+the rope is joined into one text, put in lower case, then searched natively; Emacs searches its buffer in place, in C, with
+the case folded in its tables, about 0.5 ns a byte. Most of the time to the place shown is not the search: it is the state of
+the colours of every line before the last one, which a jump to a line far down reads once, as `M->` does, 1.3 µs a line,
+then keeps; a second search there costs only its finding. Typing the word one letter at a time costs little more, as each
+letter looks again from the place found, and only the last letters go far. The others don't colour these files, or colour
+only the lines on the screen from a guess of the state a little above them, as Vim does with its `syntax sync`.
 
 ## The folder manager
 

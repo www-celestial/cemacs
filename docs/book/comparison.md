@@ -17,7 +17,9 @@ dummy driver, into memory. Each number is the median of n runs, with its 95 % in
 | start and open 0.79 MB | 10 | 66.5 ms [64.8, 68.7] | 96.6 ms [94.2, 102] | 21.6 ms [20.7, 28.2] | 17.6 ms [17.1, 18.6] |
 | start and open 15.8 MB | 10 | 206 ms [203, 214] | 142 ms [140, 150] | 54.4 ms [53.4, 59.1] | 50.4 ms [49.5, 54.3] |
 | start and open 100 MB | 10 | 904 ms [886, 955] | 380 ms [379, 395] | 229 ms [227, 231] | 237 ms [234, 238] |
-| search 15.8 MB for a word on its last line | 10 | no search | 7.7 ms [7.4, 7.9] | 29.3 ms [28.2, 30.3] | 35.5 ms [32.9, 38.6] |
+| search 15.8 MB for a word on its last line, finding it | 10 | 101 ms [99.6, 103] | 7.8 ms [7.4, 8.4] | 27.8 ms [27.7, 29.6] | 34.0 ms [32.9, 40.2] |
+| search 100 MB for a word on its last line, finding it | 5 | 629 ms [626, 634] | 47.2 ms [46.7, 47.9] | 178 ms [173, 179] | 233 ms [225, 239] |
+| the same, to the place shown, its colours read | 5 | 4,754 ms [4,731, 4,782] | | | |
 | memory at rest, empty, PSS | 5 | 41.8 MB [41.7, 41.9] | 49.0 MB [48.0, 49.1] | 10.1 MB [9.8, 10.2] | 7.8 MB [7.7, 8.0] |
 | memory with 15.8 MB open, RSS | 3 | 127 MB | 71.3 MB | 40.2 MB | 36.3 MB |
 | memory with 100 MB open, RSS | 3 | 401 MB | 152 MB | 137 MB | 133 MB |
@@ -35,7 +37,10 @@ What they say:
   Cemacs checks that a file is valid UTF-8 before it opens it and counts the line ends of each leaf of its rope, both
   through functions of Cesia that copy the text on the way; the others read the bytes and find the line ends in C, at the
   speed of memory. Cemacs opens files of up to 1 GiB.
-- **Cemacs has no search, where every other editor searches a large file in milliseconds.**
+- **Every one of them searches a large file faster than Cemacs**: Emacs 13 times, Neovim and Vim 3 to 4 times, for the
+  finding alone. Cemacs reads its rope a window at a time, joins it into one text, folds its case, then searches it; the
+  others search their text in place, in C. To show a place far down, Cemacs also reads the state of the colours of every
+  line above it, once: 4.8 s to the last line of 100 MB.
 - **At rest, Cemacs uses memory of the order of Emacs, and four to five times that of Vim and Neovim**, which hold a
   terminal's characters where Cemacs holds a window, its fonts and the Cesia runtime. With a large file open, Cemacs holds
   about four times the file, the others about once: Cemacs's rope gives each 1,024 bytes two records, and the process keeps
@@ -60,7 +65,7 @@ the Debug Adapter Protocol, DAP. An editor that speaks both gets every language 
 | Change while it runs | its code reloads at each save under `cesia do dev`; a new package needs a restart | any Lisp, at any time, changes the running editor | `:source` and `:lua` run new code in the running editor | `:source` runs new code in the running editor |
 | Finding a key | the band of hints after half a second, and `?` after any prefix key | `which-key-mode`, built in, off until turned on; `C-h k`, `C-h b` | none built in: plugins | none built in: plugins |
 | A command by its name | none | `M-x` | `:` commands | `:` commands |
-| Search and replace | none | incremental search, by regular expression, replace | `/`, `:s` | `/`, `:s` |
+| Search and replace | incremental search, `C-s` and `C-r`, with Emacs's case folding; no regular expression, no replace | incremental search, by regular expression, replace | `/`, `:s` | `/`, `:s` |
 | Errors of the code | Cesia's, from `cesia check`, half a second after a key | Flymake, built in, with a checker for each language | diagnostics of its LSP client | by plugins |
 | Language servers (LSP) | no client; Cesia's errors come from `cesia check` | Eglot, built in | a client built in, `vim.lsp` | channels that speak LSP's encoding; the client is a plugin |
 | Debugger | built in, for Cesia, with breakpoints, steps, evals, fix and continue | GUD, built in, for gdb and other debuggers | none built in: plugins | Termdebug, built in, for gdb; channels that speak DAP's encoding |
@@ -90,8 +95,9 @@ What Cemacs does that they don't do out of the box:
 
 What they do that Cemacs doesn't, and why it matters:
 
-- **Search, completion, a command by name, other languages and encodings, a terminal inside.** Cemacs has none yet: it is
-  a young editor for one language, and grows when its use asks.
+- **Search by regular expression and replace, completion, a command by name, other languages and encodings, a terminal
+  inside.** Cemacs has none yet, beside its incremental search: it is a young editor for one language, and grows when its
+  use asks.
 - **Speed at the start and on large files.** Native code that reads and scans the bytes of a file at the speed of memory.
 - **Safety of the text.** Emacs, Vim and Neovim keep a copy of what you type on disk, so a crash loses little; Cemacs keeps
   it in memory only.

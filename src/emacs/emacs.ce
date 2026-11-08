@@ -24,7 +24,7 @@ CheckDelay() = 0.5
 
 (** The keys, with the function each one runs: one chord, or more with a space between, as "C-x C-s" or "C-c f f". Any function from a state to a state will do,
     also an anonymous one, as in "C-c C-x": s -> say("hi", s). A chord waits for the next one as soon as a binding here goes on after it, and C-g after it takes
-    the keys back. Under C-c, the keys are in groups as in Doom Emacs, each named by a text: f for files, b buffers, w windows, c code, d debug and q quit. Waiting
+    the keys back. Under C-c, the keys are in groups as in Doom Emacs, each named by a text: f for files, b buffers, w windows, s search, c code, d debug and q quit. Waiting
     after C-c, or after a group, shows the band of what can follow. *)
 Keys() = {
   "C-f": commands.ForwardChar, "right": commands.ForwardChar,
@@ -54,6 +54,7 @@ Keys() = {
   "C-/": commands.Undo,
   "C-?": commands.Redo, "C-S-/": commands.Redo,
   "C-g": commands.Cancel,
+  "C-s": commands.SearchForward, "C-r": commands.SearchBackward,
   "tab": commands.Tab, "S-tab": commands.Tab,
   "enter": commands.NewLine, "S-enter": commands.NewLine,
   "C-x C-s": commands.Save,
@@ -74,15 +75,18 @@ Keys() = {
   "C-c b": "buffers", "C-c b n": commands.NextBuffer, "C-c b k": commands.CloseBuffer,
   "C-c w": "windows", "C-c w s": commands.SplitBelow, "C-c w v": commands.SplitRight, "C-c w o": commands.NextPane, "C-c w d": commands.ClosePane,
   "C-c w m": commands.OnlyPane,
+  "C-c s": "search", "C-c s s": commands.SearchForward, "C-c s r": commands.SearchBackward,
   "C-c c": "code", "C-c c r": commands.Run, "C-c c k": commands.Stop, "C-c c h": commands.ToggleOutput,
   "C-c d": "debug", "C-c d r": commands.DebugRun, "C-c d b": commands.ToggleBreak, "C-c d e": commands.Eval, "C-c d c": commands.Continue, "C-c d n": commands.StepOver,
   "C-c d s": commands.StepInto, "C-c d u": commands.StepOut,
   "C-c q": "quit", "C-c q q": commands.Quit
 }
 
-(** The keys while a prompt is open. Any other key does nothing, and a prompt has no pairs. *)
+(** The keys while a prompt is open. Any other key does nothing, but in a search, which it ends before it does what it does; a prompt has no pairs.
+    C-s and C-r go on with a search, and do nothing in another prompt. *)
 PromptKeys() = {
   "enter": commands.PromptAccept, "S-enter": commands.PromptAccept,
+  "C-s": commands.SearchForward, "C-r": commands.SearchBackward,
   "backspace": commands.PromptDeleteBefore, "S-backspace": commands.PromptDeleteBefore,
   "C-y": commands.PromptPaste,
   "C-g": commands.PromptCancel

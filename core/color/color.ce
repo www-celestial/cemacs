@@ -174,8 +174,72 @@ BlankColors() = {Starts: [FirstState], Known: 1}
 (** Can this line change the state? Only a quote or a comment mark can open or close a text or a comment. *)
 mayChange(words) = str.Contains("\"", words) or str.Contains("(*", words) or str.Contains("*)", words)
 
-(** The state at the end of a line, given the one at its start. A line with no quote and no comment mark leaves it as it is, so it is not read. *)
-stateAfter(words, state) = if mayChange(words) Tokens(words, state).State else state end
+(** How many bytes the character at byte at takes, from its first byte: one past the end of the words. *)
+charBytes(at, words) = if at > str.ByteLength(words) 1 else bytesOfLead(str.Byte(at, words)) end
+bytesOfLead(b) = if b < 0xC0 1 else if b < 0xE0 2 else if b < 0xF0 3 else 4 end
+
+(** The earlier of two byte positions, either of which may be missing. *)
+earlier(a, b) = if value.IsMissing(a) b else if value.IsMissing(b) a else list.Min(a, b) end
+
+defn StateAfter(words, state)
+  (** The state at the end of a line, given the one at its start: the one that Tokens gives, without making the tokens. A line with no quote and no
+      comment mark leaves it as it is. Else the line is read from mark to mark, each found natively: in a comment, the next opening or closing of one,
+      as comments nest; in a text, the next quote, a doubled quote and a character after a backslash being part of it; elsewhere, the next quote or
+      opening of a comment. A jump to the end of a large file reads the state of every line before it.
+
+        StateAfter("x = \"a (* b", FirstState) --> {Comment: 0, Text: true}
+        StateAfter("a *) \"b\"", {Comment: 1, Text: false}) --> {Comment: 0, Text: false} *)
+  if not mayChange(words)
+    return state
+  end
+  depth = state.Comment
+  inText = state.Text
+  i = 1
+  n = str.ByteLength(words)
+  while i <= n
+    if depth > 0
+      open = str.ByteFind("(*", i, words)
+      close = str.ByteFind("*)", i, words)
+      next = earlier(open, close)
+      if value.IsMissing(next)
+        i = n + 1
+      else if next == open
+        depth += 1
+        i = open + 2
+      else
+        depth -= 1
+        i = close + 2
+      end
+    else if inText
+      quote = str.ByteFind("\"", i, words)
+      slash = str.ByteFind("\\", i, words)
+      if value.IsMissing(quote)
+        i = n + 1
+      else if not value.IsMissing(slash) and slash < quote
+        i = slash + 1 + charBytes(slash + 1, words)
+      else if quote < n and str.Byte(quote + 1, words) == 34
+        i = quote + 2
+      else
+        inText = false
+        i = quote + 1
+      end
+    else
+      quote = str.ByteFind("\"", i, words)
+      open = str.ByteFind("(*", i, words)
+      next = earlier(quote, open)
+      if value.IsMissing(next)
+        i = n + 1
+      else if next == quote
+        inText = true
+        i = quote + 1
+      else
+        depth = 1
+        i = open + 2
+      end
+    end
+  end
+  {Comment: depth, Text: inText}
+end
 
 defn ColoredTo(line, lineOf, colors)
   (** The state at the start of line number line, once the lines before it are known; line_of(n) gives the text of line n.
@@ -186,7 +250,7 @@ defn ColoredTo(line, lineOf, colors)
     {Starts: colors.Starts, Known: have}
   else
     (* scan builds the whole array at once: pushing one state at a time copies the array each time, and a jump to line 19,000 takes seconds. *)
-    later = list.Scan((state, n) -> stateAfter(lineOf(n), state), colors.Starts[have], list.Range(have, line - 1))
+    later = list.Scan((state, n) -> StateAfter(lineOf(n), state), colors.Starts[have], list.Range(have, line - 1))
     {Starts: list.Concat(colors.Starts, later), Known: line}
   end
 end

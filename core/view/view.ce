@@ -167,8 +167,23 @@ defn Follow(rows, columns, b)
   out.Top = top
   out.Left = left
   (* A list draws its rows with their own parts, so its colors would be read for nothing: the rows of a growing output change at each tick. *)
-  out.Colors = if lists.IsList(b) b.Colors else color.ColoredTo(lastLine, n -> rope.Line(n, b.Rope), b.Colors) end
+  out.Colors = if lists.IsList(b) b.Colors else coloredTo(lastLine, b) end
   out
+end
+
+defn coloredTo(line, b)
+  (** The colors of a buffer known down to line. The lines after the last one known are read 100,000 at a time, each batch one slice of the rope cut
+      at its line ends: reading each line alone goes down the tree for each, 13 us a line, where a slice costs 0.3 us a line. *)
+  colors = b.Colors
+  have = value.Len(colors.Starts)
+  while have < line
+    upTo = list.Min(line, have + 100000)
+    lines = str.Split("\n", rope.Slice(rope.LineStart(have, b.Rope), rope.LineEnd(upTo - 1, b.Rope), b.Rope))
+    first = have
+    colors = color.ColoredTo(upTo, n -> lines[n - first + 1], colors)
+    have = upTo
+  end
+  colors
 end
 
 defn FollowState(state)

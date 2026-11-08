@@ -4,6 +4,8 @@ use std/text as str
 use std/bug
 use std/list
 use std/value
+use std/num
+use std/math
 
 roles(line) = list.Map(t -> t[1], color.Tokens(line, color.FirstState).Tokens)
 joined(tokens) = str.Join("", list.Map(t -> t[2], tokens))
@@ -54,3 +56,28 @@ isBlank() = value.Equal(color.BlankColors(), {Starts: [color.FirstState], Known:
 isColoredToReaches() = knownToTen.Known == 10 and value.Len(knownToTen.Starts) == 10
 isColoredToKeepsKnown() = value.Equal(color.ColoredTo(3, n -> bug.Panic("not read"), knownToTen), knownToTen)
 isColoredToFollowsComments() = color.ColoredTo(3, commentFirst, color.BlankColors()).Starts[3].Comment == 1
+
+(* StateAfter gives the state that Tokens gives, on random lines made of the marks that matter and of characters of one to four bytes, from every
+   kind of state. *)
+alphabet = ["(", "*", ")", "\"", "\\", "$", "a", " ", "é", "€", "😀", "1", "("]
+starts = [color.FirstState, {Comment: 1, Text: false}, {Comment: 2, Text: false}, {Comment: 0, Text: true}]
+defn isStateAfterAsTokens()
+  dice = num.Uniform(60000)
+  k = 1
+  for line in 1..2000
+    n = math.Floor(dice[k] * 24)
+    k += 1
+    chars = []
+    for j in 1..n
+      chars = list.Append(alphabet[math.Floor(dice[k] * value.Len(alphabet)) + 1], chars)
+      k += 1
+    end
+    words = str.Join("", chars)
+    for state in starts
+      if not value.Equal(color.StateAfter(words, state), color.Tokens(words, state).State)
+        bug.Panic("StateAfter differs on $(words) from $(state)")
+      end
+    end
+  end
+  true
+end

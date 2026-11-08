@@ -79,6 +79,7 @@ a second: a band above the prompt line shows each group. Press a group's letter 
 | `C-c f`, files | `f` open, `s` save, `d` the folder, `c` the code of Cemacs |
 | `C-c b`, buffers | `b` the list, `n` the next one, `k` close |
 | `C-c w`, windows | `s` split below, `v` split to the right, `o` the next pane, `d` close it, `m` keep only this one |
+| `C-c s`, search | `s` search forward as you type, `r` backward: see [Search](search.md) |
 | `C-c c`, code | `r` run the file, `k` stop it, `o` its output, `h` hide or show the output, `n` and `p` the next and the previous error |
 | `C-c d`, debug | `r` run under the debugger, `b` a breakpoint, `e` evaluate, `c` continue, `n` next, `s` step, `u` out |
 | `C-c q`, quit | `q` quit |

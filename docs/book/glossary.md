@@ -30,6 +30,11 @@ A line where a debugger stops the program each time it reaches it, to show its v
 A text that the editor holds in memory, most often the text of a file: you edit the buffer, and saving writes it to the
 file. Each buffer of Cemacs has its own cursor, mark, undo history and errors. See [Files and buffers](files.md).
 
+## Case folding
+
+Matching a capital and a small letter as the same letter, as a search does when its words hold no capital, in Emacs and in
+Cemacs: `two` finds `Two`. See [Search](search.md#searching-a-buffer).
+
 ## Chord
 
 One key pressed with the modifiers held with it, written as `C-x`, `M-<` or `S-right`. See [Keys](keys.md#how-a-key-becomes-a-chord).
@@ -125,7 +130,9 @@ state of its own. Cemacs draws so: see [Inside Cemacs](internals.md#the-frame).
 
 ## Incremental search
 
-A search that finds the next match as each letter is typed, `C-s` in Emacs. Cemacs has none yet: see [Search](search.md).
+A search that finds the next match as each letter is typed, instead of waiting for the whole words: `C-s` forward and `C-r`
+backward, in Emacs and in Cemacs. The match shows selected, `C-s` again goes to the next one, and round the end of the file
+once none is left. See [Search](search.md#searching-a-buffer).
 
 ## Key binding and keymap
 

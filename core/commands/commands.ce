@@ -254,8 +254,10 @@ inPrompt(f, state) = if value.IsMissing(state.Prompt) state else f(state.Prompt,
 (** Accepts the answer of a prompt. A prompt of y or n waits for one of the two. *)
 PromptAccept(state) = inPrompt((p, s) -> if p.Choice s else accept(s) end, state)
 
-(** The last character of the answer of a prompt removed. *)
-PromptDeleteBefore(state) = inPrompt((p, s) -> withAnswer(str.Join("", list.Take(list.Max(0, value.Len(p.Answer) - 1), str.Chars(p.Answer))), s), state)
+(** The last character of the answer of a prompt removed; in a search, its last step taken back. *)
+PromptDeleteBefore(state) = inPrompt((p, s) -> if value.IsMissing(searchOf(s)) withAnswer(withoutLastChar(p.Answer), s) else searchBack(s) end, state)
+
+withoutLastChar(words) = str.Join("", list.Take(list.Max(0, value.Len(words) - 1), str.Chars(words)))   (** A text without its last character. *)
 
 defn withAnswer(answer, state)
   (** The state with this answer in the prompt. *)
@@ -267,25 +269,240 @@ end
 (** The first line of the clipboard added to the answer of a prompt, since an answer has one. A prompt of y or n takes no paste. *)
 PromptPaste(state) = inPrompt((p, s) -> if p.Choice s else promptText(str.Join("", list.Take(1, str.Lines(clipped(s)))), s) end, state)
 
-PromptCancel(state) = inPrompt((p, s) -> say("Quit", closed(s)), state)   (** Closes the prompt with no answer. *)
+(** Closes the prompt with no answer; in a search, see searchCancel. *)
+PromptCancel(state) = inPrompt((p, s) -> if value.IsMissing(searchOf(s)) say("Quit", closed(s)) else searchCancel(s) end, state)
 
 defn promptChord(chord, bindings, state)
-  (** A chord while a prompt is open: it runs what bindings give it, and any other chord does nothing. *)
+  (** A chord while a prompt is open: it runs what bindings give it, and any other chord does nothing, but in a search, which it ends at its place
+      before it does what it does, as in Emacs. *)
   match keys.Lookup("", chord, bindings)
     {Command: f} -> ran(f, state)
-    else -> state
+    else -> if value.IsMissing(searchOf(state)) state else routed(chord, accept(state)) end
   end
 end
 
 defn promptText(words, state)
-  (** Text while a prompt is open: it goes to the answer. A prompt of y or n takes one of the two and ends. *)
+  (** Text while a prompt is open: it goes to the answer, and a search looks for it. A prompt of y or n takes one of the two and ends. *)
   p = state.Prompt
-  if p.Choice
+  if not value.IsMissing(searchOf(state))
+    grown(words, state)
+  else if p.Choice
     answer = str.Lower(words)
     if answer == "y" or answer == "n" p.Done(answer, closed(state)) else state end
   else
     withAnswer("$(p.Answer)$words", state)
   end
+end
+
+(* ---- Search, incremental as in Emacs: C-s and C-r open the prompt line on the words looked for, and the place of them that the cursor reaches as
+   each key is typed shows selected. The prompt holds the search: see searchOf. *)
+
+defn searchOf(state)
+  (** The search that the open prompt holds, or missing: Forward, its way; From, the place in the buffer to go back to; Found, the bytes {Start, End}
+      of the place shown, or missing; Failing, true when no place is left that way; Wrapped, true once it went round an end of the text; and Steps,
+      the states before, which Backspace goes back to. *)
+  match state.Prompt
+    {Search: search} -> search
+    else -> missing
+  end
+end
+
+defn lastSearch(state)
+  (** The words of the last search, which C-s or C-r looks for again on an empty search, or "". A state from before this field has none. *)
+  match state
+    {LastSearch: words} -> words
+    else -> ""
+  end
+end
+
+defn SearchLabel(search)
+  (** What the prompt line says before the words of a search, as Emacs says it.
+
+        SearchLabel({Forward: false, Failing: true, Wrapped: false}) --> "Failing I-search backward: " *)
+  way = if search.Forward "" else " backward" end
+  if search.Failing and search.Wrapped
+    "Failing wrapped I-search$way: "
+  else if search.Failing
+    "Failing I-search$way: "
+  else if search.Wrapped
+    "Wrapped I-search$way: "
+  else
+    "I-search$way: "
+  end
+end
+
+(** Does a search ignore the case of letters? It does when its words hold no capital, as in Emacs. Cesia knows the case of ASCII letters only.
+
+      Folds("cesia") --> true
+      Folds("Cesia") --> false *)
+Folds(words) = str.Lower(words) == words
+
+defn withSearch(search, state)
+  (** The state with this search in its prompt, and the label that says it. *)
+  s = state
+  s.Prompt.Search = search
+  s.Prompt.Label = SearchLabel(search)
+  s
+end
+
+defn shownFound(found, forward, state)
+  (** The current buffer with a place selected: from its start to its end, the cursor at the end when the search goes forward, at the start backward. *)
+  b = current(state)
+  start = text.PositionOf(found.Start, b)
+  stop = text.PositionOf(found.End, b)
+  b.Mark = if forward start else stop end
+  b.Cursor = if forward stop else start end
+  b.Origin = "search"
+  b.Free = false
+  b.Wanted = missing
+  b.Typing = false
+  put(b, state)
+end
+
+defn cursorByte(state)
+  (** The byte of the cursor of the current buffer. *)
+  b = current(state)
+  text.ByteOf(b.Cursor, b)
+end
+
+defn looked(from, state)
+  (** The search after looking for its words from a byte, forward from it, or backward before it: the place found is shown, or the search fails and the
+      last place found stays. *)
+  search = searchOf(state)
+  words = state.Prompt.Answer
+  fold = Folds(words)
+  r = current(state).Rope
+  at = if search.Forward rope.Find(words, from, r, fold = fold) else rope.FindBefore(words, from, r, fold = fold) end
+  next = search
+  if value.IsMissing(at)
+    next.Failing = true
+    return withSearch(next, state)
+  end
+  next.Failing = false
+  next.Found = {Start: at, End: at + str.ByteLength(words)}
+  withSearch(next, shownFound(next.Found, search.Forward, state))
+end
+
+defn stepped(state)
+  (** The state with the search as it is now kept among its steps, for Backspace. *)
+  search = searchOf(state)
+  b = current(state)
+  step = {Answer: state.Prompt.Answer, Forward: search.Forward, Found: search.Found, Failing: search.Failing, Wrapped: search.Wrapped, Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin}
+  next = search
+  next.Steps = list.Append(step, search.Steps)
+  withSearch(next, state)
+end
+
+defn grown(words, state)
+  (** The search after words typed into it, or pasted: they are added to its words, which are looked for again from the place found, so that the
+      place stays while it still matches, or else from the cursor. *)
+  s = withAnswer("$(state.Prompt.Answer)$words", stepped(state))
+  search = searchOf(s)
+  m = str.ByteLength(s.Prompt.Answer)
+  from = if not value.IsMissing(search.Found) (if search.Forward search.Found.Start else search.Found.Start + 1 end) else if search.Forward cursorByte(s) else cursorByte(s) - m + 1 end
+  looked(from, s)
+end
+
+defn again(forward, state)
+  (** C-s or C-r in a search: the next place that way, or round the end once the search failed that way; on empty words, the words of the last search. *)
+  search = searchOf(state)
+  if state.Prompt.Answer == ""
+    words = lastSearch(state)
+    if words == ""
+      return state
+    end
+    turned = search
+    turned.Forward = forward
+    return grown(words, withSearch(turned, state))
+  end
+  s = stepped(state)
+  next = searchOf(s)
+  next.Forward = forward
+  from = 0
+  if search.Failing and forward == search.Forward
+    next.Wrapped = true
+    from = if forward 0 else rope.Size(current(s).Rope) + 1 end
+  else if value.IsMissing(search.Found)
+    from = if forward cursorByte(s) else cursorByte(s) - str.ByteLength(s.Prompt.Answer) + 1 end
+  else
+    from = if forward search.Found.End else search.Found.Start end
+  end
+  looked(from, withSearch(next, s))
+end
+
+defn searched(forward, state)
+  (** C-s and C-r: a search from the cursor, or in a search the next place. In another prompt, nothing. *)
+  if value.IsMissing(state.Prompt)
+    b = current(state)
+    from = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Left: b.Left, Free: b.Free}
+    search = {Forward: forward, From: from, Found: missing, Failing: false, Wrapped: false, Steps: []}
+    withSearch(search, prompted({Label: "", Answer: "", Done: searchEnded, Choice: false, Search: search}, state))
+  else if value.IsMissing(searchOf(state))
+    state
+  else
+    again(forward, state)
+  end
+end
+
+(** C-s: searches forward as you type, and in a search goes to the next place; once none is left, the next C-s goes round to the start of the file.
+    Enter stays at the place, C-g goes back where the search started, Backspace takes back the last step, and any other key ends the search and does
+    what it does. *)
+SearchForward(state) = searched(true, state)
+
+(** C-r: as C-s, backward. *)
+SearchBackward(state) = searched(false, state)
+
+defn searchEnded(answer, state)
+  (** The state after a search ended at its place: the selection that showed it goes, the cursor stays, and the words are kept for the next search. *)
+  b = current(state)
+  s = if b.Origin == "search" put(unmarked(b), state) else state end
+  if answer != ""
+    s.LastSearch = answer
+  end
+  s
+end
+
+defn searchBack(state)
+  (** Backspace in a search: the search as it was one step before, with its place, or nothing at its first step. *)
+  search = searchOf(state)
+  n = value.Len(search.Steps)
+  if n == 0
+    return state
+  end
+  step = search.Steps[n]
+  next = search
+  next.Steps = list.Take(n - 1, search.Steps)
+  next.Forward = step.Forward
+  next.Found = step.Found
+  next.Failing = step.Failing
+  next.Wrapped = step.Wrapped
+  b = current(state)
+  b.Cursor = step.Cursor
+  b.Mark = step.Mark
+  b.Origin = step.Origin
+  b.Free = false
+  withSearch(next, withAnswer(step.Answer, put(b, state)))
+end
+
+defn searchCancel(state)
+  (** C-g in a search: when it fails, back to its last step that found a place, as Emacs takes back the letters that matched nothing; else the search
+      ends where it started, the buffer as it was. *)
+  if searchOf(state).Failing and value.Len(list.Filter(step -> not step.Failing, searchOf(state).Steps)) > 0
+    s = state
+    while searchOf(s).Failing
+      s = searchBack(s)
+    end
+    return s
+  end
+  from = searchOf(state).From
+  b = current(state)
+  b.Cursor = from.Cursor
+  b.Mark = from.Mark
+  b.Origin = from.Origin
+  b.Top = from.Top
+  b.Left = from.Left
+  b.Free = from.Free
+  say("Quit", closed(put(b, state)))
 end
 
 (* ---- Buffers and files *)

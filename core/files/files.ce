@@ -75,9 +75,9 @@ defn utf8(bs)
   true
 end
 
-(* The bytes that the check reads at a time. Each piece is copied twice on the way, so the memory of the check stays a few MiB whatever the size of
-   the file. *)
-piece = 1048576
+(** The bytes that the check reads at a time, 1 MiB. Each piece is copied twice on the way, so the memory of the check stays a few MiB whatever the
+    size of the file. A function, as a variable added under --watch would be read before it has a value. *)
+piece() = 1048576
 
 (** The first byte of a source that no program holds: Cesia's lexer refuses it as soon as it reads it. *)
 stopByte() = str.Char(1)
@@ -98,9 +98,9 @@ end
 isContinuation(b) = b >= 128 and b <= 191   (** Is the byte b one of the bytes after the first one of a character? *)
 
 defn pieceEnd(at, n, words)
-  (** The last byte of the piece that starts at at: piece bytes on, then over the continuation bytes of the character that this cuts, three at
+  (** The last byte of the piece that starts at at: piece() bytes on, then over the continuation bytes of the character that this cuts, three at
       most. A fourth one then starts the next piece, which no valid text does. *)
-  last = list.Min(at + piece - 1, n)
+  last = list.Min(at + piece() - 1, n)
   k = 0
   while last < n and k < 3 and isContinuation(str.Byte(last + 1, words))
     last += 1

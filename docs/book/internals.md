@@ -155,6 +155,19 @@ n; drawing reads them again only down to the last line on the screen, and a line
 even read, since it can't change the state. So typing at line 19,000 of a file reads only the lines on the screen, and a jump
 to the end of a large file reads every line once, the first time.
 
+That reading needs only the state, not the words, so it doesn't go through the lexer: [color.StateAfter] gives the state at
+the end of a line by jumping from mark to mark, each found natively with [text.ByteFind]. In a comment it looks for the next
+`(*` or `*)`, as comments nest; in a text, for the next quote, a doubled quote `""` and the character after a backslash
+being part of the text; elsewhere, for the next quote or `(*`. The lines come 100,000 at a time, one slice of the rope cut at
+its line ends. The state is the one the lexer gives, and a test checks it on 2,000 random lines from every kind of state:
+
+```cesia
+color.StateAfter("x = \"a (* b", color.FirstState) --> {Comment: 0, Text: true}
+color.StateAfter("a *) \"b\"", {Comment: 1, Text: false}) --> {Comment: 0, Text: false}
+```
+
+A jump to the last line of a file of 15.8 MB, 448,562 lines, reads them in 0.6 s: [Speed](performance.md#search).
+
 ## The frame
 
 [view.View] makes the frame from the state: a clear of the window, then each pane, its code, its mode line and the line

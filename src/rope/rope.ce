@@ -200,3 +200,72 @@ defn LineOf(at, r)
     r.Left.Lines + LineOf(at - r.Left.Size, r.Right)
   end
 end
+
+(* A search reads the text a window at a time: 64 KiB first, each next window twice as large, up to 1 MiB, so that a place near the start costs little
+   and a far one a few large reads. Functions, as a variable added under --watch would be read before it has a value. *)
+firstWindow() = 65536
+lastWindow() = 1048576
+
+defn Find(part, from, r, fold = false)
+  (** The position of the first place of part that starts at or after the position from, or missing. With fold, the ASCII letters of the text count
+      in either case, and part is written in lower case. Each window overlaps the one before by the length of part less one, so that a place across
+      two windows is found.
+
+        Find("b", 0, Of("abcb")) --> 1
+        Find("b", 2, Of("abcb")) --> 3
+        Find("b", 0, Of("aBc"), fold = true) --> 1 *)
+  m = text.ByteLength(part)
+  at = list.Max(0, from)
+  size = list.Max(firstWindow(), 2 * m)
+  while at + m <= r.Size
+    last = list.Min(at + size, r.Size)
+    found = text.ByteFind(part, 1, looked(Slice(at, last, r), fold))
+    if not value.IsMissing(found)
+      return at + found - 1
+    end
+    if last == r.Size
+      return missing
+    end
+    at = last - m + 1
+    size = list.Min(2 * size, list.Max(lastWindow(), 2 * m))
+  end
+  missing
+end
+
+defn FindBefore(part, before, r, fold = false)
+  (** The position of the last place of part that starts before the position before, or missing, with fold as for Find. The windows go back from
+      there, each overlapping the one after it by the length of part less one.
+
+        FindBefore("b", 4, Of("abcb")) --> 3
+        FindBefore("b", 3, Of("abcb")) --> 1
+        FindBefore("b", 1, Of("abcb")) --> missing *)
+  m = text.ByteLength(part)
+  high = list.Min(before - 1 + m, r.Size)
+  size = list.Max(firstWindow(), 2 * m)
+  while m > 0 and high >= m
+    low = list.Max(0, high - size)
+    found = lastIn(part, looked(Slice(low, high, r), fold))
+    if not value.IsMissing(found)
+      return low + found - 1
+    end
+    if low == 0
+      return missing
+    end
+    high = low + m - 1
+    size = list.Min(2 * size, list.Max(lastWindow(), 2 * m))
+  end
+  missing
+end
+
+looked(s, fold) = if fold text.Lower(s) else s end   (** A window as a search reads it: in lower case when it folds. *)
+
+defn lastIn(part, s)
+  (** The byte position, from 1, of the last place of part in s, or missing. *)
+  last = missing
+  at = text.ByteFind(part, 1, s)
+  while not value.IsMissing(at)
+    last = at
+    at = text.ByteFind(part, at + 1, s)
+  end
+  last
+end

@@ -48,7 +48,7 @@ isShiftTab() = wordsOf(press.Press(["S-tab"], stateOf(""))) == "  "
 isShiftSelects() = regionOf(press.Press(["a", "b", "S-left"], stateOf(""))) == "b"
 isPlainMoveClearsShiftMark() = value.IsMissing(here(press.Press(["a", "b", "S-left", "left"], stateOf(""))).Mark)
 isShiftExtends() = regionOf(press.Press(["a", "b", "c", "S-left", "S-left"], stateOf(""))) == "bc"
-isCancelPair() = wordsOf(press.Press(["C-x", "C-g", "C-s"], stateOf("a"))) == "a" and value.IsMissing(press.Press(["C-x", "C-g", "C-s"], stateOf("a")).Prompt)
+isCancelPair() = wordsOf(press.Press(["C-x", "C-g", "C-s"], stateOf("a"))) == "a" and press.Press(["C-x", "C-g", "C-s"], stateOf("a")).Prompt.Label == "I-search: "   (** C-s alone, not C-x C-s. *)
 isCancelPairClearsPending() = press.Press(["C-x", "C-g"], stateOf("")).Pending == ""
 isPairPending() = press.Press(["C-x"], stateOf("")).Pending == "C-x"
 isPromptGetsKeys() = press.Press(["C-x", "C-f", "a.ce"], stateOf("hi")).Prompt.Answer == "a.ce" and wordsOf(press.Press(["C-x", "C-f", "a.ce"], stateOf("hi"))) == "hi"
@@ -769,3 +769,27 @@ isEvalNeedsRun() = str.StartsWith("No program runs under the debugger", press.Pr
 isContinueNeedsStop() = press.Press(["C-c", "d", "c"], inFile("1")).Message == "The program isn't stopped."   (** Nothing to go on from. *)
 isNoOutputYet() = str.StartsWith("There is no output", press.Press(["C-c", "c", "h"], inFile("1")).Message)   (** C-c c h before any run. *)
 isRunNeedsFile() = str.StartsWith("This buffer has no file", press.Press(["C-c", "c", "r"], stateOf("1")).Message)   (** A buffer never saved can't run. *)
+
+(* ---- Search: C-s and C-r, as in Emacs. *)
+words3 = "one two\nthree two\nfour Two"
+cursorOf(state) = here(state).Cursor
+isSearchOpens() = press.Press(["C-s"], stateOf(words3)).Prompt.Label == "I-search: " and press.Press(["C-r"], stateOf(words3)).Prompt.Label == "I-search backward: "
+isSearchFindsAsTyped() = cursorOf(press.Press(["C-s", "tw"], stateOf(words3))) == {Line: 1, Column: 6}   (** The cursor goes to the end of the place. *)
+isSearchSelects() = regionOf(press.Press(["C-s", "two"], stateOf(words3))) == "two"   (** The place shows selected. *)
+isSearchNext() = cursorOf(press.Press(["C-s", "two", "C-s"], stateOf(words3))) == {Line: 2, Column: 9}
+isSearchFolds() = cursorOf(press.Press(["C-s", "two", "C-s", "C-s"], stateOf(words3))) == {Line: 3, Column: 8}   (** No capital: either case. *)
+isSearchCase() = press.Press(["C-s", "Two", "C-s"], stateOf(words3)).Prompt.Label == "Failing I-search: "   (** A capital: that case only. *)
+isSearchFails() = press.Press(["C-s", "two", "C-s", "C-s", "C-s"], stateOf(words3)).Prompt.Label == "Failing I-search: " and cursorOf(press.Press(["C-s", "two", "C-s", "C-s", "C-s"], stateOf(words3))) == {Line: 3, Column: 8}
+isSearchWraps() = press.Press(["C-s", "two", "C-s", "C-s", "C-s", "C-s"], stateOf(words3)).Prompt.Label == "Wrapped I-search: " and cursorOf(press.Press(["C-s", "two", "C-s", "C-s", "C-s", "C-s"], stateOf(words3))) == {Line: 1, Column: 7}
+isSearchBackward() = cursorOf(press.Press(["M->", "C-r", "two"], stateOf(words3))) == {Line: 3, Column: 5} and cursorOf(press.Press(["M->", "C-r", "two", "C-r"], stateOf(words3))) == {Line: 2, Column: 6}
+isSearchEnterStays() = value.IsMissing(press.Press(["C-s", "three", "enter"], stateOf(words3)).Prompt) and cursorOf(press.Press(["C-s", "three", "enter"], stateOf(words3))) == {Line: 2, Column: 5} and value.IsMissing(here(press.Press(["C-s", "three", "enter"], stateOf(words3))).Mark)
+isSearchCancelGoesBack() = cursorOf(press.Press(["C-f", "C-s", "three", "C-g"], stateOf(words3))) == {Line: 1, Column: 1} and press.Press(["C-f", "C-s", "three", "C-g"], stateOf(words3)).Message == "Quit"
+isSearchCancelTakesBackFailing() = press.Press(["C-s", "twx", "C-g"], stateOf(words3)).Prompt.Answer == "tw"   (** C-g first takes back what matched nothing. *)
+isSearchBackspace() = cursorOf(press.Press(["C-s", "two", "C-s", "backspace"], stateOf(words3))) == {Line: 1, Column: 7} and press.Press(["C-s", "two", "C-s", "backspace", "backspace"], stateOf(words3)).Prompt.Answer == "tw"
+isSearchOtherKeyEnds() = value.IsMissing(press.Press(["C-s", "three", "C-a"], stateOf(words3)).Prompt) and cursorOf(press.Press(["C-s", "three", "C-a"], stateOf(words3))) == {Line: 2, Column: 0}
+isSearchTypesNothing() = wordsOf(press.Press(["C-s", "three", "enter"], stateOf(words3))) == words3   (** What is typed in a search goes to the search. *)
+isSearchRepeatsLast() = cursorOf(press.Press(["C-s", "three", "enter", "M-<", "C-s", "C-s"], stateOf(words3))) == {Line: 2, Column: 5}   (** C-s C-s looks for the words of the last search. *)
+isSearchGroup() = emacs.Keys()["C-c s"] == "search" and emacs.Keys()["C-c s s"] == commands.SearchForward and emacs.Keys()["C-c s r"] == commands.SearchBackward
+isSearchInAnotherPrompt() = press.Press(["C-x", "C-f", "C-s"], stateOf(words3)).Prompt.Label == "Find file: "   (** C-s does nothing in another prompt. *)
+isSearchAcrossWindows() = cursorOf(press.Press(["C-s", "needle"], stateOf("$(str.Repeat(70000, "a"))needle"))) == {Line: 1, Column: 70006}   (** A place past the first window of 64 KiB. *)
+isSearchCharacters() = cursorOf(press.Press(["C-s", "été"], stateOf("un été, l'été"))) == {Line: 1, Column: 6}   (** Columns count characters, not bytes. *)

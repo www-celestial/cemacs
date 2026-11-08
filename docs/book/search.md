@@ -1,10 +1,90 @@
 # Search
 
-Cemacs has no search inside a buffer yet. Emacs's incremental search, which finds the next match as each letter is typed
-(`C-s` and `C-r`), its search by regular expression, a pattern such as `[0-9]+` that matches many texts, its replace
-(`M-%`), and a search through the files of a project are not
-there: `C-s` says `C-s is not bound.` This chapter tells what Cemacs does find today: rows in lists, keys, errors, and the
-places that the output of a program names.
+Cemacs searches a buffer as Emacs does, incrementally: `C-s` opens the prompt line, and each letter you type moves the cursor
+to the next place of the words typed so far, which shows selected. This chapter tells that search, then what else Cemacs
+finds: rows in lists, keys, errors, and the places that the output of a program names. Search by regular expression, a
+pattern such as `[0-9]+` that matches many texts, replace, Emacs's `M-%`, and a search through the files of a project are
+not there yet.
+
+## Searching a buffer
+
+| Keys | Command | What it does |
+|---|---|---|
+| `C-s`, `C-c s s` | [commands.SearchForward] | searches forward from the cursor as you type; in a search, goes to the next place |
+| `C-r`, `C-c s r` | [commands.SearchBackward] | the same, backward |
+
+An incremental search is one that looks as you type, instead of waiting for the whole words: after `C-s` and `t`, the
+cursor is after the first `t` past it; after `tw`, after the first `tw`, which may be the same place or a later one. The
+place found shows selected, from its start to its end, and the screen follows it. Going forward, the cursor ends after the
+place; going backward, at its start. While the search lasts, the prompt line says what it does:
+
+| The prompt line | When |
+|---|---|
+| `I-search: WORDS` | a search forward, which found WORDS |
+| `I-search backward: WORDS` | a search backward |
+| `Failing I-search: WORDS` | no place of WORDS is left that way; the last place found stays selected |
+| `Wrapped I-search: WORDS` | after the search went round the end of the file to its start, or round the start to the end backward |
+| `Failing wrapped I-search: WORDS` | even round the end, nothing |
+
+The keys while a search is open:
+
+| Keys | What they do |
+|---|---|
+| a typed text, `C-y` | adds it to the words, and looks again from the start of the place found, so that the place stays while it still matches |
+| `C-s` | the next place forward; once the search fails, the next `C-s` goes round to the start of the file |
+| `C-r` | the next place backward, and round the end once it fails that way |
+| `C-s` or `C-r` with no words yet | looks for the words of the last search again |
+| `backspace` | takes back the last step, a letter or a `C-s`, with the place it had |
+| `enter` | ends the search, the cursor at the place |
+| `C-g` | when the search fails, takes back the letters that matched nothing; else ends the search where it started, and says `Quit` |
+| any other key | ends the search at the place, then does what it does: `C-a` goes to the start of that line |
+
+```cesia
+use core/press
+use core/view
+use core/text
+use src/emacs
+use src/rope
+use src/ui
+start = view.Start([text.Of("one two\nthree two", missing)], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)
+start.Config = () -> emacs.Config(emacs.Keys)
+found = press.Press(["C-s", "two", "C-s"], start)
+found.Prompt.Label --> "I-search: "
+found.Buffers[1].Cursor --> {Line: 2, Column: 9}
+press.Press(["C-s", "two", "C-s", "C-s"], start).Prompt.Label --> "Failing I-search: "
+press.Press(["C-s", "two", "C-s", "C-s", "C-s"], start).Buffers[1].Cursor --> {Line: 1, Column: 7}
+press.Press(["C-s", "three", "C-g"], start).Buffers[1].Cursor --> {Line: 1, Column: 0}
+```
+
+Case folding, the matching of a capital and a small letter as the same letter, follows Emacs: words with no capital match
+either case, and words with one match exactly. `two` finds `Two` and `TWO`; `Two` finds only `Two`. Cesia knows the case of
+the letters of ASCII only, so `é` never matches `É`. [commands.Folds] tells which:
+
+```cesia
+use core/commands
+commands.Folds("two") --> true
+commands.Folds("Two") --> false
+```
+
+The words are bytes to find, not a pattern: `a.b` finds the three characters `a.b`. A search lives in the prompt line, so
+the buffer can't change while it is open; a key that would change it, as `C-k`, ends the search first.
+
+### How it finds
+
+[rope.Find] and [rope.FindBefore] read the rope a window at a time: 64 KiB first, then twice as much at each window, up to
+1 MiB, each window one slice of the rope in which Cesia's [text.ByteFind] finds the words natively. Each window overlaps the
+one before it by the length of the words less one byte, so that a place across two windows is found; with folding, each
+window is put in lower case first, with [text.Lower]. A place near the cursor costs one small window; a place 100 MB away,
+about a hundred windows of 1 MiB.
+
+```cesia
+r = rope.Of("ab ab ab")
+[rope.Find("ab", 1, r), rope.FindBefore("ab", 6, r)] --> [3, 3]
+```
+
+Showing a place far away costs more than finding it: the colours of the lines on the screen depend on every line before
+them, as a comment or a text opened on one line goes on over the next ones, so the state of each line before the place is
+read once, then kept: see [Speed](performance.md#search).
 
 ## Lists
 

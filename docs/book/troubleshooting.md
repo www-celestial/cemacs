@@ -113,6 +113,9 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `New file, or folder/: ` | in the folder manager, the name to make |
 | `Rename NAME to: ` | in the folder manager, the new name or path |
 | `Move NAME to the trash? (y or n)` | in the folder manager |
+| `I-search: `, `I-search backward: ` | a search is open: what you type is looked for, Enter stays, `C-g` goes back; see [Search](search.md#searching-a-buffer) |
+| `Failing I-search: ` | no place of the words is left that way: `C-s` or `C-r` again goes round the end, `C-g` takes back what matched nothing |
+| `Wrapped I-search: `, `Failing wrapped I-search: ` | the search went round the end of the file; failing, the words are nowhere in it |
 
 ## After the title of the output
 
@@ -143,9 +146,11 @@ None of these should happen with the code as it is; each comes from a change to 
 
 ## Slow or busy
 
-- **A large file takes seconds to open, and much memory.** Most of the time goes to the check that the file is valid UTF-8,
-  done in Cesia byte by byte when the file holds characters outside ASCII: [Speed](performance.md#opening-a-file) has the
-  numbers.
+- **A large file takes a while to open, and memory.** About 0.9 s and 400 MB for 100 MB, the check of UTF-8 and the line ends
+  of the rope taking most of it: [Speed](performance.md#opening-a-file) has the numbers.
+- **The first jump far down a large file, or a search that goes there, takes seconds.** The colours of the screen depend on
+  every line above it, so the first jump reads the state of each, about 1.3 µs a line, 4 s for the last line of 100 MB; the
+  states are kept, so the next jumps cost nothing: [Speed](performance.md#search).
 - **The processor works while a program runs.** While a program runs, a check runs or a buffer waits for one, Cemacs draws a
   frame at each pass of its loop: see [Inside Cemacs](internals.md#the-loop-of-events). Stop a program you don't need.
 - **The output shows only its last lines.** It keeps 1,000 lines; `C-c c o` opens them all as a list.

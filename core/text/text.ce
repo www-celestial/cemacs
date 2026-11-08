@@ -53,14 +53,24 @@ defn clamp(pos, b)
   {Line: line, Column: list.Min(list.Max(0, pos.Column), width(line, b))}
 end
 
-defn byte(pos, b)
-  (** The byte of the rope at a position: the start of its line, plus the bytes of the characters before it. *)
+defn ByteOf(pos, b)
+  (** The byte of the rope at a position: the start of its line, plus the bytes of the characters before it.
+
+        ByteOf({Line: 2, Column: 1}, Of("é\nab", missing)) --> 4 *)
   start = rope.LineStart(pos.Line, b.Rope)
   if pos.Column == 0
     start
   else
     start + str.ByteLength(str.Slice(1, pos.Column, line(pos.Line, b)))
   end
+end
+
+defn PositionOf(at, b)
+  (** The position {Line, Column} of a byte of the rope, the column counted in characters.
+
+        PositionOf(4, Of("é\nab", missing)) --> {Line: 2, Column: 1} *)
+  line = rope.LineOf(at, b.Rope)
+  {Line: line, Column: value.Len(rope.Slice(rope.LineStart(line, b.Rope), at, b.Rope))}
 end
 
 defn forwardFrom(pos, b)
@@ -276,7 +286,7 @@ defn insert(words, continues, b)
   else
     {Line: at.Line + value.Len(pieces) - 1, Column: value.Len(list.Last(pieces))}
   end
-  r = rope.Insert(byte(at, b), words, b.Rope)
+  r = rope.Insert(ByteOf(at, b), words, b.Rope)
   typing = value.Len(words) == 1 and not (words == " " or words == "\t" or words == "\n")
   edit(r, cursor, at.Line, continues and value.Len(words) == 1, typing, b)
 end
@@ -289,7 +299,7 @@ InsertWords(words, b) = if words == "" b else insert(words, true, b) end
 
 defn delete(p, q, b)
   (** The buffer without the text from one position up to another, which comes after it. The cursor goes to the first. *)
-  r = rope.Delete(byte(p, b), byte(q, b), b.Rope)
+  r = rope.Delete(ByteOf(p, b), ByteOf(q, b), b.Rope)
   edit(r, p, p.Line, false, false, b)
 end
 
@@ -368,7 +378,7 @@ defn Region(b)
   if value.IsMissing(e)
     ""
   else
-    rope.Slice(byte(e.First, b), byte(e.Last, b), b.Rope)
+    rope.Slice(ByteOf(e.First, b), ByteOf(e.Last, b), b.Rope)
   end
 end
 
@@ -416,7 +426,7 @@ defn CutLine(b)
   if value.IsMissing(q)
     {Buffer: b, Cut: ""}
   else
-    {Buffer: delete(at, q, b), Cut: rope.Slice(byte(at, b), byte(q, b), b.Rope)}
+    {Buffer: delete(at, q, b), Cut: rope.Slice(ByteOf(at, b), ByteOf(q, b), b.Rope)}
   end
 end
 

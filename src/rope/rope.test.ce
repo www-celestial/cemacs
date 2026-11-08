@@ -76,3 +76,24 @@ end
 isOfBalanced() = list.All([whole(text.ByteSlice(1, n, text.Repeat(70, big))) for n in [1025, 2048, 2049, 3073, 5000, 9216, 33793, 65537, 200000]])
 
 whole(s) = balanced(rope.Of(s)) and rope.Text(rope.Of(s)) == s and rope.LineCount(rope.Of(s)) == value.Len(text.Split("\n", s))   (** Balanced, and the same text. *)
+
+(** A text of 200,000 bytes with the word "needle" at a place: Find and FindBefore must see it from every side, across the windows of 64 KiB and
+    more, and in either case with fold. *)
+withNeedle(at) = "$(text.Repeat(at, "x"))needle$(text.Repeat(200000 - at, "y"))"
+defn isFindEverywhere()
+  for at in [0, 1, 65530, 65531, 65535, 65536, 131071, 196600, 200000]
+    r = rope.Of(withNeedle(at))
+    if rope.Find("needle", 0, r) != at or rope.Find("needle", at, r) != at or not value.IsMissing(rope.Find("needle", at + 1, r))
+      return false
+    end
+    if rope.FindBefore("needle", at + 1, r) != at or not value.IsMissing(rope.FindBefore("needle", at, r)) or rope.FindBefore("needle", rope.Size(r) + 1, r) != at
+      return false
+    end
+    if rope.Find("needle", 0, rope.Of(text.Upper(withNeedle(at))), fold = true) != at or not value.IsMissing(rope.Find("needle", 0, rope.Of(text.Upper(withNeedle(at)))))
+      return false
+    end
+  end
+  true
+end
+
+isFindLastOfMany() = rope.FindBefore("ab", 9, rope.Of("ab ab ab ab")) == 6 and rope.Find("ab", 1, rope.Of("ab ab ab ab")) == 3   (** The nearest place either way. *)
