@@ -16,7 +16,7 @@ use std/value
 (** The width of the line numbers and the space around them, before the first column of text. *)
 Gutter = 62
 
-(** Pixels added under the height of the code font to space the lines: JetBrains Mono at 13 is 18 high, and the 19 of ui.Code reads less tight. *)
+(** Pixels added under the height of the code font to space the lines: JetBrains Mono at 13 is 18 high, and a line of 19 reads less tight. *)
 LineGap = 1
 
 (* The marks of a check: red for an error, amber for a warning, and a quieter tone of each for their words. *)

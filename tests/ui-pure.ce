@@ -1,4 +1,4 @@
 (** ui needs no permission and no window: it uses only the packages of std/ that touch nothing outside. *)
 use src/ui
 use std/io
-io.Print(ui.Ease(1.0, 2.0, 0.0))
+io.Print(ui.Contains({X: 1, Y: 1}, {X: 0, Y: 0, Width: 2, Height: 2}))
