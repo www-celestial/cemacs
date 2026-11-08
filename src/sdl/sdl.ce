@@ -183,9 +183,9 @@ defn textEngine(sdlApi, ttfApi, loaded, created, renderer)
     ttfApi.DestroyEngine(engine)
     return started
   end
-  result.Ok({Sdl: sdlApi, Ttf: ttfApi, Window: created, Renderer: renderer, Engine: engine, Font: loaded, Fonts: dict.Dict([{Key: "body", Value: loaded}]), ShownFonts: [],
+  result.Ok({Sdl: sdlApi, Ttf: ttfApi, Window: created, Renderer: renderer, Engine: engine, Font: loaded, Fonts: dict.Dict([{Key: "body", Value: loaded}]),
       Rect: c.Alloc(16), OutWidth: c.Alloc(4), OutHeight: c.Alloc(4), Event: c.Alloc(128),
-      Objects: c.Alloc(16 + MaxTexts * 8), Images: c.Alloc(8 + MaxImages * 8), Masks: dict.Dict(), ImageBlocks: [], CurveBlocks: [], CurvesRetired: [], CurveUsed: 0, MaskTable: c.Alloc(8 + MaxSharedMasks * MaskEntry), CurveWrites: 0, Drawn: 0, Shown: [], Used: 0})
+      Objects: c.Alloc(16 + MaxTexts * 8), Images: c.Alloc(8 + MaxImages * 8), Masks: dict.Dict(), ImageBlocks: [], CurveBlocks: [], CurvesRetired: [], CurveUsed: 0, MaskTable: c.Alloc(8 + MaxSharedMasks * MaskEntry), CurveWrites: 0, Drawn: 0, Shaped: dict.Dict(), Made: 0})
 end
 
 defn AddFont(name, path, size, window, light = false)
@@ -253,11 +253,8 @@ defn DrawRect(one, window)
 end
 
 defn objectAt(position, window)
-  (** The text object at a position of the window, made when first needed. Text objects are costly to create, so they stay,
+  (** The text object at a position of the window, from 1 to MaxTexts, made when first needed. Text objects are costly to create, so they stay,
       in a block shared by every copy of the window: their count, the number of the last draw, then their pointers. *)
-  if position > MaxTexts
-    bug.Panic("A frame can't have more than $MaxTexts texts.")
-  end
   if position <= c.Get("i64", 0, window.Objects)
     c.Get("ptr", 8 + position * 8, window.Objects)
   else
@@ -284,27 +281,28 @@ alphaOf(one) = match one   (** The alpha of a command, which may not give one. *
 end
 
 defn DrawText(one, window)
-  (** Draws a text: a command {Kind: "text", Text, X, Y, Color}, with a font and an alpha if it wants. *)
-  position = window.Used + 1
-  object = objectAt(position, window)
-  if position > value.Len(window.Shown)
-    window.Shown = list.Append("", window.Shown)
-    window.ShownFonts = list.Append("", window.ShownFonts)
-  end
+  (** Draws a text: a command {Kind: "text", Text, X, Y, Color}, with a font and an alpha if it wants. A text object is kept by its font and its
+      words: shaped once, never changed after, and drawn wherever and as often as a frame has those words, so a line that moves on the screen is not
+      shaped again. When MaxTexts objects are made, the kept ones are forgotten and made again as frames need them. *)
   name = fontOf(one)
-  if window.ShownFonts[position] != name
-    checked(window.Ttf.SetFont(object, fontNamed(name, window)), window)
-    window.ShownFonts[position] = name
-  end
-  if window.Shown[position] != one.Text
-    checked(window.Ttf.SetText(object, one.Text, 0), window)
-    window.Shown[position] = one.Text
+  key = "$name\n$(one.Text)"
+  w = window
+  object = dict.Get(key, w.Shaped)
+  if value.IsMissing(object)
+    if w.Made >= MaxTexts
+      w.Made = 0
+      w.Shaped = dict.Dict()
+    end
+    w.Made = w.Made + 1
+    object = objectAt(w.Made, w)
+    checked(w.Ttf.SetFont(object, fontNamed(name, w)), w)
+    checked(w.Ttf.SetText(object, one.Text, 0), w)
+    w.Shaped = dict.Put(key, object, w.Shaped)
   end
   color = one.Color
-  checked(window.Ttf.Color(object, Red(color), Green(color), Blue(color), alphaOf(one)), window)
-  checked(window.Ttf.DrawText(object, one.X, one.Y), window)
-  window.Used = position
-  window
+  checked(w.Ttf.Color(object, Red(color), Green(color), Blue(color), alphaOf(one)), w)
+  checked(w.Ttf.DrawText(object, one.X, one.Y), w)
+  w
 end
 
 defn remember(texture, window)
@@ -725,13 +723,12 @@ defn Draw(commands, window)
   (** Draws without showing, and returns the window, which holds the text objects. *)
   last = c.Get("i64", 8, window.Objects)
   if window.Drawn != last
-    window.Shown = []  (* an older copy: what it remembers is no longer in the objects *)
-    window.ShownFonts = []
+    window.Shaped = dict.Dict()  (* an older copy: what it remembers may no longer be in the objects *)
+    window.Made = 0
     window.CurveBlocks = list.Map(forgetItems, window.CurveBlocks)
   end
   window.Drawn = last + 1
   c.Set("i64", 8, last + 1, window.Objects)
-  window.Used = 0
   window.CurveUsed = 0
   list.Reduce(command, window, commands)
 end

@@ -1,0 +1,30 @@
+(** A text that moves to another place of the frame is drawn there from the object that shaped it: two frames with the same two texts, swapped,
+    light the same pixels at each place as the first frame did at the other. The same words twice in a frame are one object, and a text that
+    leaves the screen keeps its object for when it comes back: a third text makes a third object. *)
+use std/c
+use tests/sdl/probe
+use src/sdl
+use std/io
+use std/result
+
+background = 0x000000
+clear = {Kind: "clear", Color: background}
+at(y, words) = {Kind: "text", X: 10, Y: y, Text: words, Color: 0xFFFFFF}
+lit(y, window) = probe.Differing(10, y, 100, 24, background, probe.Pixels(window, 320, 200))
+
+defn check()
+  window = sdl.Open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  first = sdl.Draw([clear, at(10, "MMMMMMMM"), at(60, "........")], window)
+  top = lit(10, first)
+  bottom = lit(60, first)
+  swapped = sdl.Draw([clear, at(10, "........"), at(60, "MMMMMMMM")], first)
+  io.Print(lit(10, swapped) == bottom and lit(60, swapped) == top and top > bottom)
+  twice = sdl.Draw([clear, at(10, "MMMMMMMM"), at(60, "MMMMMMMM")], swapped)
+  io.Print(lit(10, twice) == top and lit(60, twice) == top)
+  io.Print(c.Get("i64", 0, twice.Objects))
+  third = sdl.Draw([clear, at(10, "........"), at(60, "xxxxxxxx")], twice)
+  io.Print(c.Get("i64", 0, third.Objects))
+  result.Ok(missing)
+end
+
+io.Print(check())
