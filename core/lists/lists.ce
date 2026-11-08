@@ -1,9 +1,10 @@
 (** Lists: a buffer of rows that an app gives, as the buffer list does. A list is a buffer of text, so moves, selection and copy work in it as in a file, and its
     List field says what each line stands for: {Name, Rows, Keys, Free, Filter, Items, Parts, Back, Shown}. Rows is the rows {Words, Item}, or a function that
     gives them from the state, Keys the keys of the list, Free missing or the keys that need no row, Filter what was typed, Items the item of each line shown,
-    Parts their colors, Back the buffer to go back to, Shown, for fixed rows, what the last filter showed, Label missing or the words before the filter, and
-    Typed missing or what to do with a typed text in place of filtering. A row may give Parts, [role, words] each with a
-    role of color.ce, whose words joined are its Words. Everything here is pure: commands opens and runs lists. *)
+    Parts their colors, Back the buffer to go back to, Shown, for fixed rows, the rows the last filter kept, in their order, Label missing or the words before
+    the filter, Typed missing or what to do with a typed text in place of filtering, and Ranked whether the rows kept come the best first, by Score, rather
+    than in their order. A row may give Parts, [role, words] each with a role of color.ce, whose words joined are its Words. Everything here is pure:
+    commands opens and runs lists. *)
 use std/dict
 use std/list
 use std/text as str
@@ -20,18 +21,167 @@ end
 (** Is this buffer a list? *)
 IsList(b) = not value.IsMissing(Of(b))
 
-defn Matches(filter, words)
-  (** Does the filter match the words? Its characters must come in the words in order, side by side or not, and case doesn't count.
+defn termsOf(filter)
+  (** The words of a filter, split at its spaces, in lower case: each {Chars, Lens}, its characters and their lengths in bytes. *)
+  words = [w for w in str.Split(" ", str.Lower(filter)) if w != ""]
+  [{Chars: str.Chars(w), Lens: [str.ByteLength(c) for c in str.Chars(w)]} for w in words]
+end
 
-        Matches("cmd", "commands.ce") --> true *)
-  wanted = str.Chars(str.Lower(filter))
-  k = 1
-  for c in str.Chars(str.Lower(words))
-    if k <= value.Len(wanted) and c == wanted[k]
-      k += 1
+defn hasTerm(term, lower)
+  (** Do the characters of a word of the filter come in lower in order? Each is found natively, after the one before it. *)
+  at = 1
+  for k in 1..value.Len(term.Chars)
+    p = str.ByteFind(term.Chars[k], at, lower)
+    if value.IsMissing(p)
+      return false
+    end
+    at = p + term.Lens[k]
+  end
+  true
+end
+
+defn hasAll(terms, words)
+  (** Does each word of the filter match the words? *)
+  lower = str.Lower(words)
+  for t in terms
+    if not hasTerm(t, lower)
+      return false
     end
   end
-  k > value.Len(wanted)
+  true
+end
+
+defn Matches(filter, words)
+  (** Does the filter match the words? The words of the filter, split at its spaces, may come in any order, and the characters of each must come in the words
+      in order, side by side or not. Case doesn't count.
+
+        Matches("cmd", "commands.ce") --> true
+        Matches("ce cmd", "commands.ce") --> true *)
+  hasAll(termsOf(filter), words)
+end
+
+(* The score of fzy, by John Hawthorn, which Vim and Neovim use too, in thousandths so that the sums are exact: each byte skipped costs a little, more
+   between two letters of the filter than before the first or after the last; a letter at the start of a part of the words earns a bonus, and a letter right
+   after the one before it earns more. *)
+gapLeading = -5
+gapTrailing = -5
+gapInner = -10
+consecutive = 1000
+afterSlash = 900
+afterWord = 800
+afterCapital = 700
+afterDot = 600
+lowest = -1000000000
+
+defn bonusAt(at, words)
+  (** The bonus of a letter of the filter found at the byte at of the words, from the byte before it: only a letter or a digit earns one. *)
+  b = str.Byte(at, words)
+  prev = if at == 1 47 else str.Byte(at - 1, words) end
+  small = (b >= 97 and b <= 122) or (b >= 48 and b <= 57)
+  capital = b >= 65 and b <= 90
+  if not (small or capital)
+    0
+  else if prev == 47
+    afterSlash
+  else if prev == 45 or prev == 95 or prev == 32
+    afterWord
+  else if prev == 46
+    afterDot
+  else if capital and prev >= 97 and prev <= 122
+    afterCapital
+  else
+    0
+  end
+end
+
+defn termScore(term, lower, words)
+  (** fzy's score of one word of the filter in the words, lower their lower case, or missing when it doesn't match. fzy fills a table of every letter of the
+      filter by every byte of the words; the best score of a letter ending at a byte comes only from where the letter is, so this visits only those places,
+      each letter's in order, found natively, keeping the best of the letter before minus its gap as it goes: the same score, in about one step per place. *)
+  n = value.Len(term.Chars)
+  m = str.ByteLength(lower)
+  ends = []
+  scores = []
+  from = 1
+  for i in 1..n
+    c = term.Chars[i]
+    len = term.Lens[i]
+    nextEnds = []
+    nextScores = []
+    k = 1
+    count = value.Len(ends)
+    base = lowest
+    start = str.ByteFind(c, from, lower)
+    while not value.IsMissing(start)
+      s = lowest
+      if i == 1
+        s = (start - 1) * gapLeading + bonusAt(start, words)
+      else
+        joined = lowest
+        while k <= count and ends[k] < start
+          v = scores[k] - ends[k] * gapInner
+          if v > base
+            base = v
+          end
+          if ends[k] == start - 1
+            joined = scores[k] + consecutive
+          end
+          k += 1
+        end
+        if base > lowest
+          s = base + (start - 1) * gapInner + bonusAt(start, words)
+          if joined > s
+            s = joined
+          end
+        end
+      end
+      if s > lowest
+        nextEnds = list.Append(start + len - 1, nextEnds)
+        nextScores = list.Append(s, nextScores)
+      end
+      start = str.ByteFind(c, start + 1, lower)
+    end
+    if value.Len(nextEnds) == 0
+      return missing
+    end
+    ends = nextEnds
+    scores = nextScores
+    from = ends[1] + 1
+  end
+  best = lowest
+  for k in 1..value.Len(ends)
+    v = scores[k] + (m - ends[k]) * gapTrailing
+    if v > best
+      best = v
+    end
+  end
+  best
+end
+
+defn scoreOf(terms, words)
+  (** The sum of the scores of the words of the filter, or missing when one doesn't match. *)
+  lower = str.Lower(words)
+  total = 0
+  for t in terms
+    s = termScore(t, lower, words)
+    if value.IsMissing(s)
+      return missing
+    end
+    total += s
+  end
+  total
+end
+
+defn Score(filter, words)
+  (** How well the filter matches the words, higher is better, or missing when it doesn't match: the score of fzy, which Vim's and Neovim's fuzzy matching use,
+      in thousandths. Each word of the filter is scored alone, at its best place, and their scores add up. A letter at the start of the words or after a slash
+      earns 900, after a dash, an underscore or a space 800, a capital after a small letter 700, after a dot 600, and a letter right after the one before it
+      1000 in place of these; each byte skipped costs 10 between two letters, and 5 before the first or after the last, so that the shorter words win a tie.
+
+        Score("ml", "a/ml") --> 1890
+        Score("ml", "a/m-l") --> 1680
+        Score("zz", "a/ml") --> missing *)
+  scoreOf(termsOf(filter), words)
 end
 
 defn keyOf(row)
@@ -43,13 +193,29 @@ defn keyOf(row)
 end
 
 defn Filtered(filter, rows)
-  (** The rows whose words, or keys, the filter matches, in their order. An empty filter keeps them all at once, and one character is a native search. *)
-  if filter == ""
-    rows
-  else if value.Len(filter) == 1
-    list.Filter(r -> str.Contains(str.Lower(filter), str.Lower(keyOf(r))), rows)
-  else
-    list.Filter(r -> Matches(filter, keyOf(r)), rows)
+  (** The rows whose words, or keys, the filter matches, in their order. An empty filter keeps them all at once. *)
+  terms = termsOf(filter)
+  if value.Len(terms) == 0 rows else list.Filter(r -> hasAll(terms, keyOf(r)), rows) end
+end
+
+defn Ranked(filter, rows)
+  (** The rows whose words, or keys, the filter matches, the best first by Score; rows of the same score keep their order. An empty filter keeps them all.
+
+        [r.Item for r in Ranked("lexer", [{Words: "src/lib/lexer.mli", Item: 1}, {Words: "src/lib/lexer.ml", Item: 2}, {Words: "src/lib/lists.ml", Item: 3}])] --> [2, 1] *)
+  terms = termsOf(filter)
+  if value.Len(terms) == 0
+    return rows
+  end
+  scored = [{Row: r, Score: scoreOf(terms, keyOf(r))} for r in rows]
+  kept = [x for x in scored if not value.IsMissing(x.Score)]
+  [kept[k].Row for k in list.Order([-x.Score for x in kept])]
+end
+
+defn IsRanked(l)
+  (** Does a list rank its rows by Score as a filter keeps them, rather than keep their order? Not for a list from before this field. *)
+  match l
+    {Ranked: r} -> r
+    else -> false
   end
 end
 

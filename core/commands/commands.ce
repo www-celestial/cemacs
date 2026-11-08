@@ -907,18 +907,19 @@ unconfigured() = {Keys: () -> dict.Dict(), PromptKeys: () -> dict.Dict(), MouseK
 
 (* ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.ce for what a list holds. *)
 
-defn ShowList(name, rows, rowKeys, state, free = missing, label = missing, typed = missing)
+defn ShowList(name, rows, rowKeys, state, free = missing, label = missing, typed = missing, ranked = false)
   (** Opens a list named name. rows is the rows, each {Words, Item} and maybe a Key, which the filter reads in place of the words, or a function that gives
       them from the state, for rows that change with it.
       rowKeys is a function that gives the keys of the list, whose functions take the item under the cursor and the state; free, if given, gives keys that take
       only the state, and so run with no row left. Typing filters the rows, and the ListKeys of the config take the filter back; label, if given, takes the
-      place of "Filter: " before it, and typed gets each typed text and the state in place of the filter, which AddToFilter can still grow. A list open
-      already gives its place to this one. *)
+      place of "Filter: " before it, and typed gets each typed text and the state in place of the filter, which AddToFilter can still grow. With ranked, the
+      rows the filter keeps come the best first, by lists.Score, in place of their order. A list open already gives its place to this one. *)
   here = current(state)
   back = if lists.IsList(here) lists.Of(here).Back else state.Current end
   s = withoutList(state)
   b = text.Of("", missing)
-  b.List = {Name: name, Rows: rows, Keys: rowKeys, Free: free, Filter: "", Items: [], Back: list.Min(back, value.Len(s.Buffers)), Shown: missing, Label: label, Typed: typed}
+  b.List = {Name: name, Rows: rows, Keys: rowKeys, Free: free, Filter: "", Items: [], Back: list.Min(back, value.Len(s.Buffers)), Shown: missing, Label: label, Typed: typed,
+    Ranked: ranked}
   s.Buffers = list.Append(b, s.Buffers)
   s.Current = value.Len(s.Buffers)
   refreshed(s)
@@ -981,7 +982,8 @@ end
 defn refreshed(state)
   (** The state with the list in the current buffer, if it is one, made again from its rows and its filter. The cursor stays on the item it was on, if that one is
       still shown, else on its line. When the words don't change, the buffer stays as it is, with its selection. Fixed rows are filtered again only when the
-      filter changed, and from the rows shown when it only grew: every event comes here, and a folder can have ten thousand rows. *)
+      filter changed, and from the rows it kept when it only grew: every event comes here, and a folder can have ten thousand rows. A ranked list keeps
+      those rows in their order, and ranks them for the screen, so that typing a filter letter by letter shows what typing it at once would. *)
   b = current(state)
   l = lists.Of(b)
   if value.IsMissing(l)
@@ -993,7 +995,8 @@ defn refreshed(state)
     return state
   end
   from = if fixed and not value.IsMissing(last) and str.StartsWith(last.Filter, l.Filter) last.Rows else if fixed l.Rows else l.Rows(state) end
-  shown = lists.Filtered(l.Filter, from)
+  kept = lists.Filtered(l.Filter, from)
+  shown = if lists.IsRanked(l) lists.Ranked(l.Filter, kept) else kept end
   words = lists.Words(shown)
   items = list.Map(r -> r.Item, shown)
   out = b
@@ -1005,7 +1008,7 @@ defn refreshed(state)
   l.Items = items
   l.Parts = list.Map(lists.PartsOf, shown)
   if fixed
-    l.Shown = {Filter: l.Filter, Rows: shown}
+    l.Shown = {Filter: l.Filter, Rows: kept}
   end
   out.List = l
   put(out, state)

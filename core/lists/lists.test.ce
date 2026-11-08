@@ -3,6 +3,9 @@ use core/lists
 use core/text
 use std/list
 use std/value
+use std/gen
+use std/test
+use std/text as str
 
 isMatchInOrder() = lists.Matches("cmd", "commands.ce") and not lists.Matches("dmc", "commands.ce")
 isMatchSideBySideToo() = lists.Matches("comm", "commands.ce")
@@ -14,3 +17,122 @@ isWordsOnePerLine() = lists.Words([{Words: "a", Item: 1}, {Words: "b", Item: 2}]
 isLineOfItem() = lists.LineOf(30, [10, 30, 40], 3) == 2
 isLineOfGoneItem() = lists.LineOf(20, [10, 30, 40], 3) == 3 and lists.LineOf(20, [10], 3) == 1 and lists.LineOf(20, [], 3) == 1
 isTextIsNoList() = not lists.IsList(text.Of("a", missing)) and value.IsMissing(lists.Of(text.Of("a", missing)))
+
+(* Words of the filter, apart, match in any order, as in Vim and Neovim: the place of a file, then its kind. *)
+isWordsMatchInAnyOrder() = lists.Matches("ml messages", "src/lib/messages.ml") and lists.Matches("messages ml", "src/lib/messages.ml") and not lists.Matches("ml zz", "src/lib/messages.ml")
+isSpacesAloneMatchAll() = lists.Matches("  ", "x") and lists.Matches(" a ", "xa")
+isMatchAcrossBytesOfACharacter() = lists.Matches("é", "café") and not lists.Matches("é", "cafe") and lists.Matches("aé", "a-é")
+
+(* The ranking: the best first, by fzy's score; an equal score keeps the order of the rows. *)
+paths = ["tests/check/release-test.ce", "tools/reload-test.sh", "src/lib/messages.ml", "src/lib/messages.mli", "tests/project/checks/missing_need/cesia.toml"]
+pathRows = [{Words: p, Item: p} for p in paths]
+isRankedBestFirst() = lists.Ranked("rlt", pathRows)[1].Item == "tools/reload-test.sh" and lists.Ranked("msgml", pathRows)[1].Item == "src/lib/messages.ml"
+isRankedOnlyMatches() = value.Equal([r.Item for r in lists.Ranked("msgs", pathRows)], ["src/lib/messages.ml", "src/lib/messages.mli", "tests/project/checks/missing_need/cesia.toml"])
+isRankedTiesKeepOrder() = value.Equal([r.Item for r in lists.Ranked("a", [{Words: "xa", Item: 1}, {Words: "ya", Item: 2}, {Words: "za", Item: 3}])], [1, 2, 3])
+isRankedEmptyKeepsAll() = value.Equal(lists.Ranked("", pathRows), pathRows) and value.Equal(lists.Ranked(" ", pathRows), pathRows)
+isScoreOfNoMatchMissing() = value.IsMissing(lists.Score("zz", "src/lib/messages.ml")) and lists.Score("", "anything") == 0
+isScoreStartOfWordBest() = lists.Score("m", "src/m.ml") > lists.Score("m", "src/am.ml") and lists.Score("ml", "a/ml") > lists.Score("ml", "a/m-l")
+isScoreShorterBest() = lists.Score("lexer", "src/lib/lexer.ml") > lists.Score("lexer", "src/lib/lexer.mli")
+isScoreWordsAddUp() = lists.Score("ml lexer", "src/lib/lexer.ml") == lists.Score("ml", "src/lib/lexer.ml") + lists.Score("lexer", "src/lib/lexer.ml")
+
+(* fzy's score as its match.c computes it, cell by cell over the whole table, in the thousandths of lists.ce: the reference that the score of lists.ce,
+   which visits only the places where each letter is, must equal. *)
+lowest = -1000000000
+defn plainBonus(prev, b)
+  letter = (b >= 97 and b <= 122) or (b >= 48 and b <= 57)
+  capital = b >= 65 and b <= 90
+  if not (letter or capital)
+    0
+  else if prev == 47
+    900
+  else if prev == 45 or prev == 95 or prev == 32
+    800
+  else if prev == 46
+    600
+  else if capital and prev >= 97 and prev <= 122
+    700
+  else
+    0
+  end
+end
+trailingGap() = -5
+innerGap() = -10
+lowerByte(b) = if b >= 65 and b <= 90 b + 32 else b end
+defn plainScore(needle, haystack)
+  n = str.ByteLength(needle)
+  m = str.ByteLength(haystack)
+  if not lists.Matches(needle, haystack)
+    return missing
+  else if n == 0
+    return 0
+  end
+  wanted = [lowerByte(b) for b in str.Bytes(needle)]
+  bytes = str.Bytes(haystack)
+  bonus = list.Fill(0, m)
+  for j in 1..m
+    bonus[j] = plainBonus(if j == 1 47 else bytes[j - 1] end, bytes[j])
+  end
+  lastD = list.Fill(lowest, m)
+  lastM = list.Fill(lowest, m)
+  for i in 1..n
+    d = list.Fill(lowest, m)
+    best = list.Fill(lowest, m)
+    prev = lowest
+    gap = if i == n trailingGap() else innerGap() end
+    for j in 1..m
+      if wanted[i] == lowerByte(bytes[j])
+        s = lowest
+        if i == 1
+          s = (j - 1) * -5 + bonus[j]
+        else if j > 1
+          s = list.Max(lastM[j - 1] + bonus[j], lastD[j - 1] + 1000)
+        end
+        d[j] = s
+        prev = list.Max(s, prev + gap)
+      else
+        prev = prev + gap
+      end
+      best[j] = prev
+    end
+    lastD = d
+    lastM = best
+  end
+  lastM[m]
+end
+
+(* Few letters, so that a filter often matches: a slash, a dot, a dash, a capital, a space. *)
+needles = gen.Text(max = 4, chars = "abAB/.")
+haystacks = gen.Text(max = 14, chars = "abAB/.-_ x")
+isScoreIsFzy() = test.ForAll(p -> lists.Score(p.N, p.H) == plainScore(p.N, p.H), gen.Of({N: needles, H: haystacks}), cases = 500)
+
+(* Matches is the subsequence of characters, as the filter has always been: here character by character, the way it was written before. *)
+defn plainMatches(filter, words)
+  wanted = str.Chars(str.Lower(filter))
+  k = 1
+  for c in str.Chars(str.Lower(words))
+    if k <= value.Len(wanted) and c == wanted[k]
+      k += 1
+    end
+  end
+  k > value.Len(wanted)
+end
+anyChars = gen.Text(max = 3, chars = "aAé/.")
+isMatchesIsSubsequence() = test.ForAll(p -> lists.Matches(p.N, p.H) == plainMatches(p.N, p.H), gen.Of({N: anyChars, H: gen.Text(max = 12, chars = "aAé/.xe")}), cases = 500)
+isScoreMissingOnlyWithoutMatch() = test.ForAll(p -> value.IsMissing(lists.Score(p.N, p.H)) == (not lists.Matches(p.N, p.H)), gen.Of({N: gen.Text(max = 5, chars = "aAé/. "), H: gen.Text(max = 12, chars = "aAé/.x ")}), cases = 500)
+
+(* The rows of a list: distinct items, words of the same few letters. *)
+rowsOf(words) = [{Words: words[k], Item: k} for k in 1..value.Len(words)]
+listCase = gen.Of({F: gen.Text(max = 4, chars = "ab/ "), C: gen.Text(max = 1, chars = "ab/"), Rows: gen.Map(rowsOf, gen.List(gen.Text(max = 10, chars = "abAB/.-x"), max = 12))})
+sameItems(xs, ys) = value.Equal(list.Sort([r.Item for r in xs]), list.Sort([r.Item for r in ys]))
+defn isNonIncreasing(filter, rows)
+  scores = [lists.Score(filter, r.Words) for r in rows]
+  for k in 2..value.Len(scores)
+    if scores[k] > scores[k - 1]
+      return false
+    end
+  end
+  true
+end
+isRankedIsFilteredReordered() = test.ForAll(p -> sameItems(lists.Ranked(p.F, p.Rows), lists.Filtered(p.F, p.Rows)) and isNonIncreasing(p.F, lists.Ranked(p.F, p.Rows)), listCase, cases = 300)
+(* A list filters a letter more from the rows the filter shown before kept: the result must be the one of the whole list, as if typed at once. *)
+isRankedNarrowsAsTyped() = test.ForAll(p -> value.Equal(lists.Ranked("$(p.F)$(p.C)", lists.Filtered(p.F, p.Rows)), lists.Ranked("$(p.F)$(p.C)", p.Rows)), listCase, cases = 300)
