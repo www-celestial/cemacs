@@ -36,7 +36,8 @@ defn statesDifferIn(path, text)
   if count == 0
     []
   else
-    got = color.ColoredTo(count, n -> allLines[n], color.BlankColors()).Starts
+    colors = color.ColoredTo(count, n -> allLines[n], color.BlankColors())
+    got = [color.StartOf(n, colors) for n in 1..count]
     if value.Equal(got, list.Take(count, expected)) [] else ["$(path)"] end
   end
 end

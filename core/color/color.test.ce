@@ -6,6 +6,8 @@ use std/list
 use std/value
 use std/num
 use std/math
+use std/gen
+use std/test
 
 roles(line) = list.Map(t -> t[1], color.Tokens(line, color.FirstState).Tokens)
 joined(tokens) = str.Join("", list.Map(t -> t[2], tokens))
@@ -49,13 +51,22 @@ isEmptyLine() = value.Equal(color.Tokens("", color.FirstState).Tokens, []) and c
 isNothingLost() = list.All(list.Map(lost, ["defn f(x)", "  x = \"a\" -- b", "(* a *) if (* b", "é = 1.5e3 $$(", "\t.. ... ::", "\"\" \"\"\"\""]))
 isBrokenCodeColors() = lost("x = (* \" $$(")
 isForgetLimits() = color.ForgetFrom(5, knownToTen).Known == 5
-isForgetKeepsStates() = value.Len(color.ForgetFrom(5, knownToTen).Starts) == 5
+isForgetKeepsStates() = value.Len(list.Flatten(color.ForgetFrom(5, knownToTen).Chunks)) == 5
 isForgetAfterKnownChangesNothing() = value.Equal(color.ForgetFrom(20, knownToTen), knownToTen)
 isForgetKeepsFirst() = color.ForgetFrom(0, knownToTen).Known == 1
-isBlank() = value.Equal(color.BlankColors(), {Starts: [color.FirstState], Known: 1})
-isColoredToReaches() = knownToTen.Known == 10 and value.Len(knownToTen.Starts) == 10
+isBlank() = value.Equal(color.BlankColors(), {Chunks: [[color.FirstState]], Known: 1})
+isColoredToReaches() = knownToTen.Known == 10 and value.Len(list.Flatten(knownToTen.Chunks)) == 10
 isColoredToKeepsKnown() = value.Equal(color.ColoredTo(3, n -> bug.Panic("not read"), knownToTen), knownToTen)
-isColoredToFollowsComments() = color.ColoredTo(3, commentFirst, color.BlankColors()).Starts[3].Comment == 1
+isColoredToFollowsComments() = color.StartOf(3, color.ColoredTo(3, commentFirst, color.BlankColors())).Comment == 1
+
+(* The states kept in chunks are the states of the lines, one after the other: read in parts that end anywhere, forgotten from any line and read again,
+   they are those of one reading from the start. The lines open and close comments and texts, so that the states differ from line to line. *)
+chunkLine(n) = ["(* a", "b *) \"c", "d\" x", "y", "(* (* e *)", "f *)"][math.Mod(n * 7, 6) + 1]
+flatStates(last) = list.Scan((state, n) -> color.Tokens(chunkLine(n), state).State, color.FirstState, list.Range(1, last - 1))
+allStates(last, colors) = [color.StartOf(n, colors) for n in 1..last]
+isChunksAsFlat() = test.ForAll(p -> value.Equal(allStates(p.Last, color.ColoredTo(p.Last, chunkLine, color.ForgetFrom(p.Cut, color.ColoredTo(p.Second, chunkLine, color.ColoredTo(p.First, chunkLine, color.BlankColors()))))), list.Concat([color.FirstState], flatStates(p.Last))), chunkCase, cases = 60)
+chunkCase = gen.Map(p -> {First: p.A, Second: p.A + p.B, Cut: p.C, Last: p.A + p.B + p.D}, gen.Of({A: gen.Int(1, 2100), B: gen.Int(0, 1100), C: gen.Int(0, 3300), D: gen.Int(0, 1100)}))
+isForgetAtChunkEdges() = list.All([color.ForgetFrom(k, color.ColoredTo(3000, chunkLine, color.BlankColors())).Known == k and value.Len(list.Flatten(color.ForgetFrom(k, color.ColoredTo(3000, chunkLine, color.BlankColors())).Chunks)) == k for k in [1, 2, 1023, 1024, 1025, 2048, 2049, 2999]])
 
 (* StateAfter gives the state that Tokens gives, on random lines made of the marks that matter and of characters of one to four bytes, from every
    kind of state. *)

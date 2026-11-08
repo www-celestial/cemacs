@@ -1,6 +1,7 @@
 (** The colors of the code: a line is read in one pass, by states, and gives words with a role. Nothing here panics, whatever the line:
     unfinished texts and comments only carry their state to the next line. *)
 use std/list
+use std/math
 use std/text as str
 use std/value
 
@@ -166,10 +167,20 @@ defn Tokens(line, state)
   {Tokens: out, State: {Comment: depth, Text: inText}}
 end
 
-(** Nothing is known yet but the state at the start of the first line.
+(** Nothing is known yet but the state at the start of the first line. The states known are kept in Chunks, lists of chunkLines() states each, the
+    last one filled first: an edit at a line keeps the chunks before it and cuts one, adding lines fills the last chunk and makes new ones, so both cost
+    the number of chunks plus one chunk, not the number of lines known. Emacs keeps its syntax-ppss cache sparse for the same reason.
 
       BlankColors().Known --> 1 *)
-BlankColors() = {Starts: [FirstState], Known: 1}
+BlankColors() = {Chunks: [[FirstState]], Known: 1}
+
+(* How many states a chunk holds. A function: a variable added under --watch is read before it has a value. *)
+chunkLines() = 1024
+
+(** The state at the start of line n, which must be known.
+
+      StartOf(1, BlankColors()) --> FirstState *)
+StartOf(n, colors) = colors.Chunks[math.Div(n - 1, chunkLines()) + 1][math.Mod(n - 1, chunkLines()) + 1]
 
 (** Can this line change the state? Only a quote or a comment mark can open or close a text or a comment. *)
 mayChange(words) = str.Contains("\"", words) or str.Contains("(*", words) or str.Contains("*)", words)
@@ -244,15 +255,27 @@ end
 defn ColoredTo(line, lineOf, colors)
   (** The state at the start of line number line, once the lines before it are known; line_of(n) gives the text of line n.
 
-        ColoredTo(2, n -> str.Join("", ["(", "* a"]), BlankColors()).Starts[2].Comment --> 1 *)
-  have = value.Len(colors.Starts)
+        StartOf(2, ColoredTo(2, n -> str.Join("", ["(", "* a"]), BlankColors())).Comment --> 1 *)
+  have = colors.Known
   if line <= have
-    {Starts: colors.Starts, Known: have}
-  else
-    (* scan builds the whole array at once: pushing one state at a time copies the array each time, and a jump to line 19,000 takes seconds. *)
-    later = list.Scan((state, n) -> StateAfter(lineOf(n), state), colors.Starts[have], list.Range(have, line - 1))
-    {Starts: list.Concat(colors.Starts, later), Known: line}
+    return colors
   end
+  chunks = colors.Chunks
+  last = value.Len(chunks)
+  part = chunks[last]
+  state = StartOf(have, colors)
+  for n in have..(line - 1)
+    state = StateAfter(lineOf(n), state)
+    if value.Len(part) == chunkLines()
+      chunks[last] = part
+      chunks = list.Append([], chunks)
+      last += 1
+      part = []
+    end
+    part = list.Append(state, part)
+  end
+  chunks[last] = part
+  {Chunks: chunks, Known: line}
 end
 
 defn ForgetFrom(line, colors)
@@ -261,8 +284,10 @@ defn ForgetFrom(line, colors)
         ForgetFrom(2, ColoredTo(5, n -> "x", BlankColors())).Known --> 2 *)
   keep = list.Max(1, line)
   if colors.Known <= keep
-    colors
-  else
-    {Starts: list.Take(keep, colors.Starts), Known: keep}
+    return colors
   end
+  whole = math.Div(keep - 1, chunkLines())
+  chunks = list.Take(whole + 1, colors.Chunks)
+  chunks[whole + 1] = list.Take(keep - whole * chunkLines(), chunks[whole + 1])
+  {Chunks: chunks, Known: keep}
 end

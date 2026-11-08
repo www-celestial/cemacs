@@ -215,7 +215,7 @@ defn coloredTo(line, b)
   (** The colors of a buffer known down to line. The lines after the last one known are read 100,000 at a time, each batch one slice of the rope cut
       at its line ends: reading each line alone goes down the tree for each, 13 us a line, where a slice costs 0.3 us a line. *)
   colors = b.Colors
-  have = value.Len(colors.Starts)
+  have = colors.Known
   while have < line
     upTo = list.Min(line, have + 100000)
     lines = str.Split("\n", rope.Slice(rope.LineStart(have, b.Rope), rope.LineEnd(upTo - 1, b.Rope), b.Rope))
@@ -290,7 +290,7 @@ defn rowTokens(parts, words)
 end
 
 (** The state at the start of line n, or the first one if the colors don't reach it yet. *)
-startOf(n, colors) = if n <= colors.Known colors.Starts[n] else color.FirstState end
+startOf(n, colors) = if n <= colors.Known color.StartOf(n, colors) else color.FirstState end
 
 (** The marks of line n of a buffer, the errors first. *)
 marksAt(n, b) = list.Concat([m for m in text.MarksOf(b) if m.Line == n and m.Severity == "error"], [m for m in text.MarksOf(b) if m.Line == n and m.Severity != "error"])
