@@ -104,8 +104,9 @@ This protects the file from a failure of Cemacs, of the disk being full, or of a
 caches to the disk, as `fsync` would, so a loss of power right after a save may still lose that save on some file systems.
 
 Since the saved file is a new one, it doesn't keep what belonged to the old one: its permissions are those of a new file,
-`rw-r--r--` with the usual `umask`, so a script loses its right to run and a read-only file becomes writable; a symbolic link
-is replaced by a plain file, its target left as it was; and a hard link no longer shares the text. The folder must let you
+`rw-r--r--` with the usual `umask`, the mask by which the system takes rights away from every new file, so a script loses its
+right to run and a read-only file becomes writable; a symbolic link, a file that only points to another one, is replaced by a
+plain file, its target left as it was; and a hard link, a second name of the same file, no longer shares the text. The folder must let you
 write in it, for the new file.
 
 ### A file changed by another program

@@ -208,7 +208,8 @@ redo take away the mark too, since a mark left where it was would select a text 
 
 `C-g` stops what the keys started:
 
-- after a prefix key, as `C-x C-g`, it forgets the prefix, keeps the selection, and says `Quit`;
+- after a prefix key, the first key of a longer key such as `C-x` in `C-x C-s`, it forgets the prefix, keeps the selection,
+  and says `Quit`;
 - with a question open on the prompt line, it closes the question, with no answer, and says `Quit`;
 - in a list, it takes back what you typed to filter it, and with nothing typed it closes the list;
 - else, it takes the mark away, and says `Quit`.

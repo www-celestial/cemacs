@@ -54,8 +54,9 @@ check.IsDue(text.Of("", "notes.md")) --> false
 Once no key, text or click has come for [emacs.CheckDelay] seconds, half a second, Cemacs checks the current buffer if it is
 due, or else the first buffer that is. So typing never starts a check: a pause does.
 
-- One check runs at a time, in a process started from a fiber, so that the editor never waits for it: you go on typing
-  while it runs, and its result comes at a later pass of the loop.
+- One check runs at a time, in a process started from a fiber, a task of Cesia that waits beside the editor without
+  holding it, so that the editor never waits for it: you go on typing while it runs, and its result comes at a later pass
+  of the loop.
 - A result for a text that changed while it ran is dropped, and the next pause asks again.
 - After a save, every Cesia buffer is due again, since another file may use the one just saved.
 - A check that can't run, because `cesia` isn't on the `PATH` for instance, says `cesia check can't run: REASON` once, and the

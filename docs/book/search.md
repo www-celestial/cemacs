@@ -1,7 +1,8 @@
 # Search
 
 Cemacs has no search inside a buffer yet. Emacs's incremental search, which finds the next match as each letter is typed
-(`C-s` and `C-r`), its search by regular expression, its replace (`M-%`), and a search through the files of a project are not
+(`C-s` and `C-r`), its search by regular expression, a pattern such as `[0-9]+` that matches many texts, its replace
+(`M-%`), and a search through the files of a project are not
 there: `C-s` says `C-s is not bound.` This chapter tells what Cemacs does find today: rows in lists, keys, errors, and the
 places that the output of a program names.
 
