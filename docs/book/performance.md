@@ -83,6 +83,7 @@ use src/emacs
 use src/folders
 use src/help
 use src/output
+use src/project
 use src/sdl
 use src/ui
 use core/commands
@@ -94,7 +95,8 @@ use std/list
 use std/result
 use std/sys
 
-Keys() = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), check.Keys()), output.Keys()))
+Keys() = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()), check.Keys()),
+  output.Keys()))
 Config() = check.Hooked(emacs.Config(Keys))
 
 defn main()
@@ -255,7 +257,9 @@ calls it after each event:
 The script made the folder, 10,000 files named `file-1.ce` to `file-10000.ce`, then timed [folders.Open] with
 [commands.Settled], and two text events through [commands.Update], as the window sends them. Opening reads the folder once:
 one listing and one look at each of the 10,000 entries, then the rows and their colours. A letter filters the rows read then,
-from those already shown when the filter only grew.
+from those already shown when the filter only grew. These times are from before the filter found each letter natively;
+[A case: finding a file from a few letters](finding.md#speed-each-letter-answers-at-once) measures the filter since, on
+1,933 rows: 288 letters typed in 210 ms against 402 before.
 
 ## The check
 

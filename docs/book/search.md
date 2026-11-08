@@ -108,19 +108,21 @@ and with no filter closes the list and goes back to the buffer it was opened fro
 
 A row matches when the characters of the filter come in its words in the same order, side by side or not, whatever their
 case: `cmd` matches `commands.ce`. This is subsequence matching, the kind of fuzzy matching that many editors use to find a
-file from a few of its letters; Emacs's completion calls it the `flex` style. [lists.Matches] tells whether a filter
-matches:
+file from a few of its letters; Emacs's completion calls it the `flex` style. A space splits the filter into words, and each
+word must match, in any order, as in Vim and Neovim: `ce cmd` matches `commands.ce` too. [lists.Matches] tells whether a
+filter matches:
 
 ```cesia
 use core/lists
 lists.Matches("cmd", "commands.ce") --> true
 lists.Matches("CMD", "commands.ce") --> true
 lists.Matches("dmc", "commands.ce") --> false
+lists.Matches("ce cmd", "commands.ce") --> true
 ```
 
 The filter reads the words of a row, or its key when it has one: a row of the folder manager has the file's name as its key,
-so a filter never matches a size or a date. One letter alone is a plain search for that letter, run natively, as
-[lists.Filtered] does. In a list whose rows are made once, as the files of a folder and the keys, a letter added filters only
+so a filter never matches a size or a date. Each character is found natively, with [text.ByteFind], after the one before
+it, as [lists.Filtered] does. In a list whose rows are made once, as the files of a folder and the keys, a letter added filters only
 the rows shown before it; the buffers and the output are made again at each event, since they change. [Speed](performance.md)
 has the times of a folder of 10,000 files.
 
@@ -130,6 +132,16 @@ rows = [{Words: "editor.ce", Item: 1}, {Words: "commands.ce", Item: 2}, {Words: 
 ```
 
 When a filter changes the rows, the cursor stays on the row it was on if that row is still shown, else on the same line.
+
+Most lists keep their rows in their order. The list of [the files of a project](files.md#the-files-of-a-project), `C-x p f`,
+ranks them instead: the rows the filter keeps come the best first, by [lists.Score], the score of fzy that Vim and Neovim
+use, which rewards the letters found at the start of a word or side by side, and of two paths alike, the shorter.
+[lists.Ranked] gives that order; [A case: finding a file from a few letters](finding.md) tells why, and measures it.
+
+```cesia
+[r.Item for r in lists.Ranked("cmt", rows)] --> [3]
+[r.Item for r in lists.Ranked("cmd", rows)] --> [2, 3]
+```
 
 ## Keys
 

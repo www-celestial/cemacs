@@ -68,6 +68,14 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `Can't move NAME to the trash: REASON` | most often a file on another disk than your home: see [Files and buffers](files.md#making-renaming-and-trashing). The file stays where it was |
 | a reason from the system | reading the folder, making, or renaming failed |
 
+### The files of a project
+
+| Message | What happened, and what to do |
+|---|---|
+| `FOLDER/ is in no Git repository.` | `C-x p f` from a file, or a start folder, outside any Git repository: open a file of the project first, or `git init` it |
+| `Can't run git: no such file or directory.` | `git` is not on the `PATH`: install it |
+| `git ls-files failed: REASON` | Git found the repository but couldn't list it; REASON is Git's own words |
+
 ### Windows and panes
 
 | Message | What happened |

@@ -13,7 +13,8 @@ macOS may work with the libraries of Homebrew, and Windows has no `bash` for `bi
 
 Cemacs is a Cesia program, so Cesia comes first: its book says how to install it, at
 https://www-celestial.github.io/cesia-lang/install.html. `cesia` must be on your `PATH`, since Cemacs runs it to check your
-code (`cesia check`), and to run your programs (`cesia run` and `cesia do`).
+code (`cesia check`), and to run your programs (`cesia run` and `cesia do`). `git`, 2.31 or later, on the `PATH` gives the list of a
+project's files, `C-x p f`; without it, that list says that git can't run, and the rest works.
 
 The `cesia` line of Cemacs's `cesia.toml` names the oldest Cesia it needs:
 
@@ -93,7 +94,7 @@ bin/cemacs notes.ce
 It is a small `bash` script. It finds the folder of Cemacs from its own place, even through a symbolic link, and runs:
 
 ```bash
-cesia run --allow read,write,exec=cesia,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf \
+cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf \
   "$home/src/cemacs.ce" "$home" "$@"
 ```
 
@@ -103,7 +104,8 @@ A Cesia program has no permission until it is given one: the `--allow` list name
 | Permission | Why Cemacs needs it |
 |---|---|
 | `read`, `write` | to open and save any file you choose, and to list folders |
-| `exec=cesia` | to run `cesia check` on your code and `cesia run` or `cesia do` on your programs: no other program |
+| `exec=cesia` | to run `cesia check` on your code and `cesia run` or `cesia do` on your programs |
+| `exec=git` | to list the files of a project, `git ls-files`, for `C-x p f`: no other program |
 | `env=HOME` | `~/` in the folder manager, and the trash |
 | `env=PWD` | the folder you started in: a relative path, and the `cesia.toml` whose task runs a file |
 | `env=XDG_DATA_HOME` | the place of the trash, as the freedesktop.org specification says |
@@ -127,7 +129,7 @@ from `./fonts`, so it must start from that folder. See [Changing Cemacs](customi
 [tasks.dev]
 file = "src/cemacs.ce"
 watch = true
-allow = ["read", "write", "exec=cesia", "env=HOME", "env=PWD", "env=XDG_DATA_HOME"]
+allow = ["read", "write", "exec=cesia", "exec=git", "env=HOME", "env=PWD", "env=XDG_DATA_HOME"]
 ```
 
 `ffi=SDL3` and `ffi=SDL3_ttf` are not in that list: the `native` line of `[project]` gives them to every task that runs a

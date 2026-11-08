@@ -276,3 +276,26 @@ it was.
 
 The folder is read once each time it is shown, one listing and one look at each entry; typing only filters the rows read
 then. [Speed](performance.md) has the times.
+
+## The files of a project
+
+| Keys | Command | What it does |
+|---|---|---|
+| `C-x p f`, `C-c f p` | [project.Files] | lists the files of the project of the current file, ranked as you type; Enter opens one |
+
+A project, here, is a Git repository: the folder that holds a `.git`, and all that is below it. `C-x p f`, the key of Emacs's
+`project-find-file`, opens a list of every file of the project of the current file, or of the folder Cemacs started in, by
+its path from the root of the project. The files are those that Git lists, as Emacs's `project.el` reads them: the ones Git
+tracks and the new ones it doesn't ignore, by the `.gitignore` files, with `git ls-files -z -c -o --exclude-standard
+--deduplicate`. So `_build/` and the other ignored folders stay out. [project.Listed] does it: from any folder of the
+project, it asks Git for the root, `git rev-parse --show-toplevel`, then for the files, and gives `{Root, Paths}` in an Ok,
+or in an Err the words that the prompt line shows.
+
+The prompt line shows `Find file in NAME: `, the name of the project's folder, then what you type. Typing filters the list
+as in [every list](search.md#lists), and ranks it: the file that best matches comes first, by the score that Vim and Neovim
+use, and words apart, `ml lib`, match in any order. Enter opens the file under the cursor and closes the list.
+[A case: finding a file from a few letters](finding.md) tells why it ranks this way, and measures it on Cesia's 1,933 files.
+
+The list is read once, when it opens: a file made after it is not in it until `C-x p f` again. Outside any Git repository,
+the prompt line says `FOLDER/ is in no Git repository.`, and nothing opens. Cemacs runs Git with the permission `exec=git`:
+see [Install](install.md#starting-it).

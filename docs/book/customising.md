@@ -10,7 +10,7 @@ a key, how to write a command, a list and an app of your own, and the rules a ch
 |---|---|
 | `core/` | the core: the buffer, the keys, the frame, the files, the commands, the run of a program. It binds no key and knows no app. |
 | `src/emacs/` | the keys of Emacs and the settings |
-| `src/buffers/`, `src/folders/`, `src/check/`, `src/output/`, `src/help/` | the apps: the list of buffers, the folder manager, the check, the output as a list, the `?` lists |
+| `src/buffers/`, `src/folders/`, `src/project/`, `src/check/`, `src/output/`, `src/help/` | the apps: the list of buffers, the folder manager, the files of a project, the check, the output as a list, the `?` lists |
 | `src/rope/`, `src/history/`, `src/sdl/`, `src/ui/` | the rope, the undo history, the window through SDL3, the theme and the rectangles |
 | `src/cemacs.ce` | the program: it merges the keys of every app, makes the config, and opens the window |
 
@@ -24,10 +24,12 @@ use core/editor
 use src/folders
 use src/help
 use src/output
+use src/project
 use std/dict
 use std/io
 
-Keys() = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), check.Keys()), output.Keys()))
+Keys() = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()), check.Keys()),
+  output.Keys()))
 
 Config() = check.Hooked(emacs.Config(Keys))
 

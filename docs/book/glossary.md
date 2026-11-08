@@ -3,6 +3,13 @@
 The words of editors that this book uses, in alphabetical order. Each says what the word means in general, then how Cemacs
 does it, and leads to the chapter that tells it. Where Emacs has another word for the same thing, both are given.
 
+## Alignment
+
+Setting the letters of one sequence under those of another, letting either skip letters, the gaps, so that as many letters
+as possible match; a score adds points for each match and takes some away for each gap, and the best alignment has the
+best score. Smith and Waterman found it for DNA in 1981. A query of a few letters aligned with a file's path is what fuzzy
+finders score. See [A case](finding.md#4-research-how-this-kind-of-problem-is-solved).
+
 ## Atomic rename
 
 A rename that the system makes in one step: at every instant the name leads to the old file or to the new one, never to a
@@ -19,6 +26,11 @@ see [Inside Cemacs](internals.md#the-rope).
 
 The band that opens above the prompt line when a prefix key waits for half a second, listing the keys that can follow. Emacs
 has it with `which-key-mode`. See [Windows and panes](windows.md#the-band-of-hints).
+
+## Baseline
+
+A measure taken before a change, on the same machine and in the same way as the measure after it, without which no "better"
+can be shown. See [A case](finding.md#2-measure-before-changing-anything).
 
 ## Breakpoint
 
@@ -65,6 +77,24 @@ A language server is a program that knows one language and tells any editor the 
 code, over the Language Server Protocol; a debug adapter does the same for a debugger, over the Debug Adapter Protocol.
 Cemacs uses neither: see [Cemacs and other editors](comparison.md#in-features).
 
+## Delta debugging
+
+A way to find the cause of a failure by shrinking the input that fails: take pieces out, keep the smaller input while it
+still fails, and go on with smaller pieces until nothing more can go. Zeller and Hildebrandt's `ddmin` (2002). It shrank each
+query that found nothing to a single space. See [A case](finding.md#3-a-hypothesis-that-could-be-proved-wrong).
+
+## Differential test
+
+A test that runs two programs that solve the same problem on the same inputs and compares their answers, so that each
+checks the other. Cemacs's ranks of the files are checked against Vim's `matchfuzzy()`. See
+[A case](finding.md#quality-the-file-you-mean-comes-first).
+
+## Dynamic programming
+
+Solving a problem from the answers of its smaller parts, each kept in a table and computed once, instead of trying every
+possibility: the best alignment of two texts, cell by cell, each from the cells before it. See
+[A case](finding.md#alignment-and-its-table).
+
 ## Echo area
 
 Emacs's name for the line at the bottom of the frame where messages show. Cemacs's prompt line does it. See
@@ -97,6 +127,12 @@ fibers send values through. Cemacs waits for a check and for a program's output 
 In Emacs, a window of the system, which holds Emacs's windows; Cemacs calls it the window. Also, an image drawn on the
 screen at once, as in frames per second: Cemacs makes one from its state at each event. See
 [Windows and panes](windows.md) and [Inside Cemacs](internals.md#the-frame).
+
+## Gap and gap penalty
+
+In an alignment, letters of one text that the other skips; the penalty is what the score loses for them. fzy charges 0.01 a
+letter skipped between two matched letters, and 0.005 a letter before the first or after the last; Gotoh's affine gap costs
+a price to open and a smaller one per letter. See [A case](finding.md#fzy-s-score).
 
 ## Gap buffer
 
@@ -175,6 +211,12 @@ of text is Cesia, and a list has keys of its own over the global ones, the neare
 The mark is a second place in a buffer, which you set; the text between it and the cursor is the region, which Cemacs calls
 the selection. See [Editing](editing.md#the-mark-and-the-selection).
 
+## Mean reciprocal rank
+
+A measure of a ranking: each query scores 1 divided by the rank of its right answer, 1 when it is first, 1/2 second, 0
+when it isn't there, and the mean is taken over the queries. From TREC-8, in 1999. The list of a project's files scores
+0.898 on 41 queries, against 0.597 before it ranked. See [A case](finding.md#how-ranking-is-measured).
+
 ## Median and its interval
 
 The median of n measures is the middle one once they are sorted; its 95 % interval is a range between two of the sorted
@@ -206,26 +248,50 @@ A persistent data structure keeps its old versions whole when it changes, by mak
 the old version: that sharing is structural sharing. Every value of Cesia is persistent, which makes the undo history and the
 copies of a buffer cheap. See [Inside Cemacs](internals.md#the-state-the-update-and-the-view).
 
+## Project
+
+The files you work on together. In Cemacs, as in Emacs's `project.el`, a Git repository: its root is the folder that holds
+`.git`, and its files are those Git lists. `C-x p f` lists them: see [Files and buffers](files.md#the-files-of-a-project).
+
 ## Prompt line
 
 Cemacs's line at the bottom of the window, which shows messages and asks questions: Emacs's echo area and minibuffer. See
 [Windows and panes](windows.md#the-prompt-line).
+
+## Property-based test
+
+A test that states a rule that must hold for every input, then tries it on hundreds of inputs made at random, the smallest
+first, and shrinks a failing one to the smallest that still fails. QuickCheck, by Claessen and Hughes in 2000, made it known;
+Cesia has `test.ForAll`. See [A case](finding.md#correct-tests-that-fail-before-and-pass-after).
 
 ## Pure function
 
 A function whose result depends only on its arguments, and that changes nothing outside. Most of Cemacs's core is pure: see
 [Inside Cemacs](internals.md#the-state-the-update-and-the-view).
 
-## RSS and PSS
+## Ranking and score
 
-Two measures of a program's memory: RSS, the resident set size, is what of it is in RAM, shared libraries counted whole;
-PSS, the proportional set size, divides each shared page between the programs that share it. See
-[Speed](performance.md#at-rest).
+A score is a number given to each row that a filter keeps, saying how well the filter fits it; ranking puts the rows in the
+order of their scores, the best first. The list of a project's files ranks by fzy's score, [lists.Score]; the other lists
+keep their order. See [Search](search.md#how-a-filter-matches).
+
+## Response time
+
+The time from an action, a key, to what the screen shows of it. Miller (1968) asks 0.1 second for a key's effect, and Card,
+Robertson and Mackinlay (1991) give 0.1 second as the time constant of perceptual processing, the most a screen may wait
+between two repaints for a movement to look smooth. See
+[A case](finding.md#1-the-problem-stated-precisely).
 
 ## Rope
 
 A text held as a balanced tree of pieces, so that an edit anywhere costs O(log n) and a copy shares everything. Cemacs's
 buffers are ropes: see [Inside Cemacs](internals.md#the-rope).
+
+## RSS and PSS
+
+Two measures of a program's memory: RSS, the resident set size, is what of it is in RAM, shared libraries counted whole;
+PSS, the proportional set size, divides each shared page between the programs that share it. See
+[Speed](performance.md#at-rest).
 
 ## Shift selection
 
@@ -248,6 +314,11 @@ instruction, multiple data, is the name of the processor's own instructions for 
 
 A program of `cesia.toml` to run with its permissions, run by `cesia do NAME`. `C-c c r` runs the task that names the file
 of the buffer: see [Running and debugging](running.md#the-task-that-runs-a-file).
+
+## Threat to validity
+
+A reason why a proof could be wrong even when every number in it is true: queries chosen by the author, one project only, a
+noisy machine. A study names each threat and says how it was ruled out. See [A case](finding.md#threats-to-validity).
 
 ## Tick
 

@@ -53,9 +53,11 @@ the keys of Cemacs are a value of its own code, which any Cesia program can read
     events, saving.
 12. [Speed](performance.md): what was measured, how, and the numbers.
 13. [Cemacs and other editors](comparison.md): beside GNU Emacs, Neovim, Vim and VS Code, in numbers and in features.
-14. [Troubleshooting](troubleshooting.md): every message of Cemacs, what it means and what to do.
-15. [Glossary](glossary.md): the words of editors, as Cemacs uses them.
-16. [References](references.md): the works and standards that Cemacs follows.
+14. [A case: finding a file from a few letters](finding.md): one real problem, from its statement to the proof that it is
+    solved, by the methods of research: a baseline, a hypothesis, the papers, the smallest change, tests and measures.
+15. [Troubleshooting](troubleshooting.md): every message of Cemacs, what it means and what to do.
+16. [Glossary](glossary.md): the words of editors, as Cemacs uses them.
+17. [References](references.md): the works and standards that Cemacs follows.
 
 The reference, under [Reference](ref/index.html), lists every package of Cemacs and every public name, from its code.
 

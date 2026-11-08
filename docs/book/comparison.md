@@ -21,6 +21,8 @@ dummy driver, into memory. Each number is the median of n runs, with its 95 % in
 | search 15.8 MB for a word on its last line, finding it | 10 | 101 ms [99.6, 103] | 7.8 ms [7.4, 8.4] | 27.8 ms [27.7, 29.6] | 34.0 ms [32.9, 40.2] |
 | search 100 MB for a word on its last line, finding it | 5 | 629 ms [626, 634] | 47.2 ms [46.7, 47.9] | 178 ms [173, 179] | 233 ms [225, 239] |
 | the same, to the place shown, its colours read | 5 | 4,754 ms [4,731, 4,782] | | | |
+| 288 prefixes of 41 queries, each ranked from 1,933 file names | 20 | 1,544 ms [1,537, 1,554] | 617 ms [604, 622], `flex` | 136 ms [135, 137], `matchfuzzy()` | 180 ms [179, 181], `matchfuzzy()` |
+| the same queries: mean reciprocal rank of the file meant | – | 0.898 | 0.748, `flex` | 0.898 | 0.898 |
 | memory at rest, empty, PSS | 5 | 41.8 MB [41.7, 41.9] | 49.0 MB [48.0, 49.1] | 10.1 MB [9.8, 10.2] | 7.8 MB [7.7, 8.0] |
 | memory with 15.9 MB open, RSS | 3 | 125 MB | 71.4 MB | 40.4 MB | 36.3 MB |
 | memory with 99.9 MB open, RSS | 3 | 444 MB | 152 MB | 137 MB | 133 MB |
@@ -69,6 +71,7 @@ the Debug Adapter Protocol, DAP. An editor that speaks both gets every language 
 | Change while it runs | its code reloads at each save under `cesia do dev`; a new package needs a restart | any Lisp, at any time, changes the running editor | `:source` and `:lua` run new code in the running editor | `:source` runs new code in the running editor |
 | Finding a key | the band of hints after half a second, and `?` after any prefix key | `which-key-mode`, built in, off until turned on; `C-h k`, `C-h b` | none built in: plugins | none built in: plugins |
 | A command by its name | none | `M-x` | `:` commands | `:` commands |
+| Finding a file of a project | `C-x p f`: the files of `git ls-files`, ranked by fzy's score, words in any order | `C-x p f`, `project-find-file`, from `git ls-files`; by default matched as a substring and sorted alphabetically, ranked by its cost when the `flex` style is chosen | none for file names: `:find` searches `'path'` by wildcards; `'findfunc'` can plug in `matchfuzzy()`, which ranks by fzy's score | as Neovim |
 | Search and replace | incremental search, `C-s` and `C-r`, with Emacs's case folding; no regular expression, no replace | incremental search, by regular expression, replace | `/`, `:s` | `/`, `:s` |
 | Errors of the code | Cesia's, from `cesia check`, half a second after a key | Flymake, built in, with a checker for each language | diagnostics of its LSP client | by plugins |
 | Language servers (LSP) | no client; Cesia's errors come from `cesia check` | Eglot, built in | a client built in, `vim.lsp` | channels that speak LSP's encoding; the client is a plugin |
@@ -80,7 +83,10 @@ the Debug Adapter Protocol, DAP. An editor that speaks both gets every language 
 
 The features of Emacs, Neovim and Vim were checked on the installed programs: Eglot, Flymake, GUD and `which-key` load in
 Emacs 31.1 with no package added, and `large-file-warning-threshold` is 10,000,000; `vim.lsp` is in Neovim 0.12.6; Vim 9.2
-has the `lsp` and `dap` modes of its channels and the Termdebug package in its runtime.
+has the `lsp` and `dap` modes of its channels and the Termdebug package in its runtime. For the files of a project, Emacs
+31.1's `completion-category-defaults` gives `project-file` the `substring` style, and `completions-sort` is `alphabetical`;
+the `'wildoptions'` of Vim 9.2 and Neovim 0.12.6 say that fuzzy completion "is not supported for file and directory names".
+[A case: finding a file from a few letters](finding.md) measures the ranking of the four on the same files.
 
 **Visual Studio Code**, by its documentation, is a window of its own, extended by extensions written in TypeScript or
 JavaScript against its extension API, and it debugs through debug adapters that speak the Debug Adapter Protocol, so that
