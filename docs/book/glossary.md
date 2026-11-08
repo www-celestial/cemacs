@@ -75,6 +75,12 @@ that draws a state; named after the Elm language. Cemacs is built so: see [Insid
 The way the characters of a text become bytes in a file. Cemacs reads and writes UTF-8 only: see
 [Files and buffers](files.md#encodings).
 
+## Event loop
+
+The loop at the heart of a program with a window: it waits for an event, a key, the mouse, a change of size, hands it to the
+program, draws what changed, and waits again. Waiting well means sleeping in the system until an event comes, which costs no
+processor, rather than looking for one again and again. See [Inside Cemacs](internals.md#the-loop-of-events).
+
 ## Fiber and channel
 
 A fiber is a task of Cesia that runs beside the others in one program, taking turns with them; a channel is a queue that

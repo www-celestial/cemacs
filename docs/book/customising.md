@@ -282,7 +282,8 @@ value.IsFunction(Config().Idle) --> true
 ```
 
 Ask for ticks only while there is something to wait for: an editor whose `Moving` is false draws nothing until the next
-event, and only looks for one every 5 milliseconds.
+event, and sleeps until it comes. A fiber of your own runs then only every 250 milliseconds, the longest the editor sleeps:
+ask for ticks while it has work.
 
 ## Reloading Cemacs while it runs
 

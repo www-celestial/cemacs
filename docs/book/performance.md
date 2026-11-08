@@ -220,19 +220,36 @@ file beside the 46 MB it takes empty: the rope, the text as read, which the coll
 its next allocations, and its leaves and nodes, two small records of six fields for each 1,024 bytes. The others hold the
 file once, about, with a little for each line.
 
-The processor at rest, over 10 seconds, in percent of one core, n = 3:
+The processor at rest, over 10 seconds, 3 seconds after the start, one empty buffer, in percent of one core, n = 5. The time
+is what the system counted for every process of the editor, in hundredths of a second, so 0.0 % is less than 0.1 %:
 
-| Editor | Processor at rest |
-|---|---|
-| Cemacs | 2.1 % |
-| GNU Emacs 31.1 | 0.0 % |
-| Neovim 0.12.6 | 0.0 % |
-| Vim 9.2 | 0.0 % |
+| Editor, where | Processor at rest | Before this version |
+|---|---|---|
+| Cemacs, in a Wayland window | 0.0 % [0.0, 0.0] | 1.4 % [0.9, 1.5] |
+| Cemacs, SDL's dummy driver | 0.8 % [0.8, 1.2] | 0.7 % [0.7, 0.8] |
+| GNU Emacs 31.1, in tmux | 0.0 % [0.0, 0.0] | |
+| Neovim 0.12.6, in tmux | 0.0 % [0.0, 0.0] | |
+| Vim 9.2, in tmux | 0.0 % [0.0, 0.0] | |
 
-The time is what the system counted for every process of the editor, in hundredths of a second, so 0.0 % is less than
-0.1 %. A still Cemacs draws no frame, but its loop looks for events every 5 milliseconds, and sleeps between: that is its
-2 %. The others sleep until the system wakes them with an event, and cost nothing while you read. Cemacs draws a frame at
-each pass while a program runs, a check runs or is due, or a prefix key waits for its band of hints.
+A still Cemacs now sleeps in SDL until the next event, 250 ms at most, as [Inside Cemacs](internals.md#the-loop-of-events)
+tells; it looked for one every 5 milliseconds before, and slept between. The Wayland window was a real one, of SDL's Wayland
+driver, in a compositor of its own that showed nothing on a screen: `mutter --headless --wayland --no-x11
+--virtual-monitor 1280x720`, GNOME's compositor, in a session bus of its own, `dbus-run-session`. SDL's dummy driver can't
+wait for an event, so SDL looks for one every millisecond there, in C: the tests use it, a person never does. The others
+sleep until the system wakes them with an event, and cost nothing while you read. Cemacs draws a frame at each pass while a
+program runs, a check runs or is due, or a prefix key waits for its band of hints.
+
+From a key to the editor, in that Wayland window, n = 120 keys, 40 in each of 3 runs, a key every 0.25 to 0.5 seconds:
+
+| From the key sent to | This version | Before |
+|---|---|---|
+| its event read by the update | 0.72 ms [0.71, 0.74] | 3.08 ms [2.45, 3.48] |
+| the commands of its frame made | 1.13 ms [1.12, 1.14] | 3.39 ms [2.83, 3.91] |
+
+The keys were sent as a remote desktop sends them, through the `RemoteDesktop` interface of mutter over D-Bus, and the time
+of each starts just before that call, so it holds the call, mutter, Wayland and SDL. The editor wakes as soon as the key
+comes, where it could sleep up to 5 ms before. The buffer was empty, so making the frame's commands was short; drawing them
+then takes SDL's renderer, as in [Typing and scrolling](#typing-and-scrolling).
 
 ## Limits
 

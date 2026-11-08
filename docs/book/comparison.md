@@ -21,7 +21,7 @@ dummy driver, into memory. Each number is the median of n runs, with its 95 % in
 | memory at rest, empty, PSS | 5 | 41.8 MB [41.7, 41.9] | 49.0 MB [48.0, 49.1] | 10.1 MB [9.8, 10.2] | 7.8 MB [7.7, 8.0] |
 | memory with 15.8 MB open, RSS | 3 | 127 MB | 71.3 MB | 40.2 MB | 36.3 MB |
 | memory with 100 MB open, RSS | 3 | 401 MB | 152 MB | 137 MB | 133 MB |
-| processor at rest, % of one core | 3 | 2.1 % | 0.0 % | 0.0 % | 0.0 % |
+| processor at rest, % of one core | 5 | 0.0 % [0.0, 0.0], in a Wayland window | 0.0 % [0.0, 0.0] | 0.0 % [0.0, 0.0] | 0.0 % [0.0, 0.0] |
 
 With n = 5 the interval is that of the fastest and the slowest run, at 93.75 %; with n = 3, only the median is given.
 
@@ -40,8 +40,8 @@ What they say:
   terminal's characters where Cemacs holds a window, its fonts and the Cesia runtime. With a large file open, Cemacs holds
   about four times the file, the others about once: Cemacs's rope gives each 1,024 bytes two records, and the process keeps
   the memory of the text as it was read.
-- **At rest, the others use no processor, and Cemacs 2 % of one core**: they sleep until an event wakes them, where Cemacs's
-  loop looks for one every 5 milliseconds.
+- **At rest, none of them uses the processor**: each sleeps until an event wakes it, Cemacs in SDL, the others on their
+  terminal. Cemacs also wakes four times a second, for the fibers of Cesia.
 - Typing is not compared: the honest measure of the time from a key to the screen needs a camera or a tool that reads the
   screen, such as Typometer, and none was used. Cemacs's own time from a key to a frame, inside the program, is in
   [Speed](performance.md#typing-and-scrolling).

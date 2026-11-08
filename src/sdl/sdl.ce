@@ -44,6 +44,7 @@ defn bindSdl(lib)
   destroyWindow = f("SDL_DestroyWindow", ["ptr"], "void")?
   quit = f("SDL_QuitSubSystem", ["u32"], "void")?
   poll = f("SDL_PollEvent", ["ptr"], "bool")?
+  wait = f("SDL_WaitEventTimeout", ["ptr", "i32"], "bool")?
   setClipboard = f("SDL_SetClipboardText", ["text"], "bool")?
   getClipboard = f("SDL_GetClipboardText", [], "ptr")?
   free = f("SDL_free", ["ptr"], "void")?
@@ -60,7 +61,7 @@ defn bindSdl(lib)
   renderTiled = f("SDL_RenderTextureTiled", ["ptr", "ptr", "ptr", "f32", "ptr"], "bool")?
   geometry = f("SDL_RenderGeometry", ["ptr", "ptr", "ptr", "i32", "ptr", "i32"], "bool")?
   result.Ok({Geometry: geometry, RenderTexture: renderTexture, RenderTiled: renderTiled, CreateTexture: createTexture, UpdateTexture: updateTexture, Nine: nine, ColorMod: colorMod, AlphaMod: alphaMod,
-    TextureBlend: textureBlend, DrawBlend: drawBlend, SetClipboard: setClipboard, GetClipboard: getClipboard, Free: free, SetTitle: setTitle, Poll: poll, StartText: startText, Version: version, Init: init, Error: error, CreateWindow: createWindow, CreateRenderer: createRenderer,
+    TextureBlend: textureBlend, DrawBlend: drawBlend, SetClipboard: setClipboard, GetClipboard: getClipboard, Free: free, SetTitle: setTitle, Poll: poll, Wait: wait, StartText: startText, Version: version, Init: init, Error: error, CreateWindow: createWindow, CreateRenderer: createRenderer,
     Vsync: vsync, Color: color, Clear: clear, FillRect: fillRect, Present: present,
     DestroyRenderer: destroyRenderer, DestroyWindow: destroyWindow, Quit: quit})
 end
@@ -864,6 +865,18 @@ defn moved(progress, update, view, window, last)
   {State: ticked.State, Stopped: ticked.Stopped, Window: drawn, Last: now}
 end
 
+(** How long a still window waits in SDL for an event, in ms, at most: then the other fibers get their turn again. A function, as a variable added under
+    --watch would be read before it has a value. *)
+RestMs() = 250
+
+defn rest(window)
+  (** Sleeps until an event comes, in SDL, which the system wakes, and RestMs() at most; then the other fibers run. The event stays in SDL's queue for
+      the next pass: SDL_WaitEventTimeout with no block to fill only looks. A sleep of a microsecond, not of 0, lets Cesia wake the fibers whose time
+      has come: sys.Sleep(0) only lets those run that are ready already. *)
+  _ = window.Sdl.Wait(missing, RestMs())
+  sys.Sleep(0.000001)
+end
+
 defn step(state, update, view, window, moving, last)
   (** The loop of run: reads the events, updates the state, draws when something happened or moves, and calls itself again.
       An event about the window draws too, even if the program has no use for it. Under Wayland, the frame around a window applies
@@ -877,13 +890,13 @@ defn step(state, update, view, window, moving, last)
     if pass.Stopped pass.State else step(pass.State, update, view, pass.Window, moving, pass.Last) end
   else
     drawn = if value.Len(happened) > 0 Frame(view(progress.State), window) else window end
-    sys.Sleep(0.005)
+    rest(drawn)
     step(progress.State, update, view, drawn, moving, sys.Now())
   end
 end
 
 (** Calls Update(event, state) for each event, and view(state) when something happened, until update gives missing.
-    Gives the last state. Between events, other fibers run. While moving(state) is true, update also gets {Kind: "tick", Seconds}
+    Gives the last state. A still program sleeps in SDL until the next event, and the other fibers run after each event, and every RestMs() at least. While moving(state) is true, update also gets {Kind: "tick", Seconds}
     before each frame, and a frame is drawn at every pass; a still program draws nothing. With vsync, a frame can hold other
     fibers back for up to its own length. *)
 Run(state, update, view, window, moving = missing) = step(state, update, view, Frame(view(state), window), moving, sys.Now())

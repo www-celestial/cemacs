@@ -171,17 +171,25 @@ Cemacs draws no frame that the screen can't show.
 
 ## The loop of events
 
-[sdl.Run] is a loop that never blocks on the window:
+[sdl.Run] is a loop of events, an event loop:
 
-1. It takes every event waiting, without waiting for one: a key, a text, the mouse, a change of size, the window closed. A
-   TERM or INT signal asking the program to end comes as the window closed.
+1. It takes every event waiting: a key, a text, the mouse, a change of size, the window closed. A TERM or INT signal asking
+   the program to end comes as the window closed.
 2. It calls the update on each, in order.
 3. If the state asks for frames of its own, [commands.Moving], it gives the update a tick, an event `{Kind: "tick",
    Seconds}` with the time since the last pass, at most 0.05 seconds so that nothing jumps after a pause, then draws a
    frame, and lets the other fibers run.
-4. Else, it draws a frame only if some event came, and sleeps 5 milliseconds.
+4. Else, it draws a frame only if some event came, then sleeps in SDL until the next event comes, `SDL_WaitEventTimeout`,
+   for at most 250 milliseconds, [sdl.RestMs]; then the other fibers run, and the loop starts again.
 
-A still editor draws nothing. The state asks for frames while a prefix key waits for the band of hints to open, which needs
+A still editor draws nothing, and wakes about four times a second. While it sleeps, the process is blocked in the system: it
+waits on the connection to the display, a file descriptor, until the display server writes an event on it, as GNU Emacs,
+Vim and Neovim wait in `select` or `poll` on their terminal. An event wakes it at once, so a key is read about 0.7 ms after
+it was sent: see [Speed](performance.md#at-rest). The 250 ms bound is for the fibers of Cesia, which can't wake SDL: while
+the editor sleeps in SDL, no fiber runs, and Cesia has no way to say when the next one is due. The fibers of Cemacs itself, a
+check and the output of a program, run while the state asks for frames, so the bound only delays what nothing waits for:
+a reload under `--watch` that nobody looks at yet, a fiber of an app that doesn't ask for frames. SDL's dummy driver, which
+the tests use, can't wait for an event: there, SDL looks for one every millisecond itself. The state asks for frames while a prefix key waits for the band of hints to open, which needs
 the time counted; while a check runs or a buffer is due for one; and while a program runs, whose output comes at each pass.
 
 The check and the program's output wait in fibers. A fiber is a task of Cesia that runs beside the others in the same
