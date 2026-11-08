@@ -85,7 +85,8 @@ it but to save or to check.
 
 [rope.Of] makes a rope from a whole text, as a file just read: it cuts the leaves one after the other, 1,024 bytes each and
 the last one shorter, so that each byte is copied once, then joins them two by two, level by level, with [rope.JoinRopes],
-which keeps the balance where an odd rope is left over. Cutting the text in halves, again and again, would copy all of it at
+which keeps the balance where an odd rope is left over. Each leaf counts its line ends, its `Lines`, with Cesia's
+[text.Count], eight bytes at a time, without making anything. Cutting the text in halves, again and again, would copy all of it at
 each of the log₂(n / 1,024) levels: 14 copies of a file of 16 MB. Measured on a text of 20,000 lines, 706,525 bytes of
 Cesia's code: [rope.Of] makes 690 leaves of at most 1,024 bytes in a tree of height 10; after 3,000 random inserts and
 deletes, the tree had 1,131 leaves and a height of 12, and the two sides of every node still differed by at most one,

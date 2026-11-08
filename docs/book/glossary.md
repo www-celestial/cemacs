@@ -237,6 +237,13 @@ A selection made by holding Shift while moving, which the next move without Shif
 A filter that matches when its characters come in a text in the same order, side by side or not: `cmd` matches
 `commands.ce`. A kind of fuzzy matching; Emacs's completion calls it `flex`. See [Search](search.md#how-a-filter-matches).
 
+## SWAR
+
+SIMD within a register: work on several small values at once with the plain operations on one large integer. A word of 64
+bits holds eight bytes, so one test of `word AND 0x8080808080808080` tells whether all eight are ASCII. SIMD, single
+instruction, multiple data, is the name of the processor's own instructions for this. Cesia's [text.IsUtf8] and
+[text.Count] work so, which [files.IsText] and the rope use. See [Files and buffers](files.md#encodings).
+
 ## Task
 
 A program of `cesia.toml` to run with its permissions, run by `cesia do NAME`. `C-c c r` runs the task that names the file
@@ -254,7 +261,9 @@ The states of a buffer's text that undo goes back through and redo forward. Cema
 
 ## UTF-8
 
-The encoding of Unicode where a character takes one to four bytes, ASCII one. RFC 3629 defines it. See
+The encoding of Unicode where a character takes one to four bytes, ASCII one. RFC 3629 defines it, and what is valid:
+no overlong form, a character written in more bytes than it needs, as `C0 AF` for `/`; no surrogate, the codes U+D800 to
+U+DFFF that UTF-16 keeps for its pairs; nothing above U+10FFFF, the last code of Unicode. See
 [Files and buffers](files.md#encodings).
 
 ## Visit

@@ -65,7 +65,7 @@ defn Normal(path)
 end
 
 (* The largest file the editor opens, in bytes: 1 GiB. Reading one too large for memory would panic and lose the text of every buffer. A file takes
-   about three times its size in memory at its peak, as it is read, checked and made into a rope: see the chapter Speed of the book. *)
+   about three times its size in memory at its peak, as it is read and made into a rope, the check making no copy: see the chapter Speed of the book. *)
 largest = 1024 * 1024 * 1024
 
 defn ReadFile(path)

@@ -15,15 +15,15 @@ dummy driver, into memory. Each number is the median of n runs, with its 95 % in
 |---|---|---|---|---|---|
 | start to the first frame | 20 | 51.1 ms [50.9, 51.9] | 89.1 ms [88.3, 92.9] | 13.8 ms [13.6, 13.9] | 9.3 ms [9.2, 9.4] |
 | start to the first frame, in a Wayland window | 10 | 236 ms [232, 241] | | | |
-| start and open 0.79 MB | 10 | 66.5 ms [64.8, 68.7] | 96.6 ms [94.2, 102] | 21.6 ms [20.7, 28.2] | 17.6 ms [17.1, 18.6] |
-| start and open 15.8 MB | 10 | 206 ms [203, 214] | 142 ms [140, 150] | 54.4 ms [53.4, 59.1] | 50.4 ms [49.5, 54.3] |
-| start and open 100 MB | 10 | 904 ms [886, 955] | 380 ms [379, 395] | 229 ms [227, 231] | 237 ms [234, 238] |
+| start and open 0.79 MB | 11 | 66.0 ms [64.3, 71.0] | 96.5 ms [94.2, 97.5] | 21.2 ms [20.8, 21.8] | 17.4 ms [17.1, 17.8] |
+| start and open 15.9 MB | 11 | 125 ms [124, 126] | 141 ms [139, 147] | 53.4 ms [53.0, 55.4] | 50.0 ms [49.7, 52.5] |
+| start and open 99.9 MB | 11 | 414 ms [409, 422] | 377 ms [375, 378] | 228 ms [225, 253] | 236 ms [234, 253] |
 | search 15.8 MB for a word on its last line, finding it | 10 | 101 ms [99.6, 103] | 7.8 ms [7.4, 8.4] | 27.8 ms [27.7, 29.6] | 34.0 ms [32.9, 40.2] |
 | search 100 MB for a word on its last line, finding it | 5 | 629 ms [626, 634] | 47.2 ms [46.7, 47.9] | 178 ms [173, 179] | 233 ms [225, 239] |
 | the same, to the place shown, its colours read | 5 | 4,754 ms [4,731, 4,782] | | | |
 | memory at rest, empty, PSS | 5 | 41.8 MB [41.7, 41.9] | 49.0 MB [48.0, 49.1] | 10.1 MB [9.8, 10.2] | 7.8 MB [7.7, 8.0] |
-| memory with 15.8 MB open, RSS | 3 | 127 MB | 71.3 MB | 40.2 MB | 36.3 MB |
-| memory with 100 MB open, RSS | 3 | 401 MB | 152 MB | 137 MB | 133 MB |
+| memory with 15.9 MB open, RSS | 3 | 125 MB | 71.4 MB | 40.4 MB | 36.3 MB |
+| memory with 99.9 MB open, RSS | 3 | 444 MB | 152 MB | 137 MB | 133 MB |
 | processor at rest, % of one core | 5 | 0.0 % [0.0, 0.0], in a Wayland window | 0.0 % [0.0, 0.0] | 0.0 % [0.0, 0.0] | 0.0 % [0.0, 0.0] |
 
 With n = 5 the interval is that of the fastest and the slowest run, at 93.75 %; with n = 3, only the median is given.
@@ -35,18 +35,20 @@ What they say:
   7,000 lines of code at each start, Cemacs's and the packages of Cesia it uses, about 26 ms, then SDL3 opens a window, and
   SDL3_ttf loads three fonts and draws the first frame in pixels. In a real window on GNOME, SDL's start of its title bar
   through GTK and of OpenGL brings it to 236 ms. Emacs, which loads its own Lisp at the start, takes 89 ms in a terminal.
-- **Cemacs opens a file of 0.79 MB faster than Emacs, but Vim and Neovim open a large file two to four times faster.**
-  Cemacs checks that a file is valid UTF-8 before it opens it and counts the line ends of each leaf of its rope, both
-  through functions of Cesia that copy the text on the way; the others read the bytes and find the line ends in C, at the
-  speed of memory. Cemacs opens files of up to 1 GiB.
+- **Cemacs opens a file of 0.79 or 15.9 MB faster than Emacs, and one of 99.9 MB in 1.1 times Emacs's time, but Vim and
+  Neovim open a large file about twice as fast.** All four test UTF-8 as they read a file. Cemacs's test and its count of
+  line ends are now calls of Cesia that read eight bytes at a time, 60 ms of the 414 for 99.9 MB; most of what is left is
+  its rope, 97,540 leaves and as many nodes made in Cesia, 230 ms, where Vim and Neovim fill blocks of lines in C and Emacs
+  copies the text into one gap buffer. Cemacs opens files of up to 1 GiB.
 - **Every one of them searches a large file faster than Cemacs**: Emacs 13 times, Neovim and Vim 3 to 4 times, for the
   finding alone. Cemacs reads its rope a window at a time, joins it into one text, folds its case, then searches it; the
   others search their text in place, in C. To show a place far down, Cemacs also reads the state of the colours of every
   line above it, once: 4.8 s to the last line of 100 MB.
 - **At rest, Cemacs uses memory of the order of Emacs, and four to five times that of Vim and Neovim**, which hold a
   terminal's characters where Cemacs holds a window, its fonts and the Cesia runtime. With a large file open, Cemacs holds
-  about four times the file, the others about once: Cemacs's rope gives each 1,024 bytes two records, and the process keeps
-  the memory of the text as it was read.
+  about four times the file, the others about once: Cemacs's rope gives each 1,024 bytes two records, its check holds the
+  text once more, and garbage of the open waits for the collector of OCaml under Cesia, as [Speed](performance.md#at-rest)
+  tells.
 - **At rest, none of them uses the processor**: each sleeps until an event wakes it, Cemacs in SDL, the others on their
   terminal. Cemacs also wakes four times a second, for the fibers of Cesia.
 - Typing is not compared: the honest measure of the time from a key to the screen needs a camera or a tool that reads the

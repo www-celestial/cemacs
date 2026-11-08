@@ -38,7 +38,9 @@ Each editor started with no configuration of the user, and was told to draw its 
 t) (kill-emacs))'` for Emacs, `'+redraw!' '+qa!'` for Neovim and Vim. Each run is the time of the process, from its start to
 its end, as a program of Python inside the terminal timed it. This version loads 1.3 ms more than the one before: the search,
 the reader of the states of the colours and the search in the rope add about 475 lines of code, which Cesia reads at each
-start.
+start. The check of UTF-8 of [Opening a file](#opening-a-file), one call of Cesia now, took 94 lines off what Cesia reads:
+measured later beside the version before it, at 8ee42e7, taking turns, n = 11, 53.2 ms [52.7, 54.7] against 54.1 ms [53.7,
+55.4], no slower.
 
 Where the 51 ms go, with the dummy driver, each part timed from the one before by the program below with a mark after each part, n = 20,
 medians:
@@ -119,42 +121,48 @@ io.Print(main())
 
 ## Opening a file
 
-From the command to the first frame, with the file given, n = 10; the files are Cesia's standard library put end to end, and
-the last line holds a word found nowhere else, for [search](#search):
+From the command to the first frame, with the file given, n = 11, this version and the one before it, `main` at 8ee42e7,
+taking turns with the three others; the files are Cesia's standard library put end to end, and the last line holds a word
+found nowhere else, for [search](#search):
 
-| File | Cemacs | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
-|---|---|---|---|---|
-| 0.79 MB, 22,430 lines | 66.5 ms [64.8, 68.7] | 96.6 ms [94.2, 102] | 21.6 ms [20.7, 28.2] | 17.6 ms [17.1, 18.6] |
-| 15.8 MB, 448,562 lines | 206 ms [203, 214] | 142 ms [140, 150] | 54.4 ms [53.4, 59.1] | 50.4 ms [49.5, 54.3] |
-| 100 MB, 2,840,882 lines | 904 ms [886, 955] | 380 ms [379, 395] | 229 ms [227, 231] | 237 ms [234, 238] |
+| File | Cemacs | Cemacs before | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
+|---|---|---|---|---|---|
+| 0.79 MB, 22,490 lines | 66.0 ms [64.3, 71.0] | 69.3 ms [68.0, 72.0] | 96.5 ms [94.2, 97.5] | 21.2 ms [20.8, 21.8] | 17.4 ms [17.1, 17.8] |
+| 15.9 MB, 449,762 lines | 125 ms [124, 126] | 199 ms [198, 202] | 141 ms [139, 147] | 53.4 ms [53.0, 55.4] | 50.0 ms [49.7, 52.5] |
+| 99.9 MB, 2,833,490 lines | 414 ms [409, 422] | 849 ms [843, 931] | 377 ms [375, 378] | 228 ms [225, 253] | 236 ms [234, 253] |
 
 The other editors don't know Cesia, so they show these files as plain text, where Cemacs colours the lines on the screen.
 Emacs was told not to ask before a large file, `(setq large-file-warning-threshold nil)`; Neovim and Vim were started with
-`-n`, which makes no swap file. Before this version, Cemacs took 281 ms [277, 298] for the 0.79 MB and 4,280 ms [4,213,
-4,368] for the 15.8 MB, measured the same way on the same files, and refused the 100 MB.
+`-n`, which makes no swap file. Two versions before, Cemacs took 281 ms for a file of 0.79 MB and 4,280 ms for one of 15.8
+MB, on the files of then, and refused one of 100 MB.
 
-What opening costs, measured alone, without the window, n = 5 (median, then fastest and slowest):
+What opening costs, measured alone, without the window, n = 11, this version and the one before taking turns:
 
-| Step | 15.8 MB | 100 MB |
-|---|---|---|
-| reading the file from the disk, `sys.Read` | 11.6 ms (10.1, 15.3) | 45.0 ms (44.5, 45.2) |
-| the check of UTF-8 and of zero bytes, [files.IsText] | 52.2 ms (48.2, 70.0) | 296 ms (288, 303) |
-| the rope, [rope.Of] | 75.3 ms (70.6, 109) | 458 ms (451, 465) |
-| the peak of memory of the process, `VmHWM` | 62 MB | 269 MB |
+| Step | 15.9 MB | 99.9 MB | 99.9 MB, the version before |
+|---|---|---|---|
+| reading the file from the disk, `sys.Read` | 10.2 ms [10.1, 10.4] | 43.8 ms [43.4, 44.4] | 44.3 ms [44.2, 44.8] |
+| the check of UTF-8 and of zero bytes, [files.IsText] | 10.3 ms [9.5, 10.3] | 59.9 ms [58.8, 61.6] | 255 ms [253, 267] |
+| the rope, [rope.Of] | 33.7 ms [32.7, 35.4] | 230 ms [229, 233] | 458 ms [456, 473] |
+| the peak of memory of the process, `VmHWM` | 69.7 MB | 246 MB | 263 MB |
 
-Before this version, the check took 3,962 ms (3,883, 3,984) for the 15.8 MB, the rope 159 ms, and the memory went up to 540
-MB: the check made a list of every byte of the file, each byte a value of its own, and walked it with a loop of Cesia. Now:
+What changed:
 
-- [files.IsText] reads the file one piece of 1 MiB at a time, and has each piece checked by Cesia's lexer, in OCaml, as
-  [Files and buffers](files.md#encodings) tells: about 3 ns a byte, and a few MiB of memory whatever the size.
-- [rope.Of] cuts the leaves one after the other, so that each byte is copied once, where it cut the text in halves and
-  copied all of it again at each level. Most of its time is counting the line ends of each leaf, with [text.Split]: about
-  3.2 ns a byte, 320 ms of the 458 for 100 MB.
+- [files.IsText] is two calls of Cesia's standard library on the whole text, in place: [text.Count] of its zero bytes, 34.5
+  ms [34.3, 35.2] for 99.9 MB, and [text.IsUtf8], 24.2 ms [24.2, 25.4], both working eight bytes at a time, as
+  [Files and buffers](files.md#encodings) tells: 0.6 ns a byte. The version before had no function of Cesia that checks
+  UTF-8: it gave the text, one piece of 1 MiB at a time, to Cesia's lexer, which checks UTF-8 before it reads a program,
+  copying each piece twice on the way: 2.6 ns a byte. [text.ByteFind] of the zero byte, which the version before used,
+  takes 87.3 ms [86.8, 90.4] for the same text: it looks at one byte at a time.
+- [rope.Of] counts the line ends of each leaf with [text.Count], where it cut each leaf into its lines with [text.Split]
+  and counted them. What is left of its 230 ms is the making of the tree itself: 97,540 leaves of 1,024 bytes, each a slice
+  of the text and a record of six fields, then as many nodes, joined two by two, all in Cesia.
 
-The other editors still open a large file faster: they read the bytes and find the line ends in C, at memory speed, and
-Neovim and Vim don't check UTF-8 before they show the file. Cesia has no function yet that checks UTF-8 or counts the line
-ends of a text in one call. Written in OCaml, eight bytes at a time, each takes about 25 to 35 ms for 100 MB, measured on this
-machine: with both, opening 100 MB would take about 300 ms, between Neovim and Emacs.
+The others still open a large file faster: Emacs 99.9 MB in 0.91 of Cemacs's time, Neovim and Vim in 0.55 and 0.57; at
+15.9 MB Cemacs is now ahead of Emacs, and Neovim and Vim take 0.43 and 0.40 of its time. All four test UTF-8 as they read a file
+([Files and buffers](files.md#encodings) says how the others differ on a file that fails), so that is no longer where the
+time goes: Neovim and Vim fill blocks of lines in C, and Emacs copies the text into one gap buffer and keeps no index of
+lines, where Cemacs makes a tree of records in Cesia. On a small file, the start is the difference, as
+[Start-up](#start-up) tells: Cesia reads and prepares about 7,000 lines of Cemacs's code at each start.
 
 ## Typing and scrolling
 
@@ -198,6 +206,12 @@ on the text of the files, a key took 10.3 ms with this version and 11.4 before, 
   frame from a text already in memory: it doesn't read a file, and doesn't check its UTF-8, which is what
   [opening a file](#opening-a-file) above costs.
 - Making the rope of the whole text, `rope.Of`, takes 2.8 ms, 6.5 ms before.
+
+Measured again later with Cesia at a56fdd0, whose standard library, the text of the gate, has changed since: three runs of
+the version that counts the line ends of each leaf with [text.Count], each after a run of the one before it, `main` at
+8ee42e7: `rope.Of` 1.0, 1.0, 1.0 ms against 2.7, 2.7, 2.7; a key at line 19,000 11.5, 11.4, 11.8 ms against 11.4, 11.4,
+11.4; a scrolled line 17.7, 18.4, 18.0 ms against 18.1, 17.9, 18.2, about 55 lines a second for both, still under the goal
+of 60; the first jump 25.2, 25.7, 25.9 ms against 26.4, 25.4, 25.3. Only the making of the rope changed.
 
 The time from a key to the screen is not compared with the other editors: measuring it honestly needs a camera, or a tool
 that watches the screen, such as Typometer, and none was used. These numbers are Cemacs's own, inside the program.
@@ -264,19 +278,30 @@ RSS, the resident set size, is the memory of a process that is in RAM, the libra
 whole; PSS, the proportional set size, counts a shared page divided by the number of processes that share it, which is fairer
 between programs. Cemacs holds the Cesia runtime, SDL3, SDL3_ttf, its three fonts and the window.
 
-With a large file open, 8 seconds after the start, the RSS, n = 3:
+With a large file open, 8 seconds after the start, the RSS, n = 3, the editors taking turns:
 
-| Editor | 15.8 MB open | 100 MB open |
+| Editor | 15.9 MB open | 99.9 MB open |
 |---|---|---|
-| Cemacs | 127 MB | 401 MB |
-| GNU Emacs 31.1 | 71.3 MB | 152 MB |
-| Neovim 0.12.6 | 40.2 MB | 137 MB |
+| Cemacs | 125 MB | 444 MB |
+| Cemacs, the version before, at 8ee42e7 | 128 MB | 391 MB |
+| GNU Emacs 31.1 | 71.4 MB | 152 MB |
+| Neovim 0.12.6 | 40.4 MB | 137 MB |
 | Vim 9.2 | 36.3 MB | 133 MB |
 
-Before this version, Cemacs held 631 MB with the 15.8 MB open, and refused the 100 MB. It now holds about four times the
-file beside the 46 MB it takes empty: the rope, the text as read, which the collector has freed but the process keeps for
-its next allocations, and its leaves and nodes, two small records of six fields for each 1,024 bytes. The others hold the
-file once, about, with a little for each line.
+Cemacs holds about four times the file beside the 46 MB it takes empty: its rope, the leaves and nodes, two small records of
+six fields for each 1,024 bytes; the whole text once more, which [the check](check.md#what-runs) gives to
+`cesia check`; and the memory that the collector has freed but the process keeps for its next allocations. The others hold
+the file once, about, with a little for each line.
+
+With 99.9 MB open, this version holds 53 MB more at rest than the one before, though it makes less: up to its first frame
+it holds less, 267 MB against 276, and the 53 MB come in the next two seconds. They are garbage of the open, not yet freed.
+Cesia's memory is managed by the collector of OCaml, which frees what is no longer used a little at a time, at a pace set by
+what the program makes; this version makes much less garbage as it opens a file, so the collector is less far in its work
+when the editor goes quiet, and an editor at rest makes almost nothing to drive it on. Three measures, n = 3 each, show it:
+a version with only the new check holds 447 MB, one with only the new rope 487 MB, which a cost of either change would not
+give; and with the collector told to work harder, `OCAMLRUNPARAM=o=40` (the space overhead 40 % instead of OCaml's 120 %),
+this version holds 380 MB and the one before 385. Cesia has no call that asks its collector to finish its work. With 15.9
+MB open, the collector had finished, and this version holds 3 MB less.
 
 The processor at rest, over 10 seconds, 3 seconds after the start, one empty buffer, in percent of one core, n = 5. The time
 is what the system counted for every process of the editor, in hundredths of a second, so 0.0 % is less than 0.1 %:

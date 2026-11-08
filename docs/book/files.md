@@ -56,13 +56,15 @@ needs; a surrogate, a code from U+D800 to U+DFFF that UTF-16 uses in pairs and t
 U+10FFFF, the last one of Unicode. A file in Latin-1 breaks these rules as soon as it holds a character outside ASCII, and a
 file in UTF-16 holds zero bytes, so such a file stays closed instead of showing wrong characters and being saved broken.
 
-[files.IsText] reads the text one piece of 1 MiB at a time, each piece cut after a whole character, so that the check takes a
-few MiB of memory whatever the size of the file. Cesia has no function yet that checks UTF-8, so Cemacs asks Cesia's lexer,
-the part of Cesia that reads a program and that refuses a source which isn't UTF-8 before it reads anything else: the piece
-goes to [cesia.Uses] after the byte 1, a control character that no program holds, so the lexer stops right after its check,
-and its error says which way the check went. The check of UTF-8 is then Cesia's own, written in OCaml. Should a later Cesia
-stop checking first, Cemacs sees it, at each file, on a piece it knows to be wrong, and checks every byte with a loop of
-Cesia instead: slower, as exact.
+[files.IsText] makes two checks of the whole text, each one call of Cesia's standard library, written in OCaml, that reads
+the text where it is, without a copy: [text.Count] counts its zero bytes, which must be none, and [text.IsUtf8] tells whether
+it is valid UTF-8 as RFC 3629 defines it. The zero byte needs its own check because it is valid UTF-8, the character U+0000,
+which no text file holds. Both read eight bytes at a time: a word of 64 bits holds eight bytes, and a few operations on the
+whole word answer for the eight at once, a method called SWAR, SIMD within a register (SIMD, single instruction, multiple
+data, is a processor's way of doing one operation on several values together; SWAR gets it from the plain operations on
+integers). [text.IsUtf8] decodes a character only where a byte isn't ASCII. On 99.9 MB of Cesia's code, measured as
+[Speed](performance.md#opening-a-file) tells: 34 ms to count the zero bytes, 24 ms to check the UTF-8, 60 ms for
+[files.IsText].
 
 ```cesia
 use std/text
@@ -74,6 +76,12 @@ files.IsText(text.FromBytes([0x61, 0, 0x62])) --> false
 The second text is `café` in Latin-1, where `é` is the one byte `E9`. A file that starts with the byte order mark of UTF-8,
 the bytes `EF BB BF` that some programs write first, is valid UTF-8: it opens, the mark stays the first character of the
 buffer, and a save writes it back.
+
+GNU Emacs, Neovim and Vim test UTF-8 too as they read a file, but where the test fails they take another encoding: the four
+bytes of `café` in Latin-1 open in GNU Emacs 31.1 with the coding system `iso-latin-1-unix`, and in Neovim 0.12.6 and Vim
+9.2 with the `fileencoding` `latin1`, the last of their default list `ucs-bom,utf-8,default,latin1` (each checked on this
+machine). Their way opens any file, at the risk of a wrong guess: a file in another encoding of one byte a character, such as
+Windows-1252, shows wrong characters as Latin-1. Cemacs keeps one encoding and refuses what isn't in it rather than guess.
 
 ### Line ends
 
