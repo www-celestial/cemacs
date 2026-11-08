@@ -157,4 +157,9 @@ last = sdl.Run(state, commands.Update, view.View, window, moving = commands.Movi
 check(wordsOf(last) == "aézqalphaéz\n", "run took the events: $(wordsOf(last))")
 check(last.Width == 640 and last.Height == 480, "run took the resize")
 sdl.Close(window)
+(* Clean up: the folder and what the checks wrote in it. *)
+for name in result.Unwrap(sys.List(folder))
+  result.Unwrap(sys.Remove("$folder/$name"))
+end
+result.Unwrap(sys.Remove(folder))
 io.Print("ok")

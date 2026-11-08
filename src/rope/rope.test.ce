@@ -62,3 +62,17 @@ isRedo() = history.Current(history.Redo(history.Undo(history.Record(2, history.O
 isRecordClearsRedo() = not history.CanRedo(history.Record(3, history.Undo(history.Record(2, history.Of(1)))))
 isUndoAtStart() = history.Current(history.Undo(history.Of(1))) == 1 and history.Current(history.Redo(history.Of(1))) == 1
 isLimit() = value.Len(list.Reduce((h, x) -> history.Record(x, h), history.Of(0, limit = 3), [1, 2, 3, 4, 5]).Past) == 3
+
+defn balanced(r)
+  (** Do the two sides of every node differ in height by at most one, as in an AVL tree, with the height and the counts right? *)
+  if value.IsMissing(r.Left)
+    return r.Height == 0 and r.Size == text.ByteLength(r.Text) and text.ByteLength(r.Text) <= 1024
+  end
+  counted = r.Size == r.Left.Size + r.Right.Size and r.Lines == r.Left.Lines + r.Right.Lines
+  balanced(r.Left) and balanced(r.Right) and math.Abs(r.Left.Height - r.Right.Height) <= 1 and r.Height == 1 + list.Max(r.Left.Height, r.Right.Height) and counted
+end
+
+(** A rope made of a text of every size around a power of two of leaves is an AVL tree, with the text and its lines whole. *)
+isOfBalanced() = list.All([whole(text.ByteSlice(1, n, text.Repeat(70, big))) for n in [1025, 2048, 2049, 3073, 5000, 9216, 33793, 65537, 200000]])
+
+whole(s) = balanced(rope.Of(s)) and rope.Text(rope.Of(s)) == s and rope.LineCount(rope.Of(s)) == value.Len(text.Split("\n", s))   (** Balanced, and the same text. *)

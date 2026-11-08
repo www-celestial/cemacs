@@ -91,31 +91,42 @@ io.Print(main())
 
 ## Opening a file
 
-From the command to the first frame, with the file given, n = 10; the files are Cesia's standard library put end to end:
+From the command to the first frame, with the file given, n = 10; the files are Cesia's standard library put end to end, and
+the last line holds a word found nowhere else, for [search](#search):
 
 | File | Cemacs | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
 |---|---|---|---|---|
-| 0.78 MB, 22,165 lines | 264 ms [262, 266] | 93.3 ms [91.9, 95.1] | 20.5 ms [20.2, 20.9] | 17.4 ms [17.0, 17.8] |
-| 15.8 MB, 450,669 lines | 4,178 ms [4,128, 4,304] | 137 ms [135, 140] | 53.5 ms [52.9, 55.4] | 50.0 ms [49.6, 50.9] |
-| 100 MB, 2,844,381 lines, n = 5 | refused: above 16 MiB | 384 ms [373, 405] | 224 ms [222, 233] | 231 ms [228, 237] |
+| 0.79 MB, 22,430 lines | 66.5 ms [64.8, 68.7] | 96.6 ms [94.2, 102] | 21.6 ms [20.7, 28.2] | 17.6 ms [17.1, 18.6] |
+| 15.8 MB, 448,562 lines | 206 ms [203, 214] | 142 ms [140, 150] | 54.4 ms [53.4, 59.1] | 50.4 ms [49.5, 54.3] |
+| 100 MB, 2,840,882 lines | 904 ms [886, 955] | 380 ms [379, 395] | 229 ms [227, 231] | 237 ms [234, 238] |
 
 The other editors don't know Cesia, so they show these files as plain text, where Cemacs colours the lines on the screen.
 Emacs was told not to ask before a large file, `(setq large-file-warning-threshold nil)`; Neovim and Vim were started with
-`-n`, which makes no swap file.
+`-n`, which makes no swap file. Before this version, Cemacs took 281 ms [277, 298] for the 0.79 MB and 4,280 ms [4,213,
+4,368] for the 15.8 MB, measured the same way on the same files, and refused the 100 MB.
 
-Opening a file costs Cemacs about a quarter of a second per megabyte, and nearly all of it is one step: [files.IsText],
-which checks that the file is valid UTF-8 before it is opened. When the file holds a character outside ASCII, it checks each
-byte with a loop of Cesia; a file of ASCII only is checked natively, at once. Measured alone on the file of 15.8 MB, n = 5:
+What opening costs, measured alone, without the window, n = 5 (median, then fastest and slowest):
 
-| Step | Median of 5 | Fastest, slowest |
+| Step | 15.8 MB | 100 MB |
 |---|---|---|
-| reading the 15.8 MB from the disk, `sys.Read` | 10.8 ms | 10.4, 11.9 ms |
-| the check of UTF-8, `files.IsText` | 4,044 ms | 3,961, 4,243 ms |
-| the rope, `rope.Of` | 163 ms | 160, 190 ms |
+| reading the file from the disk, `sys.Read` | 11.6 ms (10.1, 15.3) | 45.0 ms (44.5, 45.2) |
+| the check of UTF-8 and of zero bytes, [files.IsText] | 52.2 ms (48.2, 70.0) | 296 ms (288, 303) |
+| the rope, [rope.Of] | 75.3 ms (70.6, 109) | 458 ms (451, 465) |
+| the peak of memory of the process, `VmHWM` | 62 MB | 269 MB |
 
-So every editor here opens a large file far faster than Cemacs: they read the bytes, and decode them as they need, in C. The
-check of UTF-8 is the place to make Cemacs faster. For the goal of its first version, a file of about 20,000 lines opened in
-under 300 ms, the file of 0.78 MB and 22,165 lines takes 264 ms with the start, so about 215 ms for the file itself.
+Before this version, the check took 3,962 ms (3,883, 3,984) for the 15.8 MB, the rope 159 ms, and the memory went up to 540
+MB: the check made a list of every byte of the file, each byte a value of its own, and walked it with a loop of Cesia. Now:
+
+- [files.IsText] reads the file one piece of 1 MiB at a time, and has each piece checked by Cesia's lexer, in OCaml, as
+  [Files and buffers](files.md#encodings) tells: about 3 ns a byte, and a few MiB of memory whatever the size.
+- [rope.Of] cuts the leaves one after the other, so that each byte is copied once, where it cut the text in halves and
+  copied all of it again at each level. Most of its time is counting the line ends of each leaf, with [text.Split]: about
+  3.2 ns a byte, 320 ms of the 458 for 100 MB.
+
+The other editors still open a large file faster: they read the bytes and find the line ends in C, at memory speed, and
+Neovim and Vim don't check UTF-8 before they show the file. Cesia has no function yet that checks UTF-8 or counts the line
+ends of a text in one call. Written in OCaml, eight bytes at a time, each takes about 25 to 35 ms for 100 MB, measured on this
+machine: with both, opening 100 MB would take about 300 ms, between Neovim and Emacs.
 
 ## Typing and scrolling
 
@@ -127,24 +138,26 @@ scrolled line, each pass made of `view.FollowState`, `view.View` and `sdl.Frame`
 SDL_VIDEODRIVER=dummy cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce
 ```
 
-Three runs:
+Three runs of this version, each after a run of the version before it, `main` at c8c6dda, on the same machine:
 
 | Run | One typed character at line 19,000: median, worst | One scrolled line: median, worst | First jump to line 19,000 |
 |---|---|---|---|
-| 1 | 12.1 ms, 21.8 ms | 14.7 ms, 32.5 ms | 638 ms |
-| 2 | 12.2 ms, 20.4 ms | 14.4 ms, 27.2 ms | 676 ms |
-| 3 | 11.8 ms, 21.7 ms | 14.4 ms, 20.9 ms | 631 ms |
+| 1 | 10.5 ms, 26.2 ms | 15.5 ms, 20.3 ms | 344 ms |
+| 2 | 10.2 ms, 14.5 ms | 15.5 ms, 23.1 ms | 338 ms |
+| 3 | 10.3 ms, 17.7 ms | 15.4 ms, 21.4 ms | 340 ms |
+| before, 1 to 3 | 11.7, 11.3, 11.4 ms | 16.4, 16.0, 16.2 ms | 631, 626, 632 ms |
 
-- A key costs about 12 ms from the state to the frame, under the 16 ms of one frame at 60 a second: 0.3 ms to follow the
-  cursor, 3.1 ms to make the frame's commands, and about 8 ms for SDL to draw them in software. The size of the file doesn't
-  count: only the lines on the screen are read.
-- Scrolling at 14.4 to 14.7 ms a line is 68 to 69 lines a second, over the goal of 60. The worst of the 300 passes takes up
+- A key costs about 10.3 ms from the state to the frame, under the 16 ms of one frame at 60 a second: 0.2 ms to follow the
+  cursor, 2.4 ms to make the frame's commands, and about 7.2 ms for SDL to draw them in software. The size of the file doesn't
+  count: only the lines on the screen are read. The frame's commands took 3.5 ms before: reading a line of the rope made new
+  nodes, two splits and their joins, where it now only reads the leaves; see [Inside Cemacs](internals.md).
+- Scrolling at 15.4 to 15.5 ms a line is 64 to 65 lines a second, over the goal of 60. The worst of the 300 passes takes up
   to about twice the median; the gate doesn't tell which part made it slow.
-- The first jump to line 19,000 costs 0.63 to 0.68 s, once: the colours of the lines before it are read then. After that,
-  they are known.
-- The gate's own opening, about 40 ms for 2.8 MB, makes the rope and the first frame from a text already in memory: it
+- The first jump to line 19,000 costs 0.34 s, once: the colours of the lines before it are read then, 19,000 lines read from
+  the rope. After that, they are known.
+- The gate's own opening, about 38 ms for 2.8 MB, makes the rope and the first frame from a text already in memory: it
   doesn't read a file, and doesn't check its UTF-8, which is what [opening a file](#opening-a-file) above costs.
-- Making the rope of the whole text, `rope.Of`, takes 6.6 ms.
+- Making the rope of the whole text, `rope.Of`, takes 2.7 ms, 6.5 ms before.
 
 The time from a key to the screen is not compared with the other editors: measuring it honestly needs a camera, or a tool
 that watches the screen, such as Typometer, and none was used. These numbers are Cemacs's own, inside the program.
@@ -193,19 +206,19 @@ RSS, the resident set size, is the memory of a process that is in RAM, the libra
 whole; PSS, the proportional set size, counts a shared page divided by the number of processes that share it, which is fairer
 between programs. Cemacs holds the Cesia runtime, SDL3, SDL3_ttf, its three fonts and the window.
 
-With the file of 15.8 MB open, 12 seconds after the start, n = 3:
+With a large file open, 8 seconds after the start, the RSS, n = 3:
 
-| Editor | RSS | PSS |
+| Editor | 15.8 MB open | 100 MB open |
 |---|---|---|
-| Cemacs | 633 MB | 624 MB |
-| GNU Emacs 31.1 | 71.6 MB | 64.4 MB |
-| Neovim 0.12.6 | 40.4 MB | 29.6 MB |
-| Vim 9.2 | 36.3 MB | 33.5 MB |
+| Cemacs | 127 MB | 401 MB |
+| GNU Emacs 31.1 | 71.3 MB | 152 MB |
+| Neovim 0.12.6 | 40.2 MB | 137 MB |
+| Vim 9.2 | 36.3 MB | 133 MB |
 
-Cemacs holds about 40 times the size of the file, where the others hold about twice. The text and its rope take about 120 MB:
-a program of Cesia that only reads the file and makes its rope has an RSS of 120 MB. The check of UTF-8 raises it to 618 MB:
-it makes an array of every byte of the file to walk through, and the process keeps that memory afterwards, as the editor
-still held it 12 seconds after the start.
+Before this version, Cemacs held 631 MB with the 15.8 MB open, and refused the 100 MB. It now holds about four times the
+file beside the 46 MB it takes empty: the rope, the text as read, which the collector has freed but the process keeps for
+its next allocations, and its leaves and nodes, two small records of six fields for each 1,024 bytes. The others hold the
+file once, about, with a little for each line.
 
 The processor at rest, over 10 seconds, in percent of one core, n = 3:
 
@@ -223,7 +236,7 @@ each pass while a program runs, a check runs or is due, or a prefix key waits fo
 
 ## Limits
 
-- A file larger than 16 MiB isn't opened.
+- A file larger than 1 GiB isn't opened: one of 1 GiB takes about three times its size in memory at its peak.
 - The undo history keeps 1,000 states per buffer, and the output of a program its last 1,000 lines.
 - A frame holds at most 8,192 pieces of text.
 - One check runs at a time, for one buffer.

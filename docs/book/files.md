@@ -38,13 +38,14 @@ is one of these, which stay closed with a message on the prompt line and the fil
 |---|---|
 | a folder | `PATH is a folder.` |
 | not a regular file: a device, a FIFO (a named pipe), a socket | `PATH is not a regular file: it may be a device, a pipe or a socket.` |
-| larger than 16 MiB, 16,777,216 bytes | `PATH is too large to open: SIZE bytes, and the limit is 16777216.` |
+| larger than 1 GiB, 1,073,741,824 bytes | `PATH is too large to open: SIZE bytes, and the limit is 1073741824.` |
 | not valid UTF-8, or holding a zero byte | `PATH is not valid UTF-8 text, or holds a zero byte.` |
 | unreadable, such as without the permission of the system | the reason that Cesia gives |
 
 A device or a FIFO says it has the size 0, and reading one may never end or fill the memory, so Cemacs asks the system what
 a file is before it reads it. The limit of size keeps a file too large for memory from stopping the editor, with every
-buffer's unsaved text: [Speed](performance.md#opening-a-file) has what a large file costs.
+buffer's unsaved text: a file takes about three times its size in memory for a moment as it is opened, and
+[Speed](performance.md#opening-a-file) has what a large file costs.
 
 ### Encodings
 
@@ -54,6 +55,14 @@ sequences is one that RFC 3629 allows: [files.IsText] refuses an overlong form, 
 needs; a surrogate, a code from U+D800 to U+DFFF that UTF-16 uses in pairs and that is no character; and a code above
 U+10FFFF, the last one of Unicode. A file in Latin-1 breaks these rules as soon as it holds a character outside ASCII, and a
 file in UTF-16 holds zero bytes, so such a file stays closed instead of showing wrong characters and being saved broken.
+
+[files.IsText] reads the text one piece of 1 MiB at a time, each piece cut after a whole character, so that the check takes a
+few MiB of memory whatever the size of the file. Cesia has no function yet that checks UTF-8, so Cemacs asks Cesia's lexer,
+the part of Cesia that reads a program and that refuses a source which isn't UTF-8 before it reads anything else: the piece
+goes to [cesia.Uses] after the byte 1, a control character that no program holds, so the lexer stops right after its check,
+and its error says which way the check went. The check of UTF-8 is then Cesia's own, written in OCaml. Should a later Cesia
+stop checking first, Cemacs sees it, at each file, on a piece it knows to be wrong, and checks every byte with a loop of
+Cesia instead: slower, as exact.
 
 ```cesia
 use std/text

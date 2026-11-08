@@ -1,6 +1,7 @@
 (** The files of the editor. Saving never loses text: the new words go to a file next to the old one, which a rename then replaces, so a
     failure at any step leaves the old file whole. A disk is what the file looked like when it was read: {Modified, Size}, or missing for a
     file that didn't exist. *)
+use std/cesia
 use std/sys
 use std/text as str
 use std/list
@@ -62,7 +63,7 @@ defn validAt(i, bs)
 end
 
 defn utf8(bs)
-  (** Is every byte sequence of the bytes valid UTF-8? A byte under 128 costs one step, so an ASCII text never gets here. *)
+  (** Is every byte sequence of the bytes valid UTF-8? The exact check, written in Cesia, a step or more per byte. *)
   i = 1
   total = value.Len(bs)
   while i <= total
@@ -74,18 +75,59 @@ defn utf8(bs)
   true
 end
 
-defn IsText(words)
-  (** Is this text one that the editor opens: valid UTF-8 and no zero byte? A text of bytes under 128 is checked natively.
+(* The bytes that the check reads at a time. Each piece is copied twice on the way, so the memory of the check stays a few MiB whatever the size of
+   the file. *)
+piece = 1048576
 
-        IsText("é") --> true *)
-  if hasZero(words)
-    return false
+(** The first byte of a source that no program holds: Cesia's lexer refuses it as soon as it reads it. *)
+stopByte() = str.Char(1)
+
+(** The error of Cesia's lexer for a source of this text after the stop byte. *)
+lexed(words) = cesia.Uses("$(stopByte())$words").Error.Message
+
+(* Cesia has no check of UTF-8 for a program yet. Its lexer has one, written in OCaml, which cesia.Uses runs over a whole source before it reads any of
+   it: after the stop byte, the lexer stops at once, and its error tells whether the rest was UTF-8. lexerChecks confirms, at each file, that a bad byte
+   after the stop byte is still refused as UTF-8 and not as the stop: if Cesia ever changes that order, the check in Cesia above does all the work,
+   slower but exact. *)
+defn lexerChecks()
+  (** Does Cesia's lexer still check UTF-8 before it reads anything? *)
+  bad = lexed(str.FromBytes([255]))
+  bad != lexed("") and bad == lexed(str.FromBytes([0xC3]))
+end
+
+isContinuation(b) = b >= 128 and b <= 191   (** Is the byte b one of the bytes after the first one of a character? *)
+
+defn pieceEnd(at, n, words)
+  (** The last byte of the piece that starts at at: piece bytes on, then over the continuation bytes of the character that this cuts, three at
+      most. A fourth one then starts the next piece, which no valid text does. *)
+  last = list.Min(at + piece - 1, n)
+  k = 0
+  while last < n and k < 3 and isContinuation(str.Byte(last + 1, words))
+    last += 1
+    k += 1
   end
-  bs = str.Bytes(words)
-  if value.Len(bs) == 0 or list.Max(bs) < 128
-    return true
+  last
+end
+
+defn IsText(words)
+  (** Is this text one that the editor opens: valid UTF-8 and no zero byte? It is read one piece of 1 MiB at a time, each cut at the end of a
+      character, by Cesia's lexer: see lexerChecks.
+
+        IsText("é") --> true
+        IsText(str.FromBytes([0x63, 0x61, 0x66, 0xE9])) --> false *)
+  n = str.ByteLength(words)
+  fast = lexerChecks()
+  valid = if fast lexed("") else missing end
+  at = 1
+  while at <= n
+    last = pieceEnd(at, n, words)
+    part = str.ByteSlice(at, last, words)
+    if hasZero(part) or not (if fast lexed(part) == valid else utf8(str.Bytes(part)) end)
+      return false
+    end
+    at = last + 1
   end
-  utf8(bs)
+  true
 end
 
 defn Normal(path)
@@ -116,9 +158,9 @@ defn Normal(path)
   end
 end
 
-(* The largest file the editor opens, in bytes. Reading one too large for memory would panic and lose the text of every buffer. As measured, a file of
-   this size takes 2 to 5 seconds to open and 600 MiB for a moment, and one of 64 MiB takes 18 seconds and 2.3 GB. *)
-largest = 16 * 1024 * 1024
+(* The largest file the editor opens, in bytes: 1 GiB. Reading one too large for memory would panic and lose the text of every buffer. A file takes
+   about three times its size in memory at its peak, as it is read, checked and made into a rope: see the chapter Speed of the book. *)
+largest = 1024 * 1024 * 1024
 
 defn ReadFile(path)
   (** The file at path, in an Ok of {Words, Disk}. A file that doesn't exist is {Words: "", Disk: missing}. A folder, what isn't a regular file, a file

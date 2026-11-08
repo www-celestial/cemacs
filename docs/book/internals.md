@@ -68,7 +68,9 @@ Positions count bytes from 0, lines count from 1. Every operation goes down the 
 - [rope.JoinRopes] puts two ropes one after the other. Two small leaves whose bytes fit in 1,024 become one leaf.
 - [rope.Insert] is a split, then two joins; [rope.Delete] two splits and a join.
 - [rope.LineStart] finds the byte where line n starts by going down by counts of line ends, then searching one leaf.
-- [rope.Text] makes the whole text, by visiting every leaf.
+- [rope.Slice], the text between two positions, and [rope.Text], the whole text, visit the leaves between them, in order,
+  and join their texts: they make no node, so reading a line, which the frame does for each line on the screen, only reads
+  the tree.
 
 The tree is kept balanced as an AVL tree is, after Adelson-Velsky and Landis: at every node, the heights of the two sides
 differ by at most one. A join of two ropes of very different heights goes down the side of the taller one, and puts each
@@ -81,9 +83,13 @@ join, and, as the paper does, makes one leaf of two short leaves joined, and cop
 edit. Inside a leaf the work is at most 1,024 bytes. The whole text, `rope.Text`, costs O(n), and the editor never asks for
 it but to save or to check.
 
-Measured on a text of 20,000 lines, 707,583 bytes of Cesia's code: [rope.Of] makes 1,024 leaves of at most 691 bytes in a
-tree of height 10; after 3,000 random inserts and deletes, the tree had 1,095 leaves and a height of 12, and the two sides of
-every node still differed by at most one, checked every 100 edits. A random edit can leave a small leaf, down to a few bytes,
+[rope.Of] makes a rope from a whole text, as a file just read: it cuts the leaves one after the other, 1,024 bytes each and
+the last one shorter, so that each byte is copied once, then joins them two by two, level by level, with [rope.JoinRopes],
+which keeps the balance where an odd rope is left over. Cutting the text in halves, again and again, would copy all of it at
+each of the log₂(n / 1,024) levels: 14 copies of a file of 16 MB. Measured on a text of 20,000 lines, 706,525 bytes of
+Cesia's code: [rope.Of] makes 690 leaves of at most 1,024 bytes in a tree of height 10; after 3,000 random inserts and
+deletes, the tree had 1,131 leaves and a height of 12, and the two sides of every node still differed by at most one,
+checked every 100 edits. A random edit can leave a small leaf, down to a few bytes,
 which a later join may merge.
 
 A rope is persistent: an edit makes new nodes along one path, O(log n) of them, and shares every other node with the rope

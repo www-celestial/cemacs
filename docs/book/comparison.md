@@ -14,12 +14,13 @@ dummy driver, into memory. Each number is the median of n runs, with its 95 % in
 | Measure | n | Cemacs | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
 |---|---|---|---|---|---|
 | start to the first frame | 20 | 49.5 ms [49.2, 50.3] | 86.4 ms [85.4, 87.3] | 13.6 ms [13.5, 14.2] | 9.2 ms [9.1, 9.4] |
-| start and open 0.78 MB | 10 | 264 ms [262, 266] | 93.3 ms [91.9, 95.1] | 20.5 ms [20.2, 20.9] | 17.4 ms [17.0, 17.8] |
-| start and open 15.8 MB | 10 | 4,178 ms [4,128, 4,304] | 137 ms [135, 140] | 53.5 ms [52.9, 55.4] | 50.0 ms [49.6, 50.9] |
-| start and open 100 MB | 5 | refused | 384 ms [373, 405] | 224 ms [222, 233] | 231 ms [228, 237] |
+| start and open 0.79 MB | 10 | 66.5 ms [64.8, 68.7] | 96.6 ms [94.2, 102] | 21.6 ms [20.7, 28.2] | 17.6 ms [17.1, 18.6] |
+| start and open 15.8 MB | 10 | 206 ms [203, 214] | 142 ms [140, 150] | 54.4 ms [53.4, 59.1] | 50.4 ms [49.5, 54.3] |
+| start and open 100 MB | 10 | 904 ms [886, 955] | 380 ms [379, 395] | 229 ms [227, 231] | 237 ms [234, 238] |
 | search 15.8 MB for a word on its last line | 10 | no search | 7.7 ms [7.4, 7.9] | 29.3 ms [28.2, 30.3] | 35.5 ms [32.9, 38.6] |
 | memory at rest, empty, PSS | 5 | 41.8 MB [41.7, 41.9] | 49.0 MB [48.0, 49.1] | 10.1 MB [9.8, 10.2] | 7.8 MB [7.7, 8.0] |
-| memory with 15.8 MB open, PSS | 3 | 624 MB | 64.4 MB | 29.6 MB | 33.5 MB |
+| memory with 15.8 MB open, RSS | 3 | 127 MB | 71.3 MB | 40.2 MB | 36.3 MB |
+| memory with 100 MB open, RSS | 3 | 401 MB | 152 MB | 137 MB | 133 MB |
 | processor at rest, % of one core | 3 | 2.1 % | 0.0 % | 0.0 % | 0.0 % |
 
 With n = 5 the interval is that of the fastest and the slowest run, at 93.75 %; with n = 3, only the median is given.
@@ -30,14 +31,15 @@ What they say:
   in a few milliseconds and draw characters into a terminal. Cemacs is a Cesia program: Cesia reads and prepares about
   5,600 lines of code at each start, then SDL3 opens a window, and SDL3_ttf loads three fonts and draws the first frame in
   pixels. Emacs, which loads its own Lisp at the start, is slower than Cemacs.
-- **Every one of them opens a large file far faster than Cemacs.** Cemacs checks that a file is valid UTF-8 before it opens
-  it, in Cesia, one byte at a time when the file holds characters outside ASCII; that check takes most of the time. The
-  others read the bytes, and decode them as they need, in C. Cemacs also refuses a file above 16 MiB, where the others open
-  100 MB.
+- **Cemacs opens a file of 0.79 MB faster than Emacs, but Vim and Neovim open a large file two to four times faster.**
+  Cemacs checks that a file is valid UTF-8 before it opens it and counts the line ends of each leaf of its rope, both
+  through functions of Cesia that copy the text on the way; the others read the bytes and find the line ends in C, at the
+  speed of memory. Cemacs opens files of up to 1 GiB.
 - **Cemacs has no search, where every other editor searches a large file in milliseconds.**
 - **At rest, Cemacs uses memory of the order of Emacs, and four to five times that of Vim and Neovim**, which hold a
   terminal's characters where Cemacs holds a window, its fonts and the Cesia runtime. With a large file open, Cemacs holds
-  about 40 times the file, the others about twice: the same check of UTF-8 keeps an array of every byte.
+  about four times the file, the others about once: Cemacs's rope gives each 1,024 bytes two records, and the process keeps
+  the memory of the text as it was read.
 - **At rest, the others use no processor, and Cemacs 2 % of one core**: they sleep until an event wakes them, where Cemacs's
   loop looks for one every 5 milliseconds.
 - Typing is not compared: the honest measure of the time from a key to the screen needs a camera or a tool that reads the
@@ -64,7 +66,7 @@ the Debug Adapter Protocol, DAP. An editor that speaks both gets every language 
 | Debugger | built in, for Cesia, with breakpoints, steps, evals, fix and continue | GUD, built in, for gdb and other debuggers | none built in: plugins | Termdebug, built in, for gdb; channels that speak DAP's encoding |
 | Undo | linear, with redo, 1,000 states | an undo is recorded as an edit, so an undo can be undone; `undo-redo` | a tree of every state | a tree of every state |
 | Encodings | UTF-8 only | many | many | many |
-| Large files | refused above 16 MiB | asks above 10 MB, then opens | opens | opens |
+| Large files | opens up to 1 GiB | asks above 10 MB, then opens | opens | opens |
 | Saves of its own | none: no autosave, backup or swap file | autosave files and backups | swap files | swap files, and backups if asked |
 
 The features of Emacs, Neovim and Vim were checked on the installed programs: Eglot, Flymake, GUD and `which-key` load in
@@ -90,7 +92,7 @@ What they do that Cemacs doesn't, and why it matters:
 
 - **Search, completion, a command by name, other languages and encodings, a terminal inside.** Cemacs has none yet: it is
   a young editor for one language, and grows when its use asks.
-- **Speed at the start and on large files.** Native code, decades of tuning, and no check of UTF-8 in an interpreted loop.
+- **Speed at the start and on large files.** Native code that reads and scans the bytes of a file at the speed of memory.
 - **Safety of the text.** Emacs, Vim and Neovim keep a copy of what you type on disk, so a crash loses little; Cemacs keeps
   it in memory only.
 - **Maturity.** Their code has run for decades, on many systems; Cemacs is tried on Linux, by its author and its tests.

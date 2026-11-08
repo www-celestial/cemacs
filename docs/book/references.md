@@ -45,8 +45,8 @@ are.
 
 - F. Yergeau. *UTF-8, a transformation format of ISO 10646.* RFC 3629, STD 63, IETF, November 2003.
   https://www.rfc-editor.org/rfc/rfc3629.
-  What Cemacs took: what valid UTF-8 is, which [files.IsText] checks byte by byte: no overlong form, no surrogate, nothing
-  above U+10FFFF.
+  What Cemacs took: what valid UTF-8 is, which [files.IsText] checks: no overlong form, no surrogate, nothing above
+  U+10FFFF.
 - The Open Group. *The Open Group Base Specifications Issue 8*, IEEE Std 1003.1-2024 (POSIX), `rename`.
   https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html.
   What Cemacs took: the guarantee that a rename over an existing name keeps the name leading to the old file or the new one

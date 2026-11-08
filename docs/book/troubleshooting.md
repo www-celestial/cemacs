@@ -45,7 +45,7 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `No file name.` | an empty answer to `Find file: ` or `Save as: ` |
 | `PATH is a folder.` | `C-x d` shows a folder; `C-x C-f` opens files |
 | `PATH is not a regular file: it may be a device, a pipe or a socket.` | Cemacs opens regular files only |
-| `PATH is too large to open: SIZE bytes, and the limit is 16777216.` | Cemacs opens files of 16 MiB at most: see [Files and buffers](files.md#which-files-open) |
+| `PATH is too large to open: SIZE bytes, and the limit is 1073741824.` | Cemacs opens files of 1 GiB at most, which take about three times their size in memory as they open: see [Files and buffers](files.md#which-files-open) |
 | `PATH is not valid UTF-8 text, or holds a zero byte.` | the file is in another encoding, or isn't text; convert it to UTF-8 with `iconv`, for instance |
 | `PATH is open in another buffer.` | `Save as` to a file already open: save that buffer, or close it first |
 | `A list has no file.` | a save in a list |

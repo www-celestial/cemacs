@@ -75,7 +75,7 @@ Some values are not settings but parts of the code, and changing one means chang
 | the size of the window at the start, 1280 by 720 | `core/editor/editor.ce` |
 | the 1,000 states of the undo history | `src/history/history.ce`, the `limit` of `history.Of` |
 | the 1,000 lines kept of the output | `kept` in `core/run/run.ce` |
-| the largest file opened, 16 MiB | `largest` in `core/files/files.ce` |
+| the largest file opened, 1 GiB | `largest` in `core/files/files.ce` |
 | the colours of the errors and the breakpoints | `core/view/view.ce` |
 
 ## The config

@@ -1,5 +1,6 @@
 (** Checks of files.ce against real files, in a new folder under /tmp. It is a script, not a test file: it needs permissions.
-    Run it with cesia run --allow read,write tests/files-check.ce. It prints ok at the end and stops at the first failure. *)
+    Run it with cesia run --allow read,write,exec=mkfifo,exec=truncate tests/files-check.ce. It prints ok at the end and stops at the first failure. *)
+use std/cesia
 use std/sys
 use core/files
 use std/text as str
@@ -120,9 +121,10 @@ result.Unwrap(sys.Write(latin, str.FromBytes([99, 97, 102, 233])))
 check(result.IsErr(files.ReadFile(latin)), "Latin-1 gives an Err")
 check(byteText(result.Unwrap(sys.Read(latin))) == "99,97,102,233", "the refused file stays as it was")
 
-(* A file over 16 MiB is refused from its size alone, as an Err: reading one too large for memory would panic and lose the text of the other buffers. *)
+(* A file over 1 GiB is refused from its size alone, as an Err: reading one too large for memory would panic and lose the text of the other buffers.
+   truncate makes it sparse, a size with no bytes on the disk. *)
 large = "$folder/large"
-result.Unwrap(sys.Write(large, str.Repeat(16 * 1024 * 1024 + 1, "x")))
+check(result.Unwrap(sys.Run("truncate", ["-s", "1073741825", large])).Code == 0, "the large file is made")
 tooLarge = files.ReadFile(large)
 check(kindOf(tooLarge) == "large", "a file over the limit gives an Err of kind large")
 check(str.Contains(large, tooLarge.Error.Message) and str.Contains("too large", tooLarge.Error.Message), "the message names the file and says why")
@@ -154,6 +156,21 @@ check(not files.IsText(str.FromBytes([0xed, 0xa0, 0x80])), "surrogate")
 check(not files.IsText(str.FromBytes([0xf4, 0x90, 0x80, 0x80])), "above U+10FFFF")
 check(not files.IsText(str.FromBytes([0xf8, 0x88, 0x80, 0x80, 0x80])), "five bytes")
 check(files.IsText(str.FromBytes([0xf4, 0x8f, 0xbf, 0xbf])), "U+10FFFF")
+
+(* IsText reads pieces of 1 MiB, each cut at the end of a character: a character across the cut, at each of its bytes, and a bad byte or a zero byte
+   in a later piece. *)
+mib = 1048576
+for k in 0..3
+  check(files.IsText("$(str.Repeat(mib - k, "a"))😀$(str.Repeat(10, "b"))"), "a character of four bytes across the cut, $k bytes before it")
+  check(files.IsText("$(str.Repeat(mib - k, "a"))é€"), "characters of two and three bytes across the cut, $k bytes before it")
+  check(not files.IsText("$(str.Repeat(mib - k, "a"))$(str.FromBytes([0xf0, 0x9f, 0x98]))b"), "a cut character across the cut, $k bytes before it")
+end
+check(not files.IsText("$(str.Repeat(mib, "a"))$(str.FromBytes([0x80, 0x80, 0x80, 0x80]))"), "four continuation bytes after the cut")
+check(not files.IsText("$(str.Repeat(3 * mib, "a"))$(str.FromBytes([233]))"), "Latin-1 in the fourth piece")
+check(not files.IsText("$(str.Repeat(2 * mib + 5, "a"))$(str.FromBytes([0]))"), "a zero byte in the third piece")
+check(files.IsText("$(str.Repeat(2 * mib, "é"))"), "two-byte characters over four pieces")
+(* The check rests on Cesia's lexer checking UTF-8 before it reads a source: a bad byte after a byte that no program holds is refused as UTF-8. *)
+check(cesia.Uses(str.FromBytes([1, 255])).Error.Message == cesia.Uses(str.FromBytes([255])).Error.Message, "Cesia's lexer checks UTF-8 first")
 
 check(files.Normal("./a/../b.ce") == "b.ce", "normal of ./a/../b.ce")   (** normal. *)
 check(files.Normal("a//b/./c/") == "a/b/c", "normal of doubled and trailing slashes")

@@ -10,8 +10,8 @@ cesia run --allow read tests/color-std.ce
 ! grep "^use " src/ui/ui.ce | grep -qvE "^use std/(list|math|value|text|dict)$"
 [ "$(cesia run tests/ui-pure.ce; echo "exit $?")" = "$(cat tests/ui-pure.expected)" ]
 tests/sdl/run.sh
-timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo tests/files-check.ce
-timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo tests/commands-check.ce
+timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/files-check.ce
+timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/commands-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia tests/check-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm,env=PWD tests/run-check.ce
 # C-c c r in a project of its own, made in a new folder, where cesia do finds its cesia.toml.
