@@ -479,3 +479,24 @@ defn isRowsKeptByText()
   rows = b.Screen
   value.Len(dict.Keys(rows)) == 3 and dict.Get("c *)", rows).State.Comment == 1 and dict.Get("a = 1", rows).Width == 80 and value.IsMissing(dict.Get("d", rows))
 end
+
+(* ---- A far place is shown at once, with its colors guessed, and exact after the ticks that read the lines before it: a comment that opens at line
+   45,000, after the colors that the first follow reads, makes the last line a comment. *)
+farText = str.Join("\n", list.Concat(list.Fill("x", 44999), list.Concat(["(* opened far above"], list.Concat(list.Fill("y", 55000), ["z"]))))
+farState() = view.FollowState(stateOf([text.Place(100001, 0, text.Of(farText, "a.ce"))], 800, 600))
+colorOfZ(s) = list.Map(c -> c.Color, list.Filter(c -> c.Kind == "text" and c.Text == "z", view.View(s)))
+
+defn ticked(state)
+  (** The state after the follows of the ticks, until the colors are known or 20 have passed. *)
+  s = state
+  k = 0
+  while view.Colouring(s) and k < 20
+    s = view.FollowState(s)
+    k += 1
+  end
+  s
+end
+
+isFarPlaceAtOnce() = farState().Buffers[1].Colors.Known == 1 + view.ColorBatch() and view.Colouring(farState()) and value.Equal(colorOfZ(farState()), [look.Theme.Syntax[color.Plain]])
+isFarColorsExactAfter() = not view.Colouring(ticked(farState())) and value.Equal(colorOfZ(ticked(farState())), [look.Theme.Syntax[color.Comment]]) and value.Equal(view.View(ticked(farState())), view.View(withoutRows(ticked(farState()))))
+isNearPlaceExact() = not view.Colouring(view.FollowState(stateOf([text.Place(view.ColorBatch() - 100, 0, text.Of(farText, "a.ce"))], 800, 600)))

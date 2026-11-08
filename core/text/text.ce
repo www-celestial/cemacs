@@ -14,7 +14,7 @@ defn Of(words, path)
       from the cursor, and origin, where the mark came from: "" for no mark, "key" for C-space, "shift" for a selection with Shift, "mouse" for a drag.
       Marks are the errors and warnings that a check found, each {Line, Column, End, Severity, Message, Hint}: see MarksOf; MarksNote, words that the
       mode line shows when there are none, such as why the text wasn't checked: see MarksNoteOf. Screen is what the view keeps
-      of the lines on the screen from one frame to the next: see view.Follow.
+      of the lines on the screen from one frame to the next, and Guess the states it guessed for a screen past the colors known: see view.Follow.
       Besides the fields of the state, a buffer has three private ones: wanted, the column that
       MoveLine and MovePage try to keep through shorter lines (a column, or missing, and every other move and every edit clears it); clock, the
       highest version given so far, so that a new edit never gets the number of a state that was undone; and typing, which is true while the last
@@ -24,7 +24,7 @@ defn Of(words, path)
   r = rope.Of(words)
   cursor = {Line: 1, Column: 0}
   {Rope: r, Cursor: cursor, Mark: missing, History: history.Of({Rope: r, Cursor: cursor, Version: 0, Before: cursor, Line: 1}), Version: 0, Top: 1, Left: 0, Path: path, Saved: 0, Disk: missing,
-    Colors: color.BlankColors(), Screen: dict.Dict(), Wanted: missing, Clock: 0, Typing: false, Free: false, Origin: "", Marks: [], MarksNote: ""}
+    Colors: color.BlankColors(), Guess: missing, Screen: dict.Dict(), Wanted: missing, Clock: 0, Typing: false, Free: false, Origin: "", Marks: [], MarksNote: ""}
 end
 
 (** Does line n end with a CRLF? Then its \r belongs to the line end. A \r anywhere else, or at the end of the last line, is an ordinary character. *)

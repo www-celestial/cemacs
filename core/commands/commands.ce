@@ -1039,8 +1039,9 @@ end
 (* ---- Keys and events *)
 
 (** Does the editor need frames of its own? Only while keys wait for the next one and their hints aren't shown yet, or while an app waits for time to
-    pass, as a check does: the ticks count the time; and while a program runs, since they read what it writes. *)
-Moving(state) = (state.Pending != "" and value.Len(hintsOf(state)) == 0) or hooks(state).Moving(state) or running(state)
+    pass, as a check does: the ticks count the time; while a program runs, since they read what it writes; and while a pane shows colors guessed, since
+    each tick reads more of the exact ones. *)
+Moving(state) = (state.Pending != "" and value.Len(hintsOf(state)) == 0) or hooks(state).Moving(state) or running(state) or view.Colouring(state)
 
 defn hooks(state)
   (** What an app adds to the config to hear of time and saves, as src/check does: Idle(state) at each tick, Saved(state) after a save, and Moving(state),
