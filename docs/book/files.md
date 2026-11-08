@@ -44,8 +44,8 @@ is one of these, which stay closed with a message on the prompt line and the fil
 
 A device or a FIFO says it has the size 0, and reading one may never end or fill the memory, so Cemacs asks the system what
 a file is before it reads it. The limit of size keeps a file too large for memory from stopping the editor, with every
-buffer's unsaved text: a file takes about three times its size in memory for a moment as it is opened, and
-[Speed](performance.md#opening-a-file) has what a large file costs.
+buffer's unsaved text: a file takes about twice its size in memory for a moment as it is opened, 193 MB at the peak for
+99.9 MB, and [Speed](performance.md#opening-a-file) has what a large file costs.
 
 ### Encodings
 
@@ -111,14 +111,20 @@ Saving is built so that no failure loses text, neither the text on disk nor the 
 1. The new text goes to a new file beside the old one, named `PATH.cemacs-` and the time in microseconds, with `-1`, `-2` and
    so on up to `-20` when that name is taken, after which the save stops with `No free name next to PATH for a new file.`
    The new file is the only one Cemacs ever removes.
-2. Once it is written in full, a rename puts it in place of the old file. On Linux, a rename within one file system, as
+2. The new file is written with `sys.Write(..., sync = true)`, which gives its answer only once the system has put the file
+   on the disk, and then its folder, with `fsync`: the call that asks the system to write what it holds in its caches, so
+   that a loss of power can't take it back.
+3. Once it is on the disk in full, a rename puts it in place of the old file. On Linux, a rename within one file system, as
    here, is atomic: at every instant the name leads to the whole old file or to the whole new one, never to a part of
    either.
-3. If writing or renaming fails, the new file is removed, the old one stays whole, the buffer keeps its text and its star,
+4. If writing or renaming fails, the new file is removed, the old one stays whole, the buffer keeps its text and its star,
    and the prompt line tells the reason, naming your file, not the new one.
 
-This protects the file from a failure of Cemacs, of the disk being full, or of a permission. It doesn't flush the system's
-caches to the disk, as `fsync` would, so a loss of power right after a save may still lose that save on some file systems.
+This protects the file from a failure of Cemacs, of the disk being full, of a permission, and of a loss of power: once the
+prompt line says `Saved`, the whole new text is on the disk, under the name of your file, or, if the power went in the
+instant of the rename before the system wrote the folder again, under the new file's name `PATH.cemacs-...` beside the old
+file, which is then whole. Vim and Neovim do the same by default (their option `'fsync'`); GNU Emacs 31 doesn't, as its
+`write-region-inhibit-fsync` is on. The cost is the time the disk takes: [Speed](performance.md#paste-undo-and-save) has it.
 
 Since the saved file is a new one, it doesn't keep what belonged to the old one: its permissions are those of a new file,
 `rw-r--r--` with the usual `umask`, the mask by which the system takes rights away from every new file, so a script loses its

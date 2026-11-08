@@ -51,6 +51,12 @@ Cemacs: `two` finds `Two`. See [Search](search.md#searching-a-buffer).
 
 One key pressed with the modifiers held with it, written as `C-x`, `M-<` or `S-right`. See [Keys](keys.md#how-a-key-becomes-a-chord).
 
+## Chunk
+
+A part of fixed size of a long list, kept as one element of a shorter list, so that cutting or extending the long list
+copies one part and the short list, not everything before the place. Cemacs keeps the states of its colours in chunks of
+1,024 lines. See [Inside Cemacs](internals.md#the-colours).
+
 ## Clipboard
 
 The place where a cut or copied text waits to be pasted, shared by the programs of the desktop. Cemacs uses the system's,
@@ -140,6 +146,13 @@ A text in one block of memory with a hole at the place of the last edit, so that
 far away first moves the hole. GNU Emacs keeps its buffers so; Cemacs uses a rope. See
 [Inside Cemacs](internals.md#why-a-rope).
 
+## Garbage collector
+
+The part of a runtime that frees the memory of the values no longer reachable, the garbage. OCaml's, under Cesia, makes the
+values in a small minor heap and frees those that die young at its next minor collection, at no cost for each dead value;
+the others it frees little by little, at a pace set by what the program allocates: what an open of a large file leaves behind
+can stay in memory for a while after it. See [Speed](performance.md#at-rest).
+
 ## Goal column
 
 The column that moves by lines try to keep through shorter lines. See [Editing](editing.md#moving).
@@ -170,6 +183,12 @@ A search that finds the next match as each letter is typed, instead of waiting f
 backward, in Emacs and in Cemacs. The match shows selected, `C-s` again goes to the next one, and round the end of the file
 once none is left. See [Search](search.md#searching-a-buffer).
 
+## Just-in-time colouring
+
+Colouring the code of a buffer when a part of it is shown, not all of it at its opening: Emacs's jit-lock. Cemacs colours
+the lines on the screen from the states of the lines above, and when those are far, shows the screen at once with its states
+guessed, and makes them exact over the ticks after. See [Inside Cemacs](internals.md#a-far-place-first-its-exact-colours-after).
+
 ## Key binding and keymap
 
 A key binding links a key sequence to what it runs; a keymap is a set of them. Cemacs's keymaps are dictionaries from a text,
@@ -184,6 +203,12 @@ which waits for the next key. See [Keys](keys.md#how-a-key-sequence-is-read).
 
 Emacs's list of the last texts cut, which `M-y` goes through after `C-y`. Cemacs has none: see
 [Editing](editing.md#cutting-copying-and-pasting).
+
+## Lazy view
+
+A part of a view made again only when what it is made from changed; else the one made before is used. Elm calls it
+`Html.Lazy`. Cemacs keeps the tokens of each line on the screen under its text, its width and the state at its start. Keeping
+a result under the arguments it was made from is called memoization. See [Inside Cemacs](internals.md#the-frame).
 
 ## Lexer
 
@@ -248,6 +273,13 @@ A persistent data structure keeps its old versions whole when it changes, by mak
 the old version: that sharing is structural sharing. Every value of Cesia is persistent, which makes the undo history and the
 copies of a buffer cheap. See [Inside Cemacs](internals.md#the-state-the-update-and-the-view).
 
+## Piece table
+
+A way to hold the text of an editor: the file read stays as it was, never copied, and the text is a sequence of pieces,
+each a span of the file or of a text of the edits. Crowley compared it with five others in 1998 and found it the best;
+Visual Studio Code holds its text in a piece tree, the pieces in a balanced tree. Cemacs's rope is one: its leaves are views of
+the texts. See [Inside Cemacs](internals.md#the-rope).
+
 ## Project
 
 The files you work on together. In Cemacs, as in Emacs's `project.el`, a Git repository: its root is the folder that holds
@@ -293,6 +325,12 @@ Two measures of a program's memory: RSS, the resident set size, is what of it is
 PSS, the proportional set size, divides each shared page between the programs that share it. See
 [Speed](performance.md#at-rest).
 
+## Shaping
+
+Turning the characters of a text into the glyphs of a font and their places, kerning and ligatures included: the work of
+HarfBuzz, which SDL3_ttf calls for each text. Cemacs keeps each shaped text by its words, so that a line that moves on the
+screen is not shaped again. See [Inside Cemacs](internals.md#the-frame).
+
 ## Shift selection
 
 A selection made by holding Shift while moving, which the next move without Shift ends. See
@@ -336,6 +374,11 @@ The encoding of Unicode where a character takes one to four bytes, ASCII one. RF
 no overlong form, a character written in more bytes than it needs, as `C0 AF` for `/`; no surrogate, the codes U+D800 to
 U+DFFF that UTF-16 keeps for its pairs; nothing above U+10FFFF, the last code of Unicode. See
 [Files and buffers](files.md#encodings).
+
+## View of a text
+
+A part of a text named by where it starts and its size, without a copy of its bytes. The leaves of Cemacs's rope are views,
+`{Text, Start, Size, Lines}`, of the file read and of the texts typed. See [Inside Cemacs](internals.md#the-rope).
 
 ## Visit
 

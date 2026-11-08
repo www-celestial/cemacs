@@ -19,6 +19,20 @@ are.
   https://www.gnu.org/software/emacs/manual/html_node/elisp/Buffer-Gap.html.
   What Cemacs took: nothing; it is the source of what [Inside Cemacs](internals.md#why-a-rope) says of the gap buffer of
   Emacs, to which Cemacs prefers a rope.
+- Robert S. Boyer and J Strother Moore. *A Fast String Searching Algorithm.* Communications of the ACM 20(10):762–772,
+  October 1977. [doi:10.1145/359842.359859](https://doi.org/10.1145/359842.359859).
+  What Cemacs took: nothing; it is the source of what [Speed](performance.md#search) says of Emacs's search, which compares
+  the word from its end and skips ahead by tables, with the case folded in them.
+- James Gosling. *A Redisplay Algorithm.* Proceedings of the ACM SIGPLAN SIGOA Symposium on Text Manipulation, SIGPLAN Notices
+  16(6):123–129, June 1981. [doi:10.1145/800209.806463](https://doi.org/10.1145/800209.806463).
+  What Cemacs took: nothing yet; it is the source of what [Speed](performance.md#typing-and-scrolling) says of how Emacs
+  redraws a terminal, the screen wanted compared with the screen shown and the cheapest edit of lines found by dynamic
+  programming, where Cemacs draws its whole frame at each event.
+- GNU Emacs 31.1, `lisp/jit-lock.el`, the documentation of `jit-lock-mode` and of `jit-lock-stealth-time`, and
+  `lisp/emacs-lisp/syntax.el`, the documentation of `syntax-ppss-max-span`, read in the installed Emacs.
+  What Cemacs took: colouring what the screen shows on demand, then from the true context of the lines above after a pause,
+  for a far place; and a cache of parser states kept sparse, its entries at least 20,000 characters apart, which Cemacs
+  follows with its states in chunks of 1,024 lines. See [Inside Cemacs](internals.md#the-colours).
 - Henrik Lissner and contributors. *Doom Emacs*, a configuration framework for GNU Emacs.
   https://github.com/doomemacs/doomemacs.
   What Cemacs took: the keys gathered in groups under one leader key, each group named by its first letter, `C-c f` for the
@@ -37,6 +51,20 @@ are.
   [The paper at Math-Net.Ru](https://www.mathnet.ru/eng/dan26964).
   What Cemacs took: the balance of its rope, where the heights of the two sides of a node differ by at most one, kept by
   rotations.
+- Charles Crowley. *Data Structures for Text Sequences.* University of New Mexico, Computer Science Department, June 10,
+  1998. https://www.cs.unm.edu/~crowley/papers/sds.pdf.
+  What Cemacs took: the piece table, a text held as pieces that view the file read, which is never copied nor changed, and
+  the texts of the edits; Crowley compares six structures in one model and an editing simulator, and finds it the best. The
+  leaves of Cemacs's rope are such views: see [Inside Cemacs](internals.md#the-rope).
+- Peng Lyu. *Text Buffer Reimplementation.* Visual Studio Code blog, March 23, 2018.
+  https://code.visualstudio.com/blogs/2018/03/23/text-buffer-reimplementation.
+  What Cemacs took: pieces in a balanced tree whose nodes count the bytes and the line breaks under them, and a file kept as
+  the texts it was read in, without joining them; VS Code's array of line objects had taken about 600 MB for a file of
+  35 MB.
+- *Html.lazy*, in *An Introduction to Elm*, the chapter on optimization. https://guide.elm-lang.org/optimization/lazy.html.
+  What Cemacs took: skipping the making of a part of the view whose arguments are the same as at the frame before; Elm
+  compares them by reference, Cemacs the text, the width and the state of a line by value. See
+  [Inside Cemacs](internals.md#the-frame).
 - The Elm Architecture, in *An Introduction to Elm*. https://guide.elm-lang.org/architecture/.
   What Cemacs took: the name of its shape, a state, an update from an event and a view. See
   [Inside Cemacs](internals.md#the-state-the-update-and-the-view).

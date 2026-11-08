@@ -2,7 +2,7 @@
 
 This chapter tells how Cemacs is built: the state and its update, the rope that holds a buffer's text, the undo history, the
 colours, the frame, the loop of events, and the start. It is for a reader who wants to change the core, or to know what each
-operation costs. The code is 6,077 lines of Cesia in `core/` and `src/`, without their tests, and each file can be read
+operation costs. The code is 6,201 lines of Cesia in `core/` and `src/`, without their tests, and each file can be read
 alone.
 
 ## The state, the update and the view
@@ -41,8 +41,11 @@ through a `match` with a default, for the reason [Changing Cemacs](customising.m
 
 A buffer, made by [text.Of], holds `Rope` (its text), `Cursor`, `Mark`, `Origin` (what set the mark: `"key"`, `"shift"`,
 `"mouse"`, or `""`), `History`, `Version`, `Clock`, `Saved`, `Path`, `Disk` (the size and time of its file when read),
-`Top` and `Left` (the first line and column on the screen), `Colors`, `Wanted` (the goal column), `Typing`, `Free` (true after
-the wheel) and `Marks` (the errors of the check); a list has `List` too, and the check adds `Checked`, the version it read.
+`Top` and `Left` (the first line and column on the screen), `Colors`, `Guess` (the states of the colours guessed for a screen
+past those known, or `missing`), `Screen` (what the view keeps of the lines on the screen from one frame to the next),
+`Wanted` (the goal column), `Typing`, `Free` (true after the wheel), `Marks` (the errors of the check) and `MarksNote` (words
+for the mode line when there are none, such as why the text wasn't checked); a list has `List` too, and the check adds
+`Checked`, the version it read.
 
 A buffer is modified when its `Version` differs from `Saved`. Each edit takes a new number from `Clock`, which never goes back,
 so two different texts never share a number, and undo brings back the number of the state it returns to: comparing two
@@ -50,11 +53,18 @@ numbers says whether the text is the one saved, where comparing two texts would 
 
 ## The rope
 
-A buffer's text is a rope, [src/rope]: a binary tree whose leaves hold pieces of the text, at most 1,024 bytes each, and whose
-inner nodes join two ropes, the text of the left one first. Each node keeps three numbers about the text under it: `Size`, its
-bytes; `Lines`, its line ends; and `Height`, the longest path down to a leaf. Boehm, Atkinson and Plass described ropes in
-1995, from their use in the Cedar system at Xerox PARC, as an alternative to strings held in one block of memory, where
-joining two texts copies both: see [References](references.md).
+A buffer's text is a rope, [src/rope]: a binary tree whose leaves hold pieces of the text and whose inner nodes join two
+ropes, the text of the left one first. Each node keeps three numbers about the text under it: `Size`, its bytes; `Lines`, its
+line ends; and `Height`, the longest path down to a leaf. Boehm, Atkinson and Plass described ropes in 1995, from their use in
+the Cedar system at Xerox PARC, as an alternative to strings held in one block of memory, where joining two texts copies
+both: see [References](references.md).
+
+A leaf doesn't hold its bytes: it is a view of a text, `{Text, Start, Size, Lines}`, the `Size` bytes of `Text` from the
+byte `Start`, and the line ends among them. The text is kept by reference: a file read from the disk is one text of Cesia,
+and all the leaves made from it view parts of that one text, which is never copied nor changed; a text typed or pasted is a
+text of its own. This is the idea of the piece table, which Crowley found the best of six structures for the text of an
+editor in 1998: the file read is never copied, an edit only adds pieces; Visual Studio Code's piece tree, in 2018, put the
+pieces in a balanced tree whose nodes count the bytes and the line ends under them, as Cemacs's rope does.
 
 ```cesia
 use src/rope
@@ -64,13 +74,19 @@ r = rope.Of("one\ntwo\nthree")
 
 Positions count bytes from 0, lines count from 1. Every operation goes down the tree by those numbers:
 
-- [rope.SplitAt], the bytes before a position and the others, goes down by sizes, and joins what it passes on the way back.
-- [rope.JoinRopes] puts two ropes one after the other. Two small leaves whose bytes fit in 1,024 become one leaf.
+- [rope.SplitAt], the bytes before a position and the others, goes down by sizes, and joins what it passes on the way back;
+  a leaf it cuts becomes two views of the same text, and only the line ends of the first are counted.
+- [rope.JoinRopes] puts two ropes one after the other. Two views that touch in the same text, the second starting where the
+  first ends, become one view if they hold at most 16 KiB together; two short leaves of other texts whose bytes fit in 1,024
+  become one leaf, a copy of both.
 - [rope.Insert] is a split, then two joins; [rope.Delete] two splits and a join.
-- [rope.LineStart] finds the byte where line n starts by going down by counts of line ends, then searching one leaf.
+- [rope.LineStart] finds the byte where line n starts by going down by counts of line ends, then in the view it reaches
+  counts the line ends of its blocks of 2 KiB until the one that holds it, and searches that block alone.
 - [rope.Slice], the text between two positions, and [rope.Text], the whole text, visit the leaves between them, in order,
-  and join their texts: they make no node, so reading a line, which the frame does for each line on the screen, only reads
-  the tree.
+  and join the parts they view: they make no node, so reading the lines on the screen only reads the tree. A slice inside
+  one view, and the whole text of a rope whose views still cover one text from its first byte to its last, as after an open
+  or after an undo back to it, are that text or a part of it, with no join: saving a file not changed, or checking it,
+  copies nothing.
 
 The tree is kept balanced as an AVL tree is, after Adelson-Velsky and Landis: at every node, the heights of the two sides
 differ by at most one. A join of two ropes of very different heights goes down the side of the taller one, and puts each
@@ -80,21 +96,24 @@ delete and a search for a line visit O(log n) nodes: their cost grows with the l
 adds about one level. The paper on ropes names AVL trees as one way to make these operations logarithmic; its own ropes join
 in constant time instead, and rebalance only when a tree grows deeper than a bound. Cemacs keeps the AVL balance at every
 join, and, as the paper does, makes one leaf of two short leaves joined, and copies only the nodes along the path of an
-edit. Inside a leaf the work is at most 1,024 bytes. The whole text, `rope.Text`, costs O(n), and the editor never asks for
-it but to save or to check.
+edit. Inside a leaf the work is at most 16 KiB, in blocks of 2 KiB. The whole text of an edited buffer, `rope.Text`, costs
+O(n), and the editor asks for it only to save or to check.
 
-[rope.Of] makes a rope from a whole text, as a file just read: it cuts the leaves one after the other, 1,024 bytes each and
-the last one shorter, so that each byte is copied once, then joins them two by two, level by level, with [rope.JoinRopes],
-which keeps the balance where an odd rope is left over. Each leaf counts its line ends, its `Lines`, with Cesia's
-[text.Count], eight bytes at a time, without making anything. Cutting the text in halves, again and again, would copy all of it at
-each of the log₂(n / 1,024) levels: 14 copies of a file of 16 MB. Measured on a text of 20,000 lines, 706,525 bytes of
-Cesia's code: [rope.Of] makes 690 leaves of at most 1,024 bytes in a tree of height 10; after 3,000 random inserts and
-deletes, the tree had 1,131 leaves and a height of 12, and the two sides of every node still differed by at most one,
-checked every 100 edits. A random edit can leave a small leaf, down to a few bytes,
-which a later join may merge.
+[rope.Of] makes a rope from a whole text, as a file just read: it cuts views of 16 KiB one after the other, the last one
+shorter, without copying a byte, then puts them under nodes two by two, level by level, and joins an odd rope left over with
+[rope.JoinRopes], which keeps the balance. Each view counts its line ends, its `Lines`, with Cesia's [text.Count], eight
+bytes at a time, on slices of 2 KiB that are made and dropped young: OCaml's minor heap frees them at its next minor
+collection, at no cost for each dead value. A file of
+99.9 MB is 6,097 views and as many nodes. The size of a view weighs two costs: Cesia makes a record in a few hundred
+nanoseconds, where C makes one in a few, so fewer records open a file faster, while a larger view makes finding a line inside
+it longer. Measured on 99.9 MB, n = 7: [rope.Of] in 105 ms [104, 118] with views of
+16 KiB, where leaves of 1,024 bytes, each a copy, took 258 ms [256, 352]; views of 4 and of 64 KiB, measured beside those of 16
+KiB with an earlier Cesia, took 117 and 89 ms against 94; and finding a line in a view of 64 KiB counts up to 32 blocks of 2 KiB instead of 8. A random edit can leave a small leaf, down to a few bytes, which a later join may merge.
 
 A rope is persistent: an edit makes new nodes along one path, O(log n) of them, and shares every other node with the rope
-before it, which stays whole.
+before it, which stays whole: this way of making a tree persistent is called path copying. A view keeps its whole text
+alive, even when an edit deleted most of what it showed; the undo history keeps that text anyway, as it keeps the states
+before the edit.
 
 ```cesia
 before = rope.Of("abc")
@@ -151,10 +170,17 @@ lines. So the lexer takes the state at the start of a line, the depth of comment
 gives the state at its end. An editor has to colour code that is broken, since it is being written: this lexer never stops
 on an error, and an unfinished text or comment only carries its state to the next line.
 
-Each buffer keeps the state at the start of each line, known down to some line. An edit at line n forgets the states after
-n; drawing reads them again only down to the last line on the screen, and a line with no quote and no comment mark is not
-even read, since it can't change the state. So typing at line 19,000 of a file reads only the lines on the screen, and a jump
-to the end of a large file reads every line once, the first time.
+Each buffer keeps the state at the start of each line, known down to some line, [color.StartOf]. An edit at line n forgets
+the states after n; drawing reads them again only down to the last line on the screen, and a line with no quote and no
+comment mark is not even read, since it can't change the state. So typing at line 19,000 of a file reads only the lines on
+the screen, and a jump to the end of a large file reads every line once, the first time.
+
+The states are kept in chunks of 1,024 lines, a list of lists: forgetting the lines after an edit keeps the chunks before it
+and cuts one, and reading more lines fills the last chunk and adds new ones. Each costs the number of chunks plus one chunk,
+where one flat list of a state per line was cut and extended by copies of every state before the edit: at line 1,416,745 of a
+file of 99.9 MB, 1,384 chunks instead of 1.4 million states, and a key there went from about 40 ms to about 1 ms. GNU Emacs
+keeps the cache of its `syntax-ppss`, the state of its parser at places of the buffer, sparse for the same reason: its entries
+at least `syntax-ppss-max-span`, 20,000 characters, apart.
 
 That reading needs only the state, not the words, so it doesn't go through the lexer: [color.StateAfter] gives the state at
 the end of a line by jumping from mark to mark, each found natively with [text.ByteFind]. In a comment it looks for the next
@@ -167,7 +193,18 @@ color.StateAfter("x = \"a (* b", color.FirstState) --> {Comment: 0, Text: true}
 color.StateAfter("a *) \"b\"", {Comment: 1, Text: false}) --> {Comment: 0, Text: false}
 ```
 
-A jump to the last line of a file of 15.8 MB, 448,562 lines, reads them in 0.6 s: [Speed](performance.md#search).
+### A far place first, its exact colours after
+
+A jump far from the colours known, `M->` at the end of a file of 99.9 MB, or a search that finds its word there, would read
+the states of millions of lines before it can draw: about 4 s. So [view.Follow] reads at most [view.ColorBatch] lines at
+once, 25,000, about 35 ms here, well under the tenth of a second within which a person sees an answer as immediate. When the
+screen is farther than that, it is drawn at once with its states guessed, `Guess`: from the last state known, as if no
+comment or text opened in the lines between, then carried along the lines of the screen. While a pane shows guessed colours,
+the editor asks for ticks, [view.Colouring], and each tick reads [view.ColorBatch] lines more, until the colours known reach
+the screen, which is then drawn again with its exact colours. A comment that opens far above can make the screen's colours
+wrong for those seconds; nothing else is guessed. This is what Emacs's jit-lock does by its own means: it colours on demand
+the part of the buffer that the screen shows, and, with `jit-lock-contextually`, colours it again after a pause from the
+true context of the lines above.
 
 ## The frame
 
@@ -178,10 +215,22 @@ calls last, is the one place that moves the screen of each pane to keep its curs
 colours down to the last line shown.
 
 The frame is made again whole at each event, from the state: the program says what to draw, not what changed. This is the
-way of an immediate-mode interface, as it is called, where no widget keeps a state of its own between frames. Under it,
-[src/sdl] keeps what costs to make: a text object of SDL3_ttf for each place in the frame, up to 8,192, whose text and font
-are set again only when they differ from the last frame. Frames wait for the screen's refresh, which SDL calls vsync, so
-Cemacs draws no frame that the screen can't show.
+way of an immediate-mode interface, as it is called, where no widget keeps a state of its own between frames. What costs to
+make is kept below it, keyed by what it is made from, so that keeping it never changes what is drawn:
+
+- [view.Follow] keeps, in the buffer's `Screen`, the tokens of each line on the screen under the text of the line, with the
+  width it was cut to and the state of the colours at its start. The view reads the lines on the screen with one slice of the
+  rope, and takes a line's tokens from `Screen` only if its text, its width and its state are the same; else it reads them
+  itself. A typed key reads the tokens of one line again, a scrolled line those of the line that comes in. This is the idea of
+  Elm's `Html.Lazy`, which skips making the view of a part whose arguments are the same as at the frame before; Elm compares
+  them by reference, Cemacs by value, so that a state changed after the last follow is still drawn right. A test makes random
+  edits at random places, follows after some of them only, and compares the frames drawn with and without the rows kept.
+- [src/sdl] keeps the text objects of SDL3_ttf, each shaped once, by the font and the words it holds: shaping, the work of
+  HarfBuzz, which SDL3_ttf calls, that turns the letters of a text into the glyphs of the font and their places, is done when a text first appears, and a line that moves on the
+  screen is drawn from the object made before. Up to 8,192 objects are kept; past that, all are forgotten and made again as
+  frames need them.
+
+Frames wait for the screen's refresh, which SDL calls vsync, so Cemacs draws no frame that the screen can't show.
 
 ## The loop of events
 
@@ -204,7 +253,8 @@ the editor sleeps in SDL, no fiber runs, and Cesia has no way to say when the ne
 check and the output of a program, run while the state asks for frames, so the bound only delays what nothing waits for:
 a reload under `--watch` that nobody looks at yet, a fiber of an app that doesn't ask for frames. SDL's dummy driver, which
 the tests use, can't wait for an event: there, SDL looks for one every millisecond itself. The state asks for frames while a prefix key waits for the band of hints to open, which needs
-the time counted; while a check runs or a buffer is due for one; and while a program runs, whose output comes at each pass.
+the time counted; while a check runs or a buffer is due for one; while a program runs, whose output comes at each pass; and
+while a pane shows colours guessed, which each tick reads more of.
 
 The check and the program's output wait in fibers. A fiber is a task of Cesia that runs beside the others in the same
 program, and takes turns with them: a fiber waits for `cesia check` to end, another reads what the program writes, and each

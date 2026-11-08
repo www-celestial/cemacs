@@ -71,20 +71,30 @@ the buffer can't change while it is open; a key that would change it, as `C-k`, 
 
 ### How it finds
 
-[rope.Find] and [rope.FindBefore] read the rope a window at a time: 64 KiB first, then twice as much at each window, up to
-1 MiB, each window one slice of the rope in which Cesia's [text.ByteFind] finds the words natively. Each window overlaps the
-one before it by the length of the words less one byte, so that a place across two windows is found; with folding, each
-window is put in lower case first, with [text.Lower]. A place near the cursor costs one small window; a place 100 MB away,
-about a hundred windows of 1 MiB.
+Searching forward, [rope.Find] goes along the rope by runs of its leaves. A run is a sequence of leaves that view the same text,
+each one starting where the one before ended: a file just opened is one run, the whole file; an edit splits it in two around
+what was typed, a text of its own. A run that views its text to the last byte, as the whole file just opened, or the part
+after the last edit, is searched in that text itself, with no copy, by one call of Cesia's [text.ByteFind]. Any other part
+of the rope is read a window at a time: 64 KiB first, then twice as much at each window, up to 1 MiB, each window one slice of
+the rope; each overlaps the one before it by the length of the words less one byte, so that a place across two windows is
+found, and the places across the end of a run are looked for on their own, in a slice of twice the words. Searching backward,
+[rope.FindBefore] reads windows going back from the cursor, as Cesia has no search that goes backward.
+
+[text.ByteFind] finds the words eight bytes at a time: it looks for the rarest byte of the words with the test of SWAR, SIMD
+within a register, that tells in a few instructions whether any byte of a 64-bit word is the one looked for, then compares the
+words at each place it gives. With folding, `fold = true`, the letters of ASCII match in either case in the same pass, with
+no copy of the text in lower case.
 
 ```cesia
 r = rope.Of("ab ab ab")
 [rope.Find("ab", 1, r), rope.FindBefore("ab", 6, r)] --> [3, 3]
+rope.Find("AB", 1, r, fold = true) --> 3
 ```
 
 Showing a place far away costs more than finding it: the colours of the lines on the screen depend on every line before
-them, as a comment or a text opened on one line goes on over the next ones, so the state of each line before the place is
-read once, then kept: see [Speed](performance.md#search).
+them, as a comment or a text opened on one line goes on over the next ones. The place is shown at once, with its colours
+guessed, and they become exact over the next instants: see [Inside Cemacs](internals.md#a-far-place-first-its-exact-colours-after)
+and [Speed](performance.md#search).
 
 ## Lists
 

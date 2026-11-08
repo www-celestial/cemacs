@@ -45,7 +45,7 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `No file name.` | an empty answer to `Find file: ` or `Save as: ` |
 | `PATH is a folder.` | `C-x d` shows a folder; `C-x C-f` opens files |
 | `PATH is not a regular file: it may be a device, a pipe or a socket.` | Cemacs opens regular files only |
-| `PATH is too large to open: SIZE bytes, and the limit is 1073741824.` | Cemacs opens files of 1 GiB at most, which take about three times their size in memory as they open: see [Files and buffers](files.md#which-files-open) |
+| `PATH is too large to open: SIZE bytes, and the limit is 1073741824.` | Cemacs opens files of 1 GiB at most, which take about twice their size in memory as they open: see [Files and buffers](files.md#which-files-open) |
 | `PATH is not valid UTF-8 text, or holds a zero byte.` | the file is in another encoding, or isn't text; convert it to UTF-8 with `iconv`, for instance |
 | `PATH is open in another buffer.` | `Save as` to a file already open: save that buffer, or close it first |
 | `A list has no file.` | a save in a list |
@@ -147,18 +147,20 @@ None of these should happen with the code as it is; each comes from a change to 
 |---|---|
 | a call with the wrong number of arguments, from a key | a function bound to a key with another number of parameters than a command's one, or a mouse binding's two: see [Changing Cemacs](customising.md#reloading-cemacs-while-it-runs) |
 | a field that doesn't exist | code reads a field of the state that a state from before a reload doesn't have: read it through a `match` with a default |
-| `A frame can't have more than 8192 texts.` | a frame drew more than 8,192 pieces of text: a window larger than a 4K screen, split in many panes of busy code, could reach it |
 | `This window has no font "NAME".` | a drawing command named a font the window didn't open; Cemacs opens `body`, `strong` and `code` |
 | `A frame has no command "KIND".`, `A radius goes from 0 to 24, not R.`, `A curves command holds at most 1024 curves.`, `A window can't hold more than 4096 images.` | a drawing command that `src/sdl` doesn't take: the frame of Cemacs uses none of these |
 | a reason from SDL | a drawing call failed on a window that should take it: a bug of SDL or of the graphics driver |
 
 ## Slow or busy
 
-- **A large file takes a while to open, and memory.** About 0.9 s and 400 MB for 100 MB, the check of UTF-8 and the line ends
-  of the rope taking most of it: [Speed](performance.md#opening-a-file) has the numbers.
-- **The first jump far down a large file, or a search that goes there, takes seconds.** The colours of the screen depend on
-  every line above it, so the first jump reads the state of each, about 1.3 µs a line, 4 s for the last line of 100 MB; the
-  states are kept, so the next jumps cost nothing: [Speed](performance.md#search).
+- **A large file takes a while to open, and memory.** About 0.27 s and 220 MB for 100 MB, the start, the check of UTF-8
+  and the line ends of the rope taking most of it: [Speed](performance.md#opening-a-file) has the numbers.
+- **After a jump far down a large file, or a search that goes there, the colours change a few seconds later.** The place
+  shows at once, with the colours of its lines guessed; the state of every line above it is then read, 25,000 lines a tick,
+  about 4 s for the last line of 100 MB, and the screen is drawn again with its exact colours. Meanwhile a key can wait up to
+  about 60 ms more. The states are kept, so the next jumps cost nothing: [Inside Cemacs](internals.md#a-far-place-first-its-exact-colours-after).
+- **A large Cesia file shows no errors.** Its mode line says `not checked: over 1 MB`: Cemacs doesn't check a buffer over
+  1,000,000 bytes. [Errors in the lines](check.md#when-it-runs) tells why.
 - **The processor works while a program runs.** While a program runs, a check runs or a buffer waits for one, Cemacs draws a
   frame at each pass of its loop: see [Inside Cemacs](internals.md#the-loop-of-events). Stop a program you don't need.
 - **The output shows only its last lines.** It keeps 1,000 lines; `C-c c o` opens them all as a list.

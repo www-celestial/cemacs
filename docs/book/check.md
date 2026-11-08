@@ -61,6 +61,12 @@ due, or else the first buffer that is. So typing never starts a check: a pause d
 - After a save, every Cesia buffer is due again, since another file may use the one just saved.
 - A check that can't run, because `cesia` isn't on the `PATH` for instance, says `cesia check can't run: REASON` once, and the
   buffer counts as checked, so it isn't asked again until it changes.
+- A buffer of more than [check.CheckLimit] bytes, 1,000,000, is not checked: it counts as checked, with no mark, and its mode
+  line says `not checked: over 1 MB` where the count of marks would be. `cesia check` of a file of 15.9 MB grew to 320 MB
+  and kept a core busy for more than 12 s, for marks nobody reads in a file that size, often a generated one; the editor
+  stays as light at rest with such a file as the other editors, which check nothing unless asked. The words come with the
+  marks, [text.WithMarks] with a `note`, and an edit that brings the buffer under the limit checks it again at the next
+  pause.
 
 While a check runs or a buffer is due, Cemacs counts the time with ticks, events it makes itself at each pass of its loop,
 and draws a frame at each one; a still editor with nothing due draws nothing. See [Inside Cemacs](internals.md#the-loop-of-events).
