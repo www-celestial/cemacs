@@ -9,6 +9,7 @@ use core/run
 use core/text
 use std/text as str
 use std/list
+use std/dict
 use std/math
 use std/value
 
@@ -135,8 +136,8 @@ BufferName(b) = bufferName(b)
 label(b) = if text.IsModified(b) "$(bufferName(b)) *" else bufferName(b) end
 
 defn Follow(rows, columns, b)
-  (** A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, and whose colors are known up to the last line on the screen,
-      but for a list.
+  (** A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, whose colors are known up to the last line on the screen,
+      but for a list, and whose Screen keeps the tokens of the lines on the screen for the view, and for the next frame.
       It is the only place that moves the screen: view only reads. A buffer that is free, after the wheel, keeps its top and left: the cursor may be off the screen.
 
         Follow(2, 10, {Rope: rope.Of("a\nb\nc"), Cursor: {Line: 3, Column: 0}, Top: 1, Left: 0, Free: false, Colors: color.BlankColors()}).Top --> 2 *)
@@ -168,7 +169,46 @@ defn Follow(rows, columns, b)
   out.Left = left
   (* A list draws its rows with their own parts, so its colors would be read for nothing: the rows of a growing output change at each tick. *)
   out.Colors = if lists.IsList(b) b.Colors else coloredTo(lastLine, b) end
+  out.Screen = if lists.IsList(b) dict.Dict() else screenOf(top, list.Min(rope.LineCount(b.Rope), top + seenRows - 1), left + seenColumns, b, out.Colors) end
   out
+end
+
+defn screenOf(first, last, width, b, colors)
+  (** The tokens of the lines from first to last, kept by the text of each line: {Width, State, Tokens}, the tokens of the line cut to width characters
+      from the state at its start. A line whose text, width and state are the same as at the frame before keeps its tokens, as Elm's Html.Lazy keeps a
+      view whose arguments are the same: a typed key reads the colors of one line, a scrolled line those of the line that comes in. *)
+  kept = keptRows(b)
+  out = dict.Dict()
+  if last < first
+    return out
+  end
+  fulls = screenLines(first, last, b)
+  for k in 1..value.Len(fulls)
+    out = dict.Put(fulls[k], tokensOf(fulls[k], width, startOf(first + k - 1, colors), kept), out)
+  end
+  out
+end
+
+(** The rows that follow kept for a buffer, or none for a state from before this field. *)
+keptRows(b) = match b
+  {Screen: rows} -> rows
+  else -> dict.Dict()
+end
+
+(** The lines from first to last of a buffer, without their line ends, read with one slice of the rope. *)
+screenLines(first, last, b) = str.Split("\n", rope.Slice(rope.LineStart(first, b.Rope), rope.LineEnd(last, b.Rope), b.Rope))
+
+(** The first width characters of a line, as the screen shows them: sdl has no clipping, and the tail would not be seen. *)
+cutTo(width, full) = if value.Len(full) > width str.Join("", list.Take(width, str.Chars(full))) else full end
+
+defn tokensOf(full, width, state, kept)
+  (** The row of a line of this text, cut to width characters, from this state: the one kept if it was made for the same, else read now. *)
+  old = dict.Get(full, kept)
+  if not value.IsMissing(old) and old.Width == width and old.State == state
+    old
+  else
+    {Width: width, State: state, Tokens: color.Tokens(cutTo(width, full), state).Tokens}
+  end
 end
 
 defn coloredTo(line, b)
@@ -199,6 +239,7 @@ defn FollowState(state)
       k = list.Min(leaf.Buffer, value.Len(s.Buffers))
       f = Follow(layouts[j].Rows, layouts[j].Columns, WithView(leaf.View, s.Buffers[k]))
       s.Buffers[k].Colors = f.Colors
+      s.Buffers[k].Screen = f.Screen
       tree = panes.WithLeaf(j, {Buffer: k, View: ViewOf(f)}, tree)
     end
   end
@@ -258,19 +299,18 @@ isError(m) = m.Severity == "error"
 markColor(m) = if isError(m) ErrorColor else WarningColor end
 markWords(m) = if isError(m) errorWords else warningWords end
 
-defn line(b, n, y, columns, rect, look)
-  (** The commands of line n of a buffer: its number, then one text per token, or one plain text for the row of a list. The line is cut to the columns on the
-      screen before it is read, since sdl has no clipping and the tail would not be seen. *)
+defn line(b, n, full, y, columns, rect, look)
+  (** The commands of line n of a buffer, whose text is full: its number, then one text per token, or one plain text for the row of a list. The line is cut to
+      the columns on the screen before it is read; its tokens are the ones follow kept for this text, width and state, if it kept them. *)
   th = look.Theme
   cw = look.Width("M", "code")
-  cs = str.Chars(rope.Line(n, b.Rope))
-  words = if value.Len(cs) > b.Left + columns str.Join("", list.Take(b.Left + columns, cs)) else str.Join("", cs) end
-  read = if lists.IsList(b) {Tokens: rowTokens(lists.PartsAt(n, b), words)} else color.Tokens(words, startOf(n, b.Colors)) end
+  width = b.Left + columns
+  tokens = if lists.IsList(b) rowTokens(lists.PartsAt(n, b), cutTo(width, full)) else tokensOf(full, width, startOf(n, b.Colors), keptRows(b)).Tokens end
   x0 = rect.X + Gutter
   here = marksAt(n, b)
   numbered = inside("code", rect.X + Gutter - 16 - value.Len("$n") * cw, y, "$n", if value.Len(here) > 0 markColor(here[1]) else th.Faint end)
   out = [numbered]
-  for token in visible(read.Tokens, b.Left)
+  for token in visible(tokens, b.Left)
     out = list.Append(inside("code", x0 + (token[3] - b.Left) * cw, y, token[2], th.Syntax[token[1]]), out)
   end
   out
@@ -392,8 +432,9 @@ defn code(b, lay, look, focused, marks)
     out = list.Append(box(rect.X + 4, lineY(stopped), rect.Width - 8, cell.Height, th.Picked, 4), out)
   end
   out = list.Concat(out, selection(b, first, last, lay, look))
+  fulls = if last < first [] else screenLines(first, last, b) end
   for n in first..last
-    out = list.Concat(out, line(b, n, lineY(n), lay.Columns, rect, look))
+    out = list.Concat(out, line(b, n, fulls[n - first + 1], lineY(n), lay.Columns, rect, look))
     if not value.IsMissing(list.IndexOf(n, marks.Breaks))
       out = list.Append(box(rect.X + 6, lineY(n) + math.Div(cell.Height, 2) - 4, 8, 8, breakColor, 4), out)
     end

@@ -8,6 +8,9 @@ use core/panes
 use src/ui
 use std/text as str
 use std/list
+use std/dict
+use std/gen
+use std/test
 use std/value
 
 cell = {Width: 8, Height: 19}
@@ -441,3 +444,38 @@ defn hidden(state)
   s
 end
 use core/run
+
+(* ---- The rows that follow keeps from one frame to the next only spare work: the view draws the same with them as without, also when the text changed
+   after the last follow. *)
+
+defn withoutRows(state)
+  (** The state with no row kept, so that the view reads every line itself. *)
+  s = state
+  s.Buffers[1].Screen = dict.Dict()
+  s
+end
+
+defn isSameViewAfter(p)
+  (** Edits a buffer step by step, in a window of 14 columns, following after some steps only, and compares the view with and without the rows kept. *)
+  s = view.FollowState(stateOf([text.Of(p.Text, "a.ce")], 200, 140))
+  for step in p.Steps
+    s.Buffers[1] = text.InsertWords(step.Words, text.Place(step.Line, step.Column, s.Buffers[1]))
+    if step.Follow
+      s = view.FollowState(s)
+    end
+    if not value.Equal(view.View(s), view.View(withoutRows(s)))
+      return false
+    end
+  end
+  true
+end
+
+rowSteps = gen.List(gen.Of({Line: gen.Int(1, 9), Column: gen.Int(0, 30), Words: gen.Text(max = 4, chars = "x\"(*) \né"), Follow: gen.Bool()}), max = 12)
+isKeptRowsSameView() = test.ForAll(isSameViewAfter, gen.Of({Text: gen.Text(max = 60, chars = "ab \"(*)\n\\é"), Steps: rowSteps}), cases = 300)
+
+defn isRowsKeptByText()
+  (** Follow keeps one row per text of the lines on the screen, made for the width and the state at the start of each line. *)
+  b = view.Follow(3, 80, text.Of("a = 1\n(* b\nc *)\nd", "a.ce"))
+  rows = b.Screen
+  value.Len(dict.Keys(rows)) == 3 and dict.Get("c *)", rows).State.Comment == 1 and dict.Get("a = 1", rows).Width == 80 and value.IsMissing(dict.Get("d", rows))
+end
