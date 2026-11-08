@@ -1,10 +1,9 @@
-(** How well, and how fast, the list of a project's files finds the file a person means: the 41 queries of the chapter "Finding a file", each with its file,
-    on the files of a project given as a list of paths, one per line. Run from the root of cemacs, for Cesia's files at the commit of the chapter:
-      git -C ../cesia ls-tree -r --name-only fa1701d > files.txt
-      cesia run --allow read bench/find.ce files.txt
-    It prints, for each query, the rank of its file with the rows kept in their order, as every list kept them before, and ranked by lists.Score, and the
-    letters typed before it comes first; then the mean reciprocal rank of both; then the time of each letter typed, through the editor's update, for both.
-    Given the folder of a Git repository after the list, with --allow read,exec=git, it times the opening of its list too, as C-x p f opens it. *)
+(** How well, and how fast, the list of a project's files finds the file a person means: the 41 queries of the chapter "A case: finding a file from a few
+    letters", each with its file, on the files of a project given as a list of paths, one per line. Run from the root of cemacs, for Cesia's files at the
+    commit of the chapter: git -C ../cesia ls-tree -r --name-only fa1701d > files.txt, then cesia run --allow read bench/find.ce files.txt. It prints, for
+    each query, the rank of its file with the rows kept in their order, as every list kept them before, and ranked by lists.Score, and the letters typed
+    before it comes first; then the mean reciprocal rank of both; then the time of each letter typed, through the editor's update, for both. Given the
+    folder of a Git repository after the list, with --allow read,exec=git, it times the opening of its list too, as C-x p f opens it. *)
 use core/commands
 use core/lists
 use core/press
@@ -79,7 +78,7 @@ defn interval(times)
   "$(ms((sorted[10] + sorted[11]) / 2.0)) ms [$(ms(sorted[6])), $(ms(sorted[15]))]"
 end
 
-defn typed(query, state)
+defn typedLetters(query, state)
   (** The time of each letter of the query typed in the list, through the editor's update, from an empty filter. *)
   s = state
   times = []
@@ -91,7 +90,7 @@ defn typed(query, state)
   times
 end
 
-defn opening(root, state)
+defn openingTimes(root, state)
   (** The time to open the list of the files of the repository at root, 20 times: what C-x p f does, git's two runs and the list. *)
   times = []
   for round in 1..rounds
@@ -103,7 +102,7 @@ defn opening(root, state)
   io.Print("opening the list of $(value.Len(project.Listed(root)?.Paths)) files: $(interval(times))")
 end
 
-defn main()
+defn findAll()
   paths = [p for p in str.Lines(sys.Read(sys.Args[1])?) if p != ""]
   rows = [{Words: p, Item: p} for p in paths]
   io.Print("$(value.Len(rows)) files, $(value.Len(queries)) queries")
@@ -122,7 +121,7 @@ defn main()
   empty = view.Start([text.Of("", missing)], look, {Width: 8, Height: 19}, 1280, 720)
   empty.Config = () -> emacs.Config(emacs.Keys)
   if value.Len(sys.Args) >= 2
-    opening(sys.Args[2], empty)
+    openingTimes(sys.Args[2], empty)
   end
   opened = [commands.ShowList("files", rows, () -> {}, empty, ranked = r) for r in [false, true]]
   letters = list.Sum([value.Len(q[1]) for q in queries])
@@ -133,7 +132,7 @@ defn main()
     for way in 1..2
       at = 0
       for q in queries
-        for t in typed(q[1], opened[way])
+        for t in typedLetters(q[1], opened[way])
           at += 1
           times[way][at][round] = t
         end
@@ -148,4 +147,4 @@ defn main()
   end
 end
 
-main()
+findAll()
