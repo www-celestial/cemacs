@@ -1,0 +1,151 @@
+(** How well, and how fast, the list of a project's files finds the file a person means: the 41 queries of the chapter "Finding a file", each with its file,
+    on the files of a project given as a list of paths, one per line. Run from the root of cemacs, for Cesia's files at the commit of the chapter:
+      git -C ../cesia ls-tree -r --name-only fa1701d > files.txt
+      cesia run --allow read bench/find.ce files.txt
+    It prints, for each query, the rank of its file with the rows kept in their order, as every list kept them before, and ranked by lists.Score, and the
+    letters typed before it comes first; then the mean reciprocal rank of both; then the time of each letter typed, through the editor's update, for both.
+    Given the folder of a Git repository after the list, with --allow read,exec=git, it times the opening of its list too, as C-x p f opens it. *)
+use core/commands
+use core/lists
+use core/press
+use core/text
+use core/view
+use src/emacs
+use src/project
+use src/ui
+use std/io
+use std/list
+use std/math
+use std/sys
+use std/text as str
+use std/value
+
+(* The queries and the file each one means, written before the ranking was: the start of a name, letters with gaps, a folder and a name, words in any
+   order, initials, and a test. *)
+queries = [
+  ["messag", "src/lib/messages.ml"], ["parser.ml", "src/lib/parser.ml"], ["lexer", "src/lib/lexer.ml"], ["natives", "src/std/natives.ce"],
+  ["infer.ml", "src/lib/infer.ml"], ["fibers.md", "docs/book/fibers.md"], ["bench.sh", "tools/bench.sh"], ["release.yml", ".github/workflows/release.yml"],
+  ["CHANGE", "CHANGELOG.md"], ["site.ce", "src/tools/site.ce"],
+  ["msgml", "src/lib/messages.ml"], ["prsml", "src/lib/parser.ml"], ["cmpml", "src/lib/compile.ml"], ["rntm", "src/lib/runtime.ml"],
+  ["typmli", "src/lib/types.mli"], ["jitml", "src/jit/jit.ml"], ["fbrsmd", "docs/book/fibers.md"], ["prmsmd", "docs/book/permissions.md"],
+  ["mirgenx86", "src/sys/mir/mir-gen-x86_64.c"], ["wrkrs", "src/sys/workers.ml"],
+  ["liblists", "src/lib/lists.ml"], ["stdlist", "src/std/list.ce"], ["bookindex", "docs/book/index.md"], ["jitengine", "src/jit/engine.ml"],
+  ["sysnet", "src/sys/net.ml"], ["toolstest", "tools/test.sh"], ["nvimlsp", "tools/editors/nvim/lsp/cesia.lua"], ["benchfibgo", "bench/fib.go"],
+  ["ml messages", "src/lib/messages.ml"], ["toml lib", "src/lib/toml.ml"], ["go maps", "bench/maps.go"], ["py fib", "bench/fib.py"],
+  ["md speed", "docs/book/speed.md"], ["ce http", "src/std/http.ce"], ["vim syntax", "tools/editors/nvim/syntax/cesia.vim"],
+  ["mgx", "src/sys/mir/mir-gen-x86_64.c"], ["rlt", "tools/reload-test.sh"], ["htgt", "tools/http-gate.sh"], ["cmel", "tools/editors/cesia-mode.el"],
+  ["ffic", "src/sys/ffi.c"],
+  ["private-field.ce", "tests/errors/private-field.ce"]]
+
+(* The rounds of the timing: with 20, the 6th and the 15th of the sorted times bound the median with a probability of at least 95 %. *)
+rounds = 20
+
+defn rankOf(target, rows)
+  (** The place of the target among the rows, from 1, or 0 when it isn't there. *)
+  for k in 1..value.Len(rows)
+    if rows[k].Item == target
+      return k
+    end
+  end
+  0
+end
+
+defn lettersToFirst(query, target, order, rows)
+  (** How many letters of the query are typed before the target is the first row, or 0 when it never is. *)
+  for k in 1..value.Len(query)
+    if rankOf(target, order(str.Slice(1, k, query), rows)) == 1
+      return k
+    end
+  end
+  0
+end
+
+(** A share as a number with three decimals. *)
+three(x) = str.Decimals(3, x)
+
+defn summary(name, ranks)
+  (** The mean reciprocal rank of the ranks, 0 for a file not found, and how many are first, and in the first five. *)
+  n = value.Len(ranks)
+  reciprocal = list.Sum([if r == 0 0.0 else 1.0 / r end for r in ranks])
+  "$name: mean reciprocal rank $(three(reciprocal / n)), first $(list.Count(r -> r == 1, ranks)) of $n, in the first five $(list.Count(r -> r >= 1 and r <= 5, ranks)) of $n"
+end
+
+(** Milliseconds, with two decimals. *)
+ms(seconds) = str.Decimals(2, seconds * 1000.0)
+
+defn interval(times)
+  (** The median of 20 times and the 95 % interval around it, from the 6th and the 15th of them sorted. *)
+  sorted = list.Sort(times)
+  "$(ms((sorted[10] + sorted[11]) / 2.0)) ms [$(ms(sorted[6])), $(ms(sorted[15]))]"
+end
+
+defn typed(query, state)
+  (** The time of each letter of the query typed in the list, through the editor's update, from an empty filter. *)
+  s = state
+  times = []
+  for c in str.Chars(query)
+    start = sys.Now()
+    s = press.Press([c], s)
+    times = list.Append(sys.Now() - start, times)
+  end
+  times
+end
+
+defn opening(root, state)
+  (** The time to open the list of the files of the repository at root, 20 times: what C-x p f does, git's two runs and the list. *)
+  times = []
+  for round in 1..rounds
+    start = sys.Now()
+    found = project.Listed(root)?
+    shown = project.Shown(found.Root, found.Paths, state)
+    times = list.Append(sys.Now() - start, times)
+  end
+  io.Print("opening the list of $(value.Len(project.Listed(root)?.Paths)) files: $(interval(times))")
+end
+
+defn main()
+  paths = [p for p in str.Lines(sys.Read(sys.Args[1])?) if p != ""]
+  rows = [{Words: p, Item: p} for p in paths]
+  io.Print("$(value.Len(rows)) files, $(value.Len(queries)) queries")
+  kept = []
+  ranked = []
+  for q in queries
+    a = rankOf(q[2], lists.Filtered(q[1], rows))
+    b = rankOf(q[2], lists.Ranked(q[1], rows))
+    kept = list.Append(a, kept)
+    ranked = list.Append(b, ranked)
+    io.Print("$(q[1])\t$(q[2])\tkept $a, letters $(lettersToFirst(q[1], q[2], lists.Filtered, rows))\tranked $b, letters $(lettersToFirst(q[1], q[2], lists.Ranked, rows))")
+  end
+  io.Print(summary("kept in order", kept))
+  io.Print(summary("ranked", ranked))
+  look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
+  empty = view.Start([text.Of("", missing)], look, {Width: 8, Height: 19}, 1280, 720)
+  empty.Config = () -> emacs.Config(emacs.Keys)
+  if value.Len(sys.Args) >= 2
+    opening(sys.Args[2], empty)
+  end
+  opened = [commands.ShowList("files", rows, () -> {}, empty, ranked = r) for r in [false, true]]
+  letters = list.Sum([value.Len(q[1]) for q in queries])
+  which = list.Flatten([[str.Slice(1, k, q[1]) for k in 1..value.Len(q[1])] for q in queries])
+  (* For each letter of each query, its 20 times, the two ways taking turns. *)
+  times = [[list.Fill(0.0, rounds) for k in 1..letters] for way in 1..2]
+  for round in 1..rounds
+    for way in 1..2
+      at = 0
+      for q in queries
+        for t in typed(q[1], opened[way])
+          at += 1
+          times[way][at][round] = t
+        end
+      end
+    end
+  end
+  for way in 1..2
+    medians = [list.Sort(ts)[10] for ts in times[way]]
+    slowest = list.Order([-m for m in medians])[1]
+    totals = [list.Sum([times[way][k][round] for k in 1..letters]) for round in 1..rounds]
+    io.Print("$(if way == 1 "kept in order" else "ranked" end): $letters letters typed, all of them $(interval(totals)); the median letter $(ms(list.Sort(medians)[math.Div(letters, 2)])) ms; the slowest letter, the last of \"$(which[slowest])\", $(interval(times[way][slowest]))")
+  end
+end
+
+main()
