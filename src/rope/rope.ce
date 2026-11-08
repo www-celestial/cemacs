@@ -7,7 +7,7 @@ use std/value
 
 chunk = 1024
 
-newlines(s) = value.Len(text.Split("\n", s)) - 1
+newlines(s) = text.Count("\n", s)   (** The line ends of a text, counted by Cesia eight bytes at a time. *)
 leaf(s) = {Left: missing, Right: missing, Text: s, Size: text.ByteLength(s), Lines: newlines(s), Height: 0}
 isLeaf(r) = value.IsMissing(r.Left)
 

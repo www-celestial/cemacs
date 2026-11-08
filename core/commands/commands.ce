@@ -534,7 +534,7 @@ defn folder(path)
   if value.IsMissing(path) or not str.Contains("/", path)
     ""
   else
-    "$(str.Join("/", list.Take(value.Len(str.Split("/", path)) - 1, str.Split("/", path))))/"
+    "$(str.Join("/", list.Take(str.Count("/", path), str.Split("/", path))))/"
   end
 end
 
