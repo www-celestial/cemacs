@@ -108,10 +108,11 @@ named(path, fresh, failure) = result.Err({Kind: failure.Error.Kind, Message: str
 
 defn replace(path, words)
   (** Writes the words to path through a new file next to it, then renames it over the file. The new file has a name that nothing used, and the
-      cleanup removes only it. On any failure the old file stays whole. Gives Ok of the new disk. If only the stat after the rename fails, the file
-      is saved and the Err has the kind "saved". *)
+      cleanup removes only it. On any failure the old file stays whole. The new file is on the disk, and its folder too, before the rename: after a
+      power cut, the whole new text is under one of the two names, and the old one, until the rename, under path. Gives Ok of the new disk. If only
+      the stat after the rename fails, the file is saved and the Err has the kind "saved". *)
   fresh = isFresh(path)?
-  written = sys.Write(fresh, words)
+  written = sys.Write(fresh, words, sync = true)
   if result.IsErr(written)
     sys.Remove(fresh)
     return named(path, fresh, written)
