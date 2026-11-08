@@ -2,7 +2,7 @@
 
 This chapter tells how Cemacs is built: the state and its update, the rope that holds a buffer's text, the undo history, the
 colours, the frame, the loop of events, and the start. It is for a reader who wants to change the core, or to know what each
-operation costs. The code is 5,582 lines of Cesia in `core/` and `src/`, without their tests, and each file can be read
+operation costs. The code is 6,077 lines of Cesia in `core/` and `src/`, without their tests, and each file can be read
 alone.
 
 ## The state, the update and the view

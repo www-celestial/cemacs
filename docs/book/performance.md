@@ -28,19 +28,47 @@ From the command to the first frame of the window, with one empty buffer, n = 20
 
 | Editor, as started | Start to the first frame |
 |---|---|
-| Cemacs, in its window | 49.5 ms [49.2, 50.3] |
-| GNU Emacs 31.1, `emacs -Q -nw` | 86.4 ms [85.4, 87.3] |
-| Neovim 0.12.6, `nvim --clean -n` | 13.6 ms [13.5, 14.2] |
-| Vim 9.2, `vim --clean -n` | 9.2 ms [9.1, 9.4] |
+| Cemacs, in its window, SDL's dummy driver | 51.1 ms [50.9, 51.9] |
+| Cemacs, the version before this one | 49.8 ms [49.5, 50.8] |
+| GNU Emacs 31.1, `emacs -Q -nw` | 89.1 ms [88.3, 92.9] |
+| Neovim 0.12.6, `nvim --clean -n` | 13.8 ms [13.6, 13.9] |
+| Vim 9.2, `vim --clean -n` | 9.3 ms [9.2, 9.4] |
 
 Each editor started with no configuration of the user, and was told to draw its screen and quit: `--eval '(progn (redisplay
 t) (kill-emacs))'` for Emacs, `'+redraw!' '+qa!'` for Neovim and Vim. Each run is the time of the process, from its start to
-its end, as a program of Python inside the terminal timed it.
+its end, as a program of Python inside the terminal timed it. This version loads 1.3 ms more than the one before: the search,
+the reader of the states of the colours and the search in the rope add about 475 lines of code, which Cesia reads at each
+start.
 
-Loading every package of Cemacs and building its config, with no window, takes 30.1 ms [29.6, 30.9], n = 20, measured the
-same way. These 30 ms hold Cesia's own start, and the reading and preparing of the 5,582 lines of Cemacs's code and of the
-packages of Cesia they use. The rest is SDL3 and SDL3_ttf: the window, the three fonts, and the first frame drawn in pixels.
-Vim and Neovim win here by far: programs of C compiled to machine code, which draw characters into a terminal.
+Where the 51 ms go, with the dummy driver, each part timed from the one before by the program below with a mark after each part, n = 20,
+medians:
+
+| Part | Time | Whose |
+|---|---|---|
+| Cesia's own start, as for `io.Print(1)` | 3.2 ms | Cesia |
+| reading and preparing the code: 6,977 lines of Cemacs and of the packages of Cesia it uses, 29 files | 25.9 ms | Cesia |
+| SDL3's video, the window, its renderer, and SDL3_ttf with the first font | 4.0 ms | SDL |
+| the two other fonts | 0.2 ms | SDL |
+| the size of a character, the first texts measured | 2.8 ms | SDL |
+| the state, its buffer and its screen | 0.3 ms | Cemacs |
+| the frame: its commands, then SDL drawing them | 10.7 ms | Cemacs and SDL |
+| closing the window, and the end of the process | 2.1 ms | SDL and Cesia |
+
+Most of the frame is SDL3_ttf making the first images of the characters, which it keeps after. Loading the code costs Cesia
+about 3.7 µs a line: [Cesia's book](https://www-celestial.github.io/cesia-lang/) tells how it reads, checks and compiles a
+program. `--no-spec` and `--no-jit` don't change it: 30.8 and 30.4 ms against 30.5 for the load alone, n = 20. Loaded alone,
+with what each uses, n = 20: the packages of Cesia that Cemacs uses, 4.3 ms; `src/ui`, 5.1; `src/sdl`, 6.5; `core/commands`
+and all it uses, 26.6; all of Cemacs, 31.1 ms. About 600 of the lines read are never used by the editor: widgets and kinds
+of drawing of `src/ui` and `src/sdl` that only their tests use.
+
+In a real window, the start costs far more, and most of it is not Cemacs's. Measured in a Wayland window of SDL's Wayland
+driver, in GNOME's compositor run headless, `mutter --headless --wayland --no-x11 --virtual-monitor 1280x720`, which shows
+nothing on a screen, n = 10: 236 ms [232, 241], 237 ms [229, 244] for the version before. Of these, SDL's video starts in
+about 80 ms and makes the window in about 60: on GNOME, whose compositor draws no title bar, SDL asks libdecor, a library that
+draws the bar in the program, and libdecor's plugin for GTK starts GTK. With libdecor's plugin for cairo instead, a plainer
+bar, the two take about 14 and 38 ms; with no libdecor, `SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0`, 4 ms and 1 ms, and the window
+has no title bar at all. The renderer, OpenGL here, takes about 40 ms more. Emacs, Vim and Neovim draw into a terminal that
+is already open, and pay none of this.
 
 Cemacs's start was measured with this program, which does what `bin/cemacs` does up to its first frame, then closes the
 window and ends. It was run from the folder of Cemacs as

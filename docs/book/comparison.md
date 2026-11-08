@@ -2,7 +2,7 @@
 
 This chapter puts Cemacs beside the editors that most programmers know: GNU Emacs 31.1, Neovim 0.12.6 and Vim 9.2, which
 were installed on the machine where Cemacs is measured, and Visual Studio Code, by its published documentation only. It says
-plainly where they win, and why. Cemacs is young and small, about 5,600 lines; each of them is the work of many people over
+plainly where they win, and why. Cemacs is young and small, about 6,100 lines; each of them is the work of many people over
 years, decades for Emacs and Vim.
 
 ## In numbers
@@ -13,7 +13,8 @@ dummy driver, into memory. Each number is the median of n runs, with its 95 % in
 
 | Measure | n | Cemacs | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
 |---|---|---|---|---|---|
-| start to the first frame | 20 | 49.5 ms [49.2, 50.3] | 86.4 ms [85.4, 87.3] | 13.6 ms [13.5, 14.2] | 9.2 ms [9.1, 9.4] |
+| start to the first frame | 20 | 51.1 ms [50.9, 51.9] | 89.1 ms [88.3, 92.9] | 13.8 ms [13.6, 13.9] | 9.3 ms [9.2, 9.4] |
+| start to the first frame, in a Wayland window | 10 | 236 ms [232, 241] | | | |
 | start and open 0.79 MB | 10 | 66.5 ms [64.8, 68.7] | 96.6 ms [94.2, 102] | 21.6 ms [20.7, 28.2] | 17.6 ms [17.1, 18.6] |
 | start and open 15.8 MB | 10 | 206 ms [203, 214] | 142 ms [140, 150] | 54.4 ms [53.4, 59.1] | 50.4 ms [49.5, 54.3] |
 | start and open 100 MB | 10 | 904 ms [886, 955] | 380 ms [379, 395] | 229 ms [227, 231] | 237 ms [234, 238] |
@@ -31,8 +32,9 @@ What they say:
 
 - **Vim and Neovim start several times faster than Cemacs.** They are programs of C compiled to machine code, which start
   in a few milliseconds and draw characters into a terminal. Cemacs is a Cesia program: Cesia reads and prepares about
-  5,600 lines of code at each start, then SDL3 opens a window, and SDL3_ttf loads three fonts and draws the first frame in
-  pixels. Emacs, which loads its own Lisp at the start, is slower than Cemacs.
+  7,000 lines of code at each start, Cemacs's and the packages of Cesia it uses, about 26 ms, then SDL3 opens a window, and
+  SDL3_ttf loads three fonts and draws the first frame in pixels. In a real window on GNOME, SDL's start of its title bar
+  through GTK and of OpenGL brings it to 236 ms. Emacs, which loads its own Lisp at the start, takes 89 ms in a terminal.
 - **Cemacs opens a file of 0.79 MB faster than Emacs, but Vim and Neovim open a large file two to four times faster.**
   Cemacs checks that a file is valid UTF-8 before it opens it and counts the line ends of each leaf of its rope, both
   through functions of Cesia that copy the text on the way; the others read the bytes and find the line ends in C, at the
