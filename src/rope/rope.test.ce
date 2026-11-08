@@ -64,9 +64,11 @@ isUndoAtStart() = history.Current(history.Undo(history.Of(1))) == 1 and history.
 isLimit() = value.Len(list.Reduce((h, x) -> history.Record(x, h), history.Of(0, limit = 3), [1, 2, 3, 4, 5]).Past) == 3
 
 defn balanced(r)
-  (** Do the two sides of every node differ in height by at most one, as in an AVL tree, with the height and the counts right? *)
+  (** Do the two sides of every node differ in height by at most one, as in an AVL tree, with the height and the counts right? A leaf views at most 16 KiB
+      of its text, and counts the line ends it views. *)
   if value.IsMissing(r.Left)
-    return r.Height == 0 and r.Size == text.ByteLength(r.Text) and text.ByteLength(r.Text) <= 1024
+    viewed = if r.Size == 0 "" else text.ByteSlice(r.Start + 1, r.Start + r.Size, r.Text) end
+    return r.Height == 0 and r.Start >= 0 and r.Start + r.Size <= text.ByteLength(r.Text) and r.Size <= 16384 and r.Lines == text.Count("\n", viewed)
   end
   counted = r.Size == r.Left.Size + r.Right.Size and r.Lines == r.Left.Lines + r.Right.Lines
   balanced(r.Left) and balanced(r.Right) and math.Abs(r.Left.Height - r.Right.Height) <= 1 and r.Height == 1 + list.Max(r.Left.Height, r.Right.Height) and counted
@@ -97,3 +99,42 @@ defn isFindEverywhere()
 end
 
 isFindLastOfMany() = rope.FindBefore("ab", 9, rope.Of("ab ab ab ab")) == 6 and rope.Find("ab", 1, rope.Of("ab ab ab ab")) == 3   (** The nearest place either way. *)
+
+(* ---- Views of a large text: random edits against a plain text, with long deletes across views, and the lines read at random places. *)
+large = text.Join("\n", ["line $k of the large text" for k in 1..8000])
+
+defn isViewsAgainstAModel()
+  r = rope.Of(large)
+  model = large
+  dice = num.Uniform(4000)
+  for k in 1..800
+    n = text.ByteLength(model)
+    at = math.Floor(dice[5 * k - 4] * n)
+    if dice[5 * k - 3] < 0.5
+      piece = if math.Mod(k, 5) == 0 "new\nline\n" else "ab" end
+      r = rope.Insert(at, piece, r)
+      model = "$(text.ByteSlice(1, at, model))$piece$(text.ByteSlice(at + 1, n, model))"
+    else
+      to = list.Min(at + math.Floor(dice[5 * k - 2] * (if math.Mod(k, 9) == 0 40000 else 60 end)), n)
+      r = rope.Delete(at, to, r)
+      model = "$(text.ByteSlice(1, at, model))$(text.ByteSlice(to + 1, n, model))"
+    end
+    lines = text.Split("\n", model)
+    line = 1 + math.Floor(dice[5 * k - 1] * value.Len(lines))
+    place = math.Floor(dice[5 * k] * (text.ByteLength(model) + 1))
+    if r.Size != text.ByteLength(model) or rope.Line(line, r) != lines[line] or rope.LineOf(place, r) != value.Len(text.Split("\n", text.ByteSlice(1, place, model)))
+      return false
+    end
+  end
+  rope.Text(r) == model and balanced(r)
+end
+
+defn isJoinOfTouchingViews()
+  (** Two views that touch in one text join back into one view, and the text of a rope whose views cover one text whole is that text. *)
+  r = rope.Of(large)
+  parts = rope.SplitAt(100000, r)
+  again = rope.JoinRopes(parts[1], parts[2])
+  halves = rope.SplitAt(50, rope.Of(text.ByteSlice(1, 10000, large)))
+  one = rope.JoinRopes(halves[1], halves[2])
+  rope.Text(again) == large and value.IsMissing(one.Left) and one.Size == 10000 and balanced(again)
+end
