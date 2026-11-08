@@ -284,33 +284,91 @@ defn LineOf(at, r)
   end
 end
 
-(* A search reads the text a window at a time: 64 KiB first, each next window twice as large, up to 1 MiB, so that a place near the start costs little
-   and a far one a few large reads. Functions, as a variable added under --watch would be read before it has a value. *)
+(* A search reads a part of the rope that is not the end of a text a window at a time: 64 KiB first, each next window twice as large, up to 1 MiB, so
+   that a place near the start costs little and a far one a few large reads. Functions, as a variable added under --watch would be read before it has
+   a value. *)
 firstWindow() = 65536
 lastWindow() = 1048576
 
+defn runAt(at, r)
+  (** The run of leaves from the one that holds position at, as long as each views the same text from where the one before ended: {Text, From, End,
+      Whole}, From the place of at in that text, End the position where the run ends in the rope, and Whole whether the run views its text to its
+      last byte, as the leaves of a file just opened do. The way down keeps the right sides it passes, which hold the leaves after, in order. *)
+  offset = 0
+  t = r
+  rights = []
+  while not isLeaf(t)
+    if at < offset + t.Left.Size
+      rights = list.Append(t.Right, rights)
+      t = t.Left
+    else
+      offset += t.Left.Size
+      t = t.Right
+    end
+  end
+  run = {Leaf: t, End: offset + t.Size, Open: true}
+  k = value.Len(rights)
+  while k >= 1 and run.Open
+    run = extended(rights[k], run)
+    k -= 1
+  end
+  {Text: t.Text, From: t.Start + at - offset, End: run.End, Whole: run.Leaf.Start + run.Leaf.Size == text.ByteLength(run.Leaf.Text)}
+end
+
+defn extended(r, run)
+  (** The run made longer by the leaves of r, in order, as long as each touches the one before it. *)
+  if not run.Open
+    run
+  else if isLeaf(r)
+    if touching(run.Leaf, r) {Leaf: r, End: run.End + r.Size, Open: true} else {Leaf: run.Leaf, End: run.End, Open: false} end
+  else
+    extended(r.Right, extended(r.Left, run))
+  end
+end
+
+defn windowed(part, from, upTo, r, fold)
+  (** The position of the first place of part that starts at or after from and ends by upTo, read a window at a time, or missing. Each window overlaps
+      the one before by the length of part less one, so that a place across two windows is found. *)
+  m = text.ByteLength(part)
+  at = from
+  size = list.Max(firstWindow(), 2 * m)
+  while at + m <= upTo
+    last = list.Min(at + size, upTo)
+    found = text.ByteFind(part, 1, Slice(at, last, r), fold = fold)
+    if not value.IsMissing(found)
+      return at + found - 1
+    end
+    at = last - m + 1
+    size = list.Min(2 * size, list.Max(lastWindow(), 2 * m))
+  end
+  missing
+end
+
 defn Find(part, from, r, fold = false)
-  (** The position of the first place of part that starts at or after the position from, or missing. With fold, the ASCII letters of the text count
-      in either case, and part is written in lower case. Each window overlaps the one before by the length of part less one, so that a place across
-      two windows is found.
+  (** The position of the first place of part that starts at or after the position from, or missing. With fold, the ASCII letters count in either
+      case, as text.ByteFind with fold counts them. A run of leaves that views a text to its last byte, as a file just opened is, is searched in that
+      text itself, with no copy; any other part of the rope a window at a time; and the places across the end of a run on their own.
 
         Find("b", 0, Of("abcb")) --> 1
         Find("b", 2, Of("abcb")) --> 3
         Find("b", 0, Of("aBc"), fold = true) --> 1 *)
   m = text.ByteLength(part)
   at = list.Max(0, from)
-  size = list.Max(firstWindow(), 2 * m)
   while at + m <= r.Size
-    last = list.Min(at + size, r.Size)
-    found = text.ByteFind(part, 1, looked(Slice(at, last, r), fold))
+    run = runAt(at, r)
+    found = if run.Whole text.ByteFind(part, run.From + 1, run.Text, fold = fold) else windowed(part, at, run.End, r, fold) end
     if not value.IsMissing(found)
-      return at + found - 1
+      return if run.Whole at + found - 1 - run.From else found end
     end
-    if last == r.Size
+    if run.End >= r.Size
       return missing
     end
-    at = last - m + 1
-    size = list.Min(2 * size, list.Max(lastWindow(), 2 * m))
+    edge = list.Max(at, run.End - m + 1)
+    across = text.ByteFind(part, 1, Slice(edge, list.Min(r.Size, run.End + m - 1), r), fold = fold)
+    if not value.IsMissing(across)
+      return edge + across - 1
+    end
+    at = run.End
   end
   missing
 end
@@ -327,7 +385,7 @@ defn FindBefore(part, before, r, fold = false)
   size = list.Max(firstWindow(), 2 * m)
   while m > 0 and high >= m
     low = list.Max(0, high - size)
-    found = lastIn(part, looked(Slice(low, high, r), fold))
+    found = lastIn(part, Slice(low, high, r), fold)
     if not value.IsMissing(found)
       return low + found - 1
     end
@@ -340,15 +398,13 @@ defn FindBefore(part, before, r, fold = false)
   missing
 end
 
-looked(s, fold) = if fold text.Lower(s) else s end   (** A window as a search reads it: in lower case when it folds. *)
-
-defn lastIn(part, s)
+defn lastIn(part, s, fold)
   (** The byte position, from 1, of the last place of part in s, or missing. *)
   last = missing
-  at = text.ByteFind(part, 1, s)
+  at = text.ByteFind(part, 1, s, fold = fold)
   while not value.IsMissing(at)
     last = at
-    at = text.ByteFind(part, at + 1, s)
+    at = text.ByteFind(part, at + 1, s, fold = fold)
   end
   last
 end

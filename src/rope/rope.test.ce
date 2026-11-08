@@ -5,6 +5,8 @@ use std/list
 use std/math
 use std/text
 use std/value
+use std/gen
+use std/test
 
 big = text.Join("\n", ["line $k" for k in 1..2000])
 
@@ -138,3 +140,50 @@ defn isJoinOfTouchingViews()
   one = rope.JoinRopes(halves[1], halves[2])
   rope.Text(again) == large and value.IsMissing(one.Left) and one.Size == 10000 and balanced(again)
 end
+
+(* ---- Search over runs of views: a text of 100 KB edited at a few places, so that the rope holds runs that view the end of the file, runs that
+   don't, and typed texts between; Find and FindBefore against a plain search of the same text, both cases, with and without fold. *)
+defn plainFind(part, from, s, fold)
+  (** The first place, from 0, of part at or after from in s, read byte by byte, or missing. *)
+  m = text.ByteLength(part)
+  n = text.ByteLength(s)
+  p = if fold text.Lower(part) else part end
+  for at in list.Max(0, from)..(n - m)
+    piece = text.ByteSlice(at + 1, at + m, s)
+    if (if fold text.Lower(piece) else piece end) == p
+      return at
+    end
+  end
+  missing
+end
+
+defn plainFindBefore(part, before, s, fold)
+  (** The last place, from 0, of part that starts before the position before, or missing. *)
+  last = missing
+  at = plainFind(part, 0, s, fold)
+  while not value.IsMissing(at) and at < before
+    last = at
+    at = plainFind(part, at + 1, s, fold)
+  end
+  last
+end
+
+searched = text.Join("", ["$(if math.Mod(k, 97) == 0 "AbBa\n" else "aabb " end)" for k in 1..20000])
+
+defn editedForSearch()
+  (** The text, and a rope of it with three inserts and a delete: {Rope, Model}. *)
+  r = rope.Of(searched)
+  model = searched
+  for step in [[30000, "baBA"], [70000, "Abba"], [99990, "zz"]]
+    r = rope.Insert(step[1], step[2], r)
+    model = "$(text.ByteSlice(1, step[1], model))$(step[2])$(text.ByteSlice(step[1] + 1, text.ByteLength(model), model))"
+  end
+  r = rope.Delete(50000, 50010, r)
+  model = "$(text.ByteSlice(1, 50000, model))$(text.ByteSlice(50011, text.ByteLength(model), model))"
+  {Rope: r, Model: model}
+end
+
+searchCase = gen.Of({Part: gen.Pick(["abba", "baba", "Abba", "zz", "a\naa", "bAbA", "ba", "AbBa\naa", "b baBAa", "b aAbbaab", "aazzbb", "aabb aabb a"]), From: gen.Int(0, 100010), Fold: gen.Bool()})
+isFindAsPlain() = test.ForAll(c -> rope.Find(c.Part, c.From, editedForSearch().Rope, fold = c.Fold) == plainFind(c.Part, c.From, editedForSearch().Model, c.Fold), searchCase, cases = 60)
+isFindBeforeAsPlain() = test.ForAll(c -> rope.FindBefore(c.Part, c.From, editedForSearch().Rope, fold = c.Fold) == plainFindBefore(c.Part, c.From, editedForSearch().Model, c.Fold), searchCase, cases = 30)
+isFindAcrossAnEdit() = list.All([rope.Find(p, 0, editedForSearch().Rope) == plainFind(p, 0, editedForSearch().Model, false) and not value.IsMissing(plainFind(p, 0, editedForSearch().Model, false)) for p in ["b baBAa", "b aAbbaab", "aazzbb"]])
