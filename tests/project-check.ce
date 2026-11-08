@@ -1,0 +1,85 @@
+(** Checks of the project app against a real Git repository, made in a new folder under /tmp. It is a script, not a test file: it needs permissions.
+    tests/run.sh runs it with cesia run --allow read,write,exec=git,env=PWD. It prints ok at the end and stops at the first failure. *)
+use src/buffers
+use src/emacs
+use src/folders
+use src/project
+use core/lists
+use core/press
+use src/rope
+use std/sys
+use core/text
+use src/ui
+use core/view
+use std/text as str
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+withApps() = emacs.Config(() -> dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()))   (** The keys as src/cemacs.ce merges them. *)
+here(state) = state.Buffers[state.Current]   (** The current buffer. *)
+rows(state) = str.Lines(rope.Text(here(state).Rope))   (** The rows of the list, as shown. *)
+
+defn removed(path)
+  (** Removes a file or a folder and all it holds. *)
+  if result.Unwrap(sys.Stat(path)).IsDir
+    for name in result.Unwrap(sys.List(path))
+      removed("$path/$name")
+    end
+  end
+  result.Unwrap(sys.Remove(path))
+end
+
+defn git(args, dir)
+  (** Runs git in the folder dir, and stops the script if it fails. *)
+  ran = result.Unwrap(sys.Run("git", args = list.Concat(["-C", dir], args)))
+  check(ran.Code == 0, "git $(str.Join(" ", args)): $(ran.Err)")
+end
+
+folder = "/tmp/cemacs-project-check-$(value.Text(sys.Now()))"
+outside = "$folder-outside"
+check(result.IsOk(sys.Mkdir("$folder/src/lib")) and result.IsOk(sys.Mkdir("$folder/_build")) and result.IsOk(sys.Mkdir(outside)), "the folders are made")
+for name in ["src/lib/messages.ml", "src/lib/messages.mli", "src/lib/lexer.ml", "tests.ce", "_build/messages.ml", ".gitignore", "new.ml"]
+  check(result.IsOk(sys.Write("$folder/$name", if name == ".gitignore" "_build/\n" else name end)), "$name is made")
+end
+check(result.IsOk(sys.Write("$outside/a.ce", "a")), "a file out of any repository is made")
+git(["init", "-q"], folder)
+git(["add", "src", "tests.ce", ".gitignore"], folder)
+
+(* C-x p f from a file deep in the project lists the files of the whole repository: the tracked ones and the new one, not the ignored ones. *)
+start = view.Start([text.Of("x", "$folder/src/lib/lexer.ml")], look, cell, 800, 600)
+start.Config = withApps
+s = press.Press(["C-x", "p", "f"], start)
+check(lists.IsList(here(s)), "C-x p f opens a list")
+check(value.Equal(list.Sort(rows(s)), [".gitignore", "new.ml", "src/lib/lexer.ml", "src/lib/messages.ml", "src/lib/messages.mli", "tests.ce"]), "the files of Git, the ignored one out: $(rows(s))")
+check(lists.LabelOf(lists.Of(here(s))) == "Find file in $(folders.BaseName(folder)): ", "the prompt line names the project: $(lists.LabelOf(lists.Of(here(s))))")
+check(value.Equal(rows(press.Press(["C-c", "f", "p"], start)), rows(s)), "C-c f p opens the same list")
+
+(* Typing ranks the files, the best first; words apart come in any order; Enter opens the file under the cursor and closes the list. *)
+check(rows(press.Press(["msgml"], s))[1] == "src/lib/messages.ml", "msgml puts messages.ml first: $(rows(press.Press(["msgml"], s)))")
+check(value.Equal(rows(press.Press(["ml", " ", "lib"], s)), ["src/lib/lexer.ml", "src/lib/messages.ml", "src/lib/messages.mli"]), "ml lib: $(rows(press.Press(["ml", " ", "lib"], s)))")
+opened = press.Press(["mli", "enter"], s)
+check(here(opened).Path == "$folder/src/lib/messages.mli" and list.Count(lists.IsList, opened.Buffers) == 0, "Enter opens the file and closes the list")
+check(rope.Text(here(opened).Rope) == "src/lib/messages.mli", "the file opened is the one on disk")
+
+(* Out of any repository, it says so and opens nothing. *)
+away = view.Start([text.Of("a", "$outside/a.ce")], look, cell, 800, 600)
+away.Config = withApps
+lost = press.Press(["C-x", "p", "f"], away)
+check(lost.Message == "$outside/ is in no Git repository." and not lists.IsList(here(lost)), "out of a repository: $(lost.Message)")
+
+removed(folder)
+removed(outside)
+io.Print("ok")

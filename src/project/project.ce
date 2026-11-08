@@ -1,0 +1,55 @@
+(** The files of a project in a list, to open one from a few letters of its name, as C-x p f does in Emacs. The project is the Git repository that holds the
+    current file, or the folder Cemacs started in, and its files are those that Git lists: the files it tracks, and the new ones that it doesn't ignore, as
+    Emacs's project.el reads them. Typing ranks the files, the best match first, by lists.Score; Enter opens the file under the cursor. *)
+use core/commands
+use core/lists
+use src/folders
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+Keys() = {"C-x p": "project", "C-x p f": Files, "C-c f p": Files}   (** The keys that work everywhere, C-x p f as in Emacs, and C-c f p in the group of the files. *)
+
+defn Files(state)
+  (** Opens the list of the files of the project of the current file, or of the folder Cemacs started in: typing ranks them, the best match first. *)
+  b = state.Buffers[state.Current]
+  here = if value.IsMissing(b.Path) or lists.IsList(b) folders.Absolute(".", sys.Env("PWD")) else folders.Parent(folders.Absolute(b.Path, sys.Env("PWD"))) end
+  match Listed(here)
+    result.Ok(found) -> Shown(found.Root, found.Paths, state)
+    result.Err(words) -> commands.Say(words, state)
+  end
+end
+
+defn git(args, dir)
+  (** Git run with args in the folder dir, to its end: {Code, Out, Err} in an Ok, or an Err with the words to say when it can't start. *)
+  match sys.Run("git", args = list.Concat(["-C", dir], args))
+    result.Ok(ran) -> result.Ok(ran)
+    result.Err(e) -> result.Err(e.Message)
+  end
+end
+
+defn Listed(dir)
+  (** The root of the Git repository that holds the folder dir, and the paths of its files from that root, as {Root, Paths} in an Ok; or an Err with the
+      words to say. The files are those git ls-files gives with -c -o --exclude-standard, the tracked ones and the new ones not ignored, each once. *)
+  top = git(["rev-parse", "--show-toplevel"], dir)?
+  if top.Code != 0
+    return result.Err("$(folders.Slashed(dir)) is in no Git repository.")
+  end
+  root = str.Trim(top.Out)
+  listed = git(["ls-files", "-z", "-c", "-o", "--exclude-standard", "--deduplicate"], root)?
+  if listed.Code != 0
+    return result.Err("git ls-files failed: $(str.Trim(listed.Err))")
+  end
+  result.Ok({Root: root, Paths: [p for p in str.Split(str.FromBytes([0]), listed.Out) if p != ""]})
+end
+
+defn Shown(root, paths, state)
+  (** The state with the list of the files of the project at root, ranked as the filter grows. *)
+  rows = [{Words: p, Item: p} for p in paths]
+  commands.ShowList(root, rows, () -> {"enter": (item, s) -> opened(root, item, s)}, state, label = "Find file in $(folders.BaseName(root)): ", ranked = true)
+end
+
+(** Enter: the file under the cursor opens in a buffer, and the list closes. *)
+opened(root, path, state) = commands.OpenFile("$root/$path", commands.ToBuffer(lists.Of(state.Buffers[state.Current]).Back, state))

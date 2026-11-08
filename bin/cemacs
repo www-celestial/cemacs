@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 # Starts Cemacs from anywhere, even through a symbolic link: Cemacs is in the folder above this one, and it starts with src/cemacs.ce.
 home="$(dirname "$(dirname "$(readlink -f "$0")")")"
-exec cesia run --allow read,write,exec=cesia,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf "$home/src/cemacs.ce" "$home" "$@"
+exec cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf "$home/src/cemacs.ce" "$home" "$@"
