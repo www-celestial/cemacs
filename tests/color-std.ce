@@ -1,6 +1,7 @@
-(** Every line of every .ce file of the Cesia std goes through color.Tokens, keeping the state: no line may lose a character.
-    Run from the root of cemacs with: cesia run --allow read tests/color-std.ce *)
-use std/sys
+(** Every line of every package of the Cesia std goes through color.Tokens, keeping the state: no line may lose a character, and the states that
+    ColoredTo gives, through StateAfter, are the ones of Tokens. The sources are those that the binary of Cesia carries, cesia.Libraries, so no
+    clone of Cesia is needed. Run from the root of cemacs with: cesia run tests/color-std.ce *)
+use std/cesia
 use core/color
 use std/text as str
 use std/bug
@@ -8,8 +9,6 @@ use std/io
 use std/list
 use std/result
 use std/value
-
-stdFolder = "../cesia/src/std"
 
 defn lostIn(path, text)
   state = color.FirstState
@@ -42,20 +41,20 @@ defn statesDifferIn(path, text)
   end
 end
 
-defn kpFiles(folder)
-  (** The paths of the .ce files of the folder. No file at all is a bug of the test. *)
-  names = list.Filter(f -> str.EndsWith(".ce", f), result.Unwrap(sys.List(folder)))
-  if value.Len(names) == 0
-    bug.Panic("no .ce file in $(folder)")
+(** The packages of the std that Cesia carries, each {Name, Source}. None at all is a bug of the test. *)
+defn libraries()
+  found = cesia.Libraries()
+  if value.Len(found) == 0
+    bug.Panic("Cesia gives no package of its std")
   end
-  names
+  found
 end
 
-bad = list.FlatMap(f -> lostIn(f, result.Unwrap(sys.Read("$(stdFolder)/$(f)"))), kpFiles(stdFolder))
+bad = list.FlatMap(l -> lostIn(l.Name, l.Source), libraries())
 if value.Len(bad) > 0
   bug.Panic("lines that lose a character:\n$(str.Join("\n", list.Take(5, bad)))")
 end
-differ = list.FlatMap(f -> statesDifferIn(f, result.Unwrap(sys.Read("$(stdFolder)/$(f)"))), kpFiles(stdFolder))
+differ = list.FlatMap(l -> statesDifferIn(l.Name, l.Source), libraries())
 if value.Len(differ) > 0
   bug.Panic("colored_to differs from tokens in:\n$(str.Join("\n", differ))")
 end

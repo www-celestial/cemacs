@@ -1,8 +1,9 @@
 (** The speed gate of Cemacs: a text of 20,000 lines in a real window of 1920 by 1080, without vsync.
-    Run from the root of cemacs: cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce
+    Run from the root of cemacs: cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce. The text is the std that the binary of Cesia carries.
     It prints the median and the worst of 300 passes for one typed character, and for one scrolled line, and the time to build the rope. *)
 use src/rope
 use src/sdl
+use std/cesia
 use std/sys
 use src/ui
 use core/color
@@ -19,13 +20,9 @@ use std/value
 passes = 300
 (* The number of lines of the text of the gate. *)
 wantedLines = 20000
-(* The folder of the files that make the text, read from the root of cemacs. *)
-stdFolder = "../cesia/src/std"
-
 defn stdText()
-  (** The text of every file of the Cesia std, one after the other. *)
-  names = list.Filter(n -> str.EndsWith(".ce", n), sys.List(stdFolder)?)
-  result.Ok(str.Join("\n", list.Map(n -> sys.Read("$stdFolder/$n")?, names)))
+  (** The text of every package of the Cesia std, one after the other, as cesia.Libraries gives them. *)
+  result.Ok(str.Join("\n", list.Map(l -> l.Source, cesia.Libraries())))
 end
 
 defn readFourTimes()

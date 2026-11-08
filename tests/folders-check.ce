@@ -18,6 +18,8 @@ use std/io
 use std/list
 use std/result
 use std/value
+use std/date
+use std/math
 
 defn check(condition, words)
   (** Stops the script with the words if the condition is false. *)
@@ -82,10 +84,14 @@ check(here(s).Cursor.Line == 3, "the cursor stays on the renamed file")
 (* C-c k asks: n keeps the file, y moves it to the trash with its info. *)
 s = press.Press(["C-c", "k", "n"], s)
 check(sys.Exists("$folder/b.ce"), "n keeps the file")
+before = math.Floor(sys.Now())
 s = press.Press(["C-c", "k", "y"], s)
+after = math.Floor(sys.Now())
 check(not sys.Exists("$folder/b.ce") and sys.Exists("$trash/files/b.ce"), "y moves the file to the trash")
 info = result.Unwrap(sys.Read("$trash/info/b.ce.trashinfo"))
-check(str.StartsWith("[Trash Info]\nPath=$folder/b.ce\nDeletionDate=", info), "the info of the trash: $info")
+(* The date is the one of this machine's clock, as the Trash specification asks: one of the seconds of the press. *)
+clock(t) = str.Join("", list.Take(19, str.Chars(date.Format(date.Local(t)))))
+check(list.Any(["[Trash Info]\nPath=$folder/b.ce\nDeletionDate=$(clock(t))\n" == info for t in before..after]), "the info of the trash, on the local clock: $info")
 check(names(s) == "dir2/,sub/", "the list no longer shows it")
 
 (* A second file of that name gets another name in the trash. *)

@@ -252,14 +252,19 @@ restore a file. Cemacs follows the Trash specification of freedesktop.org, versi
   percent-encoded, as URLs write a space `%20`, and the date it was trashed. If the move then fails, the info is removed.
 
 ```cesia
-folders.TrashInfo("/home/me/my notes.ce", 0) --> "[Trash Info]\nPath=/home/me/my%20notes.ce\nDeletionDate=1970-01-01T00:00:00\n"
+use std/date
+folders.TrashInfo("/home/me/my notes.ce", date.FromUnix(0)) --> "[Trash Info]\nPath=/home/me/my%20notes.ce\nDeletionDate=1970-01-01T00:00:00\n"
 ```
 
-Cemacs differs from the specification in three points. It writes the date in UTC, where the specification asks for local
-time. It finds a free name by looking at the names taken, where the specification asks for an exclusive creation, one that
-fails when the name exists, so two programs trashing the same name at the same instant could clash. And for a file on another disk than your home, where a rename can't reach the trash, it doesn't use the trash folder
-that the specification puts at the top of that disk: the move fails, and the prompt line says
-`Can't move NAME to the trash: REASON`, with the file left where it was.
+The info is dated on the clock of this machine, in its time zone, as the specification asks: [folders.TrashInfo] writes the
+date it is given as `YYYY-MM-DDThh:mm:ss`, and the trash gives it [date.Local] of the moment.
+
+Cemacs differs from the specification in two points. It finds a free name by looking at the names taken, where the
+specification asks for an exclusive creation, a create that fails when something is at the name, `O_EXCL` on Unix, so two
+programs trashing the same name at the same instant could clash: Cesia has no such create yet. And for a file on another
+disk than your home, where a rename can't reach the trash, it doesn't use the trash folder that the specification puts at the
+top of that disk: the move fails, and the prompt line says `Can't move NAME to the trash: REASON`, with the file left where
+it was.
 
 The folder is read once each time it is shown, one listing and one look at each entry; typing only filters the rows read
 then. [Speed](performance.md) has the times.

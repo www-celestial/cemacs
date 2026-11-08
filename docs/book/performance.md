@@ -158,7 +158,8 @@ machine: with both, opening 100 MB would take about 300 ms, between Neovim and E
 
 ## Typing and scrolling
 
-`bench/gate.ce` measures the core and the frame on a text of 20,000 lines, Cesia's standard library repeated, in a window
+`bench/gate.ce` measures the core and the frame on a text of 20,000 lines, Cesia's standard library repeated as the binary of
+Cesia carries it, [cesia.Libraries], in a window
 of 1920 by 1080 at 13 points, without vsync: 300 passes of one typed character at line 19,000, then 300 passes of one
 scrolled line, each pass made of `view.FollowState`, `view.View` and `sdl.Frame`. It prints the median and the worst pass:
 
@@ -166,29 +167,37 @@ scrolled line, each pass made of `view.FollowState`, `view.View` and `sdl.Frame`
 SDL_VIDEODRIVER=dummy cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce
 ```
 
-Three runs of this version, each after a run of the version before it, `main` at c8c6dda, on the same machine:
+Three runs of this version, each after a run of the version before it, `main` at c8c6dda, on the same machine and on the
+same text:
 
 | Run | One typed character at line 19,000: median, worst | One scrolled line: median, worst | First jump to line 19,000 |
 |---|---|---|---|
-| 1 | 10.2 ms, 14.6 ms | 15.3 ms, 19.2 ms | 22.9 ms |
-| 2 | 10.2 ms, 15.1 ms | 15.3 ms, 19.8 ms | 22.8 ms |
-| 3 | 10.3 ms, 16.1 ms | 15.6 ms, 19.2 ms | 22.8 ms |
-| before, 1 to 3 | 11.4, 11.4, 11.4 ms | 16.4, 16.3, 16.1 ms | 648, 628, 638 ms |
+| 1 | 13.6 ms, 22.7 ms | 22.1 ms, 34.2 ms | 27.4 ms |
+| 2 | 13.7 ms, 23.2 ms | 22.0 ms, 37.7 ms | 25.1 ms |
+| 3 | 14.1 ms, 27.2 ms | 21.8 ms, 37.0 ms | 25.0 ms |
+| before, 1 to 3 | 14.7, 14.6, 15.0 ms | 23.3, 22.9, 23.3 ms | 667, 660, 658 ms |
 
-- A key costs about 10.3 ms from the state to the frame, under the 16 ms of one frame at 60 a second: 0.2 ms to follow the
-  cursor, 2.4 ms to make the frame's commands, and about 7.2 ms for SDL to draw them in software. The size of the file doesn't
-  count: only the lines on the screen are read. The frame's commands took 3.5 ms before: reading a line of the rope made new
+The text changed with this version: the gate read the files of a clone of Cesia's repository beside Cemacs, which the
+machines that test Cemacs don't have, and now reads the packages that the binary of Cesia carries. They lack two files of
+the repository that are nearly all comments, so the lines on the screen at line 19,000 hold more code, more words to draw:
+on the text of the files, a key took 10.3 ms with this version and 11.4 before, a scrolled line 15.4 and 16.3 ms.
+
+- A key costs about 13.7 ms from the state to the frame, under the 16 ms of one frame at 60 a second: 0.2 ms to follow the
+  cursor, 3.7 ms to make the frame's commands, and about 9.1 ms for SDL to draw them in software. The size of the file doesn't
+  count: only the lines on the screen are read. The frame's commands took 4.8 ms before: reading a line of the rope made new
   nodes, two splits and their joins, where it now only reads the leaves; see [Inside Cemacs](internals.md).
-- Scrolling at 15.4 to 15.5 ms a line is 64 to 65 lines a second, over the goal of 60. The worst of the 300 passes takes up
-  to about twice the median; the gate doesn't tell which part made it slow.
-- The first jump to line 19,000 costs 23 ms, once: the state of the colours at the start of each line before it is read
-  then, and kept. It took 0.63 s before: each line was read alone from the rope, 13 µs a line, and each line holding a quote
+- Scrolling at 22 ms a line is 45 lines a second on this text, under the goal of 60, as before: drawing the lines in
+  software takes 17.5 ms of it, a new line on the screen making new images of its words. The worst of the 300 passes takes
+  up to about twice the median; the gate doesn't tell which part made it slow.
+- The first jump to line 19,000 costs 25 ms, once: the state of the colours at the start of each line before it is read
+  then, and kept. It took 0.66 s before: each line was read alone from the rope, 13 µs a line, and each line holding a quote
   or a comment mark went through the whole lexer of colours. Now the lines come 100,000 at a time, from one slice of the rope,
   and [color.StateAfter] reads only the state, jumping from one quote or comment mark to the next with [text.ByteFind]: 1.2
   µs a line in all. A test checks that it gives the state of the lexer on 2,000 random lines from every kind of state.
-- The gate's own opening, about 38 ms for 2.8 MB, makes the rope and the first frame from a text already in memory: it
-  doesn't read a file, and doesn't check its UTF-8, which is what [opening a file](#opening-a-file) above costs.
-- Making the rope of the whole text, `rope.Of`, takes 2.7 ms, 6.5 ms before.
+- The gate's own opening, about 28 ms for the standard library four times over, 35 ms before, makes the rope and the first
+  frame from a text already in memory: it doesn't read a file, and doesn't check its UTF-8, which is what
+  [opening a file](#opening-a-file) above costs.
+- Making the rope of the whole text, `rope.Of`, takes 2.8 ms, 6.5 ms before.
 
 The time from a key to the screen is not compared with the other editors: measuring it honestly needs a camera, or a tool
 that watches the screen, such as Typometer, and none was used. These numbers are Cemacs's own, inside the program.

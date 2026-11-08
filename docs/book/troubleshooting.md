@@ -157,6 +157,7 @@ None of these should happen with the code as it is; each comes from a change to 
 
 ## The tests
 
-`cesia do test` stops at its first failure. `tests/color-std.ce`, one of its steps, reads Cesia's standard library from
-`../cesia/src/std`: without a clone of Cesia's repository beside the folder of Cemacs, it stops with an error of reading.
-`bench/gate.ce` reads the same folder.
+`cesia do test` stops at its first failure, and says which step. `tests/color-std.ce`, one of its steps, and
+`bench/gate.ce` read the sources of Cesia's standard library that the binary of Cesia carries, through [cesia.Libraries]: no
+clone of Cesia is needed. `tests/files-check.ce` and `tests/commands-check.ce` make a sparse file of 1 GiB and one byte with
+`truncate`, a file that takes no room on the disk, to check the limit of size.

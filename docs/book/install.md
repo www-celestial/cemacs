@@ -143,8 +143,8 @@ windows. With SDL's dummy driver no window shows:
 SDL_VIDEODRIVER=dummy cesia do test
 ```
 
-It stops at the first failure and names it. One of its tests, `tests/color-std.ce`, colours every file of Cesia's standard
-library and reads them from `../cesia/src/std`: the suite needs a clone of Cesia's repository beside the folder of Cemacs. `tests/start-check.sh` alone checks only that Cemacs starts, both through
-`bin/cemacs` and through `cesia do dev`.
+It stops at the first failure and names it. One of its tests, `tests/color-std.ce`, colours every package of Cesia's
+standard library, whose sources the binary of Cesia carries, so the suite needs nothing beside Cemacs and an installed Cesia.
+`tests/start-check.sh` alone checks only that Cemacs starts, both through `bin/cemacs` and through `cesia do dev`.
 
 If Cemacs doesn't start, [Troubleshooting](troubleshooting.md#at-start) lists what it prints and what to do.

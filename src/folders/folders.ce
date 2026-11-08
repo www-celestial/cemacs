@@ -326,10 +326,11 @@ defn TrashRoot(data, home)
   end
 end
 
-(** The info of a path put in the trash at now, in seconds since 1970: its path, percent-encoded part by part, and the date, in UTC.
+(** The info of a path put in the trash when, a date of std/date: its path, percent-encoded part by part, and the date and time as
+    YYYY-MM-DDThh:mm:ss, without a zone. ToTrash gives it the time of this machine's clock, date.Local, as the specification asks.
 
-      TrashInfo("/a b/c.ce", 0) --> "[Trash Info]\nPath=/a%20b/c.ce\nDeletionDate=1970-01-01T00:00:00\n" *)
-TrashInfo(path, now) = "[Trash Info]\nPath=$(str.Join("/", list.Map(encode.UrlEncode, str.Split("/", path))))\nDeletionDate=$(str.Join("", list.Take(19, str.Chars(date.Format(date.FromUnix(now))))))\n"
+      TrashInfo("/a b/c.ce", date.FromUnix(0)) --> "[Trash Info]\nPath=/a%20b/c.ce\nDeletionDate=1970-01-01T00:00:00\n" *)
+TrashInfo(path, when) = "[Trash Info]\nPath=$(str.Join("/", list.Map(encode.UrlEncode, str.Split("/", path))))\nDeletionDate=$(str.Join("", list.Take(19, str.Chars(date.Format(when)))))\n"
 
 defn FreeName(name, taken)
   (** The name itself, or the first of name.2, name.3... that the function taken refuses.
@@ -346,13 +347,14 @@ defn FreeName(name, taken)
 end
 
 defn ToTrash(path, root, now)
-  (** Moves a file or a folder to the trash in root: the entry into files/, and into info/ a .trashinfo with its path and the date. The info is written first,
-      and removed if the move fails, as for an entry on another disk, which can't be moved there: Ok(its name in the trash) or an Err. *)
+  (** Moves a file or a folder to the trash in root: the entry into files/, and into info/ a .trashinfo with its path and the date on this machine's clock
+      at now, in seconds since 1970. The info is written first, and removed if the move fails, as for an entry on another disk, which can't be moved there:
+      Ok(its name in the trash) or an Err. *)
   sys.Mkdir("$root/files")?
   sys.Mkdir("$root/info")?
   name = FreeName(BaseName(path), n -> sys.Exists("$root/files/$n") or sys.Exists("$root/info/$n.trashinfo"))
   info = "$root/info/$name.trashinfo"
-  sys.Write(info, TrashInfo(path, now))?
+  sys.Write(info, TrashInfo(path, date.Local(now)))?
   moved = sys.Rename(path, "$root/files/$name")
   if result.IsErr(moved)
     sys.Remove(info)
