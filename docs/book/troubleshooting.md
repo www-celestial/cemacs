@@ -99,7 +99,7 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `Breakpoint on line N.`, `Breakpoint removed.` | `C-c d b` |
 | `A breakpoint needs a file: save the buffer first.` | `C-c d b` in a buffer with no file |
 | `No program runs under the debugger: C-c d r runs the file under it.` | `C-c d e` without a program run by `C-c d r` |
-| `The program isn't stopped.` | `C-c d c`, `n`, `s` or `u` while the program runs; see also the known problems of [Running and debugging](running.md#known-problems) |
+| `The program isn't stopped.` | `C-c d c`, `n`, `s` or `u` while the program runs: they go on from a stop only |
 
 ### Questions
 
@@ -122,7 +122,7 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `ended, code N` | the program ended with the exit code N: 0 when all went well, -1 when a signal ended it, as `C-c c k` does |
 | `stopped at PATH:LINE` | the program waits at a breakpoint, or after a step |
 | `stopped on an error at PATH:LINE` | a bug stopped the program under the debugger; the output shows the error and the variables |
-| `the fix doesn't load` | a file changed while the program was stopped has an error, and wasn't loaded; the output shows the error |
+| `the fix doesn't load` | a file changed while the program was stopped has an error, and wasn't loaded; the program waits at its stop, and the output shows the error after the variables. Fix and save, then go on: see [Fix and continue](running.md#fix-and-continue) |
 
 ## When Cemacs stops by itself
 

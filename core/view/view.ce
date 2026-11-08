@@ -521,10 +521,11 @@ defn answer(b, n, r, y, columns, rect, cell, th)
 end
 
 defn outputLines(r)
-  (** What the output pane lists: at a stop, the variables of the innermost frame; else the output of the program, its last line too. *)
+  (** What the output pane lists: at a stop, the variables of the innermost frame, then the errors of a fix that didn't load, last so that they show;
+      else the output of the program, its last line too. *)
   if not value.IsMissing(r.Stop)
     error = if r.Stop.Error == "" [] else [r.Stop.Error] end
-    list.Concat(error, list.Map(v -> "$(v.Name) = $(v.Value)", r.Stop.Vars))
+    list.Concat(list.Concat(error, list.Map(v -> "$(v.Name) = $(v.Value)", r.Stop.Vars)), run.FixOf(r))
   else
     run.Lines(r)
   end

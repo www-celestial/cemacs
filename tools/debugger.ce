@@ -87,11 +87,15 @@ defn failed(e)
   false
 end
 
-defn OnStop(stop)
-  (** Tells Cemacs where the program stopped, then runs its commands until one resumes the program: gives its word. *)
+defn tell(stop, reason)
+  (** Tells Cemacs where the program stopped, with the variables of the innermost frame. *)
   error = if value.IsMissing(stop.Error) "" else stop.Error end
   vars = list.Map(v -> {Name: v.Name, Value: "$(v.Value)"}, stop.Frames[1].Vars)
-  send({Kind: "stop", File: stop.File, Line: stop.Line, Reason: stop.Reason, Error: error, Fiber: stop.Fiber, Vars: vars})
+  send({Kind: "stop", File: stop.File, Line: stop.Line, Reason: reason, Error: error, Fiber: stop.Fiber, Vars: vars})
+end
+
+defn resumed(stop)
+  (** Runs the commands of Cemacs at a stop until one resumes the program and the fixes load: gives its word. *)
   while true
     line = debug.ReadLine()
     if value.IsMissing(line)
@@ -106,6 +110,28 @@ defn OnStop(stop)
       apply(c, stop.Frames[1])
     end
   end
+end
+
+(** A path without its parts . and its doubled slashes, as Cesia compares the file of a breakpoint with the file of a line. *)
+bare(path) = "$(if text.StartsWith("/", path) "/" else "" end)$(text.Join("/", list.Filter(p -> p != "" and p != ".", text.Split("/", path))))"
+
+(** Does a breakpoint of the program name this file and line? A file named without a folder names every file of that name, as for Cesia. *)
+armed(file, line) = value.Len(list.Filter(b -> b.Line == line and (bare(b.File) == bare(file) or (not text.Contains("/", b.File) and list.Last(text.Split("/", file)) == b.File)), debug.Breaks())) > 0
+
+defn OnStop(stop)
+  (** Tells Cemacs where the program stopped, then runs its commands until one resumes the program: gives its word. The stop before the first line is the
+      debugger's own, and Cemacs never hears of it: the breakpoints and the word to go on that Cemacs sent with the start are read there, and only a
+      breakpoint on that line makes it a stop. *)
+  if stop.Reason == "start"
+    word = resumed(stop)
+    if word != "continue" or not armed(stop.File, stop.Line)
+      return word
+    end
+    tell(stop, "break")
+  else
+    tell(stop, stop.Reason)
+  end
+  resumed(stop)
 end
 
 listening = fiber.Spawn(Listen)

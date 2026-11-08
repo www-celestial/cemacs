@@ -41,7 +41,7 @@ program = "defn Double(x)\n  x * 2\nend\ntotal = 0\nfor i in 1..3\n  total = tot
 _ = result.Unwrap(sys.Write(path, program))
 
 started = result.Unwrap(run.Start(".", path, [{Path: path, Line: 7}], true))
-stopped = until(r -> not value.IsMissing(r.Stop) and r.Stop.Reason == "break", started)
+stopped = until(r -> not value.IsMissing(r.Stop), started)
 check(run.StoppedAt(path, stopped) == 7, "the stop is on the breakpoint")
 check(value.Len(list.Filter(v -> v.Name == "i" and v.Value == "1", stopped.Stop.Vars)) == 1, "the stop has i = 1")
 asked = run.Ask("i * 100", path, 7, stopped)
@@ -58,6 +58,44 @@ check(list.IndexOf("12", ended.Output) != missing, "the program printed its tota
 check(ended.Status == "ended, code 0", "the program ended well: $(ended.Status)")
 plain = until(r -> r.Ended, result.Unwrap(run.Start(".", path, [{Path: path, Line: 7}], false)))
 check(list.IndexOf("12", plain.Output) != missing and value.IsMissing(plain.Stop), "a plain run runs to its end, past the breakpoint")
+
+(* C-c d r: the stop before the first line is the debugger's own, answered with the breakpoints sent at the start. Cemacs never hears of it, unless a
+   breakpoint is on that line. *)
+slow = "$folder/slow.ce"
+_ = result.Unwrap(sys.Write(slow, "use std/io\nuse std/sys\nsys.Sleep(0.4)\nio.Print(\"late\")\n"))
+quiet = result.Unwrap(run.Start(".", slow, [{Path: slow, Line: 4}], true))
+waited = 0.0
+while waited < 0.25
+  quiet = run.Drain(quiet)
+  check(value.IsMissing(quiet.Stop) and quiet.Status == "running", "right after the start, the program runs: $(quiet.Status)")
+  sys.Sleep(0.01)
+  waited = waited + 0.01
+end
+late = until(r -> not value.IsMissing(r.Stop), quiet)
+check(run.StoppedAt(slow, late) == 4 and late.Stop.Reason == "break", "the first stop is the breakpoint: $(late.Status)")
+check(run.Finish(2.0, late).Ended, "the stopped program ends")
+first = until(r -> not value.IsMissing(r.Stop), result.Unwrap(run.Start(".", slow, [{Path: slow, Line: 3}], true)))
+check(run.StoppedAt(slow, first) == 3 and first.Stop.Reason == "break", "a breakpoint on the first line stops there: $(first.Status)")
+check(run.Finish(2.0, first).Ended, "the program stopped on its first line ends")
+
+(* A fix that doesn't load: the program still waits at its stop, so the keys that go on still work. Going on again runs the code as it was loaded, as
+   Cesia counts the file as read; a good fix then loads, and the next call of f runs it. *)
+fixing = "$folder/fix.ce"
+calls = "end\nio.Print(f(1))\nio.Print(f(2))\nio.Print(f(3))\n"
+_ = result.Unwrap(sys.Write(fixing, "use std/io\ndefn f(n)\n  n * 2\n$calls"))
+atFix = until(r -> not value.IsMissing(r.Stop), result.Unwrap(run.Start(".", fixing, [{Path: fixing, Line: 3}], true)))
+check(run.StoppedAt(fixing, atFix) == 3, "the program stops in f")
+_ = result.Unwrap(sys.Write(fixing, "use std/io\ndefn f(n)\n  n * * 2\n$calls"))
+refused = until(r -> r.Status == "the fix doesn't load", run.Resume("continue", atFix))
+check(run.StoppedAt(fixing, refused) == 3, "after a fix that doesn't load, the program is still stopped: $(refused.Status)")
+check(value.Len(run.FixOf(refused)) > 0, "the errors of the fix stay with the stop")
+going = commands.Continue({Run: refused, Message: ""})
+check(going.Message == "" and going.Run.Status == "running", "C-c d c goes on from there: $(going.Message)")
+second = until(r -> not value.IsMissing(r.Stop), going.Run)
+check(value.Len(list.Filter(v -> v.Name == "n" and v.Value == "2", second.Stop.Vars)) == 1, "it went on with the old code, to the next call: $(second.Status)")
+_ = result.Unwrap(sys.Write(fixing, "use std/io\ndefn f(n)\n  n * 3\n$calls"))
+fixed = until(r -> r.Ended, run.Resume("continue", run.Send({Do: "clear", File: fixing, Line: 3}, second)))
+check(value.Equal(list.Skip(value.Len(fixed.Output) - 3, fixed.Output), ["2", "4", "9"]), "the good fix loads, and f(3) runs it: $(fixed.Output)")
 
 (* C-c c r while a program runs: the old one ends first, then the file runs again. *)
 long = "$folder/long.ce"

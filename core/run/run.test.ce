@@ -36,3 +36,12 @@ isTaskOfRelativePath() = run.TaskFor(tasks, "src/a.ce", "/p") == "serve"   (** T
 isTaskOfAbsolutePath() = run.TaskFor(tasks, "/p/src/a.ce", "/p") == "serve"   (** A path from the root names the same file. *)
 isNoTaskElsewhere() = value.IsMissing(run.TaskFor(tasks, "/q/src/a.ce", "/p")) and value.IsMissing(run.TaskFor(tasks, "src/b.ce", "/p"))   (** Another file has none. *)
 isNoTaskInBadToml() = value.IsMissing(run.TaskFor("[tasks.serve\nfile = \"src/a.ce\"", "src/a.ce", "/p"))   (** A text that isn't TOML has none. *)
+
+(** A fix that doesn't load, as the debugger tells it after a continue. *)
+reloadLine = "$(run.Mark){\"Kind\":\"reload\",\"Ok\":false,\"Text\":\"a.ce:3:7: This isn't an expression.\"}\n"
+
+(** After a fix that doesn't load, the program still waits at the stop it was asked to leave. *)
+isFailedFixStillStopped() = run.StoppedAt("a.ce", run.Read(reloadLine, run.Resume("continue", run.Read(stopLine, run.Empty())))) == 3
+
+(** And the errors of the fix stay with the stop, to be shown beside its variables. *)
+isFailedFixKept() = value.Equal(run.Read(reloadLine, run.Resume("continue", run.Read(stopLine, run.Empty()))).Fix, ["a.ce:3:7: This isn't an expression."])

@@ -99,8 +99,10 @@ need a second `C-c c k`. With no program running it says `No program is running.
 | `C-c d u` | [commands.StepOut] | runs on until the function returns, and stops |
 
 `C-c d r` runs `cesia run --debugger HOME/tools/debugger.ce PATH`, `HOME` being the folder of Cemacs: Cesia's own debugger
-runs beside the program and calls `tools/debugger.ce` at each stop. The program stops before its first line, takes the
-breakpoints you have set, and goes on. It runs nearly as fast as without the debugger until it reaches a breakpoint: Cesia's
+runs beside the program and calls `tools/debugger.ce` at each stop. Cesia's debugger stops every program before its first
+line; there, `tools/debugger.ce` takes the breakpoints you have set, which Cemacs sent with the start, and lets the program go
+on without telling Cemacs, so the state stays `running`. Only a breakpoint on that first line makes it a stop that you see.
+It runs nearly as fast as without the debugger until it reaches a breakpoint: Cesia's
 book tells why in its chapter on the prompt and the debugger. It runs with no permission, even when a task runs the file:
 `cesia do` can't start a debugger.
 
@@ -138,8 +140,24 @@ program under the debugger, `C-c d e` says `No program runs under the debugger: 
 
 While the program is stopped, you can change its code and save it. When it goes on, by any of the four keys, the debugger
 reloads the files that changed: the function that was running finishes with its old code, and its next call runs the new one.
-A file that doesn't load, with an error in it, isn't loaded: the state says `the fix doesn't load`, its errors are added to
-the output, and the program stays stopped. See the known problems below for what to do then.
+A file that doesn't load, with an error in it, isn't loaded: the state says `the fix doesn't load`, the program stays stopped
+where it was, with its line still marked, and the errors of the file show in the output after the variables, the last lines
+of the pane, so that they are seen; they are added to the whole output too, which `C-c c o` lists. From there:
+
+- fix the file, save it, and go on with any of the four keys: the fix loads then;
+- or go on without fixing it: Cesia counts the file as read, so the program goes on with the code it had, and the next
+  fix you save loads at the next stop.
+
+```cesia
+atLine3 = "$(run.Mark){\"Kind\": \"stop\", \"File\": \"a.ce\", \"Line\": 3, \"Reason\": \"break\", \"Error\": \"\", \"Fiber\": 0, \"Vars\": []}\n"
+refused = "$(run.Mark){\"Kind\": \"reload\", \"Ok\": false, \"Text\": \"a.ce:3:7: Expected an expression, found *.\"}\n"
+after = run.Read(refused, run.Resume("continue", run.Read(atLine3, run.Empty())))
+after.Status --> "the fix doesn't load"
+run.StoppedAt("a.ce", after) --> 3
+run.FixOf(after) --> ["a.ce:3:7: Expected an expression, found *."]
+```
+
+[run.Resume] keeps the stop it leaves until the debugger has loaded the fixes, and a fix that doesn't load brings it back.
 
 ### How Cemacs speaks with the debugger
 
@@ -149,9 +167,9 @@ and goes on with a map in JSON:
 
 | `Kind` | Its fields | When |
 |---|---|---|
-| `"stop"` | `File`, `Line`, `Reason`, `Error`, `Fiber`, and `Vars`, each a `Name` and a `Value` | the program stopped |
+| `"stop"` | `File`, `Line`, `Reason`, `Error`, `Fiber`, and `Vars`, each a `Name` and a `Value` | the program stopped, but not before its first line, unless a breakpoint is there |
 | `"value"` | `Id`, `Ok`, `Text` | the answer to an eval |
-| `"reload"` | `Ok`, `Text` | a fix didn't load |
+| `"reload"` | `Ok`, `Text` | a fix didn't load, after a word to go on: the program still waits at its stop |
 
 Cemacs writes one command per line, a map in JSON whose `Do` is `"eval"` with an `Id` and the `Code`, `"break"` or `"clear"`
 with a `File` and a `Line`, or `"continue"`, `"step"`, `"next"` or `"out"`. Every other line the program writes is its
@@ -165,20 +183,8 @@ r.Status --> "stopped at a.ce:3"
 ```
 
 This is a protocol of Cemacs's own, not the Debug Adapter Protocol that VS Code and other editors speak: the debugger's side
-is one program of 111 lines, and Cesia's [std/debug] gives the rest.
+is one program of 137 lines, and Cesia's [std/debug] gives the rest.
 
 Since the program's input carries the commands of the editor, a program that reads its standard input doesn't run right under
 `C-c d r`. And the debugger shows the innermost frame only: to go up the calls, to watch an expression at each stop, or to
 put a condition on a breakpoint, use Cesia's debugger in a terminal, `cesia run --debugger debugger FILE`, which has them.
-
-### Known problems
-
-Two things don't work as they should today, and the code shows why:
-
-- Right after `C-c d r`, the state reads `stopped at PATH:LINE`, the first line of the program, and the output shows
-  `Variables`, while the program runs on to its first breakpoint or its end. The debugger stops before the first line and
-  says so; Cemacs has already sent it the breakpoints and the word to go on, so it goes on at once, and Cemacs isn't told.
-  The next stop, or the end, puts the state right; `C-c d c` does too.
-- After a fix that doesn't load, the program waits at its stop, but Cemacs no longer counts it as stopped: `C-c d c`,
-  `C-c d n`, `C-c d s` and `C-c d u` say `The program isn't stopped.` `C-c d e` still works there. Fix the file, then
-  `C-c d r` runs the program again.
