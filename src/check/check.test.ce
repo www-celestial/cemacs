@@ -8,6 +8,7 @@ use core/view
 use std/fiber
 use std/list
 use std/result
+use std/text as str
 use std/value
 
 look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
@@ -57,3 +58,14 @@ isNextError() = value.Equal(at(check.NextError(marked())), [3, 2]) and check.Nex
 isNextErrorAround() = value.Equal(at(check.NextError(check.NextError(marked()))), [1, 0]) and check.NextError(check.NextError(marked())).Message == "first"
 isPreviousErrorAround() = value.Equal(at(check.PreviousError(marked())), [3, 2]) and check.PreviousError(marked()).Message == "second"
 isNoError() = check.NextError(stateOf("x")).Message == "No error here."
+
+atLimit = str.Join("", list.Fill("x", check.CheckLimit()))
+defn bigChecked()
+  (** A Cesia buffer one byte over the limit, after the pause: no process starts, it counts as checked, and its mode line says why it has no mark. *)
+  s = view.Start([text.Of("$(atLimit)x", "a.ce")], look, cell, 800, 600)
+  s.Buffers[1] = text.WithMarks([{Line: 1, Column: 0, End: 1, Severity: "error", Message: "old", Hint: missing}], s.Buffers[1])
+  check.Idle(0.0, s)
+end
+isBigNotChecked() = value.IsMissing(check.Running(bigChecked())) and not check.IsDue(bigChecked().Buffers[1]) and not check.Moving(bigChecked()) and value.Len(marksOf(bigChecked())) == 0
+isBigSaidInMode() = "not checked: over 1 MB" in list.Map(c -> c.Text, list.Filter(c -> c.Kind == "text", view.View(bigChecked())))
+isLimitChecked() = not value.IsMissing(check.Running(check.Idle(0.0, view.Start([text.Of(atLimit, "a.ce")], look, cell, 800, 600))))

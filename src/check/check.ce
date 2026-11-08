@@ -1,8 +1,9 @@
 (** The errors of Cesia in the lines of a buffer, as cesia check finds them: a red or amber line under each, its words at the end of the line, and the
     count in the mode line. A Cesia buffer that changed is checked once no key came for CheckDelay seconds of the config, and every Cesia buffer after a
-    save, since the others read it from the disk. The check runs in a process, cesia check --json --stdin, from a fiber, so that typing never waits: one at
-    a time, and a result for a text that changed since is dropped, the next pause asking again. M-g n and M-g p, or C-c c n and C-c c p, go to the next
-    and the previous mark, around the end, and say it. src/cemacs.ce adds the hooks of Hooked to the config and these Keys. *)
+    save, since the others read it from the disk; one over CheckLimit() bytes is not, and its mode line says so. The check runs in a process, cesia check
+    --json --stdin, from a fiber, so that typing never waits: one at a time, and a result for a text that changed since is dropped, the next pause asking
+    again. M-g n and M-g p, or C-c c n and C-c c p, go to the next and the previous mark, around the end, and say it. src/cemacs.ce adds the hooks of
+    Hooked to the config and these Keys. *)
 use core/commands
 use core/text
 use src/rope
@@ -26,6 +27,10 @@ defn checkedOf(b)
     else -> -1
   end
 end
+
+(** The largest text that a check reads, in bytes: a larger Cesia buffer gets no mark and its mode line says why. cesia check of a file of 15.9 MB took
+    320 MB and a core for over 12 s, for marks no one reads in a file that size. A function: a variable added under --watch is read before it has a value. *)
+CheckLimit() = 1000000
 
 (** Has a Cesia buffer changed since its last check?
 
@@ -56,8 +61,15 @@ defn Marks(out, path)
 end
 
 defn start(k, state)
-  (** The state with the check of buffer k started, in a fiber that sends what the process gave to a channel. *)
+  (** The state with the check of buffer k started, in a fiber that sends what the process gave to a channel; a buffer over CheckLimit() bytes is not
+      checked, but counts as checked, with no mark and a note that says why. *)
   b = state.Buffers[k]
+  if rope.Size(b.Rope) > CheckLimit()
+    b.Checked = b.Version
+    s = state
+    s.Buffers[k] = text.WithMarks([], b, note = "not checked: over 1 MB")
+    return s
+  end
   ch = fiber.Channel()
   words = rope.Text(b.Rope)
   path = b.Path

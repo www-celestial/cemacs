@@ -487,7 +487,8 @@ defn MarkCount(b)
 end
 
 defn mode(b, lay, look, focused)
-  (** The mode line of a pane: the name of the buffer, the position of the cursor, and the language. The one of the pane being edited, focused, is lighter. *)
+  (** The mode line of a pane: the name of the buffer, the position of the cursor, the language, and the count of the marks, or the note that came with
+      none. The one of the pane being edited, focused, is lighter. *)
   th = look.Theme
   rect = lay.Mode
   y = rect.Y + math.Div(rect.Height - look.Height, 2)
@@ -495,14 +496,16 @@ defn mode(b, lay, look, focused)
   language = if lists.IsList(b) "List" else "Cesia" end
   right = rect.X + rect.Width - 12
   count = MarkCount(b)
+  words = if count == "" text.MarksNoteOf(b) else count end
   shown = [rectCommand(rect.X, rect.Y, rect.Width, rect.Height, if focused th.Header else th.Panel end), textCommand(rect.X + 12, y, label(b), if focused th.Ink else th.Muted end),
     textCommand(right - look.Width(language, "body"), y, language, th.Muted),
     textCommand(right - look.Width(language, "body") - 24 - look.Width(position, "body"), y, position, th.Muted)]
-  if count == ""
+  if words == ""
     shown
   else
     errors = value.Len([m for m in text.MarksOf(b) if isError(m)]) > 0
-    list.Append(textCommand(right - look.Width(language, "body") - 48 - look.Width(position, "body") - look.Width(count, "body"), y, count, if errors ErrorColor else WarningColor end), shown)
+    paint = if count == "" th.Muted else if errors ErrorColor else WarningColor end
+    list.Append(textCommand(right - look.Width(language, "body") - 48 - look.Width(position, "body") - look.Width(words, "body"), y, words, paint), shown)
   end
 end
 
