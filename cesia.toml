@@ -4,6 +4,9 @@ cesia = "1.0"
 src = ["core", "src"]
 native = ["SDL3", "SDL3_ttf"]
 
+[site]
+title = "Cemacs"
+
 [tasks.test]
 run = ["tests/run.sh"]
 
