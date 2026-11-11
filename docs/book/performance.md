@@ -57,6 +57,15 @@ lines of small functions take 0.85 ms to load alone and 1.8 ms beside the packag
 more, and 2 ms: in a later series, taking turns, n = 31, 62.0 ms [59.8, 64.6] against 59.9 ms [58.3, 62.4] with the indent
 only and 55.0 ms [53.0, 60.6] for `main` at 65ec91c.
 
+The cause was not Cesia's reading of the code, which costs the same for each line, but OCaml's collector: the trees of the
+code live as long as the program, and the minor collection that came in the middle of the load copied the 740,000 words
+young at that moment to the major heap, about 11 ms, wherever the young heap of 16 MB filled. Code added anywhere brought it
+on. The next version of Cesia makes half the garbage while it loads, 1.84 million words for Cemacs instead of 3.38
+million, so the load ends before the young heap is full and nothing is copied during the start. With it, taking turns, n =
+21: the load alone 24.4 ms [24.2, 24.6] against 38.2 ms [37.7, 38.3]; the start to the first frame 51.4 ms [50.8, 51.9]
+against 57.7 ms [56.7, 58.5], with the indent only 50.8 ms [49.7, 51.4], and `main` at 65ec91c 47.3 ms [47.2, 48.0]
+against 51.1 ms [50.9, 51.7]. The 1,000 lines of small functions now cost the same beside Cemacs as alone, 0.9 ms.
+
 Where the 51 ms went, with the dummy driver, before this version, each part timed from the one before by the program below with a mark after each part, n = 20,
 medians:
 
