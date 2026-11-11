@@ -18,8 +18,8 @@ projet, en mots simples, dans ce qu'on appelle aujourd'hui le Heilmeier catechis
 le fait-on aujourd'hui et quelles en sont les limites, qu'est-ce qui est nouveau, et quels sont les examens qui vous diront
 que cela a marché ? Les réponses, pour ce problème :
 
-- **Ce que vous voulez.** Vous êtes dans un projet, le dépôt de Cesia lui-même pour les mesures de ce chapitre : 1 933
-  fichiers, dont 1 574 tests. Vous vous souvenez d'une partie d'un nom, comme « le fichier des messages », ou « quelque
+- **Ce que vous voulez.** Vous êtes dans un projet, le dépôt de Cesia lui-même pour les mesures de ce chapitre : 1 933
+  fichiers, dont 1 574 tests. Vous vous souvenez d'une partie d'un nom, comme « le fichier des messages », ou « quelque
   chose avec reload et test ». Vous tapez quelques lettres, peut-être avec des trous, peut-être dans un autre ordre que celui
   du nom, et vous voulez le fichier que vous avez en tête sur la première rangée, où Enter l'ouvre.
 - **Comment on le fait aujourd'hui.** Cemacs n'a pas de liste des fichiers d'un projet. `C-x C-f` demande un chemin, qu'il
@@ -115,7 +115,7 @@ kept("ml messages") --> []
 
 ### La baseline
 
-Sur les 1 933 fichiers et les 41 requêtes, le filtre tel qu'il était donne :
+Sur les 1 933 fichiers et les 41 requêtes, le filtre tel qu'il était donne :
 
 | Mesure | Avant |
 |---|---|
@@ -129,7 +129,7 @@ Il s'en sort bien quand la requête est longue et que le fichier vient tôt dans
 `tools/`. Il s'en sort mal sur les initiales, mean reciprocal rank 0,318 : `cmel` met `tools/editors/cesia-mode.el` 48e,
 derrière 47 fichiers qui contiennent les mêmes lettres dans l'ordre et viennent avant lui dans le tri.
 
-Le temps de chaque lettre, tapée dans une liste de ces 1 933 rangées à travers la mise à jour de l'éditeur, comme la fenêtre
+Le temps de chaque lettre, tapée dans une liste de ces 1 933 rangées à travers la mise à jour de l'éditeur, comme la fenêtre
 l'envoie, est dans [la preuve](#la-vitesse-chaque-lettre-répond-tout-de-suite), à côté du temps après le changement.
 
 ## 3. Une hypothèse qui pourrait être réfutée
@@ -268,7 +268,7 @@ de la même façon peut être vérifié contre les leurs, rangée par rangée. D
 score, et leurs scores additionnés, comme Vim, Neovim et fzf prennent plusieurs mots. Deux règles du `match.c` de fzy sont
 laissées de côté : un chemin exactement aussi long que la requête, donc le même texte quelle que soit sa casse, a le plus
 haut score, ce que les points de fzy lui donnent déjà, puisque rien ne bat une lettre juste après la précédente ; et un
-chemin de plus de 1 024 octets a le plus bas score, une borne sur la table de fzy dont les endroits visités n'ont pas
+chemin de plus de 1 024 octets a le plus bas score, une borne sur la table de fzy dont les endroits visités n'ont pas
 besoin. Pas repris non plus : la syntaxe propre à fzf, `^`, `$`, `'` et `!`, ni ses points, qu'aucune mesure ici ne favorise
 par rapport à ceux de fzy ; et aucun classement d'après les fichiers que vous avez ouverts, qui est hors du sujet.
 
@@ -528,12 +528,12 @@ d'Emacs gagne sur les lettres avec des trous, 0,933 contre 0,728 : son coût cro
 n'emploie pas, si bien qu'un nom court comme `src/lib/parser.ml` bat un long nom sous `tests/project/` dont les dossiers
 contiennent les lettres. Il perd sur les initiales, 0,466, car une lettre au début d'un mot ne lui rapporte rien de plus ;
 et il ne trouve rien pour les mots dans n'importe quel ordre, car son espace est une lettre. Sur les 41, il marque 0,748 ;
-sur les 34 requêtes d'un seul mot, il marque 0,902, et Cemacs 0.892.
+sur les 34 requêtes d'un seul mot, il marque 0,902, et Cemacs 0,892.
 
 ### La vitesse : chaque lettre répond tout de suite
 
 **Comment c'est mesuré.** Les 41 requêtes tapées une lettre à la fois, 288 lettres, chacune depuis un filtre vide, dans une
-liste des 1 933 fichiers : chaque lettre est l'événement de touche et l'événement de texte que la fenêtre envoie, à travers
+liste des 1 933 fichiers : chaque lettre est l'événement de touche et l'événement de texte que la fenêtre envoie, à travers
 [commands.Update], jusqu'au nouvel état, la liste filtrée, classée, et le curseur suivi. Trois versions ont tourné chacune à
 son tour, chacune dans un processus à elle, quatre tours de cinq manches, 20 manches chacune : le code d'avant le
 changement, à 3d6d8dc ; le code d'après avec les rangées gardées dans leur ordre, `ranked = false`, mots séparés ; et le
@@ -542,21 +542,21 @@ dans une fenêtre de 1920 sur 1080, par le dummy driver de SDL, comme dans [Vite
 Tout cela seul sur la machine, sous le lock que partagent ses tâches lourdes. Chaque temps est la médiane de 20, avec son
 intervalle à 95 %, du 6e au 15e temps triés.
 
-| Lettres tapées dans une liste de 1 933 fichiers | Avant | Après, rangées gardées | Après, classé |
+| Lettres tapées dans une liste de 1 933 fichiers | Avant | Après, rangées gardées | Après, classé |
 |---|---|---|---|
 | les 288 lettres, une manche | 402 ms [393 ; 421] | 210 ms [208 ; 213] | 645 ms [637 ; 668] |
 | la lettre médiane | 0,64 ms | 0,31 ms | 0,94 ms |
 | la lettre la plus lente | 8,43 ms [7,41 ; 8,73], `cm` | 3,62 ms [1,96 ; 3,81], `c` | 15,3 ms [13,6 ; 15,8], `st` |
-| `s`, la première lettre de `sysnet`, qui garde 1 897 rangées | 1,44 ms [1,37 ; 1,54] | 2,06 ms [1,97 ; 2,31] | 9,30 ms [8,97 ; 9,48] |
-| `st`, sa deuxième, qui en garde 1 725 | 6,90 ms [6,80 ; 7,09] | 2,31 ms [2,22 ; 2,42] | 15,3 ms [13,6 ; 15,8] |
-| avec la frame : les 288 lettres | 2 900 ms [2 887 ; 2 926] | 2 897 ms [2 883 ; 2 916] | 3 121 ms [3 116 ; 3 167] |
+| `s`, la première lettre de `sysnet`, qui garde 1 897 rangées | 1,44 ms [1,37 ; 1,54] | 2,06 ms [1,97 ; 2,31] | 9,30 ms [8,97 ; 9,48] |
+| `st`, sa deuxième, qui en garde 1 725 | 6,90 ms [6,80 ; 7,09] | 2,31 ms [2,22 ; 2,42] | 15,3 ms [13,6 ; 15,8] |
+| avec la frame : les 288 lettres | 2 900 ms [2 887 ; 2 926] | 2 897 ms [2 883 ; 2 916] | 3 121 ms [3 116 ; 3 167] |
 | avec la frame : la lettre médiane | 10,1 ms | 10,9 ms | 8,2 ms |
 | avec la frame : la lettre la plus lente | 18,0 ms [17,1 ; 18,5], `cm` | 13,9 ms [13,7 ; 14,1], `pr` | 26,2 ms [25,9 ; 26,7], `st` |
 | avec la frame : les lettres au-dessus de 16 ms | 16 sur 288 | 0 sur 288 | 66 sur 288 |
 
 Chercher chaque lettre en code natif a rendu le filtre deux fois plus rapide : 210 ms contre 402 pour les 288 lettres.
 Classer coûte trois fois cela, 645 ms, et tout se joue sur les premières lettres, où presque chaque fichier correspond et
-où chacun doit recevoir un score : `s` garde 1 897 rangées, `st` 1 725. Dès la quatrième lettre, il reste quelques dizaines
+où chacun doit recevoir un score : `s` garde 1 897 rangées, `st` 1 725. Dès la quatrième lettre, il reste quelques dizaines
 de rangées, et une lettre coûte moins d'une milliseconde. Avec sa frame, une lettre coûte environ 10 ms en médiane quelle
 que soit la version : dessiner la frame en est l'essentiel, et son coût dépend des rangées à l'écran, qui diffèrent une fois
 classées.
@@ -567,30 +567,30 @@ lettres le manquent, toutes parmi les deux ou trois premières lettres d'une req
 encore gardés et doivent recevoir un score. Avant le changement, 16 lettres le manquaient aussi, pour le filtre seul, lent
 sur les deuxièmes lettres ; avec les rangées gardées et cherchées en code natif, aucune ne le manque.
 
-**À côté des géants.** Les mêmes 288 préfixes, chacun classé parmi les 1 933 fichiers, par une fonction qu'a chaque
+**À côté des géants.** Les mêmes 288 préfixes, chacun classé parmi les 1 933 fichiers, par une fonction qu'a chaque
 éditeur ; un processus chacun, 20 manches. Cemacs est chronométré ici de la même façon, avec [lists.Ranked] à partir de
 toutes les rangées, pas à travers son éditeur :
 
-| Chaque préfixe classé parmi les 1 933 fichiers | Les 288 | La médiane | Le plus lent |
+| Chaque préfixe classé parmi les 1 933 fichiers | Les 288 | La médiane | Le plus lent |
 |---|---|---|---|
-| Cemacs, [lists.Ranked] | 1 544 ms [1 537 ; 1 554] | 4,84 ms | 13,5 ms [13,3 ; 13,8], `std` |
+| Cemacs, [lists.Ranked] | 1 544 ms [1 537 ; 1 554] | 4,84 ms | 13,5 ms [13,3 ; 13,8], `std` |
 | Vim 9.2, `matchfuzzy()` | 180 ms [179 ; 181] | 0,50 ms | 1,65 ms [1,64 ; 1,67], `ce h` |
 | Neovim 0.12.6, `matchfuzzy()` | 136 ms [135 ; 137] | 0,35 ms | 1,30 ms [1,30 ; 1,34], `ce h` |
 | Emacs 31.1, `flex`, puis trié par son coût | 617 ms [604 ; 622] | 0,47 ms | 17,0 ms [16,9 ; 17,1], `st` |
 
 Vim et Neovim classent avec le même score, en C, 8,6 et 11 fois plus vite que Cemacs en Cesia, et leur lettre la plus lente
 prend moins de 2 ms. Le `flex` d'Emacs, son coût en C et son tri en Lisp, est 2,5 fois plus rapide que Cemacs en tout, mais
-sa lettre la plus lente, 17,0 ms, est plus lente. L'éditeur de Cemacs a pris 645 ms pour les mêmes lettres, pas 1 544,
-parce qu'il ne classe que les rangées que les lettres d'avant ont gardées, là où ceux-ci classent les 1 933 fichiers pour
+sa lettre la plus lente, 17,0 ms, est plus lente. L'éditeur de Cemacs a pris 645 ms pour les mêmes lettres, pas 1 544,
+parce qu'il ne classe que les rangées que les lettres d'avant ont gardées, là où ceux-ci classent les 1 933 fichiers pour
 chaque préfixe. C'est là que les géants gagnent, et nettement : le score est le même, et le C le fait tourner plus vite que
 Cesia.
 
-**L'ouverture de la liste.** `C-x p f` sur le dépôt de Cesia, les deux exécutions de Git et la liste de 1 933 rangées,
+**L'ouverture de la liste.** `C-x p f` sur le dépôt de Cesia, les deux exécutions de Git et la liste de 1 933 rangées,
 20 fois : 7,30 ms [6,85 ; 8,10]. Le `project-files` d'Emacs, le même `git ls-files` avec sa propre lecture de la sortie,
 20 fois dans un seul processus : 5,80 ms [5,62 ; 6,10].
 
 **La frappe dans un buffer** ne change pas : `bench/gate.ce`, trois exécutions de chaque version chacune à son tour, donne
-un caractère tapé à la ligne 19 000 en 11,4, 11,4 et 11,4 ms avant, et 11,4, 11,4 et 11,4 ms après ; une ligne défilée en
+un caractère tapé à la ligne 19 000 en 11,4, 11,4 et 11,4 ms avant, et 11,4, 11,4 et 11,4 ms après ; une ligne défilée en
 18,0, 17,9 et 18,0 ms avant, et 18,1, 17,7 et 17,7 ms après.
 
 ### Les threats to validity
@@ -629,7 +629,7 @@ ici, et ce qui a été fait :
   dans le nom propre du fichier au-dessus d'une correspondance dans ses dossiers, d'après son manuel, et le coût d'Emacs
   favorise les noms courts, ce qui lui fait gagner les lettres avec des trous. L'un ou l'autre pourrait aider ici ; il
   faudrait des requêtes qui n'ont pas servi à le choisir, ou il ne ferait que coller à celles-ci.
-- **Les premières lettres manquent une frame.** Classer 1 900 rangées en Cesia prend jusqu'à 15 ms, et avec la frame 26 ms :
+- **Les premières lettres manquent une frame.** Classer 1 900 rangées en Cesia prend jusqu'à 15 ms, et avec la frame 26 ms :
   sous le 0,1 seconde d'une réponse qui paraît immédiate, au-dessus des 16 ms d'une frame. Le score de Vim, en C, classe les
   mêmes rangées en moins de 2 ms. Un score écrit en code natif dans la bibliothèque standard de Cesia, comme l'est
   [text.ByteFind], comblerait l'essentiel de cet écart ; c'est un changement de Cesia, pas de Cemacs.

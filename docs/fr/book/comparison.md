@@ -2,7 +2,7 @@
 
 Ce chapitre met Cemacs à côté des éditeurs que connaissent la plupart des programmeurs : GNU Emacs 31.1, Neovim 0.12.6 et
 Vim 9.2, qui étaient installés sur la machine où Cemacs est mesuré, et Visual Studio Code, d'après sa documentation publiée
-seulement. Il dit simplement où ils gagnent, et pourquoi. Cemacs est jeune et petit, environ 6 200 lignes ; chacun des autres
+seulement. Il dit simplement où ils gagnent, et pourquoi. Cemacs est jeune et petit, environ 6 200 lignes ; chacun des autres
 est le travail de beaucoup de personnes pendant des années, des décennies pour Emacs et Vim.
 
 ## En chiffres
@@ -21,16 +21,16 @@ défilées dans une série pour Cemacs et une pour les autres, le même après-m
 | lancer et ouvrir 0,79 MB | 7 | 66,9 ms [66,2 ; 71,0] | 98,4 ms [97,7 ; 109] | 20,5 ms [20,4 ; 42,7] | 18,0 ms [17,4 ; 19,8] |
 | lancer et ouvrir 15,9 MB | 7 | 97,8 ms [97,1 ; 139] | 145 ms [142 ; 149] | 53,2 ms [52,8 ; 61,9] | 51,5 ms [50,4 ; 52,0] |
 | lancer et ouvrir 99,9 MB | 7 | 266 ms [262 ; 281] | 393 ms [392 ; 460] | 235 ms [231 ; 317] | 247 ms [241 ; 294] |
-| une touche tapée à la ligne 19 000, à l'intérieur, avec son redessin | 7 | 2,6 ms [2,6 ; 3,2], OpenGL | 1,06 ms [1,04 ; 1,08] | 0,045 ms [0,042 ; 0,063] | 0,059 ms [0,056 ; 0,068] |
+| une touche tapée à la ligne 19 000, à l'intérieur, avec son redessin | 7 | 2,6 ms [2,6 ; 3,2], OpenGL | 1,06 ms [1,04 ; 1,08] | 0,045 ms [0,042 ; 0,063] | 0,059 ms [0,056 ; 0,068] |
 | une ligne défilée, à l'intérieur, avec son redessin | 7 | 2,6 ms [2,5 ; 3,1], OpenGL | 1,51 ms [1,49 ; 1,60] | 0,020 ms [0,018 ; 0,030] | 0,052 ms [0,051 ; 0,083] |
-| une touche tapée à la ligne 1 416 745 de 99,9 MB, à l'intérieur | 7 | 1,57 ms [1,41 ; 1,97], sans dessin | 1,05 ms [1,04 ; 1,10] | 0,042 ms [0,042 ; 0,053] | 0,057 ms [0,052 ; 0,060] |
+| une touche tapée à la ligne 1 416 745 de 99,9 MB, à l'intérieur | 7 | 1,57 ms [1,41 ; 1,97], sans dessin | 1,05 ms [1,04 ; 1,10] | 0,042 ms [0,042 ; 0,053] | 0,057 ms [0,052 ; 0,060] |
 | chercher dans 15,9 MB un mot de la dernière ligne, le trouver | 7 | 7,6 ms [7,4 ; 7,9] | 7,6 ms [7,4 ; 7,9] | 28,3 ms [27,7 ; 29,6] | 33,6 ms [32,4 ; 36,8] |
 | chercher dans 99,9 MB un mot de la dernière ligne, le trouver | 7 | 48,8 ms [48,4 ; 53,5] | 48,4 ms [47,8 ; 51,6] | 181 ms [179 ; 265] | 300 ms [290 ; 315] |
 | la même chose, jusqu'à l'endroit montré | 7 | 87,6 ms [86,7 ; 88,6] | | | |
 | collage de 1 MB au milieu de 99,9 MB | 7 | 44,7 ms [44,5 ; 46,7] | 238 ms [234 ; 250] | 2,82 ms [2,77 ; 2,96] | 2,84 ms [2,80 ; 3,04] |
 | son annulation | 7 | 1,47 ms [1,45 ; 1,52] | 230 ms [228 ; 244] | 61,0 ms [60,6 ; 61,5] | 3,11 ms [3,07 ; 3,18] |
 | enregistrer 15,9 MB, `fsync` avant `Saved` sauf pour Emacs | 7 | 64,0 ms [42,9 ; 102] | 131 ms [125 ; 131] | 85,6 ms [73,8 ; 107] | 83,4 ms [76,7 ; 127] |
-| 288 préfixes de 41 requêtes, chacun classé parmi 1 933 noms de fichiers | 20 | 1 544 ms [1 537 ; 1 554] | 617 ms [604 ; 622], `flex` | 136 ms [135 ; 137], `matchfuzzy()` | 180 ms [179 ; 181], `matchfuzzy()` |
+| 288 préfixes de 41 requêtes, chacun classé parmi 1 933 noms de fichiers | 20 | 1 544 ms [1 537 ; 1 554] | 617 ms [604 ; 622], `flex` | 136 ms [135 ; 137], `matchfuzzy()` | 180 ms [179 ; 181], `matchfuzzy()` |
 | les mêmes requêtes : mean reciprocal rank du fichier voulu | – | 0,898 | 0,748, `flex` | 0,898 | 0,898 |
 | mémoire au repos, vide, PSS | 5 | 41,8 MB [41,7 ; 41,9] | 49,0 MB [48,0 ; 49,1] | 10,1 MB [9,8 ; 10,2] | 7,8 MB [7,7 ; 8,0] |
 | mémoire avec 99,9 MB ouverts, RSS de tous ses processus | 7 | 220 MB [220 ; 220] | 151 MB [151 ; 151] | 137 MB [137 ; 138] | 133 MB [133 ; 133] |
@@ -49,7 +49,7 @@ Ce qu'ils disent :
 
 - **Vim et Neovim démarrent plusieurs fois plus vite que Cemacs.** Ce sont des programmes en C compilés en code machine, qui
   démarrent en quelques millisecondes et dessinent des caractères dans un terminal. Cemacs est un programme Cesia : Cesia lit
-  et prépare environ 7 000 lignes de code à chaque démarrage, celles de Cemacs et des packages de Cesia qu'il emploie,
+  et prépare environ 7 000 lignes de code à chaque démarrage, celles de Cemacs et des packages de Cesia qu'il emploie,
   environ 26 ms, puis SDL3 ouvre une fenêtre, et SDL3_ttf charge trois polices et dessine la première frame en pixels. Dans
   une vraie fenêtre sur GNOME, le démarrage par SDL de sa barre de titre à travers GTK et d'OpenGL le porte à 236 ms. Emacs,
   qui charge son propre Lisp au démarrage, prend 89 ms dans un terminal.
@@ -106,13 +106,13 @@ server et un adapter.
 | Les erreurs du code | celles de Cesia, d'après `cesia check`, une demi-seconde après une touche ; un fichier de plus de 1 MB n'est pas vérifié, et sa mode line le dit | Flymake, inclus, avec un vérificateur pour chaque langage | les diagnostics de son client LSP | par des plugins |
 | Language servers (LSP) | pas de client ; les erreurs de Cesia viennent de `cesia check` | Eglot, inclus | un client inclus, `vim.lsp` | des channels qui parlent l'encodage de LSP ; le client est un plugin |
 | Debugger | inclus, pour Cesia, avec breakpoints, steps, évaluations, fix and continue | GUD, inclus, pour gdb et d'autres debuggers | rien d'inclus : des plugins | Termdebug, inclus, pour gdb ; des channels qui parlent l'encodage de DAP |
-| Annulation | linéaire, avec rétablir, 1 000 états | une annulation est enregistrée comme une modification, si bien qu'une annulation peut être annulée ; `undo-redo` | un arbre de chaque état | un arbre de chaque état |
+| Annulation | linéaire, avec rétablir, 1 000 états | une annulation est enregistrée comme une modification, si bien qu'une annulation peut être annulée ; `undo-redo` | un arbre de chaque état | un arbre de chaque état |
 | Encodages | UTF-8 seulement | beaucoup | beaucoup | beaucoup |
 | Grands fichiers | ouvre jusqu'à 1 GiB | demande au-dessus de 10 MB, puis ouvre | ouvre | ouvre |
 | Enregistrements à lui | aucun : pas de fichier d'autosave, de backup ni de swap file | fichiers d'autosave et backups | swap files | swap files, et backups si on le demande |
 
 Les fonctions d'Emacs, de Neovim et de Vim ont été vérifiées sur les programmes installés : Eglot, Flymake, GUD et
-`which-key` se chargent dans Emacs 31.1 sans package ajouté, et `large-file-warning-threshold` vaut 10 000 000 ; `vim.lsp`
+`which-key` se chargent dans Emacs 31.1 sans package ajouté, et `large-file-warning-threshold` vaut 10 000 000 ; `vim.lsp`
 est dans Neovim 0.12.6 ; Vim 9.2 a les modes `lsp` et `dap` de ses channels et le package Termdebug dans son runtime. Pour
 les fichiers d'un projet, le `completion-category-defaults` d'Emacs 31.1 donne à `project-file` le style `substring`, et
 `completions-sort` vaut `alphabetical` ; les `'wildoptions'` de Vim 9.2 et de Neovim 0.12.6 disent que la fuzzy completion

@@ -1,7 +1,7 @@
 # Vitesse
 
 Ce chapitre donne ce que Cemacs coûte en temps et en mémoire, comment chaque nombre a été mesuré, et pourquoi il est ce
-qu'il est. Cemacs garde quatre objectifs depuis sa première version, pour un fichier de 20 000 lignes dans une fenêtre de
+qu'il est. Cemacs garde quatre objectifs depuis sa première version, pour un fichier de 20 000 lignes dans une fenêtre de
 1920 sur 1080 : une touche jusqu'à sa frame en moins de 16 ms, le temps d'une frame à 60 frames par seconde ; un défilement
 à 60 lignes par seconde ; une ouverture en moins de 300 ms ; et aucune frame du tout de la part d'un éditeur qui attend.
 Chaque section met Cemacs à côté de GNU Emacs 31.1, Neovim 0.12.6 et Vim 9.2 là où la même chose peut se mesurer sur eux ;
@@ -60,7 +60,7 @@ programme ci-dessous, avec une marque après chaque partie, $n = 20$, médianes 
 | Partie | Temps | À qui |
 |---|---|---|
 | le démarrage propre de Cesia, comme pour `io.Print(1)` | 3,2 ms | Cesia |
-| la lecture et la préparation du code : 6 977 lignes de Cemacs et des packages de Cesia qu'il emploie, 29 fichiers | 25,9 ms | Cesia |
+| la lecture et la préparation du code : 6 977 lignes de Cemacs et des packages de Cesia qu'il emploie, 29 fichiers | 25,9 ms | Cesia |
 | la vidéo de SDL3, la fenêtre, son renderer, et SDL3_ttf avec la première police | 4,0 ms | SDL |
 | les deux autres polices | 0,2 ms | SDL |
 | la taille d'un caractère, les premiers textes mesurés | 2,8 ms | SDL |
@@ -145,9 +145,9 @@ bout, et la dernière ligne contient un mot qu'on ne trouve nulle part ailleurs,
 
 | Fichier | Cemacs | Cemacs d'avant | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
 |---|---|---|---|---|---|
-| 0,79 MB, 22 490 lignes | 66,9 ms [66,2 ; 71,0] | 68,5 ms [66,4 ; 83,9] | 98,4 ms [97,7 ; 109] | 20,5 ms [20,4 ; 42,7] | 18,0 ms [17,4 ; 19,8] |
-| 15,9 MB, 449 762 lignes | 97,8 ms [97,1 ; 139] | 123 ms [122 ; 125] | 145 ms [142 ; 149] | 53,2 ms [52,8 ; 61,9] | 51,5 ms [50,4 ; 52,0] |
-| 99,9 MB, 2 833 490 lignes | 266 ms [262 ; 281] | 416 ms [413 ; 500] | 393 ms [392 ; 460] | 235 ms [231 ; 317] | 247 ms [241 ; 294] |
+| 0,79 MB, 22 490 lignes | 66,9 ms [66,2 ; 71,0] | 68,5 ms [66,4 ; 83,9] | 98,4 ms [97,7 ; 109] | 20,5 ms [20,4 ; 42,7] | 18,0 ms [17,4 ; 19,8] |
+| 15,9 MB, 449 762 lignes | 97,8 ms [97,1 ; 139] | 123 ms [122 ; 125] | 145 ms [142 ; 149] | 53,2 ms [52,8 ; 61,9] | 51,5 ms [50,4 ; 52,0] |
+| 99,9 MB, 2 833 490 lignes | 266 ms [262 ; 281] | 416 ms [413 ; 500] | 393 ms [392 ; 460] | 235 ms [231 ; 317] | 247 ms [241 ; 294] |
 
 Les autres éditeurs ne connaissent pas Cesia : ils montrent donc ces fichiers comme du texte simple, là où Cemacs colore les
 lignes de l'écran. On a dit à Emacs de ne pas demander avant un grand fichier, `(setq large-file-warning-threshold nil)` ;
@@ -162,9 +162,9 @@ Ce que coûte l'ouverture de 99,9 MB, mesurée seule, sans la fenêtre, $n = 7$,
 | la rope, [rope.Of] | 105 ms [104 ; 118] | 258 ms [256 ; 352] |
 | le pic de mémoire du processus, `VmHWM` | 193 MB | 245 MB |
 
-Ce qui a changé : la rope ne copie plus le fichier. Ses feuilles étaient 97 540 morceaux de 1 024 octets, chacun une copie
-de ses octets et un record de six champs, joints par autant de nœuds, environ 195 000 records faits en Cesia, à environ une
-microseconde chacun ; ce sont maintenant 6 097 vues de 16 KiB du seul texte lu, sans copie, et autant de nœuds :
+Ce qui a changé : la rope ne copie plus le fichier. Ses feuilles étaient 97 540 morceaux de 1 024 octets, chacun une copie
+de ses octets et un record de six champs, joints par autant de nœuds, environ 195 000 records faits en Cesia, à environ une
+microseconde chacun ; ce sont maintenant 6 097 vues de 16 KiB du seul texte lu, sans copie, et autant de nœuds :
 [À l'intérieur de Cemacs](internals.md#la-rope). Cesia lui-même lit maintenant un fichier en un seul texte de sa taille, là
 où il remplissait un buffer (une zone de mémoire de travail) puis le copiait, et compte les fins de ligne et vérifie l'UTF-8
 huit octets à la fois.
@@ -180,9 +180,9 @@ octet en tout ; les battre à 100 MB demande l'un de ces deux appels dans Cesia.
 
 ## Taper et faire défiler
 
-`bench/gate.ce` mesure le core et la frame sur un texte de 20 000 lignes, la bibliothèque standard de Cesia répétée telle
+`bench/gate.ce` mesure le core et la frame sur un texte de 20 000 lignes, la bibliothèque standard de Cesia répétée telle
 que le binaire de Cesia la porte, [cesia.Libraries], dans une fenêtre de 1920 sur 1080 à 13 points, sans vsync : 300 passes
-d'un caractère tapé à la ligne 19 000, puis 300 passes d'une ligne défilée, chaque passe faite de `view.FollowState`,
+d'un caractère tapé à la ligne 19 000, puis 300 passes d'une ligne défilée, chaque passe faite de `view.FollowState`,
 `view.View` et `sdl.Frame`. Il affiche la médiane et la pire passe, et la médiane de chacune des trois parties :
 
 ```bash
@@ -192,7 +192,7 @@ SDL_VIDEODRIVER=dummy cesia run --allow read,ffi=SDL3,ffi=SDL3_ttf bench/gate.ce
 Sept exécutions de cette version, chacune à son tour avec l'une de la version d'avant, `main` à b2ab23f, et avec chaque
 étape entre elles ; la médiane des médianes des sept exécutions, et son intervalle :
 
-| Version | Un caractère tapé | Une ligne défilée | La vue d'une passe | Premier saut à la ligne 19 000 |
+| Version | Un caractère tapé | Une ligne défilée | La vue d'une passe | Premier saut à la ligne 19 000 |
 |---|---|---|---|---|
 | avant, b2ab23f | 11,7 ms [11,4 ; 11,8] | 18,5 ms [17,8 ; 19,5] | 2,9 ms | 30,6 ms [30,3 ; 49,0] |
 | + objets de texte gardés selon leurs mots | 11,3 ms [11,1 ; 11,4] | 11,4 ms [11,0 ; 11,8] | 2,8 ms | |
@@ -216,7 +216,7 @@ passé le temps, et ce qui a changé :
 - **Ce qui reste** est la frame du software renderer de SDL, environ 7,8 ms : le raster (le calcul de chaque pixel) de toute
   la fenêtre de 1920 sur 1080, 8,3 MB de pixels, à chaque frame. Une vraie fenêtre dessine avec la carte graphique : voir
   plus bas.
-- Le premier saut à la ligne 19 000 lit une fois l'état des couleurs de chaque ligne au-dessus d'elle : 30,0 ms contre 30,6
+- Le premier saut à la ligne 19 000 lit une fois l'état des couleurs de chaque ligne au-dessus d'elle : 30,0 ms contre 30,6
   avant. Le gate ne chronomètre là que `view.FollowState`, qui, depuis que les rangées sont gardées, fait aussi les tokens du
   premier écran, 1 à 2 ms que la vue ne fait plus ; les étapes entre les deux ont mesuré de 32,6 à 35,0 ms, avec des
   intervalles qui montent jusqu'à 41 à 58 ms : le gate fait un seul saut par exécution, un seul échantillon, là où une
@@ -236,7 +236,7 @@ carte graphique de cette machine n'est pas joignable depuis le compositor headle
 programme, dans un terminal de tmux, sur le texte du gate écrit dans un fichier, $n = 7$, les trois chacun à son tour dans
 une série à eux, le même après-midi :
 
-| Éditeur | Un caractère tapé à la ligne 19 000 | Une ligne défilée |
+| Éditeur | Un caractère tapé à la ligne 19 000 | Une ligne défilée |
 |---|---|---|
 | Cemacs, OpenGL | 2,6 ms [2,6 ; 3,2] | 2,6 ms [2,5 ; 3,1] |
 | Cemacs, software renderer de SDL | 9,2 ms [9,0 ; 9,7] | 9,1 ms [8,9 ; 9,5] |
@@ -255,7 +255,7 @@ outil qui regarde l'écran comme Typometer, et aucun n'a été employé.
 
 ### Une touche dans un grand fichier
 
-Un caractère tapé à la ligne du milieu, 1 416 745, du fichier de 99,9 MB, sans dessin pour Cemacs : 100 touches, chacune
+Un caractère tapé à la ligne du milieu, 1 416 745, du fichier de 99,9 MB, sans dessin pour Cemacs : 100 touches, chacune
 suivie de `view.FollowState` et `view.View`, comme le font la mise à jour et la vue, les couleurs d'abord lues jusqu'à
 l'écran ; les autres avec leur redessin, $n = 7$, les versions de Cemacs chacune à son tour, et les autres dans une série à
 eux :
@@ -271,9 +271,9 @@ eux :
 
 Les couleurs gardaient l'état au début de chaque ligne dans une seule liste plate, coupée et prolongée par des copies à
 chaque modification : à la ligne 1,4 million, deux copies de 1,4 million d'états, 22 MB de garbage (de mémoire que plus rien
-n'emploie), à chaque touche. En chunks de 1 024 lignes, une modification copie la liste de 1 384 chunks et un chunk :
+n'emploie), à chaque touche. En chunks de 1 024 lignes, une modification copie la liste de 1 384 chunks et un chunk :
 [À l'intérieur de Cemacs](internals.md#les-couleurs). La taille du fichier ne compte plus : la touche coûte à peu près ce
-qu'elle coûte à la ligne 19 000 du gate sans son dessin, et les deux lignes de Cemacs diffèrent de moins que leurs
+qu'elle coûte à la ligne 19 000 du gate sans son dessin, et les deux lignes de Cemacs diffèrent de moins que leurs
 intervalles. La touche médiane d'Emacs fait environ les deux tiers de celle de Cemacs, et sa pire touche dix fois la pire de
 Cemacs ; Vim et Neovim, qui changent une ligne de leur memline et écrivent quelques cases du terminal, restent 30 fois plus
 rapides.
@@ -293,9 +293,9 @@ comme un seul texte à travers [commands.Update], jusqu'à l'état qui montre l'
 | Cemacs, trouver l'endroit, [rope.Find] seul | 7,6 ms [7,4 ; 7,9] | 48,8 ms [48,4 ; 53,5] |
 | Cemacs d'avant, b2ab23f, la même chose | 92,5 ms [89,7 ; 144] | 583 ms [573 ; 596] |
 | Cemacs, `C-s` et le mot, jusqu'à l'endroit montré | 45,9 ms [45,2 ; 49,4] | 87,6 ms [86,7 ; 88,6] |
-| Cemacs d'avant, la même chose | 767 ms [762 ; 816] | 5 457 ms [5 302 ; 5 823] |
+| Cemacs d'avant, la même chose | 767 ms [762 ; 816] | 5 457 ms [5 302 ; 5 823] |
 | Cemacs, la même chose tapée une lettre à la fois | 293 ms [288 ; 306] | 341 ms [338 ; 348] |
-| Cemacs d'avant, la même chose | 767 ms [758 ; 831] | 5 591 ms [5 419 ; 5 864] |
+| Cemacs d'avant, la même chose | 767 ms [758 ; 831] | 5 591 ms [5 419 ; 5 864] |
 
 Le mot n'a pas de majuscule : chaque recherche ici fait donc le case folding. Trouver l'endroit coûte à Cemacs ce que coûte
 un seul appel au [text.ByteFind] de Cesia sur le texte du fichier, en place, huit octets à la fois, avec la casse traitée
@@ -320,11 +320,11 @@ $n = 7$ :
 | Mesure | 15,9 MB | 99,9 MB |
 |---|---|---|
 | Cemacs, `M->`, l'endroit montré | 38,5 ms [37,7 ; 129] | 36,1 ms [35,4 ; 41,7] |
-| Cemacs, les couleurs exactes | 673 ms [637 ; 1 173], 17 ticks | 4 072 ms [3 957 ; 4 259], 113 ticks |
+| Cemacs, les couleurs exactes | 673 ms [637 ; 1 173], 17 ticks | 4 072 ms [3 957 ; 4 259], 113 ticks |
 | Cemacs, le tick le plus lent d'une exécution | 40,6 ms [38,2 ; 114] | 60,0 ms [45,0 ; 69,2] |
-| Cemacs d'avant, b2ab23f, l'endroit montré, ses couleurs exactes | 699 ms [671 ; 737] | 4 615 ms [4 518 ; 4 800] |
+| Cemacs d'avant, b2ab23f, l'endroit montré, ses couleurs exactes | 699 ms [671 ; 737] | 4 615 ms [4 518 ; 4 800] |
 
-Un tick lit 25 000 lignes en environ 36 ms avec les commandes de sa frame, le temps d'une exécution divisé par ses ticks ;
+Un tick lit 25 000 lignes en environ 36 ms avec les commandes de sa frame, le temps d'une exécution divisé par ses ticks ;
 son plus lent, environ 60 ms, reste sous le dixième de seconde. Une touche tapée pendant ce temps lit aussi un lot : elle
 attend donc jusqu'à autant de plus avant que les couleurs soient exactes ; et un commentaire ou un texte ouvert loin au-dessus
 peut colorer l'écran de travers pendant ces secondes. Emacs, Neovim et Vim ont montré ces fichiers sans couleurs, car ils ne
@@ -346,14 +346,14 @@ redessin ; $n = 7$, tous chacun à son tour :
 | enregistrement, 15,9 MB | 64,0 ms [42,9 ; 102] | 30,8 ms [29,2 ; 31,8] | 131 ms [125 ; 131] | 85,6 ms [73,8 ; 107] | 83,4 ms [76,7 ; 127] |
 | collage de 1 MB, 99,9 MB | 44,7 ms [44,5 ; 46,7] | 93,6 ms [89,3 ; 125] | 238 ms [234 ; 250] | 2,82 ms [2,77 ; 2,96] | 2,84 ms [2,80 ; 3,04] |
 | son annulation, 99,9 MB | 1,47 ms [1,45 ; 1,52] | 49,1 ms [47,9 ; 57,1] | 230 ms [228 ; 244] | 61,0 ms [60,6 ; 61,5] | 3,11 ms [3,07 ; 3,18] |
-| enregistrement, 99,9 MB | 274 ms [250 ; 636] | 599 ms [380 ; 887] | 584 ms [578 ; 589] | 764 ms [449 ; 1 424] | 851 ms [580 ; 901] |
+| enregistrement, 99,9 MB | 274 ms [250 ; 636] | 599 ms [380 ; 887] | 584 ms [578 ; 589] | 764 ms [449 ; 1 424] | 851 ms [580 ; 901] |
 
 Cette version appelle `fsync` avant de dire `Saved`, comme le font Neovim et Vim et non Emacs, là où la version d'avant ne le
 faisait pas : [Fichiers et buffers](files.md#ne-jamais-perdre-le-texte). La même version sans lui enregistrait les 15,9 MB en
 7,4 ms [6,8 ; 7,6] : le disque prend donc le reste ; son temps varie avec ce que le système de fichiers a encore à écrire,
 comme le montrent les larges intervalles des quatre éditeurs qui l'attendent. Elle reste plus rapide que les autres, parce
 que le texte enregistré ici est le texte lu, après l'annulation : les vues de la rope couvrent encore le seul texte du
-fichier, qui est donc écrit tel quel, là où la version d'avant joignait d'abord ses 97 540 feuilles en un nouveau texte. Un
+fichier, qui est donc écrit tel quel, là où la version d'avant joignait d'abord ses 97 540 feuilles en un nouveau texte. Un
 buffer qui a été modifié est joint une fois, puis écrit.
 
 - **L'annulation** prend environ 1,5 ms aux deux tailles, la plus rapide des quatre : l'historique garde des états entiers,
@@ -361,33 +361,33 @@ buffer qui a été modifié est joint une fois, puis écrit.
   la frame. Elle coûtait avant les copies des états des couleurs, 49 ms à 99,9 MB. Vim efface les lignes que le collage a
   ajoutées ; Emacs efface la region, en déplaçant son gap, une copie pouvant aller jusqu'au fichier entier.
 - **Un collage** de 1 MB coûte environ 45 ms aux deux tailles, un tiers de ce qu'il coûtait à 99,9 MB, et le temps d'Emacs à
-  15,9 MB est encore plus bas. L'essentiel, ce sont les couleurs des lignes collées jusqu'au curseur, 28 000 d'entre elles,
-  dont les 25 000 premières sont lues tout de suite et le reste au tick suivant, et la découpe du texte collé en ses lignes
+  15,9 MB est encore plus bas. L'essentiel, ce sont les couleurs des lignes collées jusqu'au curseur, 28 000 d'entre elles,
+  dont les 25 000 premières sont lues tout de suite et le reste au tick suivant, et la découpe du texte collé en ses lignes
   pour placer le curseur après lui, `str.Split` ; la modification de la rope elle-même et la découpe prennent de 11 à
   15 ms. Vim et Neovim ajoutent les lignes à leurs blocs en C : 2,7 ms.
 
 ## Le gestionnaire de dossiers
 
-Un dossier de 10 000 fichiers, le buffer du premier fichier courant, médianes de 21 passes, chacune avec
+Un dossier de 10 000 fichiers, le buffer du premier fichier courant, médianes de 21 passes, chacune avec
 `commands.Settled` tel que l'éditeur l'appelle après chaque événement :
 
 | Étape | Médiane de 21 | La plus rapide, la plus lente |
 |---|---|---|
 | l'ouverture du dossier, `C-x d` | 105 ms | 96, 127 ms |
-| la première lettre tapée, `9`, qui garde 3 439 rangées | 7,4 ms | 5,8, 23,0 ms |
+| la première lettre tapée, `9`, qui garde 3 439 rangées | 7,4 ms | 5,8, 23,0 ms |
 | une deuxième lettre, `9` à nouveau, qui filtre les rangées montrées | 8,4 ms | 7,6, 14,8 ms |
 
-Le script a fait le dossier, 10 000 fichiers nommés de `file-1.ce` à `file-10000.ce`, puis a chronométré [folders.Open] avec
+Le script a fait le dossier, 10 000 fichiers nommés de `file-1.ce` à `file-10000.ce`, puis a chronométré [folders.Open] avec
 [commands.Settled], et deux événements de texte à travers [commands.Update], comme la fenêtre les envoie. L'ouverture lit le
-dossier une fois : une liste et un regard sur chacune des 10 000 entrées, puis les rangées et leurs couleurs. Une lettre
+dossier une fois : une liste et un regard sur chacune des 10 000 entrées, puis les rangées et leurs couleurs. Une lettre
 filtre les rangées lues alors, à partir de celles déjà montrées quand le filtre n'a fait que grandir. Ces temps datent d'avant
 que le filtre cherche chaque lettre en code natif ;
 [Un cas : trouver un fichier à partir de quelques lettres](finding.md#la-vitesse-chaque-lettre-répond-tout-de-suite) mesure le filtre
-depuis, sur 1 933 rangées : 288 lettres tapées en 210 ms contre 402 avant.
+depuis, sur 1 933 rangées : 288 lettres tapées en 210 ms contre 402 avant.
 
 ## La vérification
 
-`cesia check --json --stdin` de `core/commands/commands.ce`, 1 160 lignes, tel que Cemacs le lance, $n = 10$ : 28,8 ms
+`cesia check --json --stdin` de `core/commands/commands.ce`, 1 160 lignes, tel que Cemacs le lance, $n = 10$ : 28,8 ms
 [26,7 ; 31,5]. Les marques d'une erreur arrivent donc environ 30 ms après la demi-seconde de pause qui lance la vérification.
 Elle tourne dans son propre processus, depuis une fiber : l'éditeur ne l'attend pas, et la frappe continue.
 
@@ -430,13 +430,13 @@ Deux choses sont parties, mesurées toutes deux sur le même fichier sous ses de
   plus vérifié, [Les erreurs dans les lignes](check.md#quand-elle-tourne). 475 → 270 MB, et le processeur comme pour un texte
   simple.
 - **La copie du fichier dans la rope** : ses feuilles sont des vues du texte lu, si bien que les 99,9 MB ne sont gardés
-  qu'une fois, là où 97 540 feuilles en gardaient une copie, à côté du texte lu que le collector (le garbage collector, la
+  qu'une fois, là où 97 540 feuilles en gardaient une copie, à côté du texte lu que le collector (le garbage collector, la
   partie qui libère la mémoire que plus rien n'emploie) n'avait pas encore libéré. 270 → 220 MB.
 
 Les autres gardent encore moins : Vim et Neovim environ le fichier et quelques octets par ligne, 133 et 137 MB, Emacs le
 fichier dans son gap buffer, 151 MB. Le processus propre de Neovim est son interface de terminal ; son éditeur est un second
 processus, qui garde le fichier. Sur les 220 MB de Cemacs, environ 46 MB sont l'éditeur vide (le runtime de Cesia, le code
-qu'il a préparé, SDL et ses polices) et environ 100 MB le fichier ; le reste, ce sont les 12 000 records de la rope, et de
+qu'il a préparé, SDL et ses polices) et environ 100 MB le fichier ; le reste, ce sont les 12 000 records de la rope, et de
 la mémoire que le collector d'OCaml a libérée ou va libérer mais que le processus garde : la mémoire de Cesia est gérée par
 ce collector, qui libère peu à la fois, à un rythme fixé par ce que le programme fabrique, et un éditeur au repos ne fabrique
 presque rien. Le processeur de Cemacs au repos est celui du dummy driver de SDL, qui cherche un événement chaque
@@ -479,8 +479,8 @@ dès que la touche arrive, là où il pouvait dormir jusqu'à 5 ms avant. Le buf
 ## Les limites
 
 - Un fichier de plus de 1 GiB ne s'ouvre pas : un fichier de 1 GiB prend environ deux fois sa taille en mémoire à son pic.
-- L'historique d'annulation garde 1 000 états par buffer, et la sortie d'un programme ses 1 000 dernières lignes.
-- SDL garde au plus 8 192 textes passés par le shaping ; au-delà, il les oublie tous et refait le shaping de ce que
+- L'historique d'annulation garde 1 000 états par buffer, et la sortie d'un programme ses 1 000 dernières lignes.
+- SDL garde au plus 8 192 textes passés par le shaping ; au-delà, il les oublie tous et refait le shaping de ce que
   dessinent les frames suivantes.
-- Un buffer Cesia de plus de 1 000 000 octets n'est pas vérifié : voir [Les erreurs dans les lignes](check.md#quand-elle-tourne).
+- Un buffer Cesia de plus de 1 000 000 octets n'est pas vérifié : voir [Les erreurs dans les lignes](check.md#quand-elle-tourne).
 - Une seule vérification tourne à la fois, pour un seul buffer.

@@ -63,7 +63,7 @@ Une touche pressée avec les modifiers (Control, Alt, Shift) tenus en même temp
 
 Une partie de taille fixe d'une longue liste, gardée comme un seul élément d'une liste plus courte, pour que couper ou
 prolonger la longue liste copie une partie et la liste courte, pas tout ce qui vient avant l'endroit. Cemacs garde les états
-de ses couleurs en chunks de 1 024 lignes. Voir [À l'intérieur de Cemacs](internals.md#les-couleurs).
+de ses couleurs en chunks de 1 024 lignes. Voir [À l'intérieur de Cemacs](internals.md#les-couleurs).
 
 ## Clipboard
 
@@ -396,7 +396,7 @@ comme l'attente de la bande des hints, ou une vérification. Voir [À l'intérie
 ## Undo history
 
 En français : l'historique d'annulation. Les états du texte d'un buffer que l'annulation parcourt en arrière et le
-rétablissement en avant. Celui de Cemacs est linéaire et garde 1 000 états. Voir [Édition](editing.md#annuler-et-rétablir).
+rétablissement en avant. Celui de Cemacs est linéaire et garde 1 000 états. Voir [Édition](editing.md#annuler-et-rétablir).
 
 ## UTF-8
 
