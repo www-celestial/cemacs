@@ -5,7 +5,7 @@ avant que rien ne change, une hypothèse qu'une expérience pourrait réfuter, l
 problème, le plus petit changement de Cemacs, et la preuve que le problème est résolu, avec ce qui pourrait rendre la
 preuve fausse. Il finit par ce qui reste. Chaque bloc de code Cesia ci-dessous a tourné quand cette page a été construite,
 sur le code de Cemacs, et les lignes avec `-->` ont été vérifiées. Les travaux cités sont dans
-[Références](references.md#the-case-of-finding-a-file).
+[Références](references.md#le-cas-de-la-recherche-d-un-fichier).
 
 Le problème est ordinaire. Vous travaillez dans un projet de quelques milliers de fichiers, vous connaissez une partie du nom
 d'un fichier, et vous voulez l'ouvrir en quelques touches.
