@@ -133,7 +133,7 @@ Un chemin relatif que vous lui donnez se lit à partir du dossier où vous êtes
 `cesia do dev`, depuis le dossier de Cemacs, lance la tâche `dev` de son `cesia.toml` : le même programme et les mêmes
 permissions, sous `--watch`, pour qu'un changement du code de Cemacs se recharge dans la fenêtre qui tourne. Elle ouvre un
 seul buffer vide, et lit ses polices dans `./fonts` : elle doit donc partir de ce dossier. Voir
-[Modifier Cemacs](customising.md#reloading-cemacs-while-it-runs).
+[Modifier Cemacs](customising.md#recharger-cemacs-pendant-qu-il-tourne).
 
 ```toml
 [tasks.dev]

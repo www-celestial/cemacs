@@ -197,7 +197,7 @@ montrent le même nom : la liste des buffers donne leurs chemins.
 
 La liste des buffers a une rangée pour chaque buffer, avec une étoile pour un texte non enregistré, son nom, et son chemin.
 C'est une liste : un buffer de rangées que la frappe filtre, en lecture seule, où Enter sur une rangée va à ce buffer et
-ferme la liste. Voir [Recherche](search.md#lists) pour la façon dont un filtre trouve une rangée.
+ferme la liste. Voir [Recherche](search.md#les-listes) pour la façon dont un filtre trouve une rangée.
 
 Fermer un buffer dont le texte n'est pas enregistré demande `Text not saved. Close anyway? (y or n)` (texte non enregistré ;
 fermer quand même ?). Fermer le dernier buffer laisse un buffer vide, pour qu'il y en ait toujours un. Un pane qui montrait
@@ -325,7 +325,7 @@ depuis n'importe quel dossier du projet, il demande à Git la racine, `git rev-p
 donne `{Root, Paths}` dans un Ok, ou, dans un Err, les mots que montre la prompt line.
 
 La prompt line montre `Find file in NAME: ` (trouver un fichier dans NAME), le nom du dossier du projet, puis ce que vous
-tapez. Taper filtre la liste comme dans [toute liste](search.md#lists), et la classe : le fichier qui correspond le mieux
+tapez. Taper filtre la liste comme dans [toute liste](search.md#les-listes), et la classe : le fichier qui correspond le mieux
 vient en premier, d'après le score qu'emploient Vim et Neovim, et des mots séparés, `ml lib`, correspondent dans n'importe
 quel ordre. Enter ouvre le fichier sous le curseur et ferme la liste.
 [Un cas : trouver un fichier à partir de quelques lettres](finding.md) dit pourquoi elle classe ainsi, et le mesure sur les
@@ -333,4 +333,4 @@ quel ordre. Enter ouvre le fichier sous le curseur et ferme la liste.
 
 La liste est lue une fois, quand elle s'ouvre : un fichier créé après n'y est pas avant un nouveau `C-x p f`. Hors de tout
 dépôt Git, la prompt line dit `FOLDER/ is in no Git repository.` (FOLDER/ n'est dans aucun dépôt Git), et rien ne s'ouvre.
-Cemacs lance Git avec la permission `exec=git` : voir [Installation](install.md#starting-it).
+Cemacs lance Git avec la permission `exec=git` : voir [Installation](install.md#le-lancer).

@@ -153,7 +153,7 @@ rows = [{Words: "editor.ce", Item: 1}, {Words: "commands.ce", Item: 2}, {Words: 
 Quand un filtre change les rangées, le curseur reste sur la rangée où il était si elle est encore montrée, sinon sur la même
 ligne.
 
-La plupart des listes gardent leurs rangées dans leur ordre. La liste des [fichiers d'un projet](files.md#the-files-of-a-project),
+La plupart des listes gardent leurs rangées dans leur ordre. La liste des [fichiers d'un projet](files.md#les-fichiers-d-un-projet),
 `C-x p f`, les classe à la place : les rangées que le filtre garde viennent la meilleure d'abord, d'après [lists.Score], le
 score de fzy qu'emploient Vim et Neovim, qui récompense les lettres trouvées au début d'un mot ou côte à côte, et, de deux
 chemins semblables, le plus court. [lists.Ranked] donne cet ordre ;
@@ -170,7 +170,7 @@ Pour trouver une touche sans la connaître :
 
 - Appuyez sur une prefix key et attendez une demi-seconde : la bande des hints liste ce qui peut suivre. Sous `C-c`, les
   touches sont en groupes, `C-c f` pour les fichiers et ainsi de suite : voir
-  [Fenêtre et panes](windows.md#the-band-of-hints).
+  [Fenêtre et panes](windows.md#la-bande-des-hints).
 - Appuyez sur `?` après une prefix key, comme `C-x ?`, `C-c ?` ou `C-c f ?` : une liste de chaque touche qui commence par ce
   préfixe, à n'importe quelle profondeur, avec le nom de sa commande et la première ligne de sa documentation. Taper la
   filtre, et Enter ferme la liste et lance la touche sous le curseur, comme si vous l'aviez pressée.

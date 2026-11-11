@@ -119,4 +119,4 @@ les montre donc.
 La vérification a besoin d'apprendre que le temps passe et que des enregistrements ont lieu, ce que seul le core voit. Elle
 les demande par trois hooks (des fonctions que le core appelle à des moments donnés), que [check.Hooked] ajoute à la config
 de l'éditeur : `Idle(state)` à chaque tick, `Saved(state)` après chaque enregistrement, et `Moving(state)`, qui dit si elle a
-besoin de ticks. [Modifier Cemacs](customising.md#hooks) dit comment une app à vous peut les employer.
+besoin de ticks. [Modifier Cemacs](customising.md#les-hooks) dit comment une app à vous peut les employer.

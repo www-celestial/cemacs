@@ -88,7 +88,7 @@ l'arrêtiez. Une nouvelle exécution remplace la sortie de la précédente.
 
 `C-c c o` ouvre toute la sortie comme une liste, avec le curseur sur la dernière erreur, une ligne qui commence par un
 endroit comme `src/a.ce:4:11: `. La liste grandit à mesure que le programme écrit ; taper la filtre, et Enter sur une ligne
-qui nomme un endroit d'un fichier y va : voir [Recherche](search.md#places-in-the-output). La sortie reste sous les panes
+qui nomme un endroit d'un fichier y va : voir [Recherche](search.md#les-endroits-dans-la-sortie). La sortie reste sous les panes
 pendant que la liste est ouverte.
 
 `C-c c k` dit `Stopping the program.` (arrêt du programme) et envoie TERM, ce qui termine un programme Cesia ; un programme

@@ -100,7 +100,7 @@ table(emacs.PromptKeys())
 
 Dans une liste, ces touches passent devant les touches globales, et les touches propres à la liste passent devant elles :
 Enter dans chaque liste, et les touches du gestionnaire de dossiers, `C-c n`, `C-c r`, `C-c k`, `C-c .`, `C-y` et
-Backspace, que décrit [Fichiers et buffers](files.md#the-folder-manager).
+Backspace, que décrit [Fichiers et buffers](files.md#le-gestionnaire-de-dossiers).
 
 ```cesia output=md fold=code
 table(emacs.ListKeys())
