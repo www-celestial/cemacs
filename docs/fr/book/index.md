@@ -50,8 +50,8 @@ peut lire.
 4. [Fichiers et buffers](files.md) : ouvrir, enregistrer sans risque, quels fichiers s'ouvrent, les fins de ligne, la liste
    des buffers, le gestionnaire de dossiers.
 5. [Fenêtre et panes](windows.md) : la fenêtre, ses panes, la mode line, la prompt line et la bande des hints.
-6. [Recherche](search.md) : la recherche incrémentale dans un buffer, `C-s` et `C-r`, et ce que Cemacs trouve d'autre : des
-   lignes de liste, des touches, des erreurs, des endroits.
+6. [Recherche](search.md) : l'incremental search dans un buffer, `C-s` et `C-r`, et ce que Cemacs trouve d'autre : des
+   rangées de listes, des touches, des erreurs, des endroits.
 7. [Touches](keys.md) : chaque touche, générée à partir du code, et comment une touche devient une commande.
 8. [Exécuter et déboguer](running.md) : exécuter un fichier avec ses permissions, sa sortie, les breakpoints, le pas à pas,
    fix and continue.
