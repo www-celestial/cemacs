@@ -30,4 +30,4 @@ details: versions, other systems, the permissions Cemacs runs with.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). The fonts are under the SIL Open Font License 1.1, whose texts are beside them in `fonts/`.
+MIT, see [LICENSE](https://github.com/www-celestial/cemacs/blob/main/LICENSE). The fonts are under the SIL Open Font License 1.1, whose texts are beside them in `fonts/`.

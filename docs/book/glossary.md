@@ -138,7 +138,7 @@ screen at once, as in frames per second: Cemacs makes one from its state at each
 
 In an alignment, letters of one text that the other skips; the penalty is what the score loses for them. fzy charges 0.01 a
 letter skipped between two matched letters, and 0.005 a letter before the first or after the last; Gotoh's affine gap costs
-a price to open and a smaller one per letter. See [A case](finding.md#fzy-s-score).
+a price to open and a smaller one per letter. See [A case](finding.md#fzys-score).
 
 ## Gap buffer
 
