@@ -793,3 +793,22 @@ isSearchGroup() = emacs.Keys()["C-c s"] == "search" and emacs.Keys()["C-c s s"] 
 isSearchInAnotherPrompt() = press.Press(["C-x", "C-f", "C-s"], stateOf(words3)).Prompt.Label == "Find file: "   (** C-s does nothing in another prompt. *)
 isSearchAcrossWindows() = cursorOf(press.Press(["C-s", "needle"], stateOf("$(str.Repeat(70000, "a"))needle"))) == {Line: 1, Column: 70006}   (** A place past the first window of 64 KiB. *)
 isSearchCharacters() = cursorOf(press.Press(["C-s", "été"], stateOf("un été, l'été"))) == {Line: 1, Column: 6}   (** Columns count characters, not bytes. *)
+
+(* In a file of Cesia, Enter, Tab and the words that close or go on with a block put a line where cesia fmt puts it; elsewhere Tab types its text,
+   as the tests above show. *)
+isEnterIndentsCesia() = wordsOf(press.Press(["C-e", "enter", "x"], inFile("if a"))) == "if a\n  x"
+(** "end" alone is the key End: the word is typed in two. *)
+isEndTypedGoesBack() = wordsOf(press.Press(["C-e", "enter", "x", "enter", "en", "d"], inFile("if a"))) == "if a\n  x\nend"
+isEndUndoneWithItsPlace() = wordsOf(press.Press(["C-e", "enter", "x", "enter", "en", "d", "C-/"], inFile("if a"))) == "if a\n  x\n  "
+isTabPutsCesiaLine() = wordsOf(press.Press(["C-n", "tab"], inFile("if a\nb\nend"))) == "if a\n  b\nend" and cursorOf(press.Press(["C-n", "tab"], inFile("if a\nb\nend"))) == {Line: 2, Column: 2}
+isTabOnSelection() = wordsOf(press.Press(["C-space", "M->", "tab"], inFile("defn f()\nif a\nb\nend\nend"))) == "defn f()\n  if a\n    b\n  end\nend" and
+  value.IsMissing(here(press.Press(["C-space", "M->", "tab"], inFile("defn f()\nif a\nb\nend\nend"))).Mark)
+isTabOnSelectionOneUndo() = wordsOf(press.Press(["C-space", "M->", "tab", "C-/"], inFile("defn f()\nif a\nb\nend\nend"))) == "defn f()\nif a\nb\nend\nend"
+isTabTypesNothingInCesia() = wordsOf(press.Press(["C-e", "tab"], inFile("if a\n  b\nend"))) == "if a\n  b\nend"
+defn cesiaClip(words, clip)
+  (** A state on a buffer of a file of Cesia holding words, with a text in the clipboard. *)
+  s = inFile(words)
+  s.Clip = clip
+  s
+end
+isPasteKeepsItsPlace() = wordsOf(press.Press(["C-e", "enter", "C-y"], cesiaClip("if a", "end"))) == "if a\n  end"   (** A paste is no typing. *)

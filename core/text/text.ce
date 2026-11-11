@@ -2,6 +2,7 @@
 use src/rope
 use src/history
 use core/color
+use core/indent
 use std/text as str
 use std/list
 use std/dict
@@ -15,6 +16,7 @@ defn Of(words, path)
       Marks are the errors and warnings that a check found, each {Line, Column, End, Severity, Message, Hint}: see MarksOf; MarksNote, words that the
       mode line shows when there are none, such as why the text wasn't checked: see MarksNoteOf. Screen is what the view keeps
       of the lines on the screen from one frame to the next, and Guess the states it guessed for a screen past the colors known: see view.Follow.
+      Layout is the reading of the layout of Cesia that the last Enter kept, for the line after it: see indent.Forget.
       Besides the fields of the state, a buffer has three private ones: wanted, the column that
       MoveLine and MovePage try to keep through shorter lines (a column, or missing, and every other move and every edit clears it); clock, the
       highest version given so far, so that a new edit never gets the number of a state that was undone; and typing, which is true while the last
@@ -24,7 +26,8 @@ defn Of(words, path)
   r = rope.Of(words)
   cursor = {Line: 1, Column: 0}
   {Rope: r, Cursor: cursor, Mark: missing, History: history.Of({Rope: r, Cursor: cursor, Version: 0, Before: cursor, Line: 1}), Version: 0, Top: 1, Left: 0, Path: path, Saved: 0, Disk: missing,
-    Colors: color.BlankColors(), Guess: missing, Screen: dict.Dict(), Wanted: missing, Clock: 0, Typing: false, Free: false, Origin: "", Marks: [], MarksNote: ""}
+    Colors: color.BlankColors(), Guess: missing, Screen: dict.Dict(), Wanted: missing, Clock: 0, Typing: false, Free: false, Origin: "", Marks: [], MarksNote: "",
+    Layout: missing}
 end
 
 (** Does line n end with a CRLF? Then its \r belongs to the line end. A \r anywhere else, or at the end of the last line, is an ordinary character. *)
@@ -283,10 +286,11 @@ defn edit(r, cursor, line, continues, typing, b)
   b.Wanted = missing
   b.Typing = typing
   b.Colors = color.ForgetFrom(line, b.Colors)
+  b.Layout = indent.Forget(line, b)
   b
 end
 
-defn indent(n, column, b)
+defn leadingOf(n, column, b)
   (** The leading spaces and tabs of line n, up to the column. *)
   cs = list.Take(column, str.Chars(line(n, b)))
   str.Join("", list.TakeWhile(c -> c == " " or c == "\t", cs))
@@ -318,10 +322,121 @@ defn delete(p, q, b)
   edit(r, p, p.Line, false, false, b)
 end
 
-(** A line end, with the spaces and tabs the line starts with, inserted at the cursor, so that the next line is indented as this one.
+defn NewLine(b)
+  (** A line end inserted at the cursor. In a file of Cesia, the new line starts where cesia fmt would put it, one block deeper after a line
+      that opens one (see indent.Wanted), and the spaces around the cursor go, since no line ends with spaces; inside a text, which holds its
+      spaces, as in another file. In another file, the new line starts with the spaces and tabs the line starts with, so that it is indented as
+      this one.
 
-      NewLine(Place(1, 3, Of("  x", missing))).Cursor.Column --> 2 *)
-NewLine(b) = insert("$(eol(b.Cursor.Line, b))$(indent(b.Cursor.Line, b.Cursor.Column, b))", false, b)
+        NewLine(Place(1, 3, Of("  x", missing))).Cursor.Column --> 2
+        rope.Text(NewLine(Place(1, 4, Of("if a", "a.ce"))).Rope) --> "if a\n  " *)
+  if not indent.IsCesia(b)
+    return insert("$(eol(b.Cursor.Line, b))$(leadingOf(b.Cursor.Line, b.Cursor.Column, b))", false, b)
+  end
+  at = b.Cursor
+  n = indent.NewLine(at, b)
+  from = ByteOf({Line: at.Line, Column: at.Column - n.Before}, b)
+  r = rope.Insert(from, "$(eol(at.Line, b))$(n.Indent)", rope.Delete(from, ByteOf({Line: at.Line, Column: at.Column + n.After}, b), b.Rope))
+  out = edit(r, {Line: at.Line + 1, Column: value.Len(n.Indent)}, at.Line, false, false, b)
+  out.Layout = n.Layout
+  out
+end
+
+defn reindented(changes, continues, typing, b)
+  (** The buffer with the changes of indent of indent.Plan, {Line, Indent, Old}, as one step of undo, or as the last step of typing when it
+      continues it. The cursor keeps its place in the words of its line, and goes to the end of the indent from inside it. *)
+  if value.Len(changes) == 0
+    return b
+  end
+  r = b.Rope
+  cursor = b.Cursor
+  for c in list.Reverse(changes)
+    start = rope.LineStart(c.Line, r)
+    r = rope.Insert(start, str.Repeat(c.Indent, " "), rope.Delete(start, start + c.Old, r))
+    if c.Line == cursor.Line
+      cursor = {Line: cursor.Line, Column: if cursor.Column <= c.Old c.Indent else cursor.Column + c.Indent - c.Old end}
+    end
+  end
+  edit(r, cursor, changes[1].Line, continues, typing, b)
+end
+
+(** The number of spaces and tabs that line n starts with. *)
+leadingWidth(n, b) = value.Len(leadingOf(n, width(n, b), b))
+
+defn Indent(b)
+  (** In a file of Cesia, the statement of the line of the cursor, or every statement with a line in the selection, at the place cesia fmt gives
+      it: its first line two spaces in for each block it is in, the lines that go on with it moved as much, a line inside a text as it is (see
+      indent.Plan); a blank line of the cursor goes where a line typed there would start, and the cursor from inside the indent to its end. One
+      step of undo. A selection that ends at the start of a line leaves that line out. In another file, nothing changes.
+
+        rope.Text(Indent(Place(2, 0, Of("if a\nb\nend", "a.ce"))).Rope) --> "if a\n  b\nend" *)
+  if not indent.IsCesia(b)
+    return b
+  end
+  e = ends(b)
+  here = b.Cursor.Line
+  changes = if not value.IsMissing(e) and before(e.First, e.Last)
+    last = if e.Last.Column == 0 and e.Last.Line > e.First.Line e.Last.Line - 1 else e.Last.Line end
+    indent.Plan(e.First.Line, last, b)
+  else if str.Trim(line(here, b)) == ""
+    want = indent.Wanted(here, b)
+    if want == leadingWidth(here, b) and not str.Contains("\t", line(here, b)) [] else [{Line: here, Indent: want, Old: leadingWidth(here, b)}] end
+  else
+    indent.Plan(here, here, b)
+  end
+  if value.Len(changes) > 0
+    reindented(changes, false, false, b)
+  else if b.Cursor.Column < leadingWidth(here, b)
+    moved({Line: here, Column: leadingWidth(here, b)}, b)
+  else
+    b
+  end
+end
+
+(** The words that, typed at the start of a line of Cesia, change its place: end and else close or go on with a block, then goes on with a
+    statement, and a closing bracket ends one. *)
+isElectric(w) = w == "end" or w == "else" or w == "then" or w == ")" or w == "]" or w == "}"
+
+defn headOf(words)
+  (** The first token of a line after its spaces: its first name, or its first other character, or "". *)
+  cs = list.DropWhile(c -> c == " " or c == "\t", str.Chars(words))
+  if value.Len(cs) == 0
+    return ""
+  end
+  if isWord(cs[1]) str.Join("", list.TakeWhile(isWord, cs)) else cs[1] end
+end
+
+defn Electric(typed, b)
+  (** In a file of Cesia, after typed was typed before the cursor: when it makes the first token of the line end, else, then or a closing
+      bracket, or one no longer, and the cursor is at that token or after its arrow, the line goes to the place a line typed there gets (see
+      indent.Wanted), in the same step of undo as the typing. In another file, or anywhere else, nothing changes.
+
+        rope.Text(Electric("d", Place(3, 5, Of("if a\n  b\n  end", "a.ce"))).Rope) --> "if a\n  b\nend" *)
+  at = b.Cursor
+  n = value.Len(typed)
+  if not indent.IsCesia(b) or n == 0 or at.Column < n
+    return b
+  end
+  words = line(at.Line, b)
+  cs = str.Chars(words)
+  head = list.TakeWhile(c -> c == " " or c == "\t", cs)
+  near = list.Skip(value.Len(head), list.Take(at.Column, cs))
+  was = headOf(str.Join("", list.Concat(list.Take(at.Column - n, cs), list.Skip(at.Column, cs))))
+  now = headOf(words)
+  rest = list.Skip(value.Len(str.Chars(now)), near)
+  if not (isElectric(now) or isElectric(was)) or not list.All([c == " " or c == "-" or c == ">" for c in rest])
+    return b
+  end
+  if str.Contains("\t", str.Join("", head))
+    return b
+  end
+  want = indent.Wanted(at.Line, b)
+  if want == value.Len(head)
+    b
+  else
+    reindented([{Line: at.Line, Indent: want, Old: value.Len(head)}], true, b.Typing, b)
+  end
+end
 
 defn DeleteBefore(b)
   (** The character before the cursor deleted, or the line end before it if it is at the start of a line, which joins the two lines. At the
@@ -455,6 +570,7 @@ defn travel(h, s, cursor, line, b)
   b.Wanted = missing
   b.Typing = false
   b.Colors = color.ForgetFrom(line, b.Colors)
+  b.Layout = indent.Forget(line, b)
   b
 end
 

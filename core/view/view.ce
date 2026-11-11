@@ -200,25 +200,10 @@ defn guessed(top, last, b)
   {From: top, States: states}
 end
 
-(** The states guessed for the screen of a buffer, or missing when its colors are known: a state from before this field has none. *)
-guessOf(b) = match b
-  {Guess: g} -> g
-  else -> missing
-end
+guessOf(b) = color.GuessOf(b)   (** The states guessed for the screen of a buffer, or missing: see color.GuessOf. *)
 
-defn stateAt(n, b)
-  (** The state at the start of line n of a buffer: the one known, else the one guessed for its screen, else the first. *)
-  colors = b.Colors
-  if n <= colors.Known
-    return color.StartOf(n, colors)
-  end
-  g = guessOf(b)
-  if not value.IsMissing(g) and n >= g.From and n < g.From + value.Len(g.States)
-    g.States[n - g.From + 1]
-  else
-    color.FirstState
-  end
-end
+(** The state at the start of line n of a buffer: the one known, else the one guessed for its screen, else the first. *)
+stateAt(n, b) = color.StateAt(n, b.Colors, guessOf(b))
 
 defn Colouring(state)
   (** Does a pane show a place whose colors are still guessed? Then the editor ticks, and each tick reads ColorBatch() lines more of them. *)

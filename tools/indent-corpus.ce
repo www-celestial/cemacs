@@ -1,0 +1,117 @@
+(** The indent of Cesia that Cemacs computes, against the files of a folder that cesia fmt has formatted, line by line: for each line, Tab, as
+    indent.Plan reads it from its own anchor, must leave it where it is, and the place that Enter and the first word typed would give it,
+    indent.Wanted, is compared with the place it has. It prints the lines where Tab would move a line, which are bugs of one side, the lines where
+    the place of a line being typed differs, and the counts. Each line is also read as typing reads it, from the reading that Enter at the end of
+    the line above kept, which must give what the reading from the anchor gives. The exit code is 1 when Tab would move a line or the two
+    readings differ.
+    cesia run --allow read tools/indent-corpus.ce [--typed] FOLDER...: --typed prints the lines where a line typed lands elsewhere too.
+    tools/indent-corpus.sh formats copies first; it writes the std of this Cesia with --write-std FOLDER, under --allow write. *)
+use core/color
+use core/indent
+use src/rope
+use std/cesia
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn sources(p)
+  (** The files of Cesia under a folder, in order, without the dot files and folders, which cesia fmt leaves. *)
+  found = []
+  for name in list.Sort([n for n in sys.List(p)? if not str.StartsWith(".", n)])
+    sub = "$p/$name"
+    st = sys.Stat(sub)?
+    if st.IsDir and not st.IsLink
+      found = list.Concat(found, sources(sub)?)
+    else if str.EndsWith(".ce", name)
+      found = list.Append(sub, found)
+    end
+  end
+  result.Ok(found)
+end
+
+(** The spaces at the start of a line. *)
+spaces(line) = value.Len(list.TakeWhile(c -> c == " ", str.Chars(line)))
+
+defn checked(path, typed)
+  (** The counts of a file, {Lines, Moved, Guessed, Drifted}, after printing its lines that differ. *)
+  src = sys.Read(path)?
+  lines = str.Split("\n", src)
+  count = value.Len(lines)
+  b = {Rope: rope.Of(src), Path: path, Colors: color.ColoredTo(count, n -> lines[n], color.BlankColors()), Guess: missing}
+  moved = 0
+  guessed = 0
+  drifted = 0
+  chained = b
+  for n in 1..count
+    (* As Enter at the end of the line above keeps it: the reading of this line goes on from there. *)
+    if n > 1
+      chained.Layout = indent.NewLine({Line: n - 1, Column: value.Len(str.Chars(lines[n - 1]))}, chained).Layout
+      if indent.Wanted(n, chained) != indent.Wanted(n, b)
+        drifted += 1
+        io.Print("$(path):$(n): the reading kept by Enter gives $(indent.Wanted(n, chained)), from the anchor $(indent.Wanted(n, b))")
+      end
+    end
+    plan = indent.Plan(n, n, b)
+    if value.Len(plan) > 0
+      moved += 1
+      io.Print("$(path):$(n): Tab moves line $(plan[1].Line) from $(plan[1].Old) to $(plan[1].Indent): $(lines[n])")
+    end
+    if str.Trim(lines[n]) != ""
+      want = indent.Wanted(n, b)
+      if want != spaces(lines[n])
+        guessed += 1
+        if typed
+          io.Print("$(path):$(n): typed at $(want), not $(spaces(lines[n])): $(lines[n])")
+        end
+      end
+    end
+  end
+  result.Ok({Lines: count, Moved: moved, Guessed: guessed, Drifted: drifted})
+end
+
+defn written(folder)
+  (** Writes the sources of the packages of the std that this Cesia carries into a folder, one file each. *)
+  sys.Mkdir(folder)?
+  for l in cesia.Libraries()
+    sys.Write("$folder/$(l.Name).ce", l.Source)?
+  end
+  result.Ok(missing)
+end
+
+defn main()
+  (** Checks the folders of the arguments, or writes the sources of the std with --write-std FOLDER. *)
+  if value.Len(sys.Args) == 2 and sys.Args[1] == "--write-std"
+    return written(sys.Args[2])
+  end
+  typed = "--typed" in sys.Args
+  folders = [a for a in sys.Args if not str.StartsWith("--", a)]
+  total = 0
+  moved = 0
+  guessed = 0
+  drifted = 0
+  files = 0
+  for f in folders
+    for path in sources(f)?
+      r = checked(path, typed)?
+      total += r.Lines
+      moved += r.Moved
+      guessed += r.Guessed
+      drifted += r.Drifted
+      files += 1
+    end
+  end
+  io.Print("$files files, $total lines: Tab keeps $(total - moved) ($moved moved); a line typed lands where it is in $(total - guessed) ($guessed elsewhere); the reading kept by Enter agrees on $(total - drifted)")
+  if moved > 0 or drifted > 0
+    sys.Exit(1)
+  end
+  result.Ok(missing)
+end
+
+done = main()
+if result.IsErr(done)
+  io.Print(done.Error)
+  sys.Exit(2)
+end

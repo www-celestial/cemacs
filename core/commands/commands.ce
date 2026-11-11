@@ -4,6 +4,7 @@
 use src/rope
 use src/sdl
 use core/files
+use core/indent
 use core/keys
 use core/lists
 use core/panes
@@ -159,9 +160,24 @@ typed(words, state) = replacing(b -> text.InsertWords(words, b), state)
 DeleteBefore(state) = deleting(text.DeleteBefore, state)
 (** The character after the cursor deleted, or the selection. *)
 DeleteAfter(state) = deleting(text.DeleteAfter, state)
-(** A line end with the indent of the line, in place of the selection. *)
+(** A line end in place of the selection: in a file of Cesia, the new line starts where cesia fmt puts it; elsewhere with the indent of the line.
+    See text.NewLine. *)
 NewLine(state) = replacing(text.NewLine, state)
-Tab(state) = typed(config(state).TabText(), state)   (** The text of a tab, in place of the selection. *)
+
+defn Tab(state)
+  (** In a file of Cesia, the line of the cursor, or the selected lines, put at the place cesia fmt gives them, and the mark ended: see
+      text.Indent. Elsewhere, the text of a tab, in place of the selection. *)
+  b = current(state)
+  if indent.IsCesia(b)
+    put(unmarked(text.Indent(b)), state)
+  else
+    typed(config(state).TabText(), state)
+  end
+end
+
+(** Words typed from the keyboard at the cursor, in place of the selection: in a file of Cesia, a word that closes or goes on with a block at
+    the start of a line moves the line to its place, see text.Electric. *)
+keyed(words, state) = replacing(b -> text.Electric(words, text.InsertWords(words, b)), state)
 
 (** The undone step back, and the mark ended: left where it was, it would select a text the person never chose. *)
 Undo(state) = put(unmarked(text.Undo(current(state))), state)
@@ -1226,7 +1242,7 @@ defn onText(event, state)
   else
     s.Chain = false
     s.Buffers[state.Current].Free = false
-    typed(event.Text, s)
+    keyed(event.Text, s)
   end
 end
 

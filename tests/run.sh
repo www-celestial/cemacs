@@ -6,6 +6,8 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 cesia test .
 cesia test . --no-spec
 cesia run tests/color-std.ce
+# Tab and Enter give each line of Cemacs and of the std of Cesia the indent that cesia fmt gives it.
+tools/indent-corpus.sh --std .
 # src/ui needs no permission and no window: it uses only the packages of std/ that touch nothing outside.
 ! grep "^use " src/ui/ui.ce | grep -qvE "^use std/(list|math|value|text|dict)$"
 [ "$(cesia run tests/ui-pure.ce; echo "exit $?")" = "$(cat tests/ui-pure.expected)" ]

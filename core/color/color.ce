@@ -182,6 +182,34 @@ chunkLines() = 1024
       StartOf(1, BlankColors()) --> FirstState *)
 StartOf(n, colors) = colors.Chunks[math.Div(n - 1, chunkLines()) + 1][math.Mod(n - 1, chunkLines()) + 1]
 
+defn StateAt(n, colors, guess)
+  (** The state at the start of line n: the one known, else the one guessed for a screen, {From, States} or missing, else the first, as if no
+      comment or text opened in the lines above.
+
+        StateAt(3, BlankColors(), missing) --> FirstState *)
+  if n <= colors.Known
+    return StartOf(n, colors)
+  end
+  if not value.IsMissing(guess) and n >= guess.From and n < guess.From + value.Len(guess.States)
+    guess.States[n - guess.From + 1]
+  else
+    FirstState
+  end
+end
+
+(** The states guessed for the screen of a buffer, or missing when its colors are known: a state from before this field has none.
+
+      GuessOf({Colors: BlankColors()}) --> missing *)
+GuessOf(b) = match b
+  {Guess: g} -> g
+  else -> missing
+end
+
+(** Is a state out of any comment and text?
+
+      IsCode(FirstState) --> true *)
+IsCode(state) = state.Comment == 0 and not state.Text
+
 (** Can this line change the state? Only a quote or a comment mark can open or close a text or a comment. *)
 mayChange(words) = str.Contains("\"", words) or str.Contains("(*", words) or str.Contains("*)", words)
 

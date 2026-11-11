@@ -1,0 +1,828 @@
+(** The indent of Cesia code, by the one rule that cesia fmt applies: a line that starts a statement is indented two spaces for each block it is
+    in, and a line that goes on with a statement (inside brackets, after a token that asks for more, or inside a comment) moves with the line it
+    continues; a line that starts inside a text keeps all it holds. Enter, Tab and the words that close or go on with a block use it in a Cesia
+    buffer. Where fmt keeps a line as it is written, a line being typed gets a place of its own: see Wanted.
+    A line is read as fmt reads it, from a line above it at the left margin that starts a statement, its anchor: the reading never starts more
+    than LookBack() lines up, so one line costs the lines of the definition it is in, never the whole file. The colors say if that line starts
+    in code. A file whose lines at the left margin are more than LookBack() lines apart is read from the indent of the line LookBack() lines up. *)
+use core/color
+use src/rope
+use std/list
+use std/math
+use std/text as str
+use std/value
+
+(** Is a buffer a file of Cesia? Its path ends with .ce.
+
+      IsCesia({Path: "a.ce"}) --> true
+      IsCesia({Path: missing}) --> false *)
+IsCesia(b) = not value.IsMissing(b.Path) and str.EndsWith(".ce", b.Path)
+
+(** How many lines up the reading of a line looks for its anchor, at most. A function: a variable added under --watch is read before it has a
+    value. *)
+LookBack() = 2000
+
+(* ---- One line read as cesia fmt reads it: src/tools/fmt.ce of Cesia, scan and shaped. *)
+
+(** A byte of a name. *)
+nameByte(c) = (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95 or c >= 128
+
+(** The two-byte operators, read as one token: == != <= >= += -= *= /= -> and .. *)
+isPair(a, c) = (c == 61 and (a == 61 or a == 33 or a == 60 or a == 62 or a == 43 or a == 45 or a == 42 or a == 47)) or (a == 45 and c == 62) or (a == 46 and c == 46)
+
+(** The words that open a block that end closes, when they stand out of brackets. *)
+isOpener(t) = t == "defn" or t == "for" or t == "while" or t == "match" or t == "if" or t == "struct" or t == "interface"
+
+(** The last tokens of a line after which the statement goes on, on the next line. *)
+isGoing(t) = t == "," or t == "." or t == "+" or t == "-" or t == "*" or t == "/" or t == "^" or t == "==" or t == "!=" or t == "<" or t == ">" or
+  t == "<=" or t == ">=" or t == "and" or t == "or" or t == "not" or t == "in" or t == ".." or t == "then"
+
+(** The state at the start of a file, and at the start of an anchor: in no comment, text or bracket, in no block, and no statement goes on. A
+    function: a variable added under --watch is read before it has a value. *)
+startState() = {Comment: 0, Stack: [], Opens: [], Blocks: [], Continued: false}
+
+(** The earlier of two byte positions, either of which may be missing. *)
+earliest(a, c) = if value.IsMissing(a) c else if value.IsMissing(c) a else list.Min(a, c) end
+
+(** Where a line starts, from the state at its start: "comment", "text" or "code". *)
+placeOf(comment, stack) = if comment > 0 "comment" else if value.Len(stack) > 0 "text" else "code" end
+
+defn lexed(line, number, st, every = false)
+  (** fmt's scan of line number, from the state at its start: {Where, Out, Open, Inner, Close, Unmatched, Tokens, State}. Where and Out are
+      where the line starts and where its line end is; Open and Close how many brackets are open at its start and at its end, Inner the
+      innermost one open at its start or missing; Unmatched how many brackets it closes that were not open; Tokens the tokens of the line out of
+      any bracket, text or comment, among them the brackets that open and close at that level, and a text as one "; with every, the tokens
+      inside brackets too. State has the comment, text and brackets at its end: Opens holds each bracket open, {Line, Byte}, for the place of a
+      line that goes on inside it. What the loop reads at each byte is kept in plain numbers, as a call costs more than the byte. *)
+  b = str.Bytes(line)
+  n = value.Len(b)
+  comment = st.Comment
+  stack = st.Stack
+  opens = st.Opens
+  depth = value.Len(stack)
+  inText = depth > 0 and list.Last(stack) == 0
+  level = value.Len(opens)
+  where = placeOf(comment, stack)
+  tokens = []
+  unmatched = 0
+  opening = 0
+  closing = 0
+  quoting = 0
+  escaping = 0
+  dollar = 0
+  parens = 0
+  shut = 0
+  squares = 0
+  squared = 0
+  braces = 0
+  braced = 0
+  i = 1
+  while i <= n
+    c = b[i]
+    if comment > 0
+      if c == 40 and i < n and b[i + 1] == 42
+        comment += 1
+        i += 2
+      else if c == 42 and i < n and b[i + 1] == 41
+        comment -= 1
+        i += 2
+      else
+        (* The next byte that can matter, found natively and kept until passed: the words of a comment are read at once. *)
+        if opening < i
+          opening = earliest(str.ByteFind("(*", i, line), n + 1)
+        end
+        if closing < i
+          closing = earliest(str.ByteFind("*)", i, line), n + 1)
+        end
+        i = list.Min(opening, closing)
+      end
+    else if inText
+      if c != 92 and c != 36 and c != 34
+        if quoting < i
+          quoting = earliest(str.ByteFind("\"", i, line), n + 1)
+        end
+        if escaping < i
+          escaping = earliest(str.ByteFind("\\", i, line), n + 1)
+        end
+        if dollar < i
+          dollar = earliest(str.ByteFind("$", i, line), n + 1)
+        end
+        i = list.Min(list.Min(quoting, escaping), dollar)
+      else if c == 92 or (c == 36 and i < n and b[i + 1] == 36)
+        i += 2
+      else if c == 36 and i < n and b[i + 1] == 40
+        stack = list.Append(1, stack)
+        depth += 1
+        inText = false
+        i += 2
+      else
+        if c == 34
+          stack = list.DropLast(1, stack)
+          depth -= 1
+          inText = depth > 0 and stack[depth] == 0
+        end
+        i += 1
+      end
+    else if c == 32 or c == 9 or c == 13
+      i += 1
+    else if level > 0 and depth == 0 and not every and c != 40 and c != 41 and c != 91 and c != 93 and c != 123 and c != 125 and c != 34
+      (* Inside brackets only brackets, texts and comments matter to fmt: the next one is found natively, and kept until passed. *)
+      if parens < i
+        parens = earliest(str.ByteFind("(", i, line), n + 1)
+      end
+      if shut < i
+        shut = earliest(str.ByteFind(")", i, line), n + 1)
+      end
+      if squares < i
+        squares = earliest(str.ByteFind("[", i, line), n + 1)
+      end
+      if squared < i
+        squared = earliest(str.ByteFind("]", i, line), n + 1)
+      end
+      if braces < i
+        braces = earliest(str.ByteFind("{", i, line), n + 1)
+      end
+      if braced < i
+        braced = earliest(str.ByteFind("}", i, line), n + 1)
+      end
+      if quoting < i
+        quoting = earliest(str.ByteFind("\"", i, line), n + 1)
+      end
+      i = list.Min(list.Min(list.Min(parens, shut), list.Min(squares, squared)), list.Min(list.Min(braces, braced), quoting))
+    else if c == 40 and i < n and b[i + 1] == 42
+      comment = 1
+      i += 2
+    else if c == 34
+      if depth == 0 and (every or level == 0)
+        tokens = list.Append("\"", tokens)
+      end
+      stack = list.Append(0, stack)
+      depth += 1
+      inText = true
+      i += 1
+    else if depth > 0
+      (* In the code of a $( ) in a text. *)
+      top = stack[depth]
+      if c == 40
+        stack[depth] = top + 1
+      else if c == 41 and top == 1
+        stack = list.DropLast(1, stack)
+        depth -= 1
+        inText = depth > 0 and stack[depth] == 0
+      else if c == 41
+        stack[depth] = top - 1
+      end
+      i += 1
+    else if (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95 or c >= 128
+      j = i + 1
+      while j <= n and (((b[j] >= 97 and b[j] <= 122) or (b[j] >= 65 and b[j] <= 90)) or (b[j] >= 48 and b[j] <= 57) or b[j] == 95 or b[j] >= 128)
+        j += 1
+      end
+      if every or level == 0
+        tokens = list.Append(str.ByteSlice(i, j - 1, line), tokens)
+      end
+      i = j
+    else
+      size = if i < n and isPair(c, b[i + 1]) 2 else 1 end
+      if c == 41 or c == 93 or c == 125
+        if level > 0
+          opens = list.DropLast(1, opens)
+          level -= 1
+        else
+          unmatched += 1
+        end
+      end
+      if every or level == 0
+        tokens = list.Append(if size == 1 str.ByteSlice(i, i, line) else str.ByteSlice(i, i + 1, line) end, tokens)
+      end
+      if c == 40 or c == 91 or c == 123
+        opens = list.Append({Line: number, Byte: i}, opens)
+        level += 1
+      end
+      i += size
+    end
+  end
+  {Where: where, Out: placeOf(comment, stack), Open: value.Len(st.Opens), Inner: if value.Len(st.Opens) > 0 list.Last(st.Opens) else missing end,
+    Close: level, Unmatched: unmatched, Tokens: tokens, State: {Comment: comment, Stack: stack, Opens: opens, Blocks: st.Blocks, Continued: st.Continued}}
+end
+
+defn indentOf(line)
+  (** The spaces at the start of a line, or missing when a tab is among them. *)
+  k = 0
+  for c in str.Bytes(line)
+    if c == 9
+      return missing
+    else if c != 32
+      return k
+    end
+    k += 1
+  end
+  k
+end
+
+defn hasFrom(t, from, tokens)
+  (** Is t among the tokens from the one at from on? *)
+  for k in from..value.Len(tokens)
+    if tokens[k] == t
+      return true
+    end
+  end
+  false
+end
+
+defn opening(t, k, tokens)
+  (** Does the k-th token of a line open a block that end closes? An if after else or before the -> of a match arm opens none, nor a struct or
+      an interface written on one line. *)
+  if t == "if"
+    not ((k > 1 and tokens[k - 1] == "else") or hasFrom("->", k + 1, tokens))
+  else if t == "struct" or t == "interface"
+    not hasFrom("{", k + 1, tokens)
+  else
+    isOpener(t)
+  end
+end
+
+defn blocksAfter(blocks, tokens)
+  (** The blocks open after the tokens of a line, in their order: an opener adds one, an end closes the innermost one that end closes, with the
+      bodies above it. *)
+  out = blocks
+  for k in 1..value.Len(tokens)
+    t = tokens[k]
+    if t == "end"
+      j = value.Len(out)
+      while j > 0 and out[j] != "k"
+        j -= 1
+      end
+      out = if j == 0 [] else list.Take(j - 1, out) end
+    else if isOpener(t) and opening(t, k, tokens)
+      out = list.Append("k", out)
+    end
+  end
+  out
+end
+
+defn done(blocks)
+  (** The blocks after a statement that ended: the bodies of -> and = it was the statement of are over. *)
+  out = blocks
+  while value.Len(out) > 0 and list.Last(out) == "v1"
+    out = list.DropLast(1, out)
+  end
+  out
+end
+
+(** Is a line only spaces, tabs and line ends? *)
+isBlank(line) = str.Trim(line) == ""
+
+defn stepped(line, number, st)
+  (** Line number read by fmt's rule, from the state at its start: {Kind, Level, At, Tokens, Lexed, State}. Kind is "statement" for a line that
+      starts a statement, whose indent is 2 * Level; "continued" for one that goes on with a statement, inside brackets, after a token that asks
+      for more, or inside a comment; "text" for one that starts inside a text, which keeps all it holds; "blank" for one of spaces only. At is
+      the indent the line has, or missing when a tab is in it; State the state after the line. The blocks are each "k" for one that end closes,
+      "v0" and "v1" for the body of a -> or = at the end of a line, before and after its first line. *)
+  x = lexed(line, number, st)
+  tokens = x.Tokens
+  count = value.Len(tokens)
+  first = if count > 0 tokens[1] else missing end
+  last = if count > 0 tokens[count] else missing end
+  blank = isBlank(line)
+  blocks = st.Blocks
+  level = 0
+  kind = "continued"
+  if x.Where == "text"
+    kind = "text"
+  else if blank
+    kind = "blank"
+  else if x.Where == "code" and x.Open == 0 and not st.Continued and first != "then"
+    kind = "statement"
+    if count > 0
+      blocks = [if k == "v0" "v1" else k end for k in blocks]
+    end
+    dedent = (first == "end" or first == "else") and not (count > 1 and tokens[2] == "->")
+    level = list.Max([value.Len(blocks) - (if dedent 1 else 0 end), 0])
+  end
+  continued = st.Continued
+  if not blank
+    blocks = blocksAfter(blocks, tokens)
+    (* A statement ends at a line end out of brackets, texts and comments, after a token that doesn't ask for more. A line of comment only, with
+       no token, ends none. *)
+    ends = x.Close == 0 and x.Out == "code" and (count > 0 or x.Open > 0 or x.Where != "code")
+    if ends and (last == "->" or last == "=")
+      blocks = list.Append("v0", blocks)
+    else if ends and not isGoing(last)
+      blocks = done(blocks)
+    end
+    continued = x.Close > 0 or x.Out != "code" or (count > 0 and isGoing(last))
+  end
+  out = x.State
+  out.Blocks = blocks
+  out.Continued = continued
+  {Kind: kind, Level: level, At: indentOf(line), Tokens: tokens, Lexed: x, State: out}
+end
+
+(* ---- Where a reading starts *)
+
+(** The lines from first to last of a buffer, without their line ends but for the \r of a CRLF, read with one slice of the rope. *)
+linesOf(first, last, b) = str.Split("\n", rope.Slice(rope.LineStart(first, b.Rope), rope.LineEnd(last, b.Rope), b.Rope))
+
+(** The words that close or go on with a block or a statement when they start a line: a line that starts with one is no anchor. An end at the
+    left margin may close an if or a match written inside brackets, as in f(if a ... end), and the reading would start inside them. *)
+isGoingOn(w) = w == "end" or w == "else" or w == "then" or w == "and" or w == "or" or w == "not" or w == "in"
+
+defn firstWord(line)
+  (** The name that a line starts with, at its first byte, or missing. *)
+  n = str.ByteLength(line)
+  if n == 0
+    return missing
+  end
+  c = str.Byte(1, line)
+  if not nameByte(c) or (c >= 48 and c <= 57)
+    return missing
+  end
+  j = 1
+  while j < n and nameByte(str.Byte(j + 1, line))
+    j += 1
+  end
+  str.ByteSlice(1, j, line)
+end
+
+(** Does a line start in code, as the colors know it, or guess it for the screen, or else as if no comment or text opened above? *)
+inCode(n, b) = color.IsCode(color.StateAt(n, b.Colors, color.GuessOf(b)))
+
+defn leadsOn(line, n, b)
+  (** Does line n end its statement, open no block, and close no bracket it didn't open? Then a line at the left margin after it is out of any
+      block or bracket that it is in. *)
+  if isBlank(line)
+    return true
+  end
+  s = color.StateAt(n, b.Colors, color.GuessOf(b))
+  x = lexed(line, n, {Comment: s.Comment, Stack: if s.Text [0] else [] end, Opens: [], Blocks: [], Continued: false})
+  count = value.Len(x.Tokens)
+  last = if count > 0 x.Tokens[count] else missing end
+  x.Close == 0 and x.Unmatched == 0 and x.Out == "code" and not (count > 0 and (isGoing(last) or last == "->" or last == "=")) and not opensBlock(x.Tokens)
+end
+
+defn isCandidate(line, n, b)
+  (** Could line n start a statement out of any block: at the left margin, in code, starting with a name that doesn't close or go on with a
+      block or a statement, or with a comment? *)
+  w = firstWord(line)
+  if value.IsMissing(w) and not str.StartsWith("(*", line)
+    return false
+  end
+  (value.IsMissing(w) or not isGoingOn(w)) and inCode(n, b)
+end
+
+defn checked(k, lines, from, b)
+  (** Is the k-th of lines, line from + k - 1, an anchor? It is a candidate, and so is each line at the left margin right above it, up to the
+      first of them, and each of these lines comes after one that leads on: the start of the file, an end at the left margin, a line after which
+      a blank one comes, or the end of a comment. {Anchor, Next}: Next is the line to look at next when it is none, as the lines between fail
+      for the same reason. *)
+  j = k
+  while true
+    i = j - 1
+    blank = false
+    while i >= 1 and isBlank(lines[i])
+      i -= 1
+      blank = true
+    end
+    if i < 1
+      return {Anchor: from == 1, Next: 0}
+    end
+    above = lines[i]
+    number = from + i - 1
+    if not leadsOn(above, number, b)
+      return {Anchor: false, Next: i}
+    end
+    if str.Byte(1, above) == 32 or str.Byte(1, above) == 9
+      ends = blank or color.StateAt(number, b.Colors, color.GuessOf(b)).Comment > 0
+      return {Anchor: ends, Next: i}
+    end
+    if firstWord(above) == "end"
+      return {Anchor: true, Next: i}
+    end
+    if not isCandidate(above, number, b)
+      return {Anchor: false, Next: i}
+    end
+    j = i
+  end
+end
+
+defn approximate(line)
+  (** The state at the start of a line whose anchor is too far: in code, in as many blocks as its indent says. *)
+  at = indentOf(line)
+  out = startState()
+  out.Blocks = ["k" for i in 1..(if value.IsMissing(at) 0 else math.Div(at, 2) end)]
+  out
+end
+
+defn reading(n, b)
+  (** Where the reading of line n starts, {From, Lines, State}: the lines from From to n - 1, and the state at the start of From. From is the
+      nearest anchor above line n, looked for in 64 lines, then 512, then LookBack(): see checked. Else it is line 1 if it is no further, else the
+      line LookBack() lines up, read from its indent. *)
+  if n <= 1
+    return {From: 1, Lines: [], State: startState()}
+  end
+  for size in [64, 512, LookBack()]
+    from = list.Max([1, n - size])
+    lines = linesOf(from, n - 1, b)
+    k = value.Len(lines)
+    while k >= 1
+      if isCandidate(lines[k], from + k - 1, b)
+        c = checked(k, lines, from, b)
+        if c.Anchor
+          return {From: from + k - 1, Lines: list.Skip(k - 1, lines), State: startState()}
+        end
+        k = c.Next
+      else
+        k -= 1
+      end
+    end
+    if from == 1
+      return {From: 1, Lines: lines, State: startState()}
+    end
+  end
+  from = n - LookBack()
+  lines = linesOf(from, n - 1, b)
+  {From: from, Lines: lines, State: approximate(lines[1])}
+end
+
+(* ---- The reading *)
+
+(** What a reading keeps of a line: its number, its text, the state at its start, how fmt reads it, and where it starts. *)
+record(number, line, st, s) = {Line: number, Text: line, Start: st, Kind: s.Kind, Level: s.Level, At: s.At, Open: s.Lexed.Open,
+  Inner: s.Lexed.Inner, Where: s.Lexed.Where}
+
+(** The reading that Enter kept in a buffer, {Line, State, Group}, or missing: a buffer from before this field has none. *)
+keptOf(b) = match b
+  {Layout: kept} -> kept
+  else -> missing
+end
+
+defn Forget(line, b)
+  (** The reading kept in a buffer, if an edit from line on leaves it true: it reads the lines above its own. Like the colors, it is forgotten
+      from the line of each edit, and Emacs keeps its syntax-ppss cache in the same way.
+
+        Forget(3, {Layout: {Line: 4, State: missing, Group: []}}) --> missing *)
+  kept = keptOf(b)
+  if value.IsMissing(kept) or kept.Line > line missing else kept end
+end
+
+(** How many lines on from a kept reading the reading of a line starts there, at most. *)
+keptReach() = 256
+
+defn ran(n, b)
+  (** The reading of the lines above line n: {State, Group}, the state at the start of line n, and the lines of the statement that it may go on
+      with, from the line that starts it, each a record. It goes on from the reading that Enter kept, when that one is at most keptReach()
+      lines above. *)
+  kept = keptOf(b)
+  near = not value.IsMissing(kept) and kept.Line <= n and n - kept.Line <= keptReach()
+  r = if near {From: kept.Line, Lines: if n > kept.Line linesOf(kept.Line, n - 1, b) else [] end, State: kept.State} else reading(n, b) end
+  st = r.State
+  group = if near kept.Group else [] end
+  for k in 1..value.Len(r.Lines)
+    number = r.From + k - 1
+    s = stepped(r.Lines[k], number, st)
+    if s.Kind == "statement"
+      group = []
+    end
+    group = list.Append(record(number, r.Lines[k], st, s), group)
+    st = s.State
+  end
+  {State: st, Group: group}
+end
+
+(* ---- The place of a line being typed *)
+
+defn kindOfBlank(st)
+  (** How fmt would read a line that starts in this state, once it holds a word. *)
+  where = placeOf(st.Comment, st.Stack)
+  if where == "text"
+    "text"
+  else if where == "comment" or value.Len(st.Opens) > 0 or st.Continued
+    "continued"
+  else
+    "statement"
+  end
+end
+
+(** The number of characters of the first bytes of a line, up to byte k: those that start a character. *)
+charsBefore(k, line) = value.Len([c for c in list.Take(k - 1, str.Bytes(line)) if c < 128 or c >= 192])
+
+(** The spaces at the start of a line, a tab counting as one. *)
+spacesOf(line) = value.Len(list.TakeWhile(c -> c == 32 or c == 9, str.Bytes(line)))
+
+defn lastBefore(group)
+  (** The last line of a group that holds more than spaces, or missing. *)
+  k = value.Len(group)
+  while k >= 1
+    if group[k].Kind != "blank"
+      return group[k]
+    end
+    k -= 1
+  end
+  missing
+end
+
+defn commentOpening(line)
+  (** Where a comment that a line leaves open starts on it, {Column, Words, Doc}: the column of the words after its last opening of a comment,
+      or three columns after that opening when no word follows it there, and whether it documents, as an opening with two stars does. Missing for
+      a line with no opening. *)
+  at = missing
+  k = str.ByteFind("(*", 1, line)
+  while not value.IsMissing(k)
+    at = k
+    k = str.ByteFind("(*", k + 2, line)
+  end
+  if value.IsMissing(at)
+    return missing
+  end
+  n = str.ByteLength(line)
+  j = at + 2
+  doc = j <= n and str.Byte(j, line) == 42
+  while j <= n and str.Byte(j, line) == 42
+    j += 1
+  end
+  while j <= n and str.Byte(j, line) == 32
+    j += 1
+  end
+  {Column: if j > n charsBefore(at, line) + 3 else charsBefore(j, line) end, Doc: doc}
+end
+
+defn commentPlace(group)
+  (** The place of a line inside a comment, from the lines of its statement above it: under the words of the line above if it is inside the
+      comment too, else under the words after the opening of the comment. In a comment that documents, the line after a blank one under the
+      first words goes two columns further in, where its examples are. *)
+  above = lastBefore(group)
+  if value.IsMissing(above)
+    return 0
+  end
+  k = value.Len(group)
+  while k > 1 and group[k].Where == "comment"
+    k -= 1
+  end
+  open = commentOpening(group[k].Text)
+  column = if value.IsMissing(open) spacesOf(above.Text) else open.Column end
+  at = if above.Where == "comment" spacesOf(above.Text) else column end
+  if list.Last(group).Kind == "blank" and at == column and not value.IsMissing(open) and open.Doc
+    column + 2
+  else
+    at
+  end
+end
+
+defn textOf(n, group, b)
+  (** The text of line n as the reading has it: the part before the cursor for the line that Enter splits. *)
+  for g in group
+    if g.Line == n
+      return g.Text
+    end
+  end
+  rope.Line(n, b.Rope)
+end
+
+defn bracketPlace(open, first, group, b)
+  (** The place of a line inside a bracket open, {Line, Byte}: under the bracket's line when the line starts by closing it, else two columns in
+      from that line. *)
+  line = textOf(open.Line, group, b)
+  if first == ")" or first == "]" or first == "}"
+    return spacesOf(line)
+  end
+  spacesOf(line) + 2
+end
+
+defn tokensIn(g, inner)
+  (** The tokens of a line of the reading at every depth of brackets, but only those after the bracket inner on the line that opens it. *)
+  if g.Line == inner.Line
+    lexed(str.ByteSlice(inner.Byte + 1, str.ByteLength(g.Text), g.Text), g.Line, startState(), every = true).Tokens
+  else
+    lexed(g.Text, g.Line, g.Start, every = true).Tokens
+  end
+end
+
+defn opensBlock(tokens)
+  (** Do these tokens leave a block open, or start with else, whose body follows? *)
+  if value.Len(tokens) > 0 and tokens[1] == "else"
+    return true
+  end
+  count = 0
+  for k in 1..value.Len(tokens)
+    t = tokens[k]
+    if t == "end"
+      count -= 1
+    else if isOpener(t) and opening(t, k, tokens)
+      count += 1
+    end
+  end
+  count > 0
+end
+
+(** Does a line end with a token after which a body follows, -> or =? *)
+endsBody(tokens) = value.Len(tokens) > 0 and (list.Last(tokens) == "->" or list.Last(tokens) == "=")
+
+defn openerOf(group, inner)
+  (** The indent of the line inside the bracket inner whose block a line that starts with end or else closes or goes on with, or missing. *)
+  need = 1
+  k = value.Len(group)
+  while k >= 1 and group[k].Line >= inner.Line
+    tokens = tokensIn(group[k], inner)
+    j = value.Len(tokens)
+    while j >= 1
+      t = tokens[j]
+      if t == "end"
+        need += 1
+      else if isOpener(t) and opening(t, j, tokens)
+        need -= 1
+        if need == 0
+          return spacesOf(group[k].Text)
+        end
+      end
+      j -= 1
+    end
+    k -= 1
+  end
+  missing
+end
+
+defn beforeOf(group, g)
+  (** The last line of a group above g that holds more than spaces, or missing. *)
+  k = value.Len(group)
+  while k >= 1 and group[k].Line >= g.Line
+    k -= 1
+  end
+  lastBefore(list.Take(k, group))
+end
+
+defn insidePlace(r, words, b)
+  (** The place of a line inside brackets, whose tokens at every depth are words: as the blocks written inside them go, else as the line
+      above inside the same bracket, else from the bracket. *)
+  st = r.State
+  inner = list.Last(st.Opens)
+  above = lastBefore(r.Group)
+  first = if value.Len(words) > 0 words[1] else missing end
+  if first == ")" or first == "]" or first == "}" or value.IsMissing(above)
+    return bracketPlace(inner, first, r.Group, b)
+  end
+  if first == "end" or (first == "else" and not (value.Len(words) > 1 and words[2] == "->"))
+    at = openerOf(r.Group, inner)
+    if not value.IsMissing(at)
+      return at
+    end
+  end
+  tokens = tokensIn(above, inner)
+  if opensBlock(tokens) or endsBody(tokens)
+    return spacesOf(above.Text) + 2
+  end
+  same = above.Where == "code" and value.Equal(above.Inner, inner)
+  before = beforeOf(r.Group, above)
+  if same and not value.IsMissing(before) and before.Line >= inner.Line and endsBody(tokensIn(before, inner)) and not (value.Len(tokens) > 0 and isGoing(list.Last(tokens)))
+    return spacesOf(before.Text)
+  end
+  if same spacesOf(above.Text) else bracketPlace(inner, first, r.Group, b) end
+end
+
+defn guessed(r, line, number, b)
+  (** The place of a line that fmt keeps as it is written, from the reading r of the lines above it: see Wanted. *)
+  st = r.State
+  above = lastBefore(r.Group)
+  where = placeOf(st.Comment, st.Stack)
+  if where == "text"
+    return if value.IsMissing(above) 0 else spacesOf(above.Text) end
+  end
+  if where == "comment"
+    return commentPlace(r.Group)
+  end
+  if value.Len(st.Opens) > 0
+    return insidePlace(r, lexed(line, number, st, every = true).Tokens, b)
+  end
+  start = if value.Len(r.Group) > 0 r.Group[1] else missing end
+  if value.IsMissing(start)
+    return 0
+  end
+  (* After a token that asks for more, or before a then: two columns in from the statement, or as the line above that goes on with it out of
+     brackets. *)
+  k = value.Len(r.Group)
+  while k > 1
+    g = r.Group[k]
+    if g.Kind == "continued" and g.Open == 0 and g.Where == "code"
+      return spacesOf(g.Text)
+    end
+    k -= 1
+  end
+  spacesOf(start.Text) + 2
+end
+
+defn placeIn(r, line, number, b)
+  (** The place of a line being typed, read after r. *)
+  s = stepped(line, number, r.State)
+  kind = if s.Kind == "blank" kindOfBlank(r.State) else s.Kind end
+  if kind == "statement"
+    if s.Kind == "blank" 2 * value.Len(r.State.Blocks) else 2 * s.Level end
+  else
+    guessed(r, line, number, b)
+  end
+end
+
+defn Wanted(n, b, line = missing)
+  (** The indent, in spaces, of line n of a Cesia buffer while it is being typed, or of the text given in its place: the one fmt gives a line
+      that starts a statement, two spaces for each block it is in, so one less for a line that starts with end or else. Where fmt keeps a line
+      as it is written, a place of its own. Inside brackets: a block written in them, as in f(if a or fiber.Spawn(defn (), is laid out from the
+      line that opens it, its end and else under that line; else the line goes as the line above inside the same bracket, else two columns in
+      from the line of the bracket, and the bracket that closes it under that line. After a token that asks for more, or before a then: two
+      columns in from the statement, or as the line above that goes on with it. Inside a comment: under the words after its opening, then as
+      the line above, and two columns further in after a blank line of a comment that documents, where its examples go. Inside a text: as the
+      line above.
+
+        Wanted(2, {Rope: rope.Of("if a\nb"), Path: "a.ce", Colors: color.BlankColors()}) --> 2
+        Wanted(3, {Rope: rope.Of("if a\n  b\nend"), Path: "a.ce", Colors: color.BlankColors()}) --> 0 *)
+  text = if value.IsMissing(line) rope.Line(n, b.Rope) else line end
+  placeIn(ran(n, b), text, n, b)
+end
+
+defn NewLine(at, b)
+  (** What Enter does at a position {Line, Column} of a Cesia buffer, read as fmt reads it: {Before, After, Indent, Layout}. Before is the number of
+      spaces and tabs before the position that go, since no line ends with spaces, and After of those after it, which the indent of the new line
+      replaces. Indent is the spaces that start the new line: its place, see Wanted. Inside a text, where spaces are part of it, Before and After
+      are 0 and the new line starts with the spaces and tabs of the line, as in a file of another language. Layout is the reading of the lines
+      above the new line, for the buffer to keep, so that the next Enter and the words typed on that line start there: missing while the
+      colors are guessed. *)
+  line = rope.Line(at.Line, b.Rope)
+  r = ran(at.Line, b)
+  left = str.Join("", list.Take(at.Column, str.Chars(line)))
+  rest = str.Join("", list.Skip(at.Column, str.Chars(line)))
+  s = stepped(left, at.Line, r.State)
+  inText = placeOf(s.State.Comment, s.State.Stack) == "text"
+  before = if inText 0 else value.Len(list.TakeWhile(c -> c == " " or c == "\t", list.Reverse(str.Chars(left)))) end
+  after = if inText 0 else value.Len(list.TakeWhile(c -> c == " " or c == "\t", str.Chars(rest))) end
+  group = if s.Kind == "statement" [] else r.Group end
+  next = {State: s.State, Group: list.Append(record(at.Line, left, r.State, s), group)}
+  words = str.Join("", list.Skip(after, str.Chars(rest)))
+  {Before: before, After: after, Indent: if inText str.Join("", list.TakeWhile(c -> c == " " or c == "\t", str.Chars(left))) else str.Repeat(placeIn(next, words, at.Line + 1, b), " ") end,
+    Layout: if value.IsMissing(color.GuessOf(b)) {Line: at.Line + 1, State: next.State, Group: next.Group} else missing end}
+end
+
+(* ---- The places of whole statements *)
+
+(** The bytes of spaces and tabs at the start of a line. *)
+leading(line) = value.Len(list.TakeWhile(c -> c == 32 or c == 9, str.Bytes(line)))
+
+defn changesOf(group, first, last)
+  (** The changes of indent of a statement's lines, {Line, Indent, Old}: Old the bytes of spaces and tabs it starts with, Indent the spaces it
+      gets. The line that starts it goes to its level, and the lines that go on with it keep their place relative to it; a line in a text keeps
+      all it holds, and a blank line between first and last loses its spaces. *)
+  out = []
+  if value.Len(group) == 0 or list.Last(group).Line < first or group[1].Line > last
+    return out
+  end
+  head = group[1]
+  shift = if head.Kind != "statement" or value.IsMissing(head.At) 0 else 2 * head.Level - head.At end
+  for g in group
+    old = leading(g.Text)
+    if g.Kind == "statement"
+      want = 2 * g.Level
+      if want != old or value.IsMissing(g.At)
+        out = list.Append({Line: g.Line, Indent: want, Old: old}, out)
+      end
+    else if g.Kind == "continued"
+      if shift != 0 and not value.IsMissing(g.At)
+        out = list.Append({Line: g.Line, Indent: list.Max([0, g.At + shift]), Old: old}, out)
+      end
+    else if g.Kind == "blank"
+      if old > 0 and g.Line >= first and g.Line <= last
+        out = list.Append({Line: g.Line, Indent: 0, Old: old}, out)
+      end
+    end
+  end
+  out
+end
+
+defn Plan(first, last, b)
+  (** The changes of indent that cesia fmt makes to the lines of the statements that lines first to last are part of, in a Cesia buffer: a list
+      of {Line, Indent, Old}, Indent the spaces that line gets in place of its Old bytes of spaces and tabs, for the lines that change only. A
+      statement moves as a whole: its first line goes to two spaces for each block it is in, and the lines that go on with it keep their place
+      relative to it; a line inside a text keeps all it holds; a blank line between first and last loses its spaces.
+
+        Plan(2, 2, {Rope: rope.Of("if a\nb\nend"), Path: "a.ce", Colors: color.BlankColors()}) --> [{Line: 2, Indent: 2, Old: 0}] *)
+  r = ran(first, b)
+  st = r.State
+  group = r.Group
+  out = []
+  count = rope.LineCount(b.Rope)
+  number = first
+  batch = 64
+  while number <= count
+    upTo = list.Min(count, if number <= last last else number + batch - 1 end)
+    for line in linesOf(number, upTo, b)
+      s = stepped(line, number, st)
+      if s.Kind == "statement"
+        if number > last
+          return list.Concat(out, changesOf(group, first, last))
+        end
+        out = list.Concat(out, changesOf(group, first, last))
+        group = []
+      end
+      group = list.Append(record(number, line, st, s), group)
+      st = s.State
+      number += 1
+    end
+  end
+  list.Concat(out, changesOf(group, first, last))
+end

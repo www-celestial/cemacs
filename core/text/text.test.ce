@@ -151,3 +151,36 @@ isMarksKeptAbove() = same(linesOf(text.InsertWords("x", text.Place(3, 0, marked(
 isMarksMovedByANewLine() = same(linesOf(text.NewLine(text.Place(1, 1, marked("a\nb\nc")))), [3, 4])
 isMarksMovedByADeletedLine() = same(linesOf(text.DeleteBefore(text.Place(2, 0, marked("a\nb\nc")))), [2])
 isMarksBackAfterUndo() = same(linesOf(text.Undo(text.NewLine(text.Place(3, 1, marked("a\nb\nc"))))), [1, 2])
+
+(* In a file of Cesia, Enter, Tab and the words typed at the start of a line put the line where cesia fmt puts it; elsewhere nothing changes. *)
+cesiaAt(line, column, words) = text.Place(line, column, text.Of(words, "a.ce"))
+keyed(words, b) = list.Reduce((acc, c) -> text.Electric(c, text.InsertWords(c, acc)), b, str.Chars(words))
+isCesiaEnterOpensBlock() = allText(text.NewLine(cesiaAt(1, 4, "if a"))) == "if a\n  " and same(at(text.NewLine(cesiaAt(1, 4, "if a"))), [2, 2])
+isCesiaEnterSameLevel() = allText(text.NewLine(cesiaAt(2, 3, "if a\n  b"))) == "if a\n  b\n  "
+isCesiaEnterDropsSpacesAround() = allText(text.NewLine(cesiaAt(2, 4, "if a\n  b  c"))) == "if a\n  b\n  c" and same(at(text.NewLine(cesiaAt(2, 4, "if a\n  b  c"))), [3, 2])
+isCesiaEnterLeavesNoSpacesBehind() = allText(text.NewLine(text.NewLine(cesiaAt(1, 4, "if a")))) == "if a\n\n  "
+isCesiaEnterKeepsCrlf() = allText(text.NewLine(cesiaAt(1, 4, "if a\r\nend"))) == "if a\r\n  \r\nend"
+isCesiaEnterInTextAsBefore() = allText(text.NewLine(cesiaAt(1, 8, "  x = \"a b\""))) == "  x = \"a\n   b\""
+isCesiaEnterOneStep() = allText(text.Undo(text.NewLine(cesiaAt(2, 4, "if a\n  b  c")))) == "if a\n  b  c"
+isOtherEnterAsBefore() = allText(text.NewLine(text.Place(1, 4, text.Of("if a", "a.txt")))) == "if a\n" and allText(text.NewLine(text.Place(1, 3, text.Of("  x  ", "a.txt")))) == "  x\n    "
+isCesiaEnterKeepsReading() = not value.IsMissing(text.NewLine(cesiaAt(1, 4, "if a")).Layout)
+isReadingForgottenAbove() = value.IsMissing(text.InsertWords("x", text.Place(1, 0, text.NewLine(cesiaAt(1, 4, "if a")))).Layout) and
+  not value.IsMissing(text.InsertWords("x", text.NewLine(cesiaAt(1, 4, "if a"))).Layout) and value.IsMissing(text.Undo(text.NewLine(cesiaAt(1, 4, "if a"))).Layout)
+
+isElectricEnd() = allText(keyed("end", text.NewLine(cesiaAt(2, 3, "if a\n  b")))) == "if a\n  b\nend" and same(at(keyed("end", text.NewLine(cesiaAt(2, 3, "if a\n  b")))), [3, 3])
+isElectricBackForAName() = allText(keyed("ending", text.NewLine(cesiaAt(2, 3, "if a\n  b")))) == "if a\n  b\n  ending"
+isElectricElse() = allText(keyed("else", text.NewLine(cesiaAt(2, 3, "if a\n  b")))) == "if a\n  b\nelse"
+isElectricElseArrowStays() = allText(keyed("else -> 1", text.NewLine(cesiaAt(2, 8, "match x\n  1 -> 2")))) == "match x\n  1 -> 2\n  else -> 1"
+isElectricBracket() = allText(keyed("}", text.NewLine(cesiaAt(2, 6, "x = {\n  a: 1")))) == "x = {\n  a: 1\n}"
+isElectricThen() = allText(keyed("then", text.NewLine(cesiaAt(1, 6, "y = xs")))) == "y = xs\n  then"
+isElectricOnlyAtTheStart() = allText(keyed("x end", text.NewLine(cesiaAt(2, 3, "if a\n  b")))) == "if a\n  b\n  x end"
+isElectricUndoneWithItsWord() = allText(text.Undo(keyed("end", text.NewLine(cesiaAt(2, 3, "if a\n  b"))))) == "if a\n  b\n  "
+isOtherElectricNothing() = allText(keyed("end", text.NewLine(text.Place(2, 3, text.Of("if a\n  b", "a.txt"))))) == "if a\n  b\n  end"
+
+isTabPutsLine() = allText(text.Indent(cesiaAt(2, 0, "if a\nb\nend"))) == "if a\n  b\nend" and same(at(text.Indent(cesiaAt(2, 0, "if a\nb\nend"))), [2, 2])
+isTabKeepsCursorInWords() = same(at(text.Indent(cesiaAt(2, 3, "if a\nfoo\nend"))), [2, 5])
+isTabMovesCursorOutOfIndent() = same(at(text.Indent(cesiaAt(2, 1, "if a\n  b\nend"))), [2, 2]) and text.Indent(cesiaAt(2, 1, "if a\n  b\nend")).Version == 0
+isTabOnBlankLine() = allText(text.Indent(cesiaAt(2, 0, "if a\n\nend"))) == "if a\n  \nend"
+isTabRegion() = allText(text.Indent(text.Place(4, 0, text.SetMark(cesiaAt(1, 0, "defn f()\nif a\nb\nend\nend"))))) == "defn f()\n  if a\n    b\nend\nend"
+isTabRegionOneStep() = allText(text.Undo(text.Indent(text.Place(5, 3, text.SetMark(cesiaAt(1, 0, "defn f()\nif a\nb\nend\nend")))))) == "defn f()\nif a\nb\nend\nend"
+isOtherTabNothing() = allText(text.Indent(text.Place(2, 0, text.Of("if a\nb", "a.txt")))) == "if a\nb"

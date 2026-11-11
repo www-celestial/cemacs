@@ -5,6 +5,7 @@
     again. M-g n and M-g p, or C-c c n and C-c c p, go to the next and the previous mark, around the end, and say it. src/cemacs.ce adds the hooks of
     Hooked to the config and these Keys. *)
 use core/commands
+use core/indent
 use core/text
 use src/rope
 use std/fiber
@@ -18,7 +19,7 @@ use std/value
 (** Is a buffer a file of Cesia?
 
       IsCesia(text.Of("", "a.ce")) --> true *)
-IsCesia(b) = not value.IsMissing(b.Path) and str.EndsWith(".ce", b.Path)
+IsCesia(b) = indent.IsCesia(b)
 
 defn checkedOf(b)
   (** The version of the text that the last check read, or -1: a buffer from before this field has none, and reading one it lacks would panic. *)
