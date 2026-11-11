@@ -3,6 +3,7 @@
 use src/rope
 use src/ui
 use core/color
+use core/complete
 use core/lists
 use core/panes
 use core/run
@@ -32,7 +33,8 @@ promptHeight = 22
     The editor adds its own fields: clip, the clipboard when there is no window; chorded, right after a key with Ctrl or Alt, the text of the event to ignore,
     or true for any text; chain, true while the last command was C-k; dragging, true while the mouse selects; pressed, the place of a mouse press until the mouse leaves
     the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; title; waited, the seconds since
-    the last pending key; hints, the keys that can follow the pending ones once shown; and chords, the keys of the command that runs. Config is the function
+    the last pending key; hints, the keys that can follow the pending ones once shown; chords, the keys of the command that runs; completion, the
+    list of words offered under the cursor, see commands.Complete; and names, the names of Cesia that completion reads once. Config is the function
     that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Cemacs, "." until the program says. Panes is
     the tree of the panes, see panes.ce, and Pane the one being edited, which shows the current buffer.
     Under --watch the code changes and the state stays, so a session can hold a state from before a field was added here. A field added after that
@@ -41,7 +43,7 @@ promptHeight = 22
       Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600).Current --> 1 *)
 Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pending: "", Prompt: missing, Message: "", Run: missing, Window: missing, Width: width, Height: height, Cell: cell, Look: look,
   Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: "", Config: missing, Home: ".", Second: false,
-  Panes: panes.One(1), Pane: 1, Waited: 0.0, Hints: [], Chords: ""}
+  Panes: panes.One(1), Pane: 1, Waited: 0.0, Hints: [], Chords: "", Completion: missing, Names: missing}
 
 (** Is the output of a program shown below the panes? Once a program ran, until C-c c h hides it. *)
 ShowsOutput(state) = not value.IsMissing(state.Run) and state.Run.Shown
@@ -597,6 +599,44 @@ defn hints(state, lay, look)
   out
 end
 
+(** How many words the list of completions shows at once. *)
+CompleteRows() = 8
+
+defn completions(state, layouts, look)
+  (** The list of completions of the pane being edited, while one is open: at most CompleteRows() words under the word they complete, the one chosen on
+      a band of colour; above the line of the cursor where the pane has no room below it. *)
+  c = complete.Of(state)
+  if value.IsMissing(c)
+    return []
+  end
+  lay = layouts[panes.Active(state)]
+  b = state.Buffers[state.Current]
+  cell = state.Cell
+  rect = lay.Code
+  row = b.Cursor.Line - b.Top
+  if row < 0 or row >= lay.Rows
+    return []
+  end
+  th = look.Theme
+  rows = list.Min(CompleteRows(), value.Len(c.Words))
+  first = if c.Picked <= rows 1 else c.Picked - rows + 1 end
+  shown = list.Take(rows, list.Skip(first - 1, c.Words))
+  width = list.Reduce((w, word) -> list.Max(w, look.Width(word, "code")), 0, shown) + 16
+  height = rows * cell.Height + 8
+  x = list.Max(rect.X, list.Min(columnX(c.At.Column - value.Len(str.Chars(c.Prefix)) - b.Left, rect, cell) - 8, rect.X + rect.Width - width))
+  below = rowY(row + 1, rect, cell)
+  y = if below + height <= rect.Y + rect.Height or rowY(row, rect, cell) - height < rect.Y below else rowY(row, rect, cell) - height end
+  out = [box(x - 1, y - 1, width + 2, height + 2, th.Line, 5), box(x, y, width, height, th.Header, 4)]
+  for k in 1..rows
+    top = y + 4 + (k - 1) * cell.Height
+    if first + k - 1 == c.Picked
+      out = list.Append(box(x + 2, top, width - 4, cell.Height, th.Picked, 3), out)
+    end
+    out = list.Append(inside("code", x + 8, top, shown[k], if first + k - 1 == c.Picked th.Bright else th.Ink end), out)
+  end
+  out
+end
+
 defn answer(b, n, r, y, columns, rect, cell, th)
   (** The value of the eval asked from line n, two cells after its end, when the line ends on the screen. *)
   if value.IsMissing(r)
@@ -666,5 +706,6 @@ defn View(state)
   end
   outLay = lay
   outLay.Cell = state.Cell
-  list.Flatten([[{Kind: "clear", Color: look.Theme.Ground}], drawn, output(state, outLay, look), hints(state, lay, look), prompt(state, lay, look)])
+  list.Flatten([[{Kind: "clear", Color: look.Theme.Ground}], drawn, completions(state, layouts, look), output(state, outLay, look), hints(state, lay, look),
+    prompt(state, lay, look)])
 end

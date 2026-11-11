@@ -105,7 +105,12 @@ OpenConfig(state) = commands.OpenFile("$(commands.Home(state))/src/cemacs.ce", s
 (** The keys of a list, over the keys above: Backspace and C-g take back its filter, and C-g with none closes it. Letters filter it. *)
 ListKeys() = {"backspace": commands.ListBack, "S-backspace": commands.ListBack, "C-g": commands.ListCancel}
 
+(** The keys of the list of completions that Tab opens in a file of Cesia, over the keys above: C-n and C-p choose a word, Tab puts it in place. Any
+    other key closes the list and does what it does. *)
+CompleteKeys() = {"C-n": commands.CompleteNext, "down": commands.CompleteNext, "C-p": commands.CompletePrevious, "up": commands.CompletePrevious,
+  "tab": commands.CompleteAccept}
+
 (** What the editor runs on, for the Config of a state: keys, the global keys given, and the other keys and the settings of this file. src/cemacs.ce gives
     it the keys of every app. Each field is a function, read at the next key, so that a change applies under --watch. *)
-Config(keys) = {Keys: keys, PromptKeys: PromptKeys, MouseKeys: MouseKeys, PromptMouseKeys: PromptMouseKeys, ListKeys: ListKeys, TabText: TabText,
-  WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay, CheckDelay: CheckDelay}
+Config(keys) = {Keys: keys, PromptKeys: PromptKeys, MouseKeys: MouseKeys, PromptMouseKeys: PromptMouseKeys, ListKeys: ListKeys, CompleteKeys: CompleteKeys,
+  TabText: TabText, WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay, CheckDelay: CheckDelay}

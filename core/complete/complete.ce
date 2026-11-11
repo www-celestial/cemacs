@@ -1,0 +1,126 @@
+(** The completion of a word: the words that start with the part of a word before the cursor, read from the text around the cursor first, the nearest
+    first, then from the other buffers, then from the names of Cesia. Tab in a file of Cesia completes so once the line is at its place: see
+    commands.Complete. *)
+use core/text
+use src/rope
+use std/cesia
+use std/dict
+use std/list
+use std/math
+use std/text as str
+use std/value
+
+(** How many bytes before the cursor, and as many after it, are read for words: a buffer of up to 128 KB is read whole, a larger one around its
+    cursor. A function: a variable added under --watch is read before it has a value. *)
+Reach() = 65536
+
+(** How many words a completion offers, at most. *)
+Most() = 100
+
+(** A byte of a word: a letter, a digit, an underscore, or a byte of a character outside ASCII, as text.MoveWord counts them. *)
+nameByte(c) = (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95 or c >= 128
+
+defn Prefix(b)
+  (** The part of a word before the cursor, when the cursor ends a word that doesn't start with a digit; else "".
+
+        Prefix(text.Place(1, 4, text.Of("io.P", missing))) --> "P"
+        Prefix(text.Place(1, 2, text.Of("abc", missing))) --> "" *)
+  line = rope.Line(b.Cursor.Line, b.Rope)
+  words = str.Join("", list.Take(b.Cursor.Column, str.Chars(line)))
+  n = str.ByteLength(words)
+  if n < str.ByteLength(line) and nameByte(str.Byte(n + 1, line))
+    return ""
+  end
+  k = n
+  while k >= 1 and nameByte(str.Byte(k, words))
+    k -= 1
+  end
+  if k == n or (str.Byte(k + 1, words) >= 48 and str.Byte(k + 1, words) <= 57)
+    ""
+  else
+    str.ByteSlice(k + 1, n, words)
+  end
+end
+
+defn Of(state)
+  (** The completion open on the current buffer of an editor's state, {Buffer, Version, At, Prefix, Words, Picked}, or missing: Words are offered for
+      Prefix, the part of a word before the cursor At, and Picked is the one chosen. It is open while the buffer is as it left it, its text and its
+      cursor, and no question is asked. A state from before this field has none.
+
+        Of({Buffers: [], Current: 1, Prompt: missing}) --> missing *)
+  c = match state
+    {Completion: open} -> open
+    else -> missing
+  end
+  if value.IsMissing(c) or c.Buffer != state.Current or not value.IsMissing(state.Prompt)
+    return missing
+  end
+  b = state.Buffers[state.Current]
+  if b.Version == c.Version and b.Cursor == c.At c else missing end
+end
+
+(** Does word start with prefix, the case of the letters A to Z set aside with fold? *)
+starts(prefix, word, fold) = if fold str.StartsWith(prefix, str.Lower(word)) else str.StartsWith(prefix, word) end
+
+defn near(prefix, fold, b)
+  (** The words of a buffer longer than prefix that start with it, read Reach() bytes around its cursor, the nearest to the cursor first, each once.
+      Each place where prefix starts a word is found by text.ByteFind, natively, and a dictionary keeps the least distance of each word. *)
+  at = text.ByteOf(b.Cursor, b)
+  from = list.Max(0, at - Reach())
+  t = rope.Slice(from, list.Min(rope.Size(b.Rope), at + Reach()), b.Rope)
+  here = at - from + 1
+  n = str.ByteLength(t)
+  m = str.ByteLength(prefix)
+  far = dict.Dict()
+  k = str.ByteFind(prefix, 1, t, fold = fold)
+  while not value.IsMissing(k)
+    if k > 1 and nameByte(str.Byte(k - 1, t))
+      k = str.ByteFind(prefix, k + 1, t, fold = fold)
+    else
+      j = k + m
+      while j <= n and nameByte(str.Byte(j, t))
+        j += 1
+      end
+      if j > k + m
+        word = str.ByteSlice(k, j - 1, t)
+        d = math.Abs(k - here)
+        known = dict.Get(word, far)
+        if value.IsMissing(known) or d < known
+          far[word] = d
+        end
+      end
+      k = str.ByteFind(prefix, j, t, fold = fold)
+    end
+  end
+  list.SortBy(w -> far[w], dict.Keys(far))
+end
+
+defn Words(prefix, fold, b, others, names)
+  (** The words that complete prefix, each once, at most Most() of them: those of buffer b, the nearest to its cursor first, then those of the other
+      buffers, the nearest to their cursors first, then the names that start with prefix, in their order. With fold, the case of the letters A to Z
+      in the words is set aside, as a search whose words hold no capital does: see commands.Folds.
+
+        Words("pr", true, text.Of("print Prime prefix", missing), [], ["Print"]) --> ["print", "Prime", "prefix", "Print"] *)
+  seen = dict.Dict()
+  out = []
+  for group in list.Concat([near(prefix, fold, b)], list.Concat([near(prefix, fold, o) for o in others], [names]))
+    for w in group
+      if value.Len(out) == Most()
+        return out
+      end
+      if not dict.Has(w, seen) and w != prefix and starts(prefix, w, fold)
+        seen[w] = true
+        out = list.Append(w, out)
+      end
+    end
+  end
+  out
+end
+
+defn Names()
+  (** The names of Cesia for completion: its keywords, then the public names of the modules of its standard library without their module, as
+      Concat for list.Concat, in order, each once. Reading them takes about 15 ms, so the editor reads them at its first completion and keeps them. *)
+  keywords = [w for w in cesia.Keywords() if nameByte(str.Byte(1, w))]
+  names = list.Flatten([[list.Last(str.Split(".", n)) for n in cesia.DocNames(m)] for m in cesia.DocNames() if str.StartsWith("std/", m)])
+  list.Unique(list.Concat(keywords, list.Sort(names)))
+end

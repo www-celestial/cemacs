@@ -184,3 +184,12 @@ isTabOnBlankLine() = allText(text.Indent(cesiaAt(2, 0, "if a\n\nend"))) == "if a
 isTabRegion() = allText(text.Indent(text.Place(4, 0, text.SetMark(cesiaAt(1, 0, "defn f()\nif a\nb\nend\nend"))))) == "defn f()\n  if a\n    b\nend\nend"
 isTabRegionOneStep() = allText(text.Undo(text.Indent(text.Place(5, 3, text.SetMark(cesiaAt(1, 0, "defn f()\nif a\nb\nend\nend")))))) == "defn f()\nif a\nb\nend\nend"
 isOtherTabNothing() = allText(text.Indent(text.Place(2, 0, text.Of("if a\nb", "a.txt")))) == "if a\nb"
+
+(* A completion: the characters before the cursor replaced by a word, as one step of undo. *)
+isCompleted() = allText(text.Completed("Hello", 3, text.Place(1, 5, text.Of("x Hel", missing)))) == "x Hello" and
+  same(at(text.Completed("Hello", 3, text.Place(1, 5, text.Of("x Hel y", missing)))), [1, 7])
+isCompletedFolds() = allText(text.Completed("ByteFind", 4, text.Place(1, 4, text.Of("byte", missing)))) == "ByteFind"
+isCompletedOneStep() = allText(text.Undo(text.Completed("Hello", 3, text.InsertWords("Hel", text.Of("", missing))))) == "Hel"
+isCompletedElseMoves() = allText(text.Completed("else", 3, cesiaAt(3, 5, "if a\n  b\n  els"))) == "if a\n  b\nelse" and
+  allText(text.Undo(text.Completed("else", 3, cesiaAt(3, 5, "if a\n  b\n  els")))) == "if a\n  b\n  els"
+isCompletedEndsTyping() = not text.Completed("Hello", 3, text.InsertWords("l", text.InsertWords("Hel", text.Of("", missing)))).Typing

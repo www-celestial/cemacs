@@ -2,6 +2,7 @@
     What opens or saves a file is in tests/commands-check.ce. *)
 use src/emacs
 use core/commands
+use core/complete
 use core/keys
 use core/panes
 use core/press
@@ -38,7 +39,8 @@ mouse(action, x, y) = {Kind: "mouse", Action: action, X: x, Y: y, Button: 1, Amo
 atChar(column) = view.Gutter + column * 8 + 1
 
 (** A binding holds the function itself, never its name; a text only names a group, and keys go on after it. *)
-isEveryBindingAFunction() = value.Len(list.Filter(f -> not value.IsFunction(f), list.Concat(dict.Values(emacs.PromptKeys()), list.Concat(dict.Values(emacs.MouseKeys()), dict.Values(emacs.PromptMouseKeys()))))) == 0 and
+isEveryBindingAFunction() = value.Len(list.Filter(f -> not value.IsFunction(f), list.Flatten([dict.Values(emacs.PromptKeys()), dict.Values(emacs.MouseKeys()), dict.Values(emacs.PromptMouseKeys()),
+  dict.Values(emacs.CompleteKeys())]))) == 0 and
   value.Len(list.Filter(k -> not value.IsFunction(emacs.Keys()[k]) and not (value.IsText(emacs.Keys()[k]) and list.Any(list.Map(j -> str.StartsWith("$k ", j), dict.Keys(emacs.Keys())))), dict.Keys(emacs.Keys()))) == 0
 isShiftKeysBound() = emacs.Keys()["S-backspace"] == commands.DeleteBefore and emacs.Keys()["S-enter"] == commands.NewLine and emacs.Keys()["S-delete"] == commands.DeleteAfter and emacs.Keys()["S-tab"] == commands.Tab
 isTypeAndMove() = wordsOf(press.Press(["a", "b", "C-b", "x"], stateOf(""))) == "axb"
@@ -585,7 +587,8 @@ defn isEveryCommandVisible()
     "SelectForwardChar", "SelectBackwardChar", "SelectNextLine", "SelectPreviousLine", "SelectLineStart", "SelectLineEnd", "SelectPageDown", "SelectPageUp",
     "SetMark", "Cancel", "CancelPair", "DeleteBefore", "DeleteAfter", "NewLine", "Tab", "Undo", "Redo", "Cut", "Copy", "Paste", "CutLine",
     "Save", "FindFile", "NextBuffer", "CloseBuffer", "Quit", "Run", "Stop", "ToggleOutput", "DebugRun", "ToggleBreak", "Eval", "Continue", "StepOver", "StepInto", "StepOut",
-    "PromptAccept", "PromptDeleteBefore", "PromptPaste", "PromptCancel", "Press", "Drag", "Release", "Wheel"]
+    "PromptAccept", "PromptDeleteBefore", "PromptPaste", "PromptCancel", "Press", "Drag", "Release", "Wheel", "Complete", "CompleteNext", "CompletePrevious",
+    "CompleteAccept"]
   value.Len(list.Filter(name -> not ("commands.$name" in shown), names)) == 0
 end
 
@@ -602,7 +605,7 @@ isSecondKeyOtherTextDropped() = wordsOf(played([keyWith("x", true, false, false)
 defn isEveryKeyAndSettingVisible()
   (** cesia doc emacs lists every key and every setting, as it does the commands. *)
   shown = cesia.DocNames("emacs")
-  names = ["Keys", "PromptKeys", "MouseKeys", "PromptMouseKeys", "TabText", "WheelLines", "DragZone", "FontSize", "Config"]
+  names = ["Keys", "PromptKeys", "MouseKeys", "PromptMouseKeys", "CompleteKeys", "TabText", "WheelLines", "DragZone", "FontSize", "Config"]
   value.Len(list.Filter(name -> not ("emacs.$name" in shown), names)) == 0
 end
 (** The core holds no key: a state with no config, as from a session before it, runs no command and doesn't panic, and text still types. *)
@@ -812,3 +815,31 @@ defn cesiaClip(words, clip)
   s
 end
 isPasteKeepsItsPlace() = wordsOf(press.Press(["C-e", "enter", "C-y"], cesiaClip("if a", "end"))) == "if a\n  end"   (** A paste is no typing. *)
+
+(* Completion: Tab at the end of a word of a line at its place, in a file of Cesia. *)
+words4 = "Hello = 1\nHelp = 2\n"
+opened() = press.Press(["M->", "Hel", "tab"], inFile(words4))   (** The list open on Hel: Help, the nearest, then Hello. *)
+isTabOpensList() = value.Equal(list.Take(2, complete.Of(opened()).Words), ["Help", "Hello"]) and wordsOf(opened()) == "$(words4)Hel"
+isTabAccepts() = wordsOf(press.Press(["tab"], opened())) == "$(words4)Help" and value.IsMissing(complete.Of(press.Press(["tab"], opened())))
+isNextAccepts() = wordsOf(press.Press(["C-n", "tab"], opened())) == "$(words4)Hello" and wordsOf(press.Press(["down", "tab"], opened())) == "$(words4)Hello"
+isPreviousWraps() = complete.Of(press.Press(["C-p"], opened())).Picked == value.Len(complete.Of(opened()).Words) and
+  complete.Of(press.Press(["C-p", "up", "C-n"], opened())).Picked == value.Len(complete.Of(opened()).Words)
+isAcceptOneUndo() = wordsOf(press.Press(["tab", "C-/"], opened())) == "$(words4)Hel"
+isTypingRefines() = value.Equal(complete.Of(press.Press(["l"], opened())).Words, ["Hello"]) and complete.Of(press.Press(["l"], opened())).Prefix == "Hell"
+isTypingPastEveryWordCloses() = value.IsMissing(complete.Of(press.Press(["lx"], opened()))) and wordsOf(press.Press(["lx"], opened())) == "$(words4)Hellx"
+isOtherKeyClosesAndRuns() = value.IsMissing(complete.Of(press.Press(["C-a"], opened()))) and cursorOf(press.Press(["C-a"], opened())) == {Line: 3, Column: 0}
+isEnterClosesAndRuns() = value.IsMissing(complete.Of(press.Press(["enter"], opened()))) and wordsOf(press.Press(["enter"], opened())) == "$(words4)Hel\n"
+isCancelCloses() = value.IsMissing(complete.Of(press.Press(["C-g"], opened()))) and wordsOf(press.Press(["C-g"], opened())) == "$(words4)Hel"
+isMoveBackDoesNotReopen() = value.IsMissing(complete.Of(press.Press(["C-b", "C-f"], opened())))
+isClickCloses() = value.IsMissing(complete.Of(commands.Update(mouse("down", atChar(0), 4), opened())))
+isOneWordAtOnce() = wordsOf(press.Press(["M->", "Hell", "tab"], inFile(words4))) == "$(words4)Hello" and value.IsMissing(complete.Of(press.Press(["M->", "Hell", "tab"], inFile(words4))))
+isNoWordSays() = press.Press(["M->", "Hzq", "tab"], inFile(words4)).Message == "No completion for Hzq."
+isLowerFindsCapitals() = complete.Of(press.Press(["M->", "hel", "tab"], inFile(words4))).Words[1] == "Help" and
+  wordsOf(press.Press(["M->", "hel", "tab", "tab"], inFile(words4))) == "$(words4)Help"
+isNamesOfCesia() = wordsOf(press.Press(["M->", "ByteFi", "tab"], inFile(words4))) == "$(words4)ByteFind"
+isTabIndentsBeforeCompleting() = wordsOf(press.Press(["M->", "enter", "Hel", "C-a", " ", "C-e", "tab"], inFile("Help = 1\nif a"))) == "Help = 1\nif a\n  Hel" and
+  value.IsMissing(complete.Of(press.Press(["M->", "enter", "Hel", "C-a", " ", "C-e", "tab"], inFile("Help = 1\nif a"))))
+isTabMidWordCompletesNothing() = value.IsMissing(complete.Of(press.Press(["M->", "Hel", "C-b", "tab"], inFile(words4))))
+isOtherFileTabTypes() = wordsOf(press.Press(["M->", "Hel", "tab"], stateOf(words4))) == "$(words4)Hel  "
+isCompletedElseMoves() = wordsOf(press.Press(["C-e", "enter", "x", "enter", "els", "tab"], inFile("if a"))) == "if a\n  x\nelse"
+isListDrawn() = list.Any([c.Kind == "text" and c.Text == "Hello" and c.Y > 40 for c in view.View(opened())])

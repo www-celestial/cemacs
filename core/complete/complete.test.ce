@@ -1,0 +1,32 @@
+(** Tests of complete.ce: run with cesia test . What Tab and the keys of the list do with it is in core/commands/commands.test.ce. *)
+use core/complete
+use core/text
+use std/list
+use std/text as str
+use std/value
+
+at(line, column, words) = text.Place(line, column, text.Of(words, missing))   (** A buffer holding words, its cursor at a place. *)
+prefixAt(column, words) = complete.Prefix(at(1, column, words))
+wordsAt(prefix, line, column, words) = complete.Words(prefix, false, at(line, column, words), [], [])
+
+isPrefixEndOfWord() = prefixAt(5, "io.Pr") == "Pr" and prefixAt(3, "abc") == "abc"
+isPrefixInsideWord() = prefixAt(2, "abc") == ""
+isPrefixAfterSpace() = prefixAt(3, "ab ") == "" and prefixAt(0, "") == ""
+isPrefixNotNumber() = prefixAt(2, "12") == "" and prefixAt(3, "a12") == "a12"
+isPrefixCharacters() = prefixAt(3, "été") == "été" and prefixAt(5, "x = é") == "é"
+isPrefixBeforeBracket() = prefixAt(3, "abc)") == "abc"
+
+isNearestFirst() = value.Equal(wordsAt("ab", 2, 2, "abcd\nab\nabxy"), ["abxy", "abcd"])
+isEachOnce() = value.Equal(wordsAt("ab", 1, 2, "ab abc abc abd"), ["abc", "abd"])
+isWordItselfLeftOut() = value.Equal(wordsAt("ab", 1, 2, "ab ab abc"), ["abc"])
+isMidWordLeftOut() = value.Equal(wordsAt("ab", 1, 2, "ab xabc ab_c"), ["ab_c"])
+isCaseKept() = value.Equal(wordsAt("ab", 1, 2, "ab Abc abd"), ["abd"])
+isFolded() = value.Equal(complete.Words("ab", true, at(1, 2, "ab Abc ABD"), [], []), ["Abc", "ABD"])
+isOthersAfter() = value.Equal(complete.Words("ab", false, at(1, 2, "ab abc"), [at(1, 0, "abz abc")], []), ["abc", "abz"])
+isNamesLast() = value.Equal(complete.Words("ab", false, at(1, 2, "ab abc"), [], ["abs", "ab", "abc", "xab"]), ["abc", "abs"])
+isAtMost() = value.Len(wordsAt("w", 1, 1, str.Join(" ", ["w$k" for k in 1..300]))) == complete.Most()
+isReachBounded() = value.Equal(wordsAt("zz", 1, 2, "zz $(str.Repeat(complete.Reach() + 10, " "))zzfar zznear"), [])
+isUnderReach() = value.Equal(wordsAt("zz", 1, 2, "zz $(str.Repeat(1000, " "))zzfar"), ["zzfar"])
+
+isNames() = "Concat" in complete.Names() and "defn" in complete.Names() and not (".." in complete.Names())
+isNamesOnce() = value.Len(complete.Names()) == value.Len(list.Unique(complete.Names()))

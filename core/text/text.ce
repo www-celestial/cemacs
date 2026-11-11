@@ -446,6 +446,19 @@ defn Electric(typed, b)
   end
 end
 
+defn Completed(word, n, b)
+  (** The n characters before the cursor replaced by word, the cursor after it, as one step of undo: a completion. In a file of Cesia, a word
+      that moves its line puts it at its place in the same step, see Electric.
+
+        rope.Text(Completed("Hello", 2, Place(1, 2, Of("he", missing))).Rope) --> "Hello" *)
+  at = b.Cursor
+  from = ByteOf({Line: at.Line, Column: at.Column - n}, b)
+  r = rope.Insert(from, word, rope.Delete(from, ByteOf(at, b), b.Rope))
+  out = Electric(word, edit(r, {Line: at.Line, Column: at.Column - n + value.Len(word)}, at.Line, false, true, b))
+  out.Typing = false
+  out
+end
+
 defn DeleteBefore(b)
   (** The character before the cursor deleted, or the line end before it if it is at the start of a line, which joins the two lines. At the
       start of the file nothing changes.

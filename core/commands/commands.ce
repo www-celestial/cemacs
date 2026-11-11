@@ -3,6 +3,7 @@
     Errors from the file system never panic: they become a message. *)
 use src/rope
 use src/sdl
+use core/complete
 use core/files
 use core/indent
 use core/keys
@@ -166,12 +167,15 @@ NewLine(state) = replacing(text.NewLine, state)
 
 defn Tab(state)
   (** In a file of Cesia, the line of the cursor, or the selected lines, put at the place cesia fmt gives them, and the mark ended: see
-      text.Indent. Elsewhere, the text of a tab, in place of the selection. *)
+      text.Indent; when the line is at its place already and the cursor ends a word, the words that complete it: see Complete. Elsewhere, the
+      text of a tab, in place of the selection. *)
   b = current(state)
-  if indent.IsCesia(b)
-    put(unmarked(text.Indent(b)), state)
-  else
+  if not indent.IsCesia(b)
     typed(config(state).TabText(), state)
+  else if not hasSelection(b) and complete.Prefix(b) != "" and value.Len(indent.Plan(b.Cursor.Line, b.Cursor.Line, b)) == 0
+    Complete(state)
+  else
+    put(unmarked(text.Indent(b)), state)
   end
 end
 
@@ -918,8 +922,103 @@ defn config(state)
 end
 
 (** The config of a state that has none: no key, so that nothing runs that nobody bound, and plain settings. *)
-unconfigured() = {Keys: () -> dict.Dict(), PromptKeys: () -> dict.Dict(), MouseKeys: () -> dict.Dict(), PromptMouseKeys: () -> dict.Dict(), ListKeys: () -> dict.Dict(), TabText: () -> "  ",
+unconfigured() = {Keys: () -> dict.Dict(), PromptKeys: () -> dict.Dict(), MouseKeys: () -> dict.Dict(), PromptMouseKeys: () -> dict.Dict(), ListKeys: () -> dict.Dict(),
+  CompleteKeys: () -> dict.Dict(), TabText: () -> "  ",
   WheelLines: () -> 3.0, DragZone: () -> 4, FontSize: () -> 15}
+
+(* ---- Completion: the words that end the word before the cursor, in a small list under it. See complete.ce. *)
+
+defn withNames(state)
+  (** The state with the names of Cesia that complete.Names gives, read at the first completion and kept. *)
+  known = match state
+    {Names: names} -> names
+    else -> missing
+  end
+  if not value.IsMissing(known)
+    return state
+  end
+  s = state
+  s.Names = complete.Names()
+  s
+end
+
+defn wordsFor(prefix, state)
+  (** The words that complete prefix in the current buffer, by complete.Words, the names of Cesia read; with the case of the letters set aside when
+      prefix holds no capital, as a search does: see Folds. *)
+  others = [state.Buffers[k] for k in 1..value.Len(state.Buffers) if k != state.Current and not lists.IsList(state.Buffers[k])]
+  complete.Words(prefix, Folds(prefix), current(state), others, state.Names)
+end
+
+defn listed(prefix, words, state)
+  (** The state with the list of completions of prefix open under the cursor, its first word chosen. *)
+  b = current(state)
+  s = state
+  s.Completion = {Buffer: s.Current, Version: b.Version, At: b.Cursor, Prefix: prefix, Words: words, Picked: 1}
+  s
+end
+
+defn Complete(state)
+  (** The words that complete the word before the cursor: those of the buffer, the nearest first, then those of the other buffers, then the names of
+      Cesia, see complete.Words. None says so; one is put in place at once; more open a list under the cursor, where the CompleteKeys of the config
+      choose one and put it in place. A letter typed with the list open makes the list again for the longer word; any other key closes it and does
+      what it does. *)
+  prefix = complete.Prefix(current(state))
+  if prefix == ""
+    return state
+  end
+  s = withNames(state)
+  words = wordsFor(prefix, s)
+  if value.Len(words) == 0
+    say("No completion for $prefix.", s)
+  else if value.Len(words) == 1
+    put(text.Completed(words[1], value.Len(prefix), current(s)), s)
+  else
+    listed(prefix, words, s)
+  end
+end
+
+defn picked(by, state)
+  (** The state with the word by places further in the list of completions, from the last back to the first and the other way. *)
+  c = complete.Of(state)
+  if value.IsMissing(c)
+    return state
+  end
+  c.Picked = math.Mod(c.Picked - 1 + by + value.Len(c.Words), value.Len(c.Words)) + 1
+  s = state
+  s.Completion = c
+  s
+end
+
+CompleteNext(state) = picked(1, state)   (** The next word of the list of completions, or the first after the last. *)
+CompletePrevious(state) = picked(-1, state)   (** The word before in the list of completions, or the last before the first. *)
+
+defn CompleteAccept(state)
+  (** The word chosen in the list of completions in place of the word before the cursor, as one step of undo, and the list closed. *)
+  c = complete.Of(state)
+  s = state
+  s.Completion = missing
+  if value.IsMissing(c) s else put(text.Completed(c.Words[c.Picked], value.Len(c.Prefix), current(s)), s) end
+end
+
+defn completeKeys(state)
+  (** The keys of the list of completions, from the CompleteKeys of the config, or none for a config without them. *)
+  match config(state)
+    {CompleteKeys: f} -> f()
+    else -> dict.Dict()
+  end
+end
+
+defn refined(typed, state)
+  (** After typed was typed while the list of completions was open: the list again for the longer word, if typed is a character of a word and some
+      words complete it; else no list. *)
+  prefix = complete.Prefix(current(state))
+  if prefix == "" or value.Len(str.Chars(typed)) != 1
+    return state
+  end
+  s = withNames(state)
+  words = wordsFor(prefix, s)
+  if value.Len(words) == 0 state else listed(prefix, words, s) end
+end
 
 (* ---- Lists: a buffer of rows that an app gives, which typing filters. See lists.ce for what a list holds. *)
 
@@ -1154,7 +1253,15 @@ defn routed(chord, state)
   else
     s = state
     s.Buffers[state.Current].Typing = false
-    chorded(chord, config(s).Keys(), s)
+    c = complete.Of(s)
+    s.Completion = missing
+    own = if value.IsMissing(c) or state.Pending != "" dict.Dict() else completeKeys(s) end
+    if dict.Has(chord, own)
+      s.Completion = c
+      ran(own[chord], withChords(chord, s))
+    else
+      chorded(chord, config(s).Keys(), s)
+    end
   end
 end
 
@@ -1242,7 +1349,9 @@ defn onText(event, state)
   else
     s.Chain = false
     s.Buffers[state.Current].Free = false
-    keyed(event.Text, s)
+    open = not value.IsMissing(complete.Of(s))
+    s.Completion = missing
+    if open refined(event.Text, keyed(event.Text, s)) else keyed(event.Text, s) end
   end
 end
 
@@ -1339,6 +1448,7 @@ defn Press(event, state)
   s.Message = ""
   s.Chain = false
   s.Buffers[state.Current].Typing = false
+  s.Completion = missing
   if event.Button == 1 down(event, s) else s end
 end
 
