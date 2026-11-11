@@ -191,7 +191,7 @@ where one sequence has letters that the other skips. Each pair of matching lette
 the best alignment is the one with the most points. Trying every alignment would take far too long; they fill a table
 instead, one cell for each letter of one sequence and each letter of the other, each cell holding the best score of two
 pieces that end there, computed from the cells before it. This way of solving a problem from the answers of its smaller parts, kept in a table, is called *dynamic
-programming*. Two years later, Gotoh (1982) showed how to make a gap cost one price to open and a smaller price per letter
+programming*. A year later, Gotoh (1982) showed how to make a gap cost one price to open and a smaller price per letter
 after, a gap weight of the form $w(k) = uk + v$ for a gap of $k$ letters, still in about one step per cell, by keeping a
 second table beside the first.
 

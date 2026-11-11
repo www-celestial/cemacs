@@ -170,7 +170,7 @@ où il remplissait un buffer (une zone de mémoire de travail) puis le copiait, 
 huit octets à la fois.
 
 Cemacs ouvre maintenant 99,9 MB en 0,68 du temps d'Emacs, et 15,9 MB en 0,68 aussi ; Neovim et Vim ouvrent encore un grand
-fichier plus vite, en 0,89 et 0,93 du temps de Cemacs à 99,9 MB, et en environ la moitié à 15,9 MB. Ce qui reste est
+fichier plus vite, en 0,88 et 0,93 du temps de Cemacs à 99,9 MB, et en environ la moitié à 15,9 MB. Ce qui reste est
 surtout à Cesia : le démarrage, environ 55 ms, comme le dit [Le démarrage](#le-démarrage), qui décide en dessous d'environ
 20 MB ; la vérification des octets, 63 ms, deux passes huit octets à la fois en OCaml, là où une bibliothèque en C avec les
 instructions vectorielles du processeur, comme simdutf, prendrait environ un sixième ; et les 105 ms de la rope, dont le

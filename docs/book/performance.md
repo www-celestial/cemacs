@@ -160,7 +160,7 @@ itself now reads a file into one text of its size, where it filled a buffer then
 UTF-8 eight bytes at a time.
 
 Cemacs now opens 99.9 MB in 0.68 of Emacs's time, and 15.9 MB in 0.68 too; Neovim and Vim still open a large file faster, in
-0.89 and 0.93 of Cemacs's time at 99.9 MB, and in about half at 15.9 MB. What is left is mostly Cesia's: the start, about 55
+0.88 and 0.93 of Cemacs's time at 99.9 MB, and in about half at 15.9 MB. What is left is mostly Cesia's: the start, about 55
 ms, as [Start-up](#start-up) tells, which decides below about 20 MB; the check of the bytes, 63 ms, two passes eight bytes at
 a time in OCaml where a library in C with the vector instructions of the processor, as simdutf, would take about a sixth; and
 the 105 ms of the rope, of which counting the line ends of each view, on slices of 2 KiB, is about 70 ms measured alone, since

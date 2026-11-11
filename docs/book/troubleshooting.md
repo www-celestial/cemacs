@@ -12,7 +12,7 @@ prints `Ok(missing)`.
 | What the terminal shows | Why | What to do |
 |---|---|---|
 | `bash: cesia: command not found`, or `cesia: command not found` | Cesia isn't installed, or not on the `PATH` | install Cesia: see [Install](install.md#cesia) |
-| `This project needs Cesia 1.0 or later, and this is ...: run cesia upgrade.` | the Cesia on the `PATH` is older than `cesia.toml` asks | `cesia upgrade` |
+| `This project needs Cesia 1.1 or later, and this is ...: run cesia upgrade.` | the Cesia on the `PATH` is older than `cesia.toml` asks | `cesia upgrade` |
 | `Err({Kind: "c", Message: "Can't load SDL3: libSDL3.so.0: cannot open shared object file: No such file or directory."})` | SDL3 isn't installed, or isn't where the system looks | install it, or set `LD_LIBRARY_PATH` to its folder: see [Install](install.md#sdl3-and-sdl3_ttf) |
 | the same with `SDL3_ttf` and `libSDL3_ttf.so.0` | SDL3_ttf is missing | the same |
 | `Err({Kind: "sdl", Message: "This program needs SDL 3.2 or later."})` | the SDL3 found is a 3.0 or 3.1 | a newer SDL3, from the system or from `tools/sdl-libs.sh` |
