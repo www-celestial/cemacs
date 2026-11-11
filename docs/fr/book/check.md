@@ -78,7 +78,7 @@ une vérification : c'est une pause qui la lance.
 
 Pendant qu'une vérification tourne ou qu'un buffer est à vérifier, Cemacs compte le temps avec des ticks, des événements
 qu'il fait lui-même à chaque tour de sa boucle, et dessine une frame à chacun ; un éditeur immobile sans rien à vérifier ne
-dessine rien. Voir [À l'intérieur de Cemacs](internals.md#the-loop-of-events).
+dessine rien. Voir [À l'intérieur de Cemacs](internals.md#la-boucle-des-événements).
 
 ## Comment les marques suivent vos modifications
 
