@@ -339,5 +339,5 @@ comme une personne les enregistrerait, et vérifie chacun à la touche suivante.
 
 `cesia test` lance les tests de chaque package, les exemples de ses commentaires `(** *)` et ses fonctions de test, comme le
 dit le livre de Cesia dans son chapitre sur les tests ; `cesia test core/commands` lance ceux d'un seul package.
-`cesia do test` lance toute la suite, les deux chemins de Cesia compris : voir [Installation](install.md#vérifier-l-installation).
+`cesia do test` lance toute la suite, les deux chemins de Cesia compris : voir [Installation](install.md#vérifier-linstallation).
 [press.Press] joue des touches à travers l'éditeur sans fenêtre, comme le font les exemples ci-dessus.

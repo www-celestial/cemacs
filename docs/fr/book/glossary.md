@@ -11,7 +11,7 @@ En français : l'alignement. Mettre les lettres d'une séquence sous celles d'un
 des lettres, les gaps, pour que le plus de lettres possible correspondent ; un score ajoute des points pour chaque
 correspondance et en retire pour chaque gap, et le meilleur alignement a le meilleur score. Smith et Waterman l'ont trouvé
 pour l'ADN en 1981. Une requête de quelques lettres alignée avec le chemin d'un fichier, c'est ce que notent les fuzzy
-finders. Voir [Un cas](finding.md#4-la-recherche-comment-ce-genre-de-problème-se-résout).
+finders. Voir [Un cas](finding.md#4-la-recherche--comment-ce-genre-de-problème-se-résout).
 
 ## Atomic rename
 
@@ -103,13 +103,13 @@ de Zeller et Hildebrandt (2002). Il a réduit chaque requête qui ne trouvait ri
 
 Un test qui fait tourner deux programmes qui résolvent le même problème sur les mêmes entrées et compare leurs réponses, si
 bien que chacun vérifie l'autre. Les rangs des fichiers de Cemacs sont vérifiés contre le `matchfuzzy()` de Vim. Voir
-[Un cas](finding.md#la-qualité-le-fichier-voulu-vient-en-premier).
+[Un cas](finding.md#la-qualité--le-fichier-voulu-vient-en-premier).
 
 ## Dynamic programming
 
 En français : la programmation dynamique. Résoudre un problème à partir des réponses de ses parties plus petites, chacune
 gardée dans une table et calculée une seule fois, au lieu d'essayer chaque possibilité : le meilleur alignement de deux
-textes, case par case, chacune à partir des cases d'avant. Voir [Un cas](finding.md#l-alignement-et-sa-table).
+textes, case par case, chacune à partir des cases d'avant. Voir [Un cas](finding.md#lalignement-et-sa-table).
 
 ## Echo area
 
@@ -120,7 +120,7 @@ Le nom que donne Emacs à la ligne du bas de la frame où s'affichent les messag
 
 Une façon de construire un programme interactif à partir d'un seul état, d'une fonction qui fait l'état suivant à partir
 d'un événement, et d'une fonction qui dessine un état ; nommée d'après le langage Elm. Cemacs est construit ainsi : voir
-[À l'intérieur de Cemacs](internals.md#l-état-la-mise-à-jour-et-la-vue).
+[À l'intérieur de Cemacs](internals.md#létat-la-mise-à-jour-et-la-vue).
 
 ## Encoding
 
@@ -186,7 +186,7 @@ beaucoup, sous le même nom. Voir [Modifier Cemacs](customising.md#les-hooks).
 
 En français : le rechargement à chaud. Du nouveau code chargé dans un programme pendant qu'il tourne, pour qu'il garde son
 état. `cesia do dev` recharge ainsi Cemacs à chaque enregistrement d'un de ses fichiers. Voir
-[Modifier Cemacs](customising.md#recharger-cemacs-pendant-qu-il-tourne).
+[Modifier Cemacs](customising.md#recharger-cemacs-pendant-quil-tourne).
 
 ## Immediate mode
 
@@ -205,7 +205,7 @@ sélectionnée, `C-s` à nouveau va à la suivante, et fait le tour par le bout 
 En français : la coloration à la demande. Colorer le code d'un buffer quand une partie en est montrée, et non en entier à son
 ouverture : le jit-lock d'Emacs. Cemacs colore les lignes de l'écran à partir des états des lignes du dessus, et, quand
 celles-ci sont loin, montre l'écran tout de suite avec ses états devinés, et les rend exacts au fil des ticks suivants. Voir
-[À l'intérieur de Cemacs](internals.md#un-endroit-lointain-d-abord-ses-couleurs-exactes-ensuite).
+[À l'intérieur de Cemacs](internals.md#un-endroit-lointain-dabord-ses-couleurs-exactes-ensuite).
 
 ## Key binding and keymap
 
@@ -266,7 +266,7 @@ fichiers d'un projet marque 0,898 sur 41 requêtes, contre 0,597 avant qu'elle c
 
 En français : la médiane et son intervalle. La médiane de n mesures est celle du milieu une fois qu'elles sont triées ; son
 intervalle à 95 % va d'une mesure triée à une autre, et contient la vraie médiane avec une probabilité d'au moins 95 %. Voir
-[Vitesse](performance.md#comment-c-est-mesuré).
+[Vitesse](performance.md#comment-cest-mesuré).
 
 ## Minibuffer
 
@@ -293,7 +293,7 @@ Une partie de la fenêtre qui montre un buffer, avec sa propre mode line ; Emacs
 Une persistent data structure garde ses anciennes versions entières quand elle change, en faisant de nouvelles parties et en
 partageant les autres avec l'ancienne version : ce partage est le structural sharing. Chaque valeur de Cesia est
 persistante, ce qui rend peu coûteux l'historique d'annulation et les copies d'un buffer. Voir
-[À l'intérieur de Cemacs](internals.md#l-état-la-mise-à-jour-et-la-vue).
+[À l'intérieur de Cemacs](internals.md#létat-la-mise-à-jour-et-la-vue).
 
 ## Piece table
 
@@ -306,7 +306,7 @@ de Cemacs en est une : ses feuilles sont des vues des textes. Voir [À l'intéri
 
 En français : le projet. Les fichiers sur lesquels vous travaillez ensemble. Dans Cemacs, comme dans le `project.el`
 d'Emacs, un dépôt Git : sa racine est le dossier qui contient `.git`, et ses fichiers sont ceux que Git liste. `C-x p f` les
-liste : voir [Fichiers et buffers](files.md#les-fichiers-d-un-projet).
+liste : voir [Fichiers et buffers](files.md#les-fichiers-dun-projet).
 
 ## Prompt line
 
@@ -318,13 +318,13 @@ d'Emacs. Voir [Fenêtre et panes](windows.md#la-prompt-line).
 Un test qui énonce une règle qui doit tenir pour chaque entrée, puis l'essaie sur des centaines d'entrées faites au hasard,
 les plus petites d'abord, et réduit une entrée qui échoue à la plus petite qui échoue encore. QuickCheck, de Claessen et
 Hughes en 2000, l'a fait connaître ; Cesia a `test.ForAll`. Voir
-[Un cas](finding.md#correct-des-tests-qui-échouent-avant-et-passent-après).
+[Un cas](finding.md#correct--des-tests-qui-échouent-avant-et-passent-après).
 
 ## Pure function
 
 En français : la fonction pure. Une fonction dont le résultat ne dépend que de ses arguments, et qui ne change rien
 au-dehors. L'essentiel du core de Cemacs est pur : voir
-[À l'intérieur de Cemacs](internals.md#l-état-la-mise-à-jour-et-la-vue).
+[À l'intérieur de Cemacs](internals.md#létat-la-mise-à-jour-et-la-vue).
 
 ## Ranking and score
 

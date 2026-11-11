@@ -71,7 +71,7 @@ comparé. Les titres des travaux restent dans leur langue.
   [À l'intérieur de Cemacs](internals.md#la-frame).
 - The Elm Architecture, dans *An Introduction to Elm*. https://guide.elm-lang.org/architecture/.
   Ce que Cemacs en a pris : le nom de sa forme, un état, une mise à jour à partir d'un événement et une vue. Voir
-  [À l'intérieur de Cemacs](internals.md#l-état-la-mise-à-jour-et-la-vue).
+  [À l'intérieur de Cemacs](internals.md#létat-la-mise-à-jour-et-la-vue).
 
 ## Normes
 

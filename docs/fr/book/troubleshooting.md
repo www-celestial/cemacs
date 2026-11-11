@@ -14,7 +14,7 @@ termine. Quand il se termine normalement, il affiche `Ok(missing)`.
 |---|---|---|
 | `bash: cesia: command not found`, ou `cesia: command not found` | Cesia n'est pas installé, ou pas dans le `PATH` | installez Cesia : voir [Installation](install.md#cesia) |
 | `This project needs Cesia 1.0 or later, and this is ...: run cesia upgrade.` | le Cesia du `PATH` est plus ancien que ce que demande `cesia.toml` | `cesia upgrade` |
-| `Err({Kind: "c", Message: "Can't load SDL3: libSDL3.so.0: cannot open shared object file: No such file or directory."})` | SDL3 n'est pas installé, ou n'est pas là où le système cherche | installez-le, ou mettez dans `LD_LIBRARY_PATH` son dossier : voir [Installation](install.md#sdl3-et-sdl3-ttf) |
+| `Err({Kind: "c", Message: "Can't load SDL3: libSDL3.so.0: cannot open shared object file: No such file or directory."})` | SDL3 n'est pas installé, ou n'est pas là où le système cherche | installez-le, ou mettez dans `LD_LIBRARY_PATH` son dossier : voir [Installation](install.md#sdl3-et-sdl3_ttf) |
 | la même chose avec `SDL3_ttf` et `libSDL3_ttf.so.0` | SDL3_ttf manque | la même chose |
 | `Err({Kind: "sdl", Message: "This program needs SDL 3.2 or later."})` | le SDL3 trouvé est un 3.0 ou un 3.1 | un SDL3 plus récent, du système ou de `tools/sdl-libs.sh` |
 | `Err({Kind: "sdl", Message: "Couldn't open .../fonts/AdwaitaSans-Regular.ttf: No such file or directory"})` | les polices ne sont pas dans le dossier que Cemacs a pris comme le sien | lancez Cemacs par `bin/cemacs`, qui trouve son dossier, ou lancez `cesia do dev` depuis le dossier de Cemacs |
@@ -46,7 +46,7 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `No file name.` | une réponse vide à `Find file: ` ou à `Save as: ` |
 | `PATH is a folder.` | `C-x d` montre un dossier ; `C-x C-f` ouvre des fichiers |
 | `PATH is not a regular file: it may be a device, a pipe or a socket.` | Cemacs n'ouvre que les fichiers ordinaires |
-| `PATH is too large to open: SIZE bytes, and the limit is 1073741824.` | Cemacs ouvre des fichiers de 1 GiB au plus, qui prennent environ deux fois leur taille en mémoire pendant qu'ils s'ouvrent : voir [Fichiers et buffers](files.md#quels-fichiers-s-ouvrent) |
+| `PATH is too large to open: SIZE bytes, and the limit is 1073741824.` | Cemacs ouvre des fichiers de 1 GiB au plus, qui prennent environ deux fois leur taille en mémoire pendant qu'ils s'ouvrent : voir [Fichiers et buffers](files.md#quels-fichiers-souvrent) |
 | `PATH is not valid UTF-8 text, or holds a zero byte.` | le fichier est dans un autre encodage, ou n'est pas du texte ; convertissez-le en UTF-8, avec `iconv` par exemple |
 | `PATH is open in another buffer.` | `Save as` vers un fichier déjà ouvert : enregistrez ce buffer, ou fermez-le d'abord |
 | `A list has no file.` | un enregistrement dans une liste |
@@ -147,7 +147,7 @@ limite :
 
 | Erreur | Pourquoi |
 |---|---|
-| un appel avec un mauvais nombre d'arguments, depuis une touche | une fonction liée à une touche avec un autre nombre de paramètres que celui d'une commande, un seul, ou celui d'une key binding de la souris, deux : voir [Modifier Cemacs](customising.md#recharger-cemacs-pendant-qu-il-tourne) |
+| un appel avec un mauvais nombre d'arguments, depuis une touche | une fonction liée à une touche avec un autre nombre de paramètres que celui d'une commande, un seul, ou celui d'une key binding de la souris, deux : voir [Modifier Cemacs](customising.md#recharger-cemacs-pendant-quil-tourne) |
 | un champ qui n'existe pas | du code lit un champ de l'état qu'un état d'avant un rechargement n'a pas : lisez-le par un `match` avec une valeur par défaut |
 | `This window has no font "NAME".` | une commande de dessin a nommé une police que la fenêtre n'a pas ouverte ; Cemacs ouvre `body`, `strong` et `code` |
 | `A frame has no command "KIND".`, `A radius goes from 0 to 24, not R.`, `A curves command holds at most 1024 curves.`, `A window can't hold more than 4096 images.` | une commande de dessin que `src/sdl` ne prend pas : la frame de Cemacs n'en emploie aucune |
@@ -163,7 +163,7 @@ limite :
   au-dessus de lui est ensuite lu, 25 000 lignes par tick, environ 4 s pour la dernière ligne de 100 MB, et l'écran est
   redessiné avec ses couleurs exactes. Pendant ce temps, une touche peut attendre jusqu'à environ 60 ms de plus. Les états
   sont gardés : les sauts suivants ne coûtent donc rien :
-  [À l'intérieur de Cemacs](internals.md#un-endroit-lointain-d-abord-ses-couleurs-exactes-ensuite).
+  [À l'intérieur de Cemacs](internals.md#un-endroit-lointain-dabord-ses-couleurs-exactes-ensuite).
 - **Un grand fichier Cesia ne montre pas d'erreurs.** Sa mode line dit `not checked: over 1 MB` : Cemacs ne vérifie pas un
   buffer de plus de 1 000 000 octets. [Les erreurs dans les lignes](check.md#quand-elle-tourne) dit pourquoi.
 - **Le processeur travaille pendant qu'un programme tourne.** Pendant qu'un programme tourne, qu'une vérification tourne ou

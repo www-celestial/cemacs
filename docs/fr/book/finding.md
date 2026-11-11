@@ -5,7 +5,7 @@ avant que rien ne change, une hypothèse qu'une expérience pourrait réfuter, l
 problème, le plus petit changement de Cemacs, et la preuve que le problème est résolu, avec ce qui pourrait rendre la
 preuve fausse. Il finit par ce qui reste. Chaque bloc de code Cesia ci-dessous a tourné quand cette page a été construite,
 sur le code de Cemacs, et les lignes avec `-->` ont été vérifiées. Les travaux cités sont dans
-[Références](references.md#le-cas-de-la-recherche-d-un-fichier).
+[Références](references.md#le-cas-de-la-recherche-dun-fichier).
 
 Le problème est ordinaire. Vous travaillez dans un projet de quelques milliers de fichiers, vous connaissez une partie du nom
 d'un fichier, et vous voulez l'ouvrir en quelques touches.
@@ -51,7 +51,7 @@ meilleur. *The Art of Computer Systems Performance Analysis* (1991), de Raj Jain
 le but et ses métriques d'abord, puis le workload (la charge de travail mesurée), puis les mesures, chacune donnée avec sa
 variation et non comme un seul nombre. Georges, Buytaert et Eeckhout (2007) et Kalibera et Jones (2013) montrent avec quelle
 facilité un seul chronométrage trompe : un temps, ici, est la médiane de beaucoup d'exécutions, avec son intervalle, comme
-le fait [Vitesse](performance.md#comment-c-est-mesuré).
+le fait [Vitesse](performance.md#comment-cest-mesuré).
 
 ### Les fichiers et les requêtes
 
@@ -62,7 +62,7 @@ ordre.
 Les requêtes ont été écrites avant toute ligne du changement, chacune avec le fichier qu'elle vise, en six sortes : le début
 d'un nom ; des lettres avec des trous, comme quand on abrège ; un dossier et un nom ; des mots dans n'importe quel ordre,
 séparés ; des initiales ; et un test. Elles sont dans `bench/find.ce`, et dans les tables de
-[la preuve](#la-qualité-le-fichier-voulu-vient-en-premier).
+[la preuve](#la-qualité--le-fichier-voulu-vient-en-premier).
 
 ### Comment le classement se mesure
 
@@ -130,7 +130,7 @@ Il s'en sort bien quand la requête est longue et que le fichier vient tôt dans
 derrière 47 fichiers qui contiennent les mêmes lettres dans l'ordre et viennent avant lui dans le tri.
 
 Le temps de chaque lettre, tapée dans une liste de ces 1 933 rangées à travers la mise à jour de l'éditeur, comme la fenêtre
-l'envoie, est dans [la preuve](#la-vitesse-chaque-lettre-répond-tout-de-suite), à côté du temps après le changement.
+l'envoie, est dans [la preuve](#la-vitesse--chaque-lettre-répond-tout-de-suite), à côté du temps après le changement.
 
 ## 3. Une hypothèse qui pourrait être réfutée
 
@@ -292,7 +292,7 @@ lettre sautée entre deux. fzy remplit toute sa table, chaque lettre de la requ�
 ne peut contenir une correspondance que là où se trouve cette lettre : [lists.Score] ne visite donc que ces endroits. Pour
 chaque lettre de la requête, les endroits où elle se trouve, cherchés avec [text.ByteFind], chacun prenant le meilleur des
 endroits de la lettre d'avant, moins son gap, au fur et à mesure. Il donne le même score en environ un pas par endroit au
-lieu d'un par case ; [la preuve](#correct-des-tests-qui-échouent-avant-et-passent-après) vérifie qu'il égale la table entière de
+lieu d'un par case ; [la preuve](#correct--des-tests-qui-échouent-avant-et-passent-après) vérifie qu'il égale la table entière de
 fzy.
 
 ```cesia
@@ -336,7 +336,7 @@ Cemacs a démarré ; ses fichiers sont ceux que Git liste, avec la même command
 `git ls-files -z -c -o --exclude-standard`, les fichiers que Git suit et les nouveaux qu'il n'ignore pas. La prompt line
 dit `Find file in NAME: ` avant ce que vous tapez, et Enter ouvre le fichier sous le curseur. Cemacs demande maintenant une
 permission de plus, `exec=git` : voir [Installation](install.md#le-lancer).
-[Fichiers et buffers](files.md#les-fichiers-d-un-projet) dit le reste.
+[Fichiers et buffers](files.md#les-fichiers-dun-projet) dit le reste.
 
 Le changement fait environ 250 lignes, commentaires compris : 180 dans `core/lists`, 10 dans `core/commands`, 55 dans
 `src/project`.
@@ -538,7 +538,7 @@ liste des 1 933 fichiers : chaque lettre est l'événement de touche et l'évén
 son tour, chacune dans un processus à elle, quatre tours de cinq manches, 20 manches chacune : le code d'avant le
 changement, à 3d6d8dc ; le code d'après avec les rangées gardées dans leur ordre, `ranked = false`, mots séparés ; et le
 code d'après, classé. Puis la même chose avec la frame : après chaque lettre, [view.View] et [sdl.Frame] dessinent la liste
-dans une fenêtre de 1920 sur 1080, par le dummy driver de SDL, comme dans [Vitesse](performance.md#comment-c-est-mesuré).
+dans une fenêtre de 1920 sur 1080, par le dummy driver de SDL, comme dans [Vitesse](performance.md#comment-cest-mesuré).
 Tout cela seul sur la machine, sous le lock que partagent ses tâches lourdes. Chaque temps est la médiane de 20, avec son
 intervalle à 95 %, du 6e au 15e temps triés.
 
@@ -618,7 +618,7 @@ ici, et ce qui a été fait :
   du genre que Mytkowicz et ses collègues ont mesuré, tombe sur toutes de la même façon ; et le JIT de Cesia (la partie qui
   compile une fonction en code machine une fois qu'elle tourne souvent) est à l'intérieur des 20 manches, pas avant elles.
   Le dummy driver de SDL dessine en mémoire : un vrai écran ajoute le travail de son driver et du compositor, le même pour
-  chaque version. Une seule machine : un Intel Core i7-4720HQ, comme dans [Vitesse](performance.md#comment-c-est-mesuré).
+  chaque version. Une seule machine : un Intel Core i7-4720HQ, comme dans [Vitesse](performance.md#comment-cest-mesuré).
 
 ## 7. Ce qui reste
 

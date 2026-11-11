@@ -32,5 +32,5 @@ donne les détails : les versions, les autres systèmes, les permissions avec le
 
 ## Licence
 
-MIT, voir [LICENSE](LICENSE). Les polices sont sous la SIL Open Font License 1.1, dont les textes sont à côté d'elles, dans
+MIT, voir [LICENSE](https://github.com/www-celestial/cemacs/blob/main/LICENSE). Les polices sont sous la SIL Open Font License 1.1, dont les textes sont à côté d'elles, dans
 `fonts/`.

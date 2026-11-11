@@ -39,7 +39,7 @@ d'annulation garde des textes entiers, et que deux panes gardent deux endroits d
 presse-papiers quand il n'y a pas de fenêtre), `Chorded`, `Chain` (true après `C-k`), `Dragging`, `Pressed`, `Wheel`,
 `Ending`, `Title`, `Config`, `Home` (le dossier de Cemacs), `Second`, `Panes`, `Pane`, `Waited`, `Hints` et `Chords`. Du code
 plus tardif a ajouté `Still`, `Breaks` et `Checking`, lus par un `match` avec une valeur par défaut, pour la raison que donne
-[Modifier Cemacs](customising.md#recharger-cemacs-pendant-qu-il-tourne).
+[Modifier Cemacs](customising.md#recharger-cemacs-pendant-quil-tourne).
 
 Un buffer, fait par [text.Of], contient `Rope` (son texte), `Cursor`, `Mark`, `Origin` (ce qui a posé la mark : `"key"`,
 `"shift"`, `"mouse"`, ou `""`), `History`, `Version`, `Clock`, `Saved`, `Path`, `Disk` (la taille et l'heure de son fichier

@@ -100,7 +100,7 @@ rope.Find("AB", 1, r, fold = true) --> 3
 Montrer un endroit lointain coûte plus cher que le trouver : les couleurs des lignes de l'écran dépendent de toutes les
 lignes d'avant, car un commentaire ou un texte ouvert sur une ligne continue sur les suivantes. L'endroit est montré tout de
 suite, avec ses couleurs devinées, et elles deviennent exactes dans les instants qui suivent : voir
-[À l'intérieur de Cemacs](internals.md#un-endroit-lointain-d-abord-ses-couleurs-exactes-ensuite) et [Vitesse](performance.md#recherche).
+[À l'intérieur de Cemacs](internals.md#un-endroit-lointain-dabord-ses-couleurs-exactes-ensuite) et [Vitesse](performance.md#recherche).
 
 ## Les listes
 
@@ -153,7 +153,7 @@ rows = [{Words: "editor.ce", Item: 1}, {Words: "commands.ce", Item: 2}, {Words: 
 Quand un filtre change les rangées, le curseur reste sur la rangée où il était si elle est encore montrée, sinon sur la même
 ligne.
 
-La plupart des listes gardent leurs rangées dans leur ordre. La liste des [fichiers d'un projet](files.md#les-fichiers-d-un-projet),
+La plupart des listes gardent leurs rangées dans leur ordre. La liste des [fichiers d'un projet](files.md#les-fichiers-dun-projet),
 `C-x p f`, les classe à la place : les rangées que le filtre garde viennent la meilleure d'abord, d'après [lists.Score], le
 score de fzy qu'emploient Vim et Neovim, qui récompense les lettres trouvées au début d'un mot ou côte à côte, et, de deux
 chemins semblables, le plus court. [lists.Ranked] donne cet ordre ;
