@@ -74,6 +74,13 @@ and keeps one text in it: it has no kill ring. See [Editing](editing.md#cutting-
 What a key runs. In Cemacs, any function from the state of the editor to a new state; Emacs asks a command to be marked as
 interactive. See [Keys](keys.md#words).
 
+## Completion
+
+Typing the start of a word and letting the editor write the rest, from the words it knows. In a file of Cesia, Tab
+completes from the words around the cursor, the other buffers and the names of Cesia, and lists them under the cursor when
+there are several. Emacs does it with `completion-at-point` and `dabbrev-expand`, Vim with `Ctrl-N`. See
+[Editing](editing.md#completion).
+
 ## Config
 
 The record of functions the editor runs on: its keymaps, its settings and its hooks, made by `emacs.Config`. See

@@ -90,6 +90,7 @@ The editor runs on a config, a record of functions that `emacs.Config` makes and
 | `PromptKeys`, `PromptMouseKeys` | the keys and the mouse while a question is open |
 | `MouseKeys` | the mouse, by the action of its event |
 | `ListKeys` | the keys of every list, over the global ones |
+| `CompleteKeys` | the keys of the list of completions, over the global ones |
 | `TabText`, `WheelLines`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay` | the settings |
 | `Idle`, `Saved`, `Moving` | the hooks, which [check.Hooked] adds: see below |
 

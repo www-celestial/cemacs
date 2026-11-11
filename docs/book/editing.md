@@ -1,7 +1,7 @@
 # Editing
 
-This chapter tells how the cursor moves, how text is typed and deleted, where a line of Cesia code goes, how a selection is
-made, cut, copied and pasted, how undo works, and what the mouse does. Every key here is in the table of `src/emacs/emacs.ce`, and runs a command of
+This chapter tells how the cursor moves, how text is typed and deleted, where a line of Cesia code goes, how a word is
+completed, how a selection is made, cut, copied and pasted, how undo works, and what the mouse does. Every key here is in the table of `src/emacs/emacs.ce`, and runs a command of
 [core/commands]: a public function from the state of the editor to a new state.
 
 ## The examples of this chapter
@@ -98,7 +98,7 @@ numeric keypad, and the text of an input method. A key with Control or Alt types
 | Keys | Command | Inserts |
 |---|---|---|
 | `enter`, `S-enter` | [commands.NewLine] | a line end; in a file of Cesia, then the spaces that put the new line where `cesia fmt` puts it; in another file, the spaces and tabs that start the current line, up to the cursor |
-| `tab`, `S-tab` | [commands.Tab] | in a file of Cesia, nothing: the line, or the selected lines, go to their place; in another file, the text of [emacs.TabText]: two spaces |
+| `tab`, `S-tab` | [commands.Tab] | in a file of Cesia, nothing: the line, or the selected lines, go to their place, or the word before the cursor is completed; in another file, the text of [emacs.TabText]: two spaces |
 
 The indent of a line is the spaces at its start, which show the code inside a block. In a file of another language, Enter
 keeps the indent of the line:
@@ -183,6 +183,49 @@ lines where it is, and a line typed with Enter and its first word lands where th
 The 38 others are layouts that fmt keeps and that no rule guesses, such as an example right under the words of a comment,
 with no blank line before it. [Inside Cemacs](internals.md#the-indent) tells how a line is read, and
 [Speed](performance.md#enter-and-tab-in-a-file-of-cesia) what it costs.
+
+## Completion
+
+Completing a word is typing its start and letting the editor write the rest. In a file of Cesia, Tab completes when the
+line is at its place already and the cursor ends a word: the letters, digits and underscores right before it, with none
+right after it. Else Tab puts the line at its place, as above. This is what Emacs does with `tab-always-indent` set to
+`complete`.
+
+The words come from three places, in this order, each word once, at most 100:
+
+1. the text of the buffer around the cursor, 64 KB before it and 64 KB after it, the nearest word first;
+2. the other buffers, the same way around their cursors;
+3. the names of Cesia: its keywords, and the public names of its standard library without their module, as `Concat` for
+   `list.Concat`, read once, at the first completion.
+
+A word typed with no capital also finds the words with capitals, as a search does: `byte` finds `ByteFind`. A word with a
+capital finds only words that start as it is written. Emacs's `dabbrev-expand`, `M-/`, and Vim's `Ctrl-N` also take their
+words from the buffers.
+
+With one word found, Tab puts it in place at once. With several, a list opens under the word, the first one chosen:
+
+| Keys | Command | What it does |
+|---|---|---|
+| `C-n`, `down` | [commands.CompleteNext] | chooses the next word, and the first one after the last |
+| `C-p`, `up` | [commands.CompletePrevious] | chooses the word before, and the last one before the first |
+| `tab` | [commands.CompleteAccept] | puts the chosen word in place of the start typed, and closes the list |
+
+A letter typed with the list open goes into the word, and the list is made again for the longer word; any other key, as
+Enter, `C-g` or a move, closes the list and does what it does. With no word found, the prompt line says
+`No completion for` and the word. The word put in place is one step of undo, and it moves its line where its place changes,
+as `else` typed would.
+
+```cesia
+words = "Hello = 1\nHelp = 2\n"
+listed = press.Press(["M->", "Hel", "tab"], editor(words, "a.ce"))
+listed.Completion.Words[1] --> "Help"
+listed.Completion.Words[2] --> "Hello"
+textOf(press.Press(["C-n", "tab"], listed)) --> "Hello = 1\nHelp = 2\nHello"
+textOf(press.Press(["M->", "Hell", "tab"], editor(words, "a.ce"))) --> "Hello = 1\nHelp = 2\nHello"
+```
+
+The list shows eight words at a time, and moves with the word chosen. In a file of another language, Tab types its text as
+before, and doesn't complete. [Speed](performance.md#completion) gives what a completion costs.
 
 ## Deleting
 

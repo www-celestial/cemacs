@@ -105,6 +105,16 @@ When two keymaps bind one key, the one that comes first here wins: in a list, th
 row, then [emacs.ListKeys], then the global keys. In a list, the band of hints shows the keys of the list too, those of the
 folder manager as `a function`, since they are written in place in its code; the `?` lists show the global keys only.
 
+## The list of completions
+
+While the list of completions that Tab opens in a file of Cesia is under the cursor, these keys come over the global ones;
+a letter typed makes the list again for the longer word, and any other key closes the list and does what it does.
+[Editing](editing.md#completion) tells how.
+
+```cesia output=md fold=code
+table(emacs.CompleteKeys())
+```
+
 ## The mouse
 
 The mouse has its keymaps too, by the action of its event: `down`, `move`, `up` and `wheel`. Their commands take the event

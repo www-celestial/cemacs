@@ -15,7 +15,7 @@ scrolled lines in a series for Cemacs and one for the others, the same afternoon
 
 | Measure | n | Cemacs | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
 |---|---|---|---|---|---|
-| start to the first frame | 15; 20 for the others | 56.9 ms [56.5, 59.9] | 89.1 ms [88.3, 92.9] | 13.8 ms [13.6, 13.9] | 9.3 ms [9.2, 9.4] |
+| start to the first frame | 31; 20 for the others | 62.0 ms [59.8, 64.6] | 89.1 ms [88.3, 92.9] | 13.8 ms [13.6, 13.9] | 9.3 ms [9.2, 9.4] |
 | start to the first frame, in a Wayland window, before this version | 10 | 236 ms [232, 241] | | | |
 | start and open 0.79 MB | 7 | 66.9 ms [66.2, 71.0] | 98.4 ms [97.7, 109] | 20.5 ms [20.4, 42.7] | 18.0 ms [17.4, 19.8] |
 | start and open 15.9 MB | 7 | 97.8 ms [97.1, 139] | 145 ms [142, 149] | 53.2 ms [52.8, 61.9] | 51.5 ms [50.4, 52.0] |
@@ -25,6 +25,8 @@ scrolled lines in a series for Cemacs and one for the others, the same afternoon
 | a typed key at line 1,416,745 of 99.9 MB, inside | 7 | 1.57 ms [1.41, 1.97], no drawing | 1.05 ms [1.04, 1.10] | 0.042 ms [0.042, 0.053] | 0.057 ms [0.052, 0.060] |
 | Enter that indents, in a function at the middle of a file of 52 KB, of Python's 107 KB for the others, inside | 30 | 0.734 ms [0.701, 0.819], no drawing | 0.197 ms [0.191, 0.211] | 18.8 ms [18.2, 19.2] | |
 | the same at the middle of 100.5 MB, of Python's 104.7 MB for the others | 30 | 0.832 ms [0.812, 0.859], no drawing | 201 ms [200, 205] | 3.78 ms [3.70, 3.86] | |
+| the words that complete `co`, middle of 52 KB, of Python's 107 KB for the others, inside | 30 | 0.81 ms [0.79, 0.83], Tab, no drawing | 4.07 ms [4.00, 4.12], `dabbrev` | 1.51 ms [1.15, 1.85], `Ctrl-N` | |
+| the same in 100.5 MB, of Python's 104.7 MB for the others | 30; 3 and 7 for the others | 1.43 ms [1.39, 1.47], from 128 KB | 23.2 s, the whole buffer | 948 ms [918, 995], the whole buffer | |
 | search 15.9 MB for a word on its last line, finding it | 7 | 7.6 ms [7.4, 7.9] | 7.6 ms [7.4, 7.9] | 28.3 ms [27.7, 29.6] | 33.6 ms [32.4, 36.8] |
 | search 99.9 MB for a word on its last line, finding it | 7 | 48.8 ms [48.4, 53.5] | 48.4 ms [47.8, 51.6] | 181 ms [179, 265] | 300 ms [290, 315] |
 | the same, to the place shown | 7 | 87.6 ms [86.7, 88.6] | | | |
@@ -69,6 +71,9 @@ What they say:
   two to four times faster in a small file, takes 0.2 s in a file of 100 MB, and Neovim's indent of Python 3.8 to 19 ms:
   Cemacs reads a line from the nearest line at the margin above it, which [Speed](performance.md#enter-and-tab-in-a-file-of-cesia)
   tells. The two others have no mode for Cesia, so they were measured on Python.
+- **Completion** of a start of two or three letters takes Cemacs 0.7 to 1.4 ms at any size of file; Neovim's `Ctrl-N` is as
+  fast or faster in a small file, and wins on a start of one letter, but reads the whole buffer, 0.4 to 1 s in 100 MB; Emacs's
+  `dabbrev` 3 to 15 ms, and 13 to 23 s, while its `M-/`, which looks for one word only, takes 0.04 to 0.2 ms.
 - **A key and a scrolled line** take Cemacs 2.6 ms inside, with OpenGL, against 1.1 to 1.5 ms for Emacs and 0.02 to 0.06 ms for
   Neovim and Vim, which write a few cells of a terminal in C and let the terminal draw them. All of them land within one
   frame of the screen, 16.7 ms at 60 Hz. In a file of 99.9 MB, at its middle line, a key costs Cemacs 1.6 ms without drawing,
@@ -104,6 +109,7 @@ the Debug Adapter Protocol, DAP. An editor that speaks both gets every language 
 | Language servers (LSP) | no client; Cesia's errors come from `cesia check` | Eglot, built in | a client built in, `vim.lsp` | channels that speak LSP's encoding; the client is a plugin |
 | Debugger | built in, for Cesia, with breakpoints, steps, evals, fix and continue | GUD, built in, for gdb and other debuggers | none built in: plugins | Termdebug, built in, for gdb; channels that speak DAP's encoding |
 | Indentation | for Cesia, by `cesia fmt`'s rule: Enter, Tab, and `end`, `else`, `then` and closing brackets at the start of a line | for each language, by its mode: `indent-for-tab-command`, and `electric-indent-mode` at a line end and the characters each mode adds | for each kind of file, by its `'indentexpr'`, at the keys of its `'indentkeys'`, such as `0=end` | as Neovim |
+| Completion | in Cesia files, Tab at the end of a word: the words around the cursor, of the other buffers and the names of Cesia, in a list under the cursor | `completion-at-point` and `dabbrev-expand` (`M-/`), built in; `tab-always-indent` set to `complete` | `Ctrl-N` and `Ctrl-P` in insert mode: the words of the buffers; LSP completion | `Ctrl-N` and `Ctrl-P` |
 | Undo | linear, with redo, 1,000 states | an undo is recorded as an edit, so an undo can be undone; `undo-redo` | a tree of every state | a tree of every state |
 | Encodings | UTF-8 only | many | many | many |
 | Large files | opens up to 1 GiB | asks above 10 MB, then opens | opens | opens |
@@ -133,8 +139,8 @@ What Cemacs does that they don't do out of the box:
 
 What they do that Cemacs doesn't, and why it matters:
 
-- **Search by regular expression and replace, completion, a command by name, other languages and encodings, a terminal
-  inside.** Cemacs has none yet, beside its incremental search: it is a young editor for one language, and grows when its
+- **Search by regular expression and replace, completion from a language server, a command by name, other languages and
+  encodings, a terminal inside.** Cemacs has none yet, beside its incremental search and its completion of words: it is a young editor for one language, and grows when its
   use asks.
 - **Speed at the start and on large files.** Native code that reads and scans the bytes of a file at the speed of memory.
 - **Safety of the text.** Emacs, Vim and Neovim keep a copy of what you type on disk, so a crash loses little; Cemacs keeps

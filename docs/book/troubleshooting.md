@@ -34,6 +34,7 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `Nothing is selected.` | `C-w` or `M-w` with no selection: set the mark with `C-space`, or hold Shift while you move |
 | `The clipboard is empty.` | `C-y` with nothing in the clipboard |
 | `Nothing to cut.` | `C-k` at the end of the file |
+| `No completion for WORD.`, as `No completion for Hzq.` | Tab at the end of a word in a file of Cesia found no word that starts with it, in the text around the cursor, the other buffers or the names of Cesia: [Editing](editing.md#completion) |
 | `This list is read only.` | a command tried to change the text of a list, and was taken back |
 | `Nothing here.` | a key of a list with no row left, as Enter after a filter that matches nothing: Backspace takes the filter back |
 

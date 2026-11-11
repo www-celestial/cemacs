@@ -119,7 +119,7 @@ end
 
 defn Names()
   (** The names of Cesia for completion: its keywords, then the public names of the modules of its standard library without their module, as
-      Concat for list.Concat, in order, each once. Reading them takes about 15 ms, so the editor reads them at its first completion and keeps them. *)
+      Concat for list.Concat, in order, each once. Reading them takes about 10 ms, so the editor reads them at its first completion and keeps them. *)
   keywords = [w for w in cesia.Keywords() if nameByte(str.Byte(1, w))]
   names = list.Flatten([[list.Last(str.Split(".", n)) for n in cesia.DocNames(m)] for m in cesia.DocNames() if str.StartsWith("std/", m)])
   list.Unique(list.Concat(keywords, list.Sort(names)))

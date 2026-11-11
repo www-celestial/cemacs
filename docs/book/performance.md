@@ -53,7 +53,9 @@ packages, which Cesia reads at each start. Measured beside `main` at 65ec91c, ta
 against 52.3 ms [50.8, 53.2]; again, n = 21: 59.4 ms [57.5, 66.7] against 53.6 ms [51.3, 60.4]. The load alone, the packages
 that Cemacs uses and `io.Print(1)`, n = 31: 38.0 ms [37.4, 41.7] against 31.1 ms [29.6, 34.5]. That is about 5 ms for 640
 lines, where the rest of Cemacs costs about 3.7 µs a line: Cesia's load grows faster than the code it reads, as the same 1,000
-lines of small functions take 0.85 ms to load alone and 1.8 ms beside the packages of Cemacs.
+lines of small functions take 0.85 ms to load alone and 1.8 ms beside the packages of Cemacs. Completion adds about 270 lines
+more, and 2 ms: in a later series, taking turns, n = 31, 62.0 ms [59.8, 64.6] against 59.9 ms [58.3, 62.4] with the indent
+only and 55.0 ms [53.0, 60.6] for `main` at 65ec91c.
 
 Where the 51 ms went, with the dummy driver, before this version, each part timed from the one before by the program below with a mark after each part, n = 20,
 medians:
@@ -304,6 +306,44 @@ parser, `syntax-ppss`, are read from the start of the file. Neovim's indent of P
 to 50 lines back for the bracket a line is in, and tests the syntax colours at each bracket it meets, costs 3.5 to 19 ms a
 key; its plain edits cost 0.02 ms. Cemacs's key costs under a millisecond at every
 size: its reading starts at the anchor, the line at the margin above.
+
+### Completion
+
+Tab at the end of a word in a file of Cesia, [Editing](editing.md#completion), measured as the keys above, from the same state
+each time: a new line opened in a function and a start of a word typed on it, `s`, `co` or `val`; n = 30, two runs of this
+version and of the version before taking turns. Before, Tab typed two spaces.
+
+| File, start | Words | Tab that opens the list | Tab, before | `C-n` | Tab that puts the word | A letter, the list open | The first Tab |
+|---|---|---|---|---|---|---|---|
+| `small.ce`, `s` | 100 | 4.47 ms [2.98, 5.24] | 0.25 ms | 0.21 ms | 0.40 ms | 1.49 ms | 14.3 ms |
+| `small.ce`, `co` | 40 | 0.81 ms [0.79, 0.83] | 0.25 ms | 0.14 ms | 0.30 ms | 0.63 ms | 8.8 ms |
+| `small.ce`, `val` | 3 | 0.69 ms [0.64, 0.70] | 0.22 ms | 0.14 ms | 0.31 ms | 0.59 ms | 8.7 ms |
+| `big100.ce`, `s` | 100 | 3.66 ms [3.61, 3.75] | 0.26 ms | 0.16 ms | 0.47 ms | 1.11 ms | 10.4 ms |
+| `big100.ce`, `co` | 74 | 1.43 ms [1.39, 1.47] | 0.29 ms | 0.15 ms | 0.42 ms | 0.85 ms | 8.8 ms |
+| `big100.ce`, `val` | 6 | 1.16 ms [1.04, 1.23] | 0.27 ms | 0.18 ms | 0.49 ms | 0.83 ms | 8.5 ms |
+
+Most of a completion is finding the words: each place where the start typed begins a word, in the 128 KB around the cursor,
+found by [text.ByteFind], and the word read after it, so a start of one letter, found at a thousand places, costs most. A
+letter typed with the list open finds the words again for the longer start. The first Tab of a session also reads the names
+of Cesia, [complete.Names], 8 to 10 ms, once. A letter typed with no list costs what it cost before, within 0.03 ms.
+
+Beside Emacs and Neovim, on the files of Python of the indent above, at the middle line: Emacs 31.1's
+`dabbrev--find-all-expansions`, the words of the whole buffer that `dabbrev-completion` lists, and `dabbrev-expand`, `M-/`,
+which puts the nearest word in place with no list; Neovim 0.12.6's `o`, the start and `Ctrl-N`, its completion of the words of
+its buffers, with the indent of Python turned off, as it costs more than the completion; n = 30, and n = 3 for Emacs and 7 for
+Neovim in the file of 100 MB.
+
+| File, start | Cemacs, Tab | Emacs, every word | Emacs, `M-/` | Neovim, `Ctrl-N` |
+|---|---|---|---|---|
+| small, `s` | 4.47 ms [2.98, 5.24] | 15.3 ms [15.0, 26.4] | 0.035 ms | 2.49 ms [2.46, 2.55] |
+| small, `co` | 0.81 ms [0.79, 0.83] | 4.07 ms [4.00, 4.12] | 0.114 ms | 1.51 ms [1.15, 1.85] |
+| small, `val` | 0.69 ms [0.64, 0.70] | 2.91 ms [2.76, 3.05] | 0.040 ms | 0.63 ms [0.62, 0.65] |
+| 100 MB, `co` | 1.43 ms [1.39, 1.47] | 23.2 s | 0.147 ms | 948 ms [918, 995] |
+| 100 MB, `val` | 1.16 ms [1.04, 1.23] | 13.2 s | 0.227 ms | 379 ms [348, 477] |
+
+Neovim wins on a start of one letter, 2.5 ms against 4.5, and is as fast on three; Emacs's `M-/`, which looks for one word
+only, wins everywhere. In the file of 100 MB, Emacs and Neovim read the whole buffer, and so find more words, 686 for `co`
+where Cemacs offers its first 100 from 128 KB, but they take 0.4 to 23 s; Cemacs's Tab stays under 1.5 ms.
 
 ## Search
 

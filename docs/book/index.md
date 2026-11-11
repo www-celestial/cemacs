@@ -39,8 +39,8 @@ the keys of Cemacs are a value of its own code, which any Cesia program can read
 
 1. [Install](install.md): Cesia, SDL3 and SDL3_ttf, the code, and the command `bin/cemacs`.
 2. [First steps](first-steps.md): a tour, from opening a file to running and debugging it and changing Cemacs.
-3. [Editing](editing.md): the cursor, the mark and the selection, moves, typing, the indent of Cesia code, cutting and
-   pasting, undo, the mouse.
+3. [Editing](editing.md): the cursor, the mark and the selection, moves, typing, the indent of Cesia code, completion,
+   cutting and pasting, undo, the mouse.
 4. [Files and buffers](files.md): opening, saving safely, what files open, line ends, the buffer list, the folder manager.
 5. [Windows and panes](windows.md): the window, its panes, the mode line, the prompt line and the band of hints.
 6. [Search](search.md): the incremental search of a buffer, `C-s` and `C-r`, and what else Cemacs finds: rows, keys, errors, places.
