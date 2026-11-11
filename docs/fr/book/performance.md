@@ -382,7 +382,7 @@ Le script a fait le dossier, 10 000 fichiers nommés de `file-1.ce` à `file-1
 dossier une fois : une liste et un regard sur chacune des 10 000 entrées, puis les rangées et leurs couleurs. Une lettre
 filtre les rangées lues alors, à partir de celles déjà montrées quand le filtre n'a fait que grandir. Ces temps datent d'avant
 que le filtre cherche chaque lettre en code natif ;
-[Un cas : trouver un fichier à partir de quelques lettres](finding.md#speed-each-letter-answers-at-once) mesure le filtre
+[Un cas : trouver un fichier à partir de quelques lettres](finding.md#la-vitesse-chaque-lettre-répond-tout-de-suite) mesure le filtre
 depuis, sur 1 933 rangées : 288 lettres tapées en 210 ms contre 402 avant.
 
 ## La vérification
