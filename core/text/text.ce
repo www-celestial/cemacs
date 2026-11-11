@@ -418,6 +418,14 @@ defn Electric(typed, b)
     return b
   end
   words = line(at.Line, b)
+  (* The first token that changes a place is at most four characters, else and its arrow seven: from further in, nothing to do. *)
+  k = 1
+  while k <= str.ByteLength(words) and (str.Byte(k, words) == 32 or str.Byte(k, words) == 9)
+    k += 1
+  end
+  if at.Column > k + 10
+    return b
+  end
   cs = str.Chars(words)
   head = list.TakeWhile(c -> c == " " or c == "\t", cs)
   near = list.Skip(value.Len(head), list.Take(at.Column, cs))
