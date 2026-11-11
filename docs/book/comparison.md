@@ -2,7 +2,7 @@
 
 This chapter puts Cemacs beside the editors that most programmers know: GNU Emacs 31.1, Neovim 0.12.6 and Vim 9.2, which
 were installed on the machine where Cemacs is measured, and Visual Studio Code, by its published documentation only. It says
-plainly where they win, and why. Cemacs is young and small, about 6,200 lines; each of them is the work of many people over
+plainly where they win, and why. Cemacs is young and small, about 7,200 lines; each of them is the work of many people over
 years, decades for Emacs and Vim.
 
 ## In numbers
@@ -15,7 +15,7 @@ scrolled lines in a series for Cemacs and one for the others, the same afternoon
 
 | Measure | n | Cemacs | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
 |---|---|---|---|---|---|
-| start to the first frame | 15; 20 for the others | 53.7 ms [53.4, 55.3] | 89.1 ms [88.3, 92.9] | 13.8 ms [13.6, 13.9] | 9.3 ms [9.2, 9.4] |
+| start to the first frame | 15; 20 for the others | 56.9 ms [56.5, 59.9] | 89.1 ms [88.3, 92.9] | 13.8 ms [13.6, 13.9] | 9.3 ms [9.2, 9.4] |
 | start to the first frame, in a Wayland window, before this version | 10 | 236 ms [232, 241] | | | |
 | start and open 0.79 MB | 7 | 66.9 ms [66.2, 71.0] | 98.4 ms [97.7, 109] | 20.5 ms [20.4, 42.7] | 18.0 ms [17.4, 19.8] |
 | start and open 15.9 MB | 7 | 97.8 ms [97.1, 139] | 145 ms [142, 149] | 53.2 ms [52.8, 61.9] | 51.5 ms [50.4, 52.0] |
@@ -23,6 +23,8 @@ scrolled lines in a series for Cemacs and one for the others, the same afternoon
 | a typed key at line 19,000, inside, with its redraw | 7 | 2.6 ms [2.6, 3.2], OpenGL | 1.06 ms [1.04, 1.08] | 0.045 ms [0.042, 0.063] | 0.059 ms [0.056, 0.068] |
 | a scrolled line, inside, with its redraw | 7 | 2.6 ms [2.5, 3.1], OpenGL | 1.51 ms [1.49, 1.60] | 0.020 ms [0.018, 0.030] | 0.052 ms [0.051, 0.083] |
 | a typed key at line 1,416,745 of 99.9 MB, inside | 7 | 1.57 ms [1.41, 1.97], no drawing | 1.05 ms [1.04, 1.10] | 0.042 ms [0.042, 0.053] | 0.057 ms [0.052, 0.060] |
+| Enter that indents, in a function at the middle of a file of 52 KB, of Python's 107 KB for the others, inside | 30 | 0.734 ms [0.701, 0.819], no drawing | 0.197 ms [0.191, 0.211] | 18.8 ms [18.2, 19.2] | |
+| the same at the middle of 100.5 MB, of Python's 104.7 MB for the others | 30 | 0.832 ms [0.812, 0.859], no drawing | 201 ms [200, 205] | 3.78 ms [3.70, 3.86] | |
 | search 15.9 MB for a word on its last line, finding it | 7 | 7.6 ms [7.4, 7.9] | 7.6 ms [7.4, 7.9] | 28.3 ms [27.7, 29.6] | 33.6 ms [32.4, 36.8] |
 | search 99.9 MB for a word on its last line, finding it | 7 | 48.8 ms [48.4, 53.5] | 48.4 ms [47.8, 51.6] | 181 ms [179, 265] | 300 ms [290, 315] |
 | the same, to the place shown | 7 | 87.6 ms [86.7, 88.6] | | | |
@@ -45,7 +47,7 @@ What they say:
 
 - **Vim and Neovim start several times faster than Cemacs.** They are programs of C compiled to machine code, which start
   in a few milliseconds and draw characters into a terminal. Cemacs is a Cesia program: Cesia reads and prepares about
-  7,000 lines of code at each start, Cemacs's and the packages of Cesia it uses, about 26 ms, then SDL3 opens a window, and
+  8,000 lines of code at each start, Cemacs's and the packages of Cesia it uses, about 35 ms, then SDL3 opens a window, and
   SDL3_ttf loads three fonts and draws the first frame in pixels. In a real window on GNOME, SDL's start of its title bar
   through GTK and of OpenGL brings it to 236 ms. Emacs, which loads its own Lisp at the start, takes 89 ms in a terminal.
 - **Cemacs opens a file faster than Emacs at every size measured, 99.9 MB in 0.68 of its time, but Vim and Neovim open a
@@ -63,6 +65,10 @@ What they say:
 - **A save of 15.9 MB that waits for the disk**, `fsync`, takes Cemacs less than Vim and Neovim, which wait too, when the text
   is the one read: its views still cover the file's text, written as it is. Emacs, which doesn't wait, takes more, 131 ms, and
   makes a backup of the file at its first save, `FILE~`.
+- **Enter that indents a line of code** costs Cemacs under a millisecond at every size of file, where Emacs's python-mode,
+  two to four times faster in a small file, takes 0.2 s in a file of 100 MB, and Neovim's indent of Python 3.8 to 19 ms:
+  Cemacs reads a line from the nearest line at the margin above it, which [Speed](performance.md#enter-and-tab-in-a-file-of-cesia)
+  tells. The two others have no mode for Cesia, so they were measured on Python.
 - **A key and a scrolled line** take Cemacs 2.6 ms inside, with OpenGL, against 1.1 to 1.5 ms for Emacs and 0.02 to 0.06 ms for
   Neovim and Vim, which write a few cells of a terminal in C and let the terminal draw them. All of them land within one
   frame of the screen, 16.7 ms at 60 Hz. In a file of 99.9 MB, at its middle line, a key costs Cemacs 1.6 ms without drawing,
@@ -97,6 +103,7 @@ the Debug Adapter Protocol, DAP. An editor that speaks both gets every language 
 | Errors of the code | Cesia's, from `cesia check`, half a second after a key; a file over 1 MB is not checked, and its mode line says so | Flymake, built in, with a checker for each language | diagnostics of its LSP client | by plugins |
 | Language servers (LSP) | no client; Cesia's errors come from `cesia check` | Eglot, built in | a client built in, `vim.lsp` | channels that speak LSP's encoding; the client is a plugin |
 | Debugger | built in, for Cesia, with breakpoints, steps, evals, fix and continue | GUD, built in, for gdb and other debuggers | none built in: plugins | Termdebug, built in, for gdb; channels that speak DAP's encoding |
+| Indentation | for Cesia, by `cesia fmt`'s rule: Enter, Tab, and `end`, `else`, `then` and closing brackets at the start of a line | for each language, by its mode: `indent-for-tab-command`, and `electric-indent-mode` at a line end and the characters each mode adds | for each kind of file, by its `'indentexpr'`, at the keys of its `'indentkeys'`, such as `0=end` | as Neovim |
 | Undo | linear, with redo, 1,000 states | an undo is recorded as an edit, so an undo can be undone; `undo-redo` | a tree of every state | a tree of every state |
 | Encodings | UTF-8 only | many | many | many |
 | Large files | opens up to 1 GiB | asks above 10 MB, then opens | opens | opens |

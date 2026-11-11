@@ -1,7 +1,7 @@
 # Editing
 
-This chapter tells how the cursor moves, how text is typed and deleted, how a selection is made, cut, copied and pasted, how
-undo works, and what the mouse does. Every key here is in the table of `src/emacs/emacs.ce`, and runs a command of
+This chapter tells how the cursor moves, how text is typed and deleted, where a line of Cesia code goes, how a selection is
+made, cut, copied and pasted, how undo works, and what the mouse does. Every key here is in the table of `src/emacs/emacs.ce`, and runs a command of
 [core/commands]: a public function from the state of the editor to a new state.
 
 ## The examples of this chapter
@@ -18,9 +18,10 @@ use src/rope
 use src/ui
 use std/value
 
-defn editor(words)
-  (** The editor with one buffer holding words, the Emacs keys and no window: 800 by 600 pixels, characters 8 by 19. *)
-  s = view.Start([text.Of(words, missing)], ui.Look(ui.Dark, (w, f) -> 8 * value.Len(w), 19), {Width: 8, Height: 19}, 800, 600)
+defn editor(words, path = missing)
+  (** The editor with one buffer holding words, of the file path or of none, the Emacs keys and no window: 800 by 600 pixels,
+      characters 8 by 19. Nothing is read from the disk. *)
+  s = view.Start([text.Of(words, path)], ui.Look(ui.Dark, (w, f) -> 8 * value.Len(w), 19), {Width: 8, Height: 19}, 800, 600)
   s.Config = () -> emacs.Config(emacs.Keys)
   s
 end
@@ -96,17 +97,92 @@ numeric keypad, and the text of an input method. A key with Control or Alt types
 
 | Keys | Command | Inserts |
 |---|---|---|
-| `enter`, `S-enter` | [commands.NewLine] | a line end, then the spaces and tabs that start the current line, up to the cursor |
-| `tab`, `S-tab` | [commands.Tab] | the text of [emacs.TabText]: two spaces |
+| `enter`, `S-enter` | [commands.NewLine] | a line end; in a file of Cesia, then the spaces that put the new line where `cesia fmt` puts it; in another file, the spaces and tabs that start the current line, up to the cursor |
+| `tab`, `S-tab` | [commands.Tab] | in a file of Cesia, nothing: the line, or the selected lines, go to their place; in another file, the text of [emacs.TabText]: two spaces |
 
-So Enter keeps the indent, the spaces at the start of a line that show the code inside a block:
+The indent of a line is the spaces at its start, which show the code inside a block. In a file of another language, Enter
+keeps the indent of the line:
 
 ```cesia
 textOf(press.Press(["  if x", "enter", "y"], editor(""))) --> "  if x\n  y"
 ```
 
-Tab inserts spaces and never a tab character, since Cesia's code is indented with spaces: change [emacs.TabText] to have
-another width. Typing over a selection replaces it, as in most editors; in Emacs, `delete-selection-mode` does that.
+In another file, Tab inserts spaces and never a tab character: change [emacs.TabText] to have another width. In a file of
+Cesia, Enter and Tab give each line its place, as the next section tells. Typing over a selection replaces it, as in most
+editors; in Emacs, `delete-selection-mode` does that.
+
+## Indentation in a file of Cesia
+
+A file of Cesia is a buffer whose path ends with `.ce`, [indent.IsCesia]. In it, Cemacs puts each line where `cesia fmt`, the
+formatter of Cesia, would put it, by fmt's own rule, so that code typed in Cemacs is already as fmt leaves it:
+
+- A line that starts a statement, a step of the program such as `x = 1` or `if a`, gets two spaces for each block it is in.
+  A block is what `defn`, `if`, `for`, `while`, `match`, `struct` or `interface` opens and `end` closes; `else` closes one
+  part of an `if` or a `match` and opens the next, so it stands one block out.
+- A line that goes on with a statement, a continuation line, moves with the line that starts it. A statement goes on inside
+  brackets, `(`, `[` and `{`, after a token that asks for more, such as `,`, `+`, `and` or `then`, and inside a comment.
+- A line that starts inside a text, `"` to `"` over several lines, keeps the spaces it holds, since they are part of the
+  text.
+
+The examples below give the buffer a file, `a.ce`; nothing is read from the disk. `"end"` alone would be the key of that
+name, so the word is typed in two parts, `"en"` and `"d"`.
+
+**Enter** starts the new line at its place, one block deeper after a line that opens a block. **The words that move a line**,
+`end`, `else` and `then`, and the closing brackets `)`, `]` and `}`, typed at the start of a line, put it at its place too, in
+the same step of undo as the typing:
+
+```cesia
+typed = press.Press(["if a", "enter", "b", "enter", "else", "enter", "c", "enter", "en", "d"], editor("", "a.ce"))
+textOf(typed) --> "if a\n  b\nelse\n  c\nend"
+```
+
+The same keys in a file of another language keep the indent of the line above:
+
+```cesia
+textOf(press.Press(["if a", "enter", "b", "enter", "en", "d"], editor(""))) --> "if a\nb\nend"
+```
+
+Enter also takes away the spaces around the cursor that would be left at the end of the line, since fmt leaves no line ending
+with spaces. Inside a text, it keeps the spaces and tabs of the line, as in another file.
+
+Emacs calls this electric indentation: its `electric-indent-mode`, on by default, indents again at each character of
+`electric-indent-chars`, a line end by default, to which each mode of a language adds its own; Vim and Neovim do the same with
+the `'indentkeys'` of each kind of file, as `0=end` for Lua.
+
+**Tab** puts the line of the cursor at its place, or, with a selection, every statement that has a line in it. A statement
+moves as a whole: its first line goes to its place, and the lines that go on with it move by as much, so their layout is kept.
+It is one step of undo, and it ends the selection:
+
+```cesia
+textOf(press.Press(["C-n", "tab"], editor("defn f()\nx = 1 +\n    2\nend", "a.ce"))) --> "defn f()\n  x = 1 +\n      2\nend"
+```
+
+The cursor keeps its place in the words of its line; from inside the indent, it goes to the end of it. On a blank line, Tab
+puts the cursor where a line typed there would start. This is Emacs's `indent-for-tab-command` with `tab-always-indent` set
+to `t`, its default: Tab only ever indents. In a file of Cesia, Tab no longer types two spaces; the space bar does.
+
+**A line that fmt keeps as it is written.** fmt has no rule for the place of a continuation line: it moves it with its
+statement, and keeps it where it is beside it. So Tab doesn't choose a place for such a line, but a line being typed needs
+one, and Enter and the words that move a line choose it:
+
+- inside brackets, as the line above inside the same bracket, else two columns in from the line that opens the bracket, and
+  the bracket that closes it under that line; a block written inside brackets, as in `fiber.Spawn(defn ()`, is laid out from
+  the line that opens it;
+- after a token that asks for more, or before a `then`, two columns in from the statement, or as the line above that goes on
+  with it;
+- inside a comment, under the words after its opening, then as the line above; in a comment of documentation, `(**`, two
+  columns further in after a blank line, where its examples go;
+- inside a text, as the line above.
+
+```cesia
+textOf(press.Press(["ys = [f(x),", "enter", "g(x)", "enter", "]"], editor("", "a.ce"))) --> "ys = [f(x),\n  g(x)\n]"
+```
+
+Measured on every file of Cesia and of Cemacs, formatted by fmt, 768 files of 36,038 lines: Tab leaves each of the 36,038
+lines where it is, and a line typed with Enter and its first word lands where the formatted code has it on 36,000, 99.89 %.
+The 38 others are layouts that fmt keeps and that no rule guesses, such as an example right under the words of a comment,
+with no blank line before it. [Inside Cemacs](internals.md#the-indent) tells how a line is read, and
+[Speed](performance.md#enter-and-tab-in-a-file-of-cesia) what it costs.
 
 ## Deleting
 

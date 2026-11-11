@@ -10,6 +10,13 @@ as possible match; a score adds points for each match and takes some away for ea
 best score. Smith and Waterman found it for DNA in 1981. A query of a few letters aligned with a file's path is what fuzzy
 finders score. See [A case](finding.md#4-research-how-this-kind-of-problem-is-solved).
 
+## Anchor
+
+The line from which Cemacs reads the code above a line of Cesia to give it its place: the nearest line above it at the left
+margin, in code, that starts a statement, after a run of lines that each end their statement. From there, the reading is
+sure to start out of any block and bracket, as `cesia fmt`'s reading from the start of the file would be. See
+[Inside Cemacs](internals.md#the-indent).
+
 ## Atomic rename
 
 A rename that the system makes in one step: at every instant the name leads to the old file or to the new one, never to a
@@ -72,6 +79,12 @@ interactive. See [Keys](keys.md#words).
 The record of functions the editor runs on: its keymaps, its settings and its hooks, made by `emacs.Config`. See
 [Changing Cemacs](customising.md#the-config).
 
+## Continuation line
+
+A line that goes on with a statement begun on a line above it: inside brackets, after a token that asks for more such as `,`
+or `+`, or inside a comment. `cesia fmt` moves it with the line that starts the statement, and Cemacs's Tab too. See
+[Editing](editing.md#indentation-in-a-file-of-cesia).
+
 ## Cursor
 
 The place between two characters where typing inserts text, a line and a column in Cemacs. Emacs calls it the point. See
@@ -105,6 +118,12 @@ possibility: the best alignment of two texts, cell by cell, each from the cells 
 
 Emacs's name for the line at the bottom of the frame where messages show. Cemacs's prompt line does it. See
 [Windows and panes](windows.md#the-prompt-line).
+
+## Electric indentation
+
+Indenting a line again when a character or a word typed changes its place, as a closing `end`. Emacs has it with
+`electric-indent-mode`, Vim and Neovim with `'indentkeys'`. In a file of Cesia, Cemacs does it at `end`, `else`, `then` and
+the closing brackets typed at the start of a line. See [Editing](editing.md#indentation-in-a-file-of-cesia).
 
 ## Elm architecture
 
@@ -182,6 +201,12 @@ state of its own. Cemacs draws so: see [Inside Cemacs](internals.md#the-frame).
 A search that finds the next match as each letter is typed, instead of waiting for the whole words: `C-s` forward and `C-r`
 backward, in Emacs and in Cemacs. The match shows selected, `C-s` again goes to the next one, and round the end of the file
 once none is left. See [Search](search.md#searching-a-buffer).
+
+## Indent
+
+The spaces at the start of a line, which show how deep in blocks its code is; to indent a line is to give it those spaces.
+In a file of Cesia, Cemacs gives each line the indent that `cesia fmt` gives it, two spaces a block. See
+[Editing](editing.md#indentation-in-a-file-of-cesia).
 
 ## Just-in-time colouring
 
@@ -335,6 +360,12 @@ screen is not shaped again. See [Inside Cemacs](internals.md#the-frame).
 
 A selection made by holding Shift while moving, which the next move without Shift ends. See
 [Editing](editing.md#the-mark-and-the-selection).
+
+## Statement
+
+One step of a program, such as `x = 1`, `io.Print(x)` or `if a`, which can run over several lines, its continuation lines.
+`cesia fmt` places the first line of each statement, and moves the others with it. See
+[Editing](editing.md#indentation-in-a-file-of-cesia).
 
 ## Subsequence matching
 

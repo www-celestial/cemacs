@@ -48,6 +48,13 @@ This version against the one before it, `main` at b2ab23f, taking turns, n = 15:
 the widgets of `src/ui` that nothing in Cemacs used, a menu bar, a tool bar, sliders, lists and graph nodes of an earlier
 design, about 290 lines, were taken out, and the start is now 1 ms shorter than before.
 
+The indent of Cesia code, [core/indent], adds about 640 lines of code, and 980 with the changes it brings to the other
+packages, which Cesia reads at each start. Measured beside `main` at 65ec91c, taking turns, n = 15: 56.9 ms [56.5, 59.9]
+against 52.3 ms [50.8, 53.2]; again, n = 21: 59.4 ms [57.5, 66.7] against 53.6 ms [51.3, 60.4]. The load alone, the packages
+that Cemacs uses and `io.Print(1)`, n = 31: 38.0 ms [37.4, 41.7] against 31.1 ms [29.6, 34.5]. That is about 5 ms for 640
+lines, where the rest of Cemacs costs about 3.7 µs a line: Cesia's load grows faster than the code it reads, as the same 1,000
+lines of small functions take 0.85 ms to load alone and 1.8 ms beside the packages of Cemacs.
+
 Where the 51 ms went, with the dummy driver, before this version, each part timed from the one before by the program below with a mark after each part, n = 20,
 medians:
 
@@ -256,6 +263,47 @@ million, two copies of 1.4 million states, 22 MB of garbage, at every key. In ch
 the gate without its drawing, and the two Cemacs lines differ by less than their intervals. Emacs's median key is about two
 thirds of Cemacs's, and its worst key ten times Cemacs's worst; Vim and Neovim, which change one line of their memline and
 write a few cells of the terminal, stay 30 times faster.
+
+### Enter and Tab in a file of Cesia
+
+One key in a file of Cesia, without drawing: [commands.Update] of the key, which runs its command and [view.FollowState]
+after it, from the same state each time, the colours of the screen exact; 15 keys a run, two runs of this version and two of
+the version before, `main` at 65ec91c, taking turns, n = 30. The version before indented a new line as the line above and
+typed two spaces with Tab. `small.ce` is `core/commands/commands.ce`, 52 KB; `big100.ce` the files of Cesia end to end, 100.5
+MB, 2.47 million lines; the line is a statement in the body of a function.
+
+| File, line | Enter, before | Enter | Enter again on the new line, before and now | Tab, before: two spaces | Tab | A letter typed, before and now |
+|---|---|---|---|---|---|---|
+| `small.ce`, 692 | 0.712 ms [0.469, 0.876] | 0.734 ms [0.701, 0.819] | 0.291, 0.323 ms | 0.616 ms [0.367, 0.692] | 0.677 ms [0.651, 0.695] | 0.585, 0.451 ms |
+| `small.ce`, 1,375, near its end | 0.299 ms [0.290, 0.313] | 0.596 ms [0.579, 0.605] | 0.193, 0.228 ms | 0.265 ms [0.258, 0.275] | 0.553 ms [0.537, 0.568] | 0.265, 0.292 ms |
+| `big100.ce`, 1,237,251 | 0.551 ms [0.536, 0.562] | 0.832 ms [0.812, 0.859] | 0.305, 0.358 ms | 0.468 ms [0.452, 0.484] | 0.790 ms [0.779, 0.810] | 0.435, 0.500 ms |
+| `big100.ce`, 2,474,497 | 0.449 ms [0.439, 0.471] | 0.660 ms [0.654, 0.694] | 0.352, 0.415 ms | 0.407 ms [0.386, 0.425] | 0.499 ms [0.488, 0.522] | 0.393, 0.447 ms |
+
+The place of a line costs 0.1 to 0.3 ms more than copying the indent of the line above: the reading from the anchor, the
+lines of the function above the cursor. Enter again on the new line goes on from the reading that the first Enter kept, and
+costs 0.03 to 0.06 ms more than before. A letter typed checks whether it makes a word that moves the line: at the start of a
+line only, so in the middle of a line it costs 0.03 to 0.06 ms more. The size of the file doesn't count: a line is read from
+its anchor, a few lines up.
+
+Beside Emacs and Neovim, which have no mode for Cesia, on files of Python of about the same sizes: `small.py`, Python's
+`argparse.py`, 107 KB, and `big100.py`, Python's standard library end to end, 104.7 MB; a statement in the body of a function,
+at the middle of the file and at its end; Emacs 31.1's python-mode, `newline-and-indent` and `indent-for-tab-command`, in
+batch, and Neovim 0.12.6's `A<CR>` and `==`, its indent of Python, `python#GetIndent()`, headless, each from the same state
+again and again, one call first to warm it, n = 30. Their numbers have no redraw; Cemacs's hold the follow of the screen.
+
+| File, place | Cemacs, Enter | Emacs, Enter | Emacs, Tab | Neovim, Enter | Neovim, `==` |
+|---|---|---|---|---|---|
+| small, middle | 0.734 ms [0.701, 0.819] | 0.197 ms [0.191, 0.211] | 0.148 ms | 18.8 ms [18.2, 19.2] | 18.3 ms |
+| small, end | 0.596 ms [0.579, 0.605] | 0.290 ms [0.283, 0.328] | 0.248 ms | 19.1 ms [18.9, 19.5] | 16.0 ms |
+| 100 MB, middle | 0.832 ms [0.812, 0.859] | 201 ms [200, 205] | 218 ms | 3.78 ms [3.70, 3.86] | 3.49 ms |
+| 100 MB, end | 0.660 ms [0.654, 0.694] | 409 ms [406, 411] | 441 ms | 15.8 ms [15.2, 16.6] | 15.5 ms |
+
+Emacs wins on the small file, two to four times faster than Cemacs, with no redraw in its number. In the file of 100 MB,
+its key costs 0.2 to 0.4 s, more the farther the line is in the file, and its first key 5 to 10 s, while the states of its
+parser, `syntax-ppss`, are read from the start of the file. Neovim's indent of Python, a function of Vimscript that looks up
+to 50 lines back for the bracket a line is in, and tests the syntax colours at each bracket it meets, costs 3.5 to 19 ms a
+key; its plain edits cost 0.02 ms. Cemacs's key costs under a millisecond at every
+size: its reading starts at the anchor, the line at the margin above.
 
 ## Search
 

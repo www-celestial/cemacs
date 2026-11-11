@@ -33,6 +33,13 @@ are.
   What Cemacs took: colouring what the screen shows on demand, then from the true context of the lines above after a pause,
   for a far place; and a cache of parser states kept sparse, its entries at least 20,000 characters apart, which Cemacs
   follows with its states in chunks of 1,024 lines. See [Inside Cemacs](internals.md#the-colours).
+- GNU Emacs 31.1, the documentation of `tab-always-indent`, `indent-for-tab-command`, `electric-indent-mode` and
+  `electric-indent-chars`, read in the installed Emacs.
+  What Cemacs took: in a file of Cesia, a Tab that only indents, as with `tab-always-indent` set to `t`, its default, and a
+  line indented again at Enter and at the words that change its place. See [Editing](editing.md#indentation-in-a-file-of-cesia).
+- *Cesia's formatter*, `src/tools/fmt.ce` of Cesia, run as `cesia fmt`.
+  What Cemacs took: its rule of indent and its reading of a line, which Cemacs applies from an anchor instead of the start of
+  the file. See [Inside Cemacs](internals.md#the-indent).
 - Henrik Lissner and contributors. *Doom Emacs*, a configuration framework for GNU Emacs.
   https://github.com/doomemacs/doomemacs.
   What Cemacs took: the keys gathered in groups under one leader key, each group named by its first letter, `C-c f` for the
@@ -164,3 +171,5 @@ These are the tools that [Cemacs and other editors](comparison.md) puts Cemacs b
 - Visual Studio Code, *Debugger Extension*. https://code.visualstudio.com/api/extension-guides/debugger-extension. How VS
   Code debugs through debug adapters, and how its extensions, written in TypeScript, plug one in.
 - GNU Emacs 31.1, https://www.gnu.org/software/emacs/; Neovim 0.12.6, https://neovim.io/; Vim 9.2, https://www.vim.org/.
+- Emacs 31.1's `lisp/progmodes/python.el` and Neovim 0.12.6's `runtime/autoload/python.vim`, their indent of Python, which
+  [Speed](performance.md#enter-and-tab-in-a-file-of-cesia) measures beside Cemacs's indent of Cesia.

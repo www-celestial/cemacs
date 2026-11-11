@@ -1,8 +1,8 @@
 # Inside Cemacs
 
 This chapter tells how Cemacs is built: the state and its update, the rope that holds a buffer's text, the undo history, the
-colours, the frame, the loop of events, and the start. It is for a reader who wants to change the core, or to know what each
-operation costs. The code is 6,201 lines of Cesia in `core/` and `src/`, without their tests, and each file can be read
+colours, the indent, the frame, the loop of events, and the start. It is for a reader who wants to change the core, or to know
+what each operation costs. The code is 7,183 lines of Cesia in `core/` and `src/`, without their tests, and each file can be read
 alone.
 
 ## The state, the update and the view
@@ -205,6 +205,41 @@ the screen, which is then drawn again with its exact colours. A comment that ope
 wrong for those seconds; nothing else is guessed. This is what Emacs's jit-lock does by its own means: it colours on demand
 the part of the buffer that the screen shows, and, with `jit-lock-contextually`, colours it again after a pause from the
 true context of the lines above.
+
+## The indent
+
+[core/indent] gives the place of a line of Cesia code by the rule of `cesia fmt`, which [Editing](editing.md#indentation-in-a-file-of-cesia)
+tells: its lexer is fmt's, the scan and the shapes of `src/tools/fmt.ce` of Cesia, read line by line. fmt reads a whole file
+from its first line; an editor can't, at each key, in a file of a million lines. So a line is read from its anchor: the
+nearest line above it at the left margin from which fmt's reading is sure to start out of any block and bracket. A line is an
+anchor when:
+
+- it is at the left margin, it starts in code, by the state of the colours at its start, and it starts with a name that
+  doesn't close or go on with something, so not `end`, `else`, `then`, `and`, `or`, `not` or `in`, or with a comment;
+- the lines at the margin right above it, up to the first of them, are such lines too, and each line above one of them ends its
+  statement, opens no block and closes no bracket it didn't open: a line that leads on to the next;
+- that run of lines starts after a blank line, at the start of the file, after an `end` at the margin, or after the end of a
+  comment.
+
+The test on the run is what makes the anchor sure: a line at the margin inside a block, as a text written there or a
+statement left out of its place, is followed or preceded by a line that doesn't lead on. The anchor is looked for in the 64
+lines above, then in 512, then in [indent.LookBack], 2,000; a file whose lines at the margin are farther apart than that is
+read from the line 2,000 lines up, in as many blocks as its indent says. So a line costs the lines of the definition it is
+in, never the whole file. The reading from the anchor gives the state at the start of the line, the blocks and brackets open
+and the lines of the statement it may go on with, and from it [indent.Wanted] the place of a line being typed and
+[indent.Plan] the changes of Tab.
+
+Enter keeps its reading: [text.NewLine] stores, in the buffer's `Layout`, the state at the start of the new line, and the next
+Enter, or the first word typed on that line, goes on from it when it is at most 256 lines above, instead of looking for the
+anchor again. An edit forgets it from the line it changes, as it forgets the states of the colours after that line,
+[indent.Forget]. The reading kept is the one from the anchor: on the 36,038 lines of the files of Cesia and Cemacs, Enter at the
+end of each line, going on from the reading kept, gives the same state as a reading from the anchor. GNU Emacs keeps, the same
+way, the states of its parser at places of the buffer in the cache of `syntax-ppss`, forgotten from the place of each edit,
+so that the indent of a line doesn't read the buffer from its start.
+
+A line costs, over every line of those files, measured once while other programs ran, a median of 0.2 ms, 4 ms at the 99th
+percentile; the slowest are long
+statements read line after line, as a list of long texts, about 15 ms, and one line of 220 KB, 78 ms.
 
 ## The frame
 
