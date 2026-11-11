@@ -48,7 +48,7 @@ le lit, à moins qu'il ne soit l'un de ceux-ci, qui restent fermés avec un mess
 Un device ou une FIFO dit avoir la taille 0, et en lire un peut ne jamais finir ou remplir la mémoire : Cemacs demande donc
 au système ce qu'est un fichier avant de le lire. La limite de taille empêche un fichier trop grand pour la mémoire d'arrêter
 l'éditeur, avec le texte non enregistré de chaque buffer : un fichier prend un moment environ deux fois sa taille en mémoire
-pendant qu'il s'ouvre, 193 MB au plus haut pour 99,9 MB, et [Vitesse](performance.md#opening-a-file) donne ce que coûte un
+pendant qu'il s'ouvre, 193 MB au plus haut pour 99,9 MB, et [Vitesse](performance.md#ouvrir-un-fichier) donne ce que coûte un
 grand fichier.
 
 ### Les encodages
@@ -70,7 +70,7 @@ fois : un mot de 64 bits contient huit octets, et quelques opérations sur le mo
 une méthode appelée SWAR, SIMD within a register (SIMD, single instruction, multiple data, est la façon qu'a un processeur
 de faire une seule opération sur plusieurs valeurs ensemble ; SWAR l'obtient avec les opérations ordinaires sur les
 entiers). [text.IsUtf8] ne décode un caractère que là où un octet n'est pas ASCII. Sur 99,9 MB de code Cesia, mesurés
-comme le dit [Vitesse](performance.md#opening-a-file) : 34 ms pour compter les octets nuls, 24 ms pour vérifier l'UTF-8,
+comme le dit [Vitesse](performance.md#ouvrir-un-fichier) : 34 ms pour compter les octets nuls, 24 ms pour vérifier l'UTF-8,
 60 ms pour [files.IsText].
 
 ```cesia
@@ -136,7 +136,7 @@ que la prompt line dit `Saved`, tout le nouveau texte est sur le disque, sous le
 été coupé à l'instant du renommage avant que le système ait réécrit le dossier, sous le nom du nouveau fichier
 `PATH.cemacs-...`, à côté de l'ancien fichier, qui est alors entier. Vim et Neovim font de même par défaut (leur option
 `'fsync'`) ; GNU Emacs 31 non, car son `write-region-inhibit-fsync` est activé. Le coût est le temps que prend le disque :
-[Vitesse](performance.md#paste-undo-and-save) le donne.
+[Vitesse](performance.md#coller-annuler-et-enregistrer) le donne.
 
 Comme le fichier enregistré est un nouveau fichier, il ne garde pas ce qui appartenait à l'ancien : ses permissions sont
 celles d'un nouveau fichier, `rw-r--r--` avec l'`umask` habituel (le masque par lequel le système retire des droits à

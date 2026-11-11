@@ -116,8 +116,8 @@ jetées jeunes : le minor heap d'OCaml (la zone de mémoire des valeurs jeunes) 
 sans coût pour chaque valeur morte. Un fichier de 99,9 MB fait 6 097 vues et autant de nœuds. La taille d'une vue pèse
 deux coûts : Cesia fait un record en quelques centaines de nanosecondes, là où C en fait un en quelques-unes, si bien que
 moins de records ouvrent un fichier plus vite, tandis qu'une vue plus grande rend plus long de trouver une ligne à
-l'intérieur. Mesuré sur 99,9 MB, $n = 7$ : [rope.Of] en 105 ms [104, 118] avec des vues de 16 KiB, là où des feuilles de
-1 024 octets, chacune une copie, ont pris 258 ms [256, 352] ; des vues de 4 et de 64 KiB, mesurées à côté de celles de
+l'intérieur. Mesuré sur 99,9 MB, $n = 7$ : [rope.Of] en 105 ms [104 ; 118] avec des vues de 16 KiB, là où des feuilles de
+1 024 octets, chacune une copie, ont pris 258 ms [256 ; 352] ; des vues de 4 et de 64 KiB, mesurées à côté de celles de
 16 KiB avec un Cesia plus ancien, ont pris 117 et 89 ms contre 94 ; et trouver une ligne dans une vue de 64 KiB compte
 jusqu'à 32 blocs de 2 KiB au lieu de 8. Une modification au hasard peut laisser une petite feuille, jusqu'à quelques octets,
 qu'une jointure plus tardive peut fusionner.
@@ -274,7 +274,7 @@ bloqué dans le système : il attend sur la connexion à l'affichage, un file de
 désigne un fichier ou une connexion ouverts), jusqu'à ce que le display server (le programme qui gère l'écran, comme Wayland
 ou X11) y écrive un événement, comme GNU Emacs, Vim et Neovim attendent dans `select` ou `poll` sur leur terminal. Un
 événement le réveille tout de suite : une touche est donc lue environ 0,7 ms après avoir été envoyée, voir
-[Vitesse](performance.md#at-rest). La borne de 250 ms est pour les fibers de Cesia, qui ne peuvent pas réveiller SDL :
+[Vitesse](performance.md#au-repos). La borne de 250 ms est pour les fibers de Cesia, qui ne peuvent pas réveiller SDL :
 pendant que l'éditeur dort dans SDL, aucune fiber ne tourne, et Cesia n'a aucun moyen de dire quand la suivante doit tourner.
 Les fibers de Cemacs lui-même, une vérification et la sortie d'un programme, tournent pendant que l'état demande des frames :
 la borne ne retarde donc que ce que rien n'attend, un rechargement sous `--watch` que personne ne regarde encore, une fiber

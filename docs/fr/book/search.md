@@ -100,7 +100,7 @@ rope.Find("AB", 1, r, fold = true) --> 3
 Montrer un endroit lointain coûte plus cher que le trouver : les couleurs des lignes de l'écran dépendent de toutes les
 lignes d'avant, car un commentaire ou un texte ouvert sur une ligne continue sur les suivantes. L'endroit est montré tout de
 suite, avec ses couleurs devinées, et elles deviennent exactes dans les instants qui suivent : voir
-[À l'intérieur de Cemacs](internals.md#un-endroit-lointain-d-abord-ses-couleurs-exactes-ensuite) et [Vitesse](performance.md#search).
+[À l'intérieur de Cemacs](internals.md#un-endroit-lointain-d-abord-ses-couleurs-exactes-ensuite) et [Vitesse](performance.md#recherche).
 
 ## Les listes
 
