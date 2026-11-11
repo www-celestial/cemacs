@@ -160,4 +160,4 @@ standard de Cesia, dont le binaire de Cesia porte les sources : la suite n'a don
 Cesia installé. `tests/start-check.sh` seul vérifie seulement que Cemacs démarre, à la fois par `bin/cemacs` et par
 `cesia do dev`.
 
-Si Cemacs ne démarre pas, [Dépannage](troubleshooting.md#at-start) liste ce qu'il affiche et que faire.
+Si Cemacs ne démarre pas, [Dépannage](troubleshooting.md#au-démarrage) liste ce qu'il affiche et que faire.
