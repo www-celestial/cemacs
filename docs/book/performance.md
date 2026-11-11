@@ -19,13 +19,13 @@ before, SDL3 3.4.18, SDL3_ttf 3.2.2, Mesa 26.2.6, tmux 3.8.
 - **The numbers:** each measure was run n times, as said beside it, the editors taking turns. The number given is the
   median, the middle run, which one slow run can't move as it moves a mean. The 95 % interval after it, as [49.2, 50.3], is
   between two runs of the sorted list, chosen so that the true median lies between them with a probability of at least
-  95 %, whatever the distribution of the times: with n = 20, the 6th and the 15th; with n = 10, the 2nd and the 9th. With
-  n = 5, the fastest and the slowest are the best there is, at 93.75 %; with n = 3, only the median is given.
+  95 %, whatever the distribution of the times: with $n = 20$, the 6th and the 15th; with $n = 10$, the 2nd and the 9th. With
+  $n = 5$, the fastest and the slowest are the best there is, at 93.75 %; with $n = 3$, only the median is given.
 - **The scripts** are on this page or in `bench/`, so that anyone can run them again.
 
 ## Start-up
 
-From the command to the first frame of the window, with one empty buffer, n = 20:
+From the command to the first frame of the window, with one empty buffer, $n = 20$:
 
 | Editor, as started | Start to the first frame |
 |---|---|
@@ -40,15 +40,15 @@ t) (kill-emacs))'` for Emacs, `'+redraw!' '+qa!'` for Neovim and Vim. Each run i
 its end, as a program of Python inside the terminal timed it. This version loads 1.3 ms more than the one before: the search,
 the reader of the states of the colours and the search in the rope add about 475 lines of code, which Cesia reads at each
 start. The check of UTF-8 of [Opening a file](#opening-a-file), one call of Cesia now, took 94 lines off what Cesia reads:
-measured later beside the version before it, at 8ee42e7, taking turns, n = 11, 53.2 ms [52.7, 54.7] against 54.1 ms [53.7,
+measured later beside the version before it, at 8ee42e7, taking turns, $n = 11$, 53.2 ms [52.7, 54.7] against 54.1 ms [53.7,
 55.4], no slower.
 
-This version against the one before it, `main` at b2ab23f, taking turns, n = 15: 53.7 ms [53.4, 55.3] against 54.7 ms [54.3,
+This version against the one before it, `main` at b2ab23f, taking turns, $n = 15$: 53.7 ms [53.4, 55.3] against 54.7 ms [54.3,
 55.0]. The steps of this version added about 200 lines of code, which made the start 1.9 ms longer, 56.6 ms [56.2, 57.4];
 the widgets of `src/ui` that nothing in Cemacs used, a menu bar, a tool bar, sliders, lists and graph nodes of an earlier
 design, about 290 lines, were taken out, and the start is now 1 ms shorter than before.
 
-Where the 51 ms went, with the dummy driver, before this version, each part timed from the one before by the program below with a mark after each part, n = 20,
+Where the 51 ms went, with the dummy driver, before this version, each part timed from the one before by the program below with a mark after each part, $n = 20$,
 medians:
 
 | Part | Time | Whose |
@@ -64,15 +64,15 @@ medians:
 
 Most of the frame is SDL3_ttf making the first images of the characters, which it keeps after. Loading the code costs Cesia
 about 3.7 µs a line: [Cesia's book](https://www-celestial.github.io/cesia-lang/) tells how it reads, checks and compiles a
-program. `--no-spec` and `--no-jit` don't change it: 30.8 and 30.4 ms against 30.5 for the load alone, n = 20. Loaded alone,
-with what each uses, n = 20: the packages of Cesia that Cemacs uses, 4.3 ms; `src/ui`, 5.1; `src/sdl`, 6.5; `core/commands`
+program. `--no-spec` and `--no-jit` don't change it: 30.8 and 30.4 ms against 30.5 for the load alone, $n = 20$. Loaded alone,
+with what each uses, $n = 20$: the packages of Cesia that Cemacs uses, 4.3 ms; `src/ui`, 5.1; `src/sdl`, 6.5; `core/commands`
 and all it uses, 26.6; all of Cemacs, 31.1 ms. These were measured before this version; the widgets of `src/ui`
 are gone since, and about 300 lines of kinds of drawing of `src/sdl` that only its tests use are still read: rings, fades,
 shadows, images, tiles, icons and curves.
 
 In a real window, the start costs far more, and most of it is not Cemacs's. Measured in a Wayland window of SDL's Wayland
 driver, in GNOME's compositor run headless, `mutter --headless --wayland --no-x11 --virtual-monitor 1280x720`, which shows
-nothing on a screen, n = 10: 236 ms [232, 241], 237 ms [229, 244] for the version before. Of these, SDL's video starts in
+nothing on a screen, $n = 10$: 236 ms [232, 241], 237 ms [229, 244] for the version before. Of these, SDL's video starts in
 about 80 ms and makes the window in about 60: on GNOME, whose compositor draws no title bar, SDL asks libdecor, a library that
 draws the bar in the program, and libdecor's plugin for GTK starts GTK. With libdecor's plugin for cairo instead, a plainer
 bar, the two take about 14 and 38 ms; with no libdecor, `SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0`, 4 ms and 1 ms, and the window
@@ -130,7 +130,7 @@ io.Print(main())
 
 ## Opening a file
 
-From the command to the first frame, with the file given, n = 7, this version, the version before it, `main` at b2ab23f, and
+From the command to the first frame, with the file given, $n = 7$, this version, the version before it, `main` at b2ab23f, and
 the three others taking turns; the files are Cesia's standard library put end to end, and the last line holds a word found
 nowhere else, for [search](#search):
 
@@ -144,7 +144,7 @@ The other editors don't know Cesia, so they show these files as plain text, wher
 Emacs was told not to ask before a large file, `(setq large-file-warning-threshold nil)`; Neovim and Vim were started with
 `-n`, which makes no swap file.
 
-What opening 99.9 MB costs, measured alone, without the window, n = 7, the two versions taking turns:
+What opening 99.9 MB costs, measured alone, without the window, $n = 7$, the two versions taking turns:
 
 | Step | This version | The version before |
 |---|---|---|
@@ -208,7 +208,7 @@ second: the goal of 60 is met, where it wasn't before (54 a second). Where the t
 
 The same gate in a real Wayland window, with OpenGL: GNOME's compositor, `mutter --headless --wayland --no-x11
 --virtual-monitor 1920x1080`, SDL without libdecor, and Mesa's llvmpipe, which draws OpenGL with the processor as this machine's
-graphics are not reachable from the headless compositor, n = 7:
+graphics are not reachable from the headless compositor, $n = 7$:
 
 | Version | One typed character | One scrolled line | Its frame |
 |---|---|---|---|
@@ -217,7 +217,7 @@ graphics are not reachable from the headless compositor, n = 7:
 | this version | 2.6 ms [2.6, 3.2] | 2.6 ms [2.5, 3.1] | 1.1 ms, 1.3 ms |
 
 Beside the others, each timing its own key and its own scrolled line with its redraw, inside the program, in a terminal of tmux,
-on the gate's text written to a file, n = 7, the three taking turns in a series of their own, the same afternoon:
+on the gate's text written to a file, $n = 7$, the three taking turns in a series of their own, the same afternoon:
 
 | Editor | One typed character at line 19,000 | One scrolled line |
 |---|---|---|
@@ -239,7 +239,7 @@ screen needs a camera, or a tool that watches the screen such as Typometer, and 
 
 A typed character at the middle line, 1,416,745, of the file of 99.9 MB, without drawing for Cemacs: 100 keys, each followed
 by `view.FollowState` and `view.View`, as the update and the view do, the colours first read down to the screen; the others
-with their redraw, n = 7, Cemacs's versions taking turns, and the others in a series of their own:
+with their redraw, $n = 7$, Cemacs's versions taking turns, and the others in a series of their own:
 
 | Editor | Median of the runs' medians | The runs' worst key |
 |---|---|---|
@@ -262,7 +262,7 @@ write a few cells of the terminal, stay 30 times faster.
 One search of a word found only on the last line of the file, from its start: the others in one process each, the file
 loaded, Emacs's `search-forward` in `emacs --batch`, Neovim's `search()` in `nvim --headless`, Vim's `search()` in `vim -es`;
 Cemacs without a window, the file opened, then `C-s` and the word typed as one text through [commands.Update], up to the
-state that shows the place; n = 7, all taking turns:
+state that shows the place; $n = 7$, all taking turns:
 
 | Measure | 15.9 MB | 99.9 MB |
 |---|---|---|
@@ -291,7 +291,7 @@ place far down reads the text up to there again.
 Showing the place took far more than finding it: the colours of the screen depend on the state of every line before it, 1.3
 µs a line. A far place is now shown at once with its colours guessed, and they become exact over the ticks after,
 [view.ColorBatch] lines a tick: [Inside Cemacs](internals.md#a-far-place-first-its-exact-colours-after). `M->` alone, the
-place shown with its frame's commands, then the ticks of 16 ms until the colours are exact, each with its commands, n = 7:
+place shown with its frame's commands, then the ticks of 16 ms until the colours are exact, each with its commands, $n = 7$:
 
 | Measure | 15.9 MB | 99.9 MB |
 |---|---|---|
@@ -311,7 +311,7 @@ which `syntax-ppss` reads from the nearest place where it kept one.
 
 A paste of 1 MB at the middle line of the file, its undo, then a save over the file, which then holds the text it had; Cemacs
 without a window, the frame's commands made after each step, the colours first read to the screen; the others in a terminal of
-tmux, each step timed inside with its redraw; n = 7, all taking turns:
+tmux, each step timed inside with its redraw; $n = 7$, all taking turns:
 
 | Step | Cemacs | Cemacs before | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
 |---|---|---|---|---|---|
@@ -330,7 +330,7 @@ the rope's views still cover the file's one text, so it is written as it is, whe
 leaves into a new text first. A buffer that was edited is joined once, then written.
 
 - **Undo** is about 1.5 ms at both sizes, the fastest of the four: the history keeps whole states, values that never change,
-  so taking one back is O(1), 0.1 ms; the rest is the frame's commands. It cost the copies of the colour states before, 49 ms
+  so taking one back is $O(1)$, 0.1 ms; the rest is the frame's commands. It cost the copies of the colour states before, 49 ms
   at 99.9 MB. Vim deletes the lines the paste added; Emacs deletes the region, moving its gap, a copy of up to the whole file.
 - **A paste** of 1 MB costs about 45 ms at both sizes, a third of what it cost at 99.9 MB, and Emacs's time at 15.9 MB is
   still lower. Most of it is the colours of the pasted lines down to the cursor, 28,000 of them, of which the first
@@ -358,13 +358,13 @@ from those already shown when the filter only grew. These times are from before 
 
 ## The check
 
-`cesia check --json --stdin` of `core/commands/commands.ce`, 1,160 lines, as Cemacs runs it, n = 10: 28.8 ms [26.7, 31.5].
+`cesia check --json --stdin` of `core/commands/commands.ce`, 1,160 lines, as Cemacs runs it, $n = 10$: 28.8 ms [26.7, 31.5].
 So the marks of an error come about 30 ms after the half second of pause that starts the check. It runs in its own process,
 from a fiber: the editor doesn't wait for it, and typing goes on.
 
 ## At rest
 
-An editor at rest, one empty buffer, 3 seconds after its start; the memory of every process of the editor, n = 5:
+An editor at rest, one empty buffer, 3 seconds after its start; the memory of every process of the editor, $n = 5$:
 
 | Editor | RSS | PSS |
 |---|---|---|
@@ -377,7 +377,7 @@ RSS, the resident set size, is the memory of a process that is in RAM, the libra
 whole; PSS, the proportional set size, counts a shared page divided by the number of processes that share it, which is fairer
 between programs. Cemacs holds the Cesia runtime, SDL3, SDL3_ttf, its three fonts and the window.
 
-With a large file open, 8 seconds after the start, n = 7, the editors taking turns: the RSS of the editor's own process, and
+With a large file open, 8 seconds after the start, $n = 7$, the editors taking turns: the RSS of the editor's own process, and
 of all its processes, which for Cemacs counts the check, `cesia check`, when the file is one of Cesia; then the processor over
 the 10 seconds after:
 
@@ -408,7 +408,7 @@ keeps: Cesia's memory is managed by that collector, which frees little at a time
 and an editor at rest makes almost nothing. The processor of Cemacs at rest is that of SDL's dummy driver, which looks for an
 event every millisecond; in a real window, the editor sleeps, as the table below tells.
 
-The processor at rest, over 10 seconds, 3 seconds after the start, one empty buffer, in percent of one core, n = 5. The time
+The processor at rest, over 10 seconds, 3 seconds after the start, one empty buffer, in percent of one core, $n = 5$. The time
 is what the system counted for every process of the editor, in hundredths of a second, so 0.0 % is less than 0.1 %:
 
 | Editor, where | Processor at rest | Before Cemacs slept in SDL |
@@ -427,7 +427,7 @@ wait for an event, so SDL looks for one every millisecond there, in C: the tests
 sleep until the system wakes them with an event, and cost nothing while you read. Cemacs draws a frame at each pass while a
 program runs, a check runs or is due, or a prefix key waits for its band of hints.
 
-From a key to the editor, in that Wayland window, n = 120 keys, 40 in each of 3 runs, a key every 0.25 to 0.5 seconds:
+From a key to the editor, in that Wayland window, $n = 120$ keys, 40 in each of 3 runs, a key every 0.25 to 0.5 seconds:
 
 | From the key sent to | This version | Before |
 |---|---|---|

@@ -91,13 +91,13 @@ Positions count bytes from 0, lines count from 1. Every operation goes down the 
 The tree is kept balanced as an AVL tree is, after Adelson-Velsky and Landis: at every node, the heights of the two sides
 differ by at most one. A join of two ropes of very different heights goes down the side of the taller one, and puts each
 node it rebuilds back in balance with one rotation or two, a rotation being the turn of three nodes that makes the taller
-side shorter. A balanced tree of n leaves has a height of at most about 1.44 log₂ n, so a split, a join, an insert, a
-delete and a search for a line visit O(log n) nodes: their cost grows with the logarithm of the size, and doubling the text
+side shorter. A balanced tree of $n$ leaves has a height of at most about $1.44 \log_2 n$, so a split, a join, an insert, a
+delete and a search for a line visit $O(\log n)$ nodes: their cost grows with the logarithm of the size, and doubling the text
 adds about one level. The paper on ropes names AVL trees as one way to make these operations logarithmic; its own ropes join
 in constant time instead, and rebalance only when a tree grows deeper than a bound. Cemacs keeps the AVL balance at every
 join, and, as the paper does, makes one leaf of two short leaves joined, and copies only the nodes along the path of an
 edit. Inside a leaf the work is at most 16 KiB, in blocks of 2 KiB. The whole text of an edited buffer, `rope.Text`, costs
-O(n), and the editor asks for it only to save or to check.
+$O(n)$, and the editor asks for it only to save or to check.
 
 [rope.Of] makes a rope from a whole text, as a file just read: it cuts views of 16 KiB one after the other, the last one
 shorter, without copying a byte, then puts them under nodes two by two, level by level, and joins an odd rope left over with
@@ -106,11 +106,11 @@ bytes at a time, on slices of 2 KiB that are made and dropped young: OCaml's min
 collection, at no cost for each dead value. A file of
 99.9 MB is 6,097 views and as many nodes. The size of a view weighs two costs: Cesia makes a record in a few hundred
 nanoseconds, where C makes one in a few, so fewer records open a file faster, while a larger view makes finding a line inside
-it longer. Measured on 99.9 MB, n = 7: [rope.Of] in 105 ms [104, 118] with views of
+it longer. Measured on 99.9 MB, $n = 7$: [rope.Of] in 105 ms [104, 118] with views of
 16 KiB, where leaves of 1,024 bytes, each a copy, took 258 ms [256, 352]; views of 4 and of 64 KiB, measured beside those of 16
 KiB with an earlier Cesia, took 117 and 89 ms against 94; and finding a line in a view of 64 KiB counts up to 32 blocks of 2 KiB instead of 8. A random edit can leave a small leaf, down to a few bytes, which a later join may merge.
 
-A rope is persistent: an edit makes new nodes along one path, O(log n) of them, and shares every other node with the rope
+A rope is persistent: an edit makes new nodes along one path, $O(\log n)$ of them, and shares every other node with the rope
 before it, which stays whole: this way of making a tree persistent is called path copying. A view keeps its whole text
 alive, even when an edit deleted most of what it showed; the undo history keeps that text anyway, as it keeps the states
 before the edit.

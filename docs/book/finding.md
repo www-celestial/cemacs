@@ -192,7 +192,7 @@ the best alignment is the one with the most points. Trying every alignment would
 instead, one cell for each letter of one sequence and each letter of the other, each cell holding the best score of two
 pieces that end there, computed from the cells before it. This way of solving a problem from the answers of its smaller parts, kept in a table, is called *dynamic
 programming*. Two years later, Gotoh (1982) showed how to make a gap cost one price to open and a smaller price per letter
-after, a gap weight of the form *w(k) = uk + v* for a gap of *k* letters, still in about one step per cell, by keeping a
+after, a gap weight of the form $w(k) = uk + v$ for a gap of $k$ letters, still in about one step per cell, by keeping a
 second table beside the first.
 
 ### fzy's score
@@ -417,10 +417,10 @@ the list; and out of any repository, the prompt line says so and nothing opens.
 
 ### A bound
 
-For a query of *n* letters and a path of *m* bytes, fzy's table has *n × m* cells: 5 × 27 = 135 for a query of five letters
+For a query of $n$ letters and a path of $m$ bytes, fzy's table has $n \times m$ cells: $5 \times 27 = 135$ for a query of five letters
 in a path of the median length of Cesia's files, 27 bytes. [lists.Score] visits, for each letter of the query, only the
-places of that letter in the path, each once, and the places of the letter before it once in all: at most *2 × n × m*
-steps in Cesia and *n × m* bytes read natively by [text.ByteFind], and in practice a few places per letter. A letter typed
+places of that letter in the path, each once, and the places of the letter before it once in all: at most $2 \times n \times m$
+steps in Cesia and $n \times m$ bytes read natively by [text.ByteFind], and in practice a few places per letter. A letter typed
 costs, for each row that the filter kept before, one [text.ByteFind] per letter of the query to filter it, then the score of
 each row still shown.
 

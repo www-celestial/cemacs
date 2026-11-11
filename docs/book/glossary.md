@@ -19,7 +19,7 @@ part of either. POSIX asks it of `rename`. Cemacs saves by writing a new file an
 ## AVL tree
 
 A binary tree kept balanced: at every node, the heights of the two sides differ by at most one, so that the tree stays about
-1.44 log₂ n deep for n leaves. Named after Adelson-Velsky and Landis, who described it in 1962. Cemacs's rope is balanced so:
+$1.44 \log_2 n$ deep for $n$ leaves. Named after Adelson-Velsky and Landis, who described it in 1962. Cemacs's rope is balanced so:
 see [Inside Cemacs](internals.md#the-rope).
 
 ## Band of hints
@@ -259,8 +259,8 @@ cursor, the count of errors. See [Windows and panes](windows.md#the-mode-line).
 
 ## O(log n)
 
-A cost that grows with the logarithm of the size n: doubling the size adds about one step. An edit of Cemacs's rope costs
-O(log n) visits of nodes. See [Inside Cemacs](internals.md#the-rope).
+A cost that grows with the logarithm of the size $n$: doubling the size adds about one step. An edit of Cemacs's rope costs
+$O(\log n)$ visits of nodes. See [Inside Cemacs](internals.md#the-rope).
 
 ## Pane
 
@@ -316,7 +316,7 @@ between two repaints for a movement to look smooth. See
 
 ## Rope
 
-A text held as a balanced tree of pieces, so that an edit anywhere costs O(log n) and a copy shares everything. Cemacs's
+A text held as a balanced tree of pieces, so that an edit anywhere costs $O(\log n)$ and a copy shares everything. Cemacs's
 buffers are ropes: see [Inside Cemacs](internals.md#the-rope).
 
 ## RSS and PSS
