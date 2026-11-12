@@ -128,7 +128,7 @@ The works that [A case: finding a file from a few letters](finding.md) rests on,
   table.
 - Osamu Gotoh. *An improved algorithm for matching biological sequences.* Journal of Molecular Biology 162(3):705–708,
   1982. [doi:10.1016/0022-2836(82)90398-9](https://doi.org/10.1016/0022-2836(82)90398-9).
-  What Cemacs took: a gap weight w(k) = uk + v in about one step per cell, through a second table: fzy's table D.
+  What Cemacs took: a gap weight $w(k) = uk + v$ in about one step per cell, through a second table: fzy's table D.
 - John Hawthorn. *fzy*, its `ALGORITHM.md`, `src/config.def.h`, `src/bonus.h` and `src/match.c`. https://github.com/jhawthorn/fzy.
   What Cemacs took: the score of [lists.Score], its bonuses and its gaps, in thousandths.
 - The Vim project. Patch 9.1.1627, *fuzzy matching can be improved*, by Girish Palya, August 2025, and `:help

@@ -40,7 +40,7 @@ scrolled lines in a series for Cemacs and one for the others, the same afternoon
 | memory with 99.9 MB open, RSS of all its processes | 7 | 220 MB [220, 220] | 151 MB [151, 151] | 137 MB [137, 138] | 133 MB [133, 133] |
 | processor at rest, % of one core | 5 | 0.0 % [0.0, 0.0], in a Wayland window | 0.0 % [0.0, 0.0] | 0.0 % [0.0, 0.0] | 0.0 % [0.0, 0.0] |
 
-With n = 5 the interval is that of the fastest and the slowest run, at 93.75 %; with n = 3, only the median is given.
+With $n = 5$ the interval is that of the fastest and the slowest run, at 93.75 %; with $n = 3$, only the median is given.
 
 The inside times of Emacs, Neovim and Vim don't count the terminal's drawing, which another program does; Cemacs's count its
 own. The others show these files as plain text, where Cemacs colours them. Neovim and Vim call `fsync` before they say a file
@@ -63,7 +63,7 @@ What they say:
   with the case folded in the same pass. Emacs's Boyer–Moore skips bytes; Neovim and Vim run a regular expression over their
   lines. A far place is shown at once, its colours exact a few seconds later.
 - **Undo is fastest in Cemacs**: 1.5 ms for the paste of 1 MB at either size, where Vim takes 3 ms, Neovim 13 to 61 and Emacs
-  46 to 230, as Cemacs keeps whole states, values that never change, and takes one back in O(1). **A paste** costs Cemacs
+  46 to 230, as Cemacs keeps whole states, values that never change, and takes one back in $O(1)$. **A paste** costs Cemacs
   about 45 ms, mostly the colours of the pasted lines, against 2.8 ms for Vim and Neovim, which append lines in C; Emacs takes
   238 ms at 99.9 MB, as it moves its gap.
 - **A save of 15.9 MB that waits for the disk**, `fsync`, takes Cemacs less than Vim and Neovim, which wait too, when the text

@@ -6,6 +6,7 @@ native = ["SDL3", "SDL3_ttf"]
 
 [site]
 title = "Cemacs"
+color = "#7048e8"
 
 [tasks.test]
 run = ["tests/run.sh"]
