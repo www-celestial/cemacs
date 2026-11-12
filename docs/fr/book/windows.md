@@ -24,8 +24,8 @@ end
 
 ## La fenêtre
 
-La fenêtre s'ouvre à 1280 sur 720 pixels, et vous pouvez changer sa taille. Son titre est le nom du buffer courant. Elle est
-découpée, de bas en haut, en :
+La fenêtre s'ouvre à 1280 sur 720 pixels, ou à la taille du `Window` de votre config, et vous pouvez changer sa taille
+ensuite. Son titre est le nom du buffer courant. Elle est découpée, de bas en haut, en :
 
 | Partie | Hauteur | Ce qu'elle montre |
 |---|---|---|
@@ -41,8 +41,9 @@ lay = view.Layout(800, 600, {Width: 8, Height: 19}, true)
 [lay.Area.Height, lay.Output.Height, lay.Prompt.Height] --> [394, 184, 22]
 ```
 
-Le thème est sombre, celui de [ui.Dark] dans `src/ui` ; `core/editor/editor.ce` le choisit, et aucun réglage ne le change
-aujourd'hui. Le texte est dessiné avec trois polices, à la taille de [emacs.FontSize] : Adwaita Sans pour la mode line, la
+Le thème est sombre, [ui.Dark] de `src/ui`, à moins que le `Theme` de votre config n'en donne un autre, comme [ui.Light] ;
+la fenêtre le lit une fois, quand elle s'ouvre, comme elle lit sa taille : [Modifier Cemacs](customising.md#les-réglages) dit
+les deux. Le texte est dessiné avec trois polices, à la taille de [emacs.FontSize] : Adwaita Sans pour la mode line, la
 prompt line et les noms dans la bande des hints, Noto Sans Medium pour le titre de la sortie, et JetBrains Mono pour le code,
 les numéros des lignes, les touches dans la bande et la sortie elle-même.
 

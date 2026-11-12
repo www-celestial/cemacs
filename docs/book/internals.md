@@ -329,7 +329,8 @@ new one at every instant of the operation, never to neither: so no reader ever s
 4. measures the code font: a character is as wide as `M`, and a line as high as `Ag` plus [view.LineGap], one pixel;
 5. makes the first state, with one empty buffer and the theme, then opens the files given after the folder, in order: an
    empty buffer that nothing touched gives its place to the first one; then runs the `Start` of the config once on that
-   state, or nothing for a config without one, and settles it, as after a key;
+   state, or nothing for a config without one, and settles it as after a key: the pane being edited on the current buffer,
+   each screen on its cursor, the title of the window;
 6. runs the loop until the update gives `missing`, then closes the window and gives `Ok(missing)`, which `src/cemacs.ce`
    prints.
 

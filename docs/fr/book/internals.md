@@ -351,16 +351,22 @@ ne garantit pas.
 
 ## Le démarrage
 
-`src/cemacs.ce` appelle [editor.Start] avec la config. Il :
+`src/cemacs.ce` appelle [editor.Start] avec la config, la fonction qui donne la config de Cemacs telle que l'a changée le
+`Changed` de `user/config`. Il :
 
 1. prend le dossier de Cemacs dans son premier argument, ou `.` s'il n'y en a pas ;
-2. ouvre la fenêtre, 1280 sur 720, avec la police du corps à la taille de [emacs.FontSize], puis ajoute les deux autres
+2. lit la config une fois, pour ce dont la fenêtre a besoin à son démarrage : son `FontSize`, son `Theme` et son `Window`,
+   les deux derniers par un `match` avec une valeur par défaut, [ui.Dark] et 1280 sur 720, pour une config faite sans eux,
+   comme le demande la deuxième règle du [rechargement](customising.md#recharger-cemacs-pendant-quil-tourne) ;
+3. ouvre la fenêtre à la taille de `Window`, avec la police du corps à la taille de `FontSize`, puis ajoute les deux autres
    polices, `strong` et `code` ;
-3. mesure la police du code : un caractère est aussi large que `M`, et une ligne aussi haute que `Ag` plus
+4. mesure la police du code : un caractère est aussi large que `M`, et une ligne aussi haute que `Ag` plus
    [view.LineGap], un pixel ;
-4. fait le premier état, avec un buffer vide, puis ouvre les fichiers donnés après le dossier, dans l'ordre : un buffer
-   vide auquel rien n'a touché cède sa place au premier ;
-5. fait tourner la boucle jusqu'à ce que la mise à jour donne `missing`, puis ferme la fenêtre et donne `Ok(missing)`, que
+5. fait le premier état, avec un buffer vide et le thème, puis ouvre les fichiers donnés après le dossier, dans l'ordre :
+   un buffer vide auquel rien n'a touché cède sa place au premier ; puis fait tourner une fois le `Start` de la config sur
+   cet état, ou rien pour une config qui n'en a pas, et le met en place comme après une touche : le pane modifié sur le
+   buffer courant, chaque écran sur son curseur, le titre de la fenêtre ;
+6. fait tourner la boucle jusqu'à ce que la mise à jour donne `missing`, puis ferme la fenêtre et donne `Ok(missing)`, que
    `src/cemacs.ce` affiche.
 
 [Vitesse](performance.md) donne le temps que prend tout cela.

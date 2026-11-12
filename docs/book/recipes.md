@@ -401,7 +401,7 @@ the list. Emacs's `occur` does this for any pattern.
 
 **How to use it.** A command: [A key group of your own](#a-key-group-of-your-own) binds it to `C-c t l`.
 
-**What you see.** The list `To do` with two rows; `p` then Enter, which keeps the row of `paper`, goes to line 5:
+**What you see.** The list `To do` with two rows; `pap` then Enter, which keeps the row of `paper`, goes to line 5:
 
 ```cesia allow=read
 todo = tried(c -> c, ["todo.md"])
@@ -527,9 +527,8 @@ Keys() = {"C-c n": "notes", "C-c n n": Open, "C-c n a": Add}
 ```
 
 [commands.Home] is the folder of Cemacs, where `user/` is. `C-c n`, n for notes, is free but in the folder manager, where it
-keeps its own meaning, a new file: the keys of a list come over the global ones. The app's
-keys come in through `Changed`, in
-`user/config/config.ce`, which gets the package with `use user/notes` at its top, and names it `notes`:
+keeps its own meaning, a new file: the keys of a list come over the global ones. The app's keys come in through `Changed`,
+in `user/config/config.ce`, which gets the package with `use user/notes` at its top, and names it `notes`:
 
 ```cesia
 use std/dict

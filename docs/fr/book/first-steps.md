@@ -183,9 +183,11 @@ est chargé. [Exécuter et déboguer](running.md) raconte tout cela.
 
 ## Modifier Cemacs
 
-Cemacs est un projet Cesia, et ses réglages sont du code Cesia. `C-c f c` ouvre `src/cemacs.ce`, où se rejoignent les apps
-de Cemacs et leurs touches. `src/emacs/emacs.ce` contient les touches d'Emacs et les réglages, chacun une fonction. En voici
-deux, tels qu'ils étaient quand cette page a été construite :
+Cemacs est un projet Cesia, et ses réglages sont du code Cesia. Vos changements vont dans un dossier à vous, `user/`, que
+Cemacs a créé à son premier démarrage et que `git pull` ne touche jamais. `C-c f c` ouvre `user/config/config.ce`, dont la
+fonction `Changed` reçoit la config de Cemacs, le record de ses touches et de ses réglages, et la rend changée. Les touches
+d'Emacs et les réglages de Cemacs sont dans `src/emacs/emacs.ce`, chacun une fonction. En voici deux, tels qu'ils étaient
+quand cette page a été construite :
 
 ```cesia
 use src/emacs
@@ -193,28 +195,37 @@ emacs.FontSize() -->
 emacs.HintDelay() -->
 ```
 
-Pour en changer un, changez sa fonction et enregistrez :
+Pour les changer, posez-les dans `Changed`, chacun sous forme de fonction, et enregistrez :
 
-```cesia norun
-(* in src/emacs/emacs.ce *)
-FontSize() = 17
-HintDelay() = 0.3
+```cesia
+defn Changed(config)
+  (** Cemacs with larger text and the band of hints sooner. *)
+  c = config
+  c.FontSize = () -> 17
+  c.HintDelay = () -> 0.3
+  c
+end
+
+Changed(emacs.Config(emacs.Keys)).HintDelay() --> 0.3
 ```
 
 Une touche lance n'importe quelle fonction qui va de l'état de l'éditeur à un nouvel état. Voici un groupe `t` à vous, avec
-une touche dedans, dans un nouveau package `src/mine/` :
+une touche dedans, dans un nouveau package `user/mine/` :
 
 ```cesia
-(* src/mine/mine.ce *)
+(* user/mine/mine.ce *)
 use core/commands
 Keys() = {"C-c t": "tools", "C-c t s": commands.Save}
 ```
 
-Dans `src/cemacs.ce`, ajoutez `use src/mine`, et `mine.Keys()` aux touches que `Keys` fusionne. Lancez Cemacs avec
-`cesia do dev` depuis son dossier : chaque enregistrement d'un de ses fichiers le recharge alors dans la fenêtre, sans la
-fermer, si bien qu'une touche ou un réglage changé marche dès la touche suivante. Un nouveau package, comme `src/mine/` ici,
-demande d'abord un redémarrage, car un programme qui tourne ne peut pas charger un nouveau package.
-[Modifier Cemacs](customising.md) raconte tout cela, avec une app à vous.
+Dans `user/config/config.ce`, ajoutez `use user/mine` en haut, et dans `Changed`,
+`c.Keys = () -> dict.Merge(config.Keys(), mine.Keys())` avant sa dernière ligne, avec `use std/dict`. Lancez Cemacs avec
+`cesia do dev` depuis son dossier : chaque enregistrement d'un de ses fichiers, ou des vôtres, le recharge alors dans la
+fenêtre, sans la fermer, si bien qu'une touche ou un réglage changé marche dès la touche suivante ; la taille du texte
+attend le démarrage suivant, puisque la fenêtre ne la lit qu'une fois. Un nouveau package, comme `user/mine/` ici, demande
+d'abord un redémarrage, car un programme qui tourne ne peut pas charger un nouveau package.
+[Modifier Cemacs](customising.md) raconte tout cela, avec une app à vous, et [Recettes](recipes.md) a de petites tâches
+faites de cette façon.
 
 `cesia do test` lance la suite de tests de Cemacs, et `SDL_VIDEODRIVER=dummy cesia do test` la lance sans montrer de
 fenêtre.

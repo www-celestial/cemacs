@@ -24,7 +24,7 @@ La ligne `cesia` du `cesia.toml` de Cemacs nomme la plus ancienne version de Ces
 [project]
 name = "cemacs"
 cesia = "1.1"
-src = ["core", "src"]
+src = ["core", "src", "user"]
 native = ["SDL3", "SDL3_ttf"]
 ```
 
@@ -89,6 +89,36 @@ cd cemacs
 avec ses notes, que prépare `tools/release.sh` : il n'y a pas de binaire à télécharger, puisque Cesia exécute le code du tag
 tel quel. Aucune release n'a encore de tag.
 
+## Votre dossier, user/
+
+La première fois que Cemacs démarre, par `bin/cemacs` ou `cesia do dev`, il crée le dossier `user/` à partir du template
+(le modèle) `tools/user-template/` : votre config, `user/config/config.ce`, où entrent vos réglages, vos touches et vos
+apps, comme le dit [Modifier Cemacs](customising.md#votre-dossier-user). Il n'écrit plus jamais dans `user/`, et ne copie rien
+quand il est là. `.gitignore` contient `/user/` : git laisse donc le dossier de côté, `git pull` apporte le nouveau code de
+Cemacs sans toucher à vos changements, et `git status` ne les montre pas.
+
+Pour garder leur historique, ou les avoir sur une autre machine, faites de `user/` un dépôt git à lui :
+
+```bash
+cd user
+git init
+git add .
+git commit -m "My changes to Cemacs"
+```
+
+Sur une autre machine, clonez Cemacs, puis votre dépôt comme `user/`, avant le premier démarrage de Cemacs :
+
+```bash
+git clone https://github.com/www-celestial/cemacs
+cd cemacs
+git clone YOUR-REPOSITORY user
+```
+
+Puisqu'un `user/` présent n'est jamais touché, Cemacs démarre sur le vôtre. `cesia.toml` nomme `user` parmi les dossiers du
+code, et Cesia s'arrête quand l'un d'eux manque : jusqu'au premier démarrage, ou jusqu'à `tools/user.sh`, qui le crée seul,
+`cesia test`, `cesia check` et `cesia doc` disent dans le dossier de Cemacs
+`cesia.toml:4:1: The source folder "user" doesn't exist.` (le dossier de code « user » n'existe pas).
+
 ## Le lancer
 
 `bin/cemacs` ouvre les fichiers qu'on lui donne, ou un seul buffer vide (un buffer est le texte qu'un pane montre et que
@@ -99,12 +129,16 @@ bin/cemacs notes.ce
 ```
 
 C'est un petit script `bash`. Il trouve le dossier de Cemacs à partir de sa propre place, même à travers un lien
-symbolique, et lance :
+symbolique, crée `user/` par `tools/user.sh` s'il manque, et lance :
 
 ```bash
 cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf \
   "$home/src/cemacs.ce" "$home" "$@"
 ```
+
+Le test de `user/` est un test du shell lui-même, `[ -e "$home/user" ]`, qui ne lance aucun processus : seul le premier
+démarrage lance `tools/user.sh`, qui copie le template à côté de `user/` puis le renomme, pour qu'une copie interrompue ne
+laisse pas de dossier à moitié fait.
 
 Un programme Cesia n'a aucune permission tant qu'on ne lui en donne pas : la liste `--allow` les nomme une à une, comme
 l'explique le chapitre de Cesia sur les [permissions](https://www-celestial.github.io/cesia-lang/permissions.html). Cemacs
@@ -131,25 +165,31 @@ Un chemin relatif que vous lui donnez se lit à partir du dossier où vous êtes
 ### Depuis son dossier, avec rechargement
 
 `cesia do dev`, depuis le dossier de Cemacs, lance la tâche `dev` de son `cesia.toml` : le même programme et les mêmes
-permissions, sous `--watch`, pour qu'un changement du code de Cemacs se recharge dans la fenêtre qui tourne. Elle ouvre un
+permissions, sous `--watch`, pour qu'un changement du code de Cemacs, ou de `user/`, se recharge dans la fenêtre qui
+tourne. Elle ouvre un
 seul buffer vide, et lit ses polices dans `./fonts` : elle doit donc partir de ce dossier. Voir
 [Modifier Cemacs](customising.md#recharger-cemacs-pendant-quil-tourne).
 
 ```toml
 [tasks.dev]
-file = "src/cemacs.ce"
-watch = true
-allow = ["read", "write", "exec=cesia", "exec=git", "env=HOME", "env=PWD", "env=XDG_DATA_HOME"]
+run = ["tools/dev.sh"]
 ```
 
-`ffi=SDL3` et `ffi=SDL3_ttf` ne sont pas dans cette liste : la ligne `native` de `[project]` les donne à chaque tâche qui
-exécute un fichier.
+`tools/dev.sh` crée `user/` s'il manque, comme le fait `bin/cemacs`, puis montre la commande qu'il lance, et la lance :
+
+```bash
+cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME --watch src/cemacs.ce
+```
+
+La tâche est un script et pas le programme lui-même, puisque Cesia lit les dossiers du code avant de lancer un programme,
+et s'arrête quand `user/` manque ; `cesia do` lance un script sans les lire.
 
 ## Vérifier l'installation
 
-`cesia do test` lance toute la suite de tests de Cemacs, `tests/run.sh` : les tests de chaque package sur les deux chemins
-de Cesia, avec et sans ses versions d'une fonction par type, puis les tests qui ouvrent de vrais fichiers, exécutent de
-vrais programmes et ouvrent de vraies fenêtres. Avec le dummy driver de SDL, aucune fenêtre ne s'affiche :
+`cesia do test` lance toute la suite de tests de Cemacs, `tests/run.sh` : les tests de chaque package de Cemacs, dans
+`core/` et `src/`, sur les deux chemins de Cesia, avec et sans ses versions d'une fonction par type, puis les tests qui
+ouvrent de vrais fichiers, exécutent de vrais programmes et ouvrent de vraies fenêtres. Elle crée d'abord `user/` s'il
+manque, et ne le teste jamais : `cesia test user` lance les tests de vos propres apps. Avec le dummy driver de SDL, aucune fenêtre ne s'affiche :
 
 ```bash
 SDL_VIDEODRIVER=dummy cesia do test
@@ -158,6 +198,8 @@ SDL_VIDEODRIVER=dummy cesia do test
 Elle s'arrête au premier échec et le nomme. Un de ses tests, `tests/color-std.ce`, colore chaque package de la bibliothèque
 standard de Cesia, dont le binaire de Cesia porte les sources : la suite n'a donc besoin de rien d'autre que Cemacs et un
 Cesia installé. `tests/start-check.sh` seul vérifie seulement que Cemacs démarre, à la fois par `bin/cemacs` et par
-`cesia do dev`.
+`cesia do dev`, et, dans une nouvelle copie de Cemacs, que les deux créent `user/` à partir du template quand il manque et
+le laissent tel quel ensuite, que le template ne change rien, et que `Start` tourne une fois, après l'ouverture des
+fichiers donnés.
 
 Si Cemacs ne démarre pas, [Dépannage](troubleshooting.md#au-démarrage) liste ce qu'il affiche et que faire.

@@ -112,6 +112,7 @@ server et un adapter.
 | Où il tourne | sa propre fenêtre, par SDL3 | un terminal, ou sa propre fenêtre | un terminal ; d'autres programmes peuvent le dessiner par son API | un terminal, ou sa propre fenêtre (gVim) |
 | Touches | celles d'Emacs, avec des groupes sous `C-c` | les siennes | modal : un mode déplace, un autre tape | modal |
 | Écrit en, modifié en | Cesia, les deux | C et Emacs Lisp ; modifié en Emacs Lisp | C et Lua ; modifié en Lua ou en Vimscript | C ; modifié en Vim9 script ou en Vimscript |
+| Vos changements | `user/config/config.ce`, dans le dossier de Cemacs, que git ignore, créé à partir d'un template au premier démarrage | `~/.emacs.d/init.el`, ou `~/.config/emacs/init.el` | `~/.config/nvim/init.lua`, ou `init.vim` | `~/.vimrc`, `~/.vim/vimrc` ou `~/.config/vim/vimrc` |
 | Changement pendant qu'il tourne | son code se recharge à chaque enregistrement sous `cesia do dev` ; un nouveau package demande un redémarrage | n'importe quel Lisp, à n'importe quel moment, change l'éditeur qui tourne | `:source` et `:lua` exécutent du nouveau code dans l'éditeur qui tourne | `:source` exécute du nouveau code dans l'éditeur qui tourne |
 | Trouver une touche | la bande des hints après une demi-seconde, et `?` après toute prefix key | `which-key-mode`, inclus, désactivé tant qu'on ne l'active pas ; `C-h k`, `C-h b` | rien d'inclus : des plugins | rien d'inclus : des plugins |
 | Une commande par son nom | aucune | `M-x` | les commandes `:` | les commandes `:` |

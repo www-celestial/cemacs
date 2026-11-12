@@ -25,6 +25,8 @@ construit, si bien qu'elles ne peuvent pas être périmées.
 
 Ces touches marchent dans chaque buffer de texte. Elles viennent de `src/emacs/emacs.ce` et des apps que `src/cemacs.ce`
 fusionne avec elles, avec `?` après chaque prefix key : le code ci-dessous fait la même fusion, et la table à partir d'elle.
+Vos propres touches, que le `Changed` de `user/config/config.ce` fusionne par-dessus celles-ci, n'y sont pas : la table vient
+du code de Cemacs, et `user/` est à vous.
 
 ```cesia output=md fold=code
 use src/buffers
@@ -191,6 +193,7 @@ minuscules font que Shift et `b` après `C-x` donnent `C-x b`, comme `b` seul.
 
 ## Changer une touche
 
-Les key bindings sont du code : changer une touche, c'est changer une ligne de `src/emacs/emacs.ce`, ou de l'app qui la lie,
-et toute fonction qui va d'un état à un état peut être liée. [Modifier Cemacs](customising.md) montre comment, avec vos
-propres touches et vos propres groupes.
+Les key bindings sont du code : changer une touche, c'est une ligne de votre `Changed`, dans `user/config/config.ce`, qu'ouvre
+`C-c f c`, et toute fonction qui va d'un état à un état peut être liée. [Modifier Cemacs](customising.md#des-touches-à-vous)
+montre comment, avec vos propres touches et vos propres groupes, et [Recettes](recipes.md#un-groupe-de-touches-à-vous) fait un
+groupe de quatre commandes.

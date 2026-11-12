@@ -92,7 +92,8 @@ y en a plusieurs. Emacs le fait avec `completion-at-point` et `dabbrev-expand`, 
 
 ## Config
 
-Le record de fonctions sur lequel l'éditeur tourne : ses keymaps, ses réglages et ses hooks, fait par `emacs.Config`. Voir
+Le record de fonctions sur lequel l'éditeur tourne : ses keymaps, ses réglages, son démarrage et ses hooks, fait par
+`emacs.Config`, qui reçoit ses hooks de `check.Hooked` et que change le `Changed` de votre `user/config/config.ce`. Voir
 [Modifier Cemacs](customising.md#la-config).
 
 ## Continuation line
@@ -207,13 +208,22 @@ bande des hints la montre comme `+files`, comme le font les leader keys de Doom 
 ## Hook
 
 Une fonction qu'une app donne au core, qui l'appelle à un moment donné : Cemacs a `Idle`, `Saved` et `Moving`. Emacs en a
-beaucoup, sous le même nom. Voir [Modifier Cemacs](customising.md#les-hooks).
+beaucoup, sous le même nom. Le `Start` de la config en est proche : il tourne une fois, après l'ouverture des fichiers donnés
+au démarrage, comme Emacs fait tourner son `emacs-startup-hook` après les init files et la ligne de commande. Voir
+[Modifier Cemacs](customising.md#les-hooks).
 
 ## Hot reload
 
 En français : le rechargement à chaud. Du nouveau code chargé dans un programme pendant qu'il tourne, pour qu'il garde son
 état. `cesia do dev` recharge ainsi Cemacs à chaque enregistrement d'un de ses fichiers. Voir
 [Modifier Cemacs](customising.md#recharger-cemacs-pendant-quil-tourne).
+
+## Ignored file
+
+En français : un fichier ignoré. Un fichier ou un dossier que git laisse de côté, parce qu'une ligne du fichier `.gitignore`
+le nomme : `git status` ne le montre pas, `git add .` le saute, et `git pull` ne le change jamais. Le `user/` de Cemacs en
+est un, pour que vos changements et le nouveau code de Cemacs ne se rencontrent jamais. Voir
+[Installation](install.md#votre-dossier-user).
 
 ## Immediate mode
 
@@ -232,6 +242,14 @@ sélectionnée, `C-s` à nouveau va à la suivante, et fait le tour par le bout 
 En français : l'indentation. Les espaces au début d'une ligne, qui montrent à quelle profondeur de blocs se trouve son code ;
 indenter une ligne, c'est lui donner ces espaces. Dans un fichier de Cesia, Cemacs donne à chaque ligne l'indentation que
 lui donne `cesia fmt`, deux espaces par bloc. Voir [Édition](editing.md#lindentation-dans-un-fichier-de-cesia).
+
+## Init file
+
+Le fichier de code qu'un éditeur exécute à son démarrage pour appliquer les changements de la personne :
+`~/.emacs.d/init.el` ou `~/.config/emacs/init.el` pour Emacs, `~/.config/nvim/init.lua` ou `init.vim` pour Neovim,
+`~/.vimrc` pour Vim. Celui de Cemacs est `user/config/config.ce`, dans le dossier de Cemacs, dont la fonction `Changed`
+reçoit la config de Cemacs et la rend changée, à chaque touche ; `C-c f c` l'ouvre. Voir
+[Modifier Cemacs](customising.md#votre-dossier-user).
 
 ## Just-in-time colouring
 
@@ -420,6 +438,13 @@ ASCII. SIMD, single instruction, multiple data, est le nom des instructions prop
 
 En français : la tâche. Un programme de `cesia.toml` à exécuter avec ses permissions, lancé par `cesia do NAME`. `C-c c r`
 lance la tâche qui nomme le fichier du buffer : voir [Exécuter et déboguer](running.md#la-tâche-qui-exécute-un-fichier).
+
+## Theme
+
+En français : le thème. Les couleurs de l'éditeur, pour chaque partie de la fenêtre et chaque sorte de mot du code. Dans
+Cemacs, un record de couleurs : [ui.Dark], celui avec lequel il démarre, ou [ui.Light], ou un thème à vous, que donne le
+`Theme` de la config et que la fenêtre lit une fois, quand elle s'ouvre. Emacs charge ses thèmes par `load-theme`. Voir
+[Recettes](recipes.md#votre-police-votre-tab-votre-thème-et-votre-fenêtre).
 
 ## Threat to validity
 

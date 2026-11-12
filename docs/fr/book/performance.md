@@ -83,6 +83,20 @@ tableau ci-dessus, $n = 62$ : 51,3 ms [50,8 ; 51,9] contre 57,4 ms [57,0 ; 58,0]
 47,9 ms [47,4 ; 48,3] contre 51,3 ms [50,8 ; 51,6]. Avec la prochaine version de Cesia, l'indentation et la completion
 coûtent 3,4 ms au démarrage, et Cemacs démarre dans le même temps qu'avec Cesia 1.1.0 avant elles.
 
+Le dossier de la personne, `user/`, ajoute au démarrage un package de 21 lignes, le `user/config` du template, trois
+lectures de la config avec un `match` chacune, et un test du shell dans `bin/cemacs`, `[ -e "$home/user" ]`, qui ne lance
+aucun processus. Mesuré à côté de `main` à 158205b, le programme ci-dessous avec le code de chacun, les deux à tour de
+rôle, $n = 62$ en deux séries de 31 : 54,5 ms [53,5 ; 55,5] contre 54,8 ms [53,8 ; 55,9], le même temps. `main` lui-même a
+pris 54,8 ms ce jour-là contre 51,3 dans la table, sur la même machine : deux versions ne se comparent qu'au sein d'une même
+série. `src/cemacs.ce` appelle désormais le `Changed` de `user/config` chaque fois que l'éditeur lit sa config, deux ou
+trois fois pour une touche : une pause d'environ 100 µs mise dans `Config()` a allongé `C-f` de 220 à 270 µs. `Config()`
+seul, 1 000 appels par passe, 300 passes, $n = 21$ runs à tour de rôle : 1,26 µs [1,25 ; 1,27] contre 0,83 µs [0,82 ; 0,85],
+l'appel de `Changed` et la copie du record qui met `?` après les prefix keys. Une touche à travers [commands.Update], sur un
+buffer de 1 000 lignes, sans dessin, la médiane de 3 000 passes dans chaque run, $n = 21$ : `C-f` 815,2 µs
+[801,1 ; 831,1] contre 810,9 µs [794,2 ; 834,0], une lettre tapée 816,8 µs [809,2 ; 828,0] contre 818,0 µs
+[811,1 ; 827,1]. Le 1 µs environ qu'une touche passe dans `Changed` est en dessous de ce que les runs peuvent
+distinguer.
+
 Où sont passées les 51 ms, avec le dummy driver, avant cette version, chaque partie chronométrée depuis la précédente par le
 programme ci-dessous, avec une marque après chaque partie, $n = 20$, médianes :
 

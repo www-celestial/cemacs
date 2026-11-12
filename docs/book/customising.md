@@ -373,7 +373,7 @@ defn Changed(config)
 end
 ```
 
-These lines can't run on this page, which has no package `user/mine`: [Recipes](recipes.md#your-first-app-in-user-notes)
+These lines can't run on this page, which has no package `user/mine`: [Recipes](recipes.md#your-first-app-in-usernotes)
 runs a whole app, with a stand-in for its package. A new package needs a restart of Cemacs: a program that runs can't load
 a package it didn't load at its start, and Cesia says so, `A running program can't load a new module. Restart it to use this
 one.` After that, every change to the app reloads. The apps of Cemacs itself are folders of `src/`, which `src/cemacs.ce`
