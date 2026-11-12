@@ -163,6 +163,16 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `Renamed NAME to NEW: N files saved.` | le renommage est fait |
 | `Not renamed.` | `n` à la question d'un renommage |
 
+### Le shell et les formes
+
+| Message | Ce qui s'est passé |
+|---|---|
+| `SHELL in FOLDER: each line after $ runs at Enter.` | `C-c o t` a lancé le shell : [The shell](shell.md) |
+| `The shell doesn't start: REASON` | `cesia` n'a pas pu lancer `tools/shell.ce`, ou celui-ci le shell |
+| `The shell ended: close this buffer, and C-c o t starts another.` | Entrée après la fin du shell, comme après `exit` |
+| `Nothing to write here.` | `C-c i` dans une liste |
+| `Only the forms of C-c i are written by an answer.` | la réponse d'un autre programme a demandé d'écrire du texte : refusé |
+
 ### Exécuter et déboguer
 
 | Message | Ce qui s'est passé |

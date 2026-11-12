@@ -84,7 +84,8 @@ value.Len(dict.Keys(all)) -->
 
 A command bound to two keys, as `C-x C-f` and `C-c f f`, is the same function: the second key is no copy of the first.
 Under `C-c`, the letter of each group is the first letter of its name, as in Doom Emacs: `f` files, `b` buffers, `w`
-windows, `c` code, `d` debug, `e` execute, the [cells](cells.md), `t` test, the [tests](running.md#tests), `g` [git](git.md), `q` quit.
+windows, `c` code, `d` debug, `e` execute, the [cells](cells.md), `t` test, the [tests](running.md#tests), `g` [git](git.md), `i` insert, the
+[forms of Cesia](editing.md#forms-of-cesia), `o` open, [the shell](shell.md), `q` quit.
 
 ## A question on the prompt line
 

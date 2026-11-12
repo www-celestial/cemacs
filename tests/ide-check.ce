@@ -1,7 +1,7 @@
 (** Checks of src/ide against its real programs, tools/lookup.ce, tools/grep.ce, tools/git.ce and tools/testing.ce, run by cesia, in a project and a Git
     repository made in the folder the script runs from, a new one: names, the search of the project, Git, and tests. It is a script, not a test file: it
-    needs permissions. tests/run.sh runs it from a new folder, with cesia run --allow read,write,exec=cesia,exec=git,env=PWD and the folder of Cemacs as its
-    argument. It prints ok at the end and stops at the first failure. *)
+    needs permissions. tests/run.sh runs it from a new folder, with cesia run --allow read,write,exec=cesia,exec=git,env=PWD,env=SHELL, SHELL=/bin/sh and the
+    folder of Cemacs as its argument. It prints ok at the end and stops at the first failure. *)
 use src/check
 use src/emacs
 use src/ide
@@ -220,4 +220,39 @@ broken.Buffers[broken.Current] = text.InsertWords("x = (\n", here(broken))
 kept = press.Press(["C-x", "C-s"], broken)
 expect(result.Unwrap(sys.Read("src/shop/broken.ce")) == "x = (\n" and str.StartsWith("Saved src/shop/broken.ce as typed: ", kept.Message), "a text that doesn't read is saved as typed: $(kept.Message)")
 expect(not sys.Exists("$(sys.Args[1])/.cesia/fmt") or value.Len(result.Unwrap(sys.List("$(sys.Args[1])/.cesia/fmt"))) == 0, "no file is left in .cesia/fmt")
+(* ---- C-c i writes a form at the indent of its place, the cursor where its name goes; C-c i c is C-c e i, a cell. *)
+forms = commands.OpenFile("src/shop/forms.ce", start)
+forms.Buffers[forms.Current] = text.InsertWords("defn g()\n  x = 1\n  \nend\n", here(forms))
+forms.Buffers[forms.Current] = text.Place(3, 2, here(forms))
+written = answered(press.Press(["C-c", "i", "f"], forms))
+expect(rope.Text(here(written).Rope) == "defn g()\n  x = 1\n  for  in \n\n  end\nend\n" and here(written).Cursor.Line == 3 and here(written).Cursor.Column == 6,
+  "a loop in a function: $(rope.Text(here(written).Rope)) $(here(written).Cursor) $(written.Message)")
+named = answered(press.Press(["C-c", "i", "d"], dict.Merge(written, {Buffers: [text.Place(6, 3, here(written))], Current: 1})))
+expect(str.EndsWith("end\ndefn ()\n  (**  *)\n\nend\n", rope.Text(here(named).Rope)) and here(named).Cursor.Line == 7 and here(named).Cursor.Column == 5,
+  "a function after a line that isn't blank: $(rope.Text(here(named).Rope)) $(here(named).Cursor)")
+
+(* ---- C-c o t: the shell of $SHELL, in a buffer; a command typed after the prompt runs at Enter, its output above the prompt; closing the buffer ends it. *)
+shell = answered(press.Press(["C-c", "o", "t"], opened))
+expect(view.BufferName(here(shell)) == "*shell*" and rope.Text(here(shell).Rope) == "$ ", "the shell buffer: $(rope.Text(here(shell).Rope)) $(shell.Message)")
+
+defn heard(state, words)
+  (** The state after ticks, until the shell buffer holds the words, or 10 seconds have gone. *)
+  s = state
+  waited = 0.0
+  while not str.Contains(words, rope.Text(here(s).Rope)) and waited < 10.0
+    sys.Sleep(0.02)
+    waited += 0.02
+    s = commands.Update({Kind: "tick", Seconds: 0.02}, s)
+  end
+  expect(str.Contains(words, rope.Text(here(s).Rope)), "the shell wrote $words: $(rope.Text(here(s).Rope))")
+  s
+end
+
+echoed = heard(press.Press(["echo hello there", "enter"], shell), "\nhello there\n")
+expect(str.EndsWith("$ echo hello there\nhello there\n$ ", rope.Text(here(echoed).Rope)), "the output above the prompt: $(rope.Text(here(echoed).Rope))")
+moved = heard(press.Press(["cd ../shop && pwd", "enter"], echoed), "/src/shop\n")
+coloured = heard(press.Press(["printf '\\033[31mred\\033[0m\\n'", "enter"], moved), "red\n$ ")
+expect(not str.Contains(str.Char(27), rope.Text(here(coloured).Rope)), "the colours of a terminal are taken away")
+closed = commands.Update({Kind: "tick", Seconds: 0.02}, press.Press(["C-x", "k"], coloured))
+expect(value.IsMissing(closed.Shell), "closing the buffer ends the shell")
 io.Print("ok")

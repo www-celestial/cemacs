@@ -169,6 +169,14 @@ Le second enregistrement donne la taille et l'heure de la première lecture, et 
 entre les deux en a fait un nouveau fichier. Cemacs ne regarde qu'au moment d'enregistrer : il ne recharge pas un fichier qui
 change pendant qu'il est ouvert, comme le ferait l'`auto-revert-mode` d'Emacs, et il n'a pas de commande pour le relire.
 
+### Enregistré comme cesia fmt l'écrit
+
+Un fichier de Cesia, un fichier `.ce`, est enregistré comme
+[`cesia fmt`](https://www-celestial.github.io/cesia-lang/commands.html) l'écrit : chaque ligne à l'indentation de ses blocs,
+pas d'espace en fin de ligne, pas deux lignes vides de suite. Le buffer prend ce texte, en une étape d'annulation : `C-/`
+rend ce que vous avez tapé. Un texte qui ne se lit pas est enregistré tel qu'il est tapé, et la prompt line dit pourquoi.
+Un enregistrement d'un fichier de 2 000 lignes prend 60 ms : [Vitesse](performance.md#coller-annuler-et-enregistrer).
+
 ### Enregistrer sous
 
 Un buffer sans fichier demande `Save as: ` et enregistre au chemin donné, qui ne devient son fichier qu'une fois

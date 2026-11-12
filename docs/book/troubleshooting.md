@@ -161,6 +161,19 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `PATH doesn't read: fix it first, so that its places of NAME are known.` | a file of the project that reads the package doesn't parse: a rename would leave its places |
 | `Renamed NAME to NEW: N files saved.` | the rename is done; `, N left unsaved, with changes of their own` and `, N changed since, left as they are` tell the files it didn't save or didn't change |
 | `Not renamed.` | `n` to the question of a rename |
+| `Saved PATH as typed: WORDS` | the text of a file of Cesia doesn't read, so `cesia fmt` left it, and it was saved as typed; WORDS say why |
+| `cesia fmt has no place to write: REASON`, `cesia fmt can't run` | the save of a file of Cesia couldn't go through `cesia fmt`: it was saved as typed |
+
+### The shell and the forms
+
+| Message | What happened |
+|---|---|
+| `SHELL in FOLDER: each line after $ runs at Enter.` | `C-c o t` started the shell: [The shell](shell.md) |
+| `The shell doesn't start: REASON` | `cesia` couldn't start `tools/shell.ce`, or it couldn't start the shell |
+| `The shell ended: close this buffer, and C-c o t starts another.` | Enter after the shell ended, as after `exit` |
+| `[the shell ended, code N]`, in the buffer | the shell ended, with that exit code |
+| `Nothing to write here.` | `C-c i` in a list, or a form of the wrong shape |
+| `Only the forms of C-c i are written by an answer.` | an answer of another program asked to write text: refused |
 
 ### Running and debugging
 

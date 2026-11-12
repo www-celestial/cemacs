@@ -123,3 +123,16 @@ defn isApplyLeavesAChangedText()
   rope.Text(done.State.Buffers[1].Rope) == "xTotals" and str.Contains("1 changed since", done.Words)
 end
 isEditsWithoutAYesRefused() = rope.Text(here(answered(lookup, "{\"Edits\": [{\"Path\": \"/p/a.ce\", \"Line\": 1, \"Column\": 0, \"End\": 1, \"Old\": \"x\", \"Text\": \"y\"}]}", stateOf("x", "/p/a.ce"))).Rope) == "x"
+
+form = "{\"Insert\": {\"Text\": \"for  in \\n  \\nend\", \"Cursor\": {\"Line\": 1, \"Column\": 4}}}"
+isFormOfAnotherProgramRefused() = answered(lookup, form, stateOf("", "/p/a.ce")).Message == "Only the forms of C-c i are written by an answer."
+
+defn isFormAtItsIndent()
+  s = stateOf("defn f()\n  \nend", "/p/a.ce")
+  s.Buffers[1] = text.Place(2, 2, here(s))
+  done = answered({Program: "snippets", Do: "for"}, form, s)
+  rope.Text(here(done).Rope) == "defn f()\n  for  in \n\n  end\nend" and here(done).Cursor.Line == 2 and here(done).Cursor.Column == 6
+end
+
+isPlainTakesColoursAway() = ide.Plain("$(str.Char(27))[1mbold$(str.Char(27))[0m\r") == "bold"
+isEnterOutOfTheShellIsANewLine() = rope.Text(here(ide.Enter(stateOf("ab", "/p/a.txt"))).Rope) == "\nab"

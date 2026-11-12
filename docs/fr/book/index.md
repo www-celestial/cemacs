@@ -61,24 +61,25 @@ peut lire.
     endroit qui le lit, et son renommage dans tout le projet.
 11. [Git](git.md) (en anglais) : l'état d'un dépôt, où une lettre stage, unstage ou commit, le log, un commit, un diff et
     le commit de chaque ligne.
-12. [Cellules et résultats](cells.md) : un fichier de Cesia comme un notebook (du code coupé en cellules, chacune avec
+12. [The shell](shell.md) (en anglais) : un buffer où les commandes que vous tapez tournent dans votre shell.
+13. [Cellules et résultats](cells.md) : un fichier de Cesia comme un notebook (du code coupé en cellules, chacune avec
     son résultat), ses résultats sous ses cellules, `*variables*`, `*repl*` et la page d'un fichier.
-13. [Modifier Cemacs](customising.md) : votre dossier `user/`, les réglages, vos propres touches et commandes, une app à
+14. [Modifier Cemacs](customising.md) : votre dossier `user/`, les réglages, vos propres touches et commandes, une app à
     vous, et le rechargement pendant qu'il tourne.
-14. [Recettes](recipes.md) : de petites tâches faites dans `user/`, chacune avec son code, sa touche et ce qu'elle montre :
+15. [Recettes](recipes.md) : de petites tâches faites dans `user/`, chacune avec son code, sa touche et ce qu'elle montre :
     vos réglages, des fichiers au démarrage, un nouveau buffer, un groupe de touches, une question, une liste, un hook,
     une app.
-15. [À l'intérieur de Cemacs](internals.md) : l'état et sa mise à jour, la rope, l'historique, les couleurs,
+16. [À l'intérieur de Cemacs](internals.md) : l'état et sa mise à jour, la rope, l'historique, les couleurs,
     l'indentation, la frame, la boucle des événements, l'enregistrement.
-16. [Vitesse](performance.md) : ce qui a été mesuré, comment, et les chiffres.
-17. [Cemacs et les autres éditeurs](comparison.md) : à côté de GNU Emacs, Neovim, Vim et VS Code, en chiffres et en
+17. [Vitesse](performance.md) : ce qui a été mesuré, comment, et les chiffres.
+18. [Cemacs et les autres éditeurs](comparison.md) : à côté de GNU Emacs, Neovim, Vim et VS Code, en chiffres et en
     fonctions.
-18. [Un cas : trouver un fichier à partir de quelques lettres](finding.md) : un vrai problème, de son énoncé jusqu'à la
+19. [Un cas : trouver un fichier à partir de quelques lettres](finding.md) : un vrai problème, de son énoncé jusqu'à la
     preuve qu'il est résolu, par les méthodes de la recherche scientifique : une base de comparaison, une hypothèse, les
     articles, le plus petit changement, des tests et des mesures.
-19. [Dépannage](troubleshooting.md) : chaque message de Cemacs, ce qu'il veut dire et que faire.
-20. [Glossaire](glossary.md) : les mots des éditeurs, tels que Cemacs les emploie.
-21. [Références](references.md) : les travaux et les normes que suit Cemacs.
+20. [Dépannage](troubleshooting.md) : chaque message de Cemacs, ce qu'il veut dire et que faire.
+21. [Glossaire](glossary.md) : les mots des éditeurs, tels que Cemacs les emploie.
+22. [Références](references.md) : les travaux et les normes que suit Cemacs.
 
 La référence, sous [Reference](ref/index.html), liste chaque package de Cemacs et chaque nom public, à partir de son code.
 

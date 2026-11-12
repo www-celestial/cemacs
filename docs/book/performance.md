@@ -454,6 +454,12 @@ leaves into a new text first. A buffer that was edited is joined once, then writ
   after it, `str.Split`; the edit of the rope itself and the cut take 11 to 15 ms. Vim and Neovim append the
   lines to their blocks in C: 2.7 ms.
 
+A save of a file of Cesia goes through `cesia fmt`, as [Files and buffers](files.md#saved-as-cesia-fmt-writes-it) tells. A file
+of 2,000 lines, a key typed in its line 1,000, then `C-x C-s`, $n = 21$, taking turns: 60.3 ms through `cesia fmt`, 56.6 at
+the fastest, against 8.1 ms, 6.5 at the fastest, for the same save without it. The 52 ms are the start of `cesia fmt` and
+its reading of the file twice, once to place each line and once to check that the program reads the same: under the tenth
+of a second where a key still feels at once, and only at a save.
+
 ## The folder manager
 
 A folder of 10,000 files, the first file's buffer current, medians of 21 passes, each with `commands.Settled` as the editor

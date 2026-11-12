@@ -496,6 +496,10 @@ buffer qui a été modifié est joint une fois, puis écrit.
   pour placer le curseur après lui, `str.Split` ; la modification de la rope elle-même et la découpe prennent de 11 à
   15 ms. Vim et Neovim ajoutent les lignes à leurs blocs en C : 2,7 ms.
 
+Un enregistrement d'un fichier de Cesia passe par `cesia fmt`, comme le dit
+[Fichiers et buffers](files.md#enregistré-comme-cesia-fmt-lécrit) : pour 2 000 lignes, 60,3 ms contre 8,1 ms sans lui,
+$n = 21$ : le démarrage de `cesia fmt` et sa double lecture du fichier, et seulement à l'enregistrement.
+
 ## Le gestionnaire de dossiers
 
 Un dossier de 10 000 fichiers, le buffer du premier fichier courant, médianes de 21 passes, chacune avec

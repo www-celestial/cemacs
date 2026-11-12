@@ -156,6 +156,16 @@ The second save gives the size and the time of the first reading, and the file h
 it a new file. Cemacs looks only when it saves: it doesn't reload a file that changes while it is open, as Emacs's
 `auto-revert-mode` would, and it has no command to read it again.
 
+### Saved as cesia fmt writes it
+
+A file of Cesia, a `.ce` file, is saved as [`cesia fmt`](https://www-celestial.github.io/cesia-lang/commands.html) writes it:
+each line at the indent of its blocks, no spaces at the end of a line, no two blank lines in a row. The text goes to a file
+of its own in `.cesia/fmt/` of the folder of Cemacs, `cesia fmt` formats it, and the formatted text is what is saved; the
+buffer takes it too, as one step of undo, so that `C-/` gives back what you typed, the cursor on its line. The file in
+`.cesia/fmt/` is removed at once. A text that doesn't read, as one with a bracket left open, is saved as typed, and the
+prompt line says `Saved PATH as typed:` and why `cesia fmt` left it. A save of a file of 2,000 lines takes 60 ms through
+`cesia fmt`, 8 ms without: [Speed](performance.md#paste-undo-and-save).
+
 ### Save as
 
 A buffer with no file asks `Save as: ` and saves to the path given, which becomes its file only once the save worked. An

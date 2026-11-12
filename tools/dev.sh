@@ -3,6 +3,6 @@
 # user/ first when it is missing, as bin/cemacs does, then shows the command it runs and runs it, with the permissions of bin/cemacs.
 set -eu
 [ -e user ] || tools/user.sh
-command=(cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME --allow "exec=$(readlink -f "$(command -v cesia)")" --watch src/cemacs.ce)
+command=(cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=SHELL,env=XDG_DATA_HOME --allow "exec=$(readlink -f "$(command -v cesia)")" --watch src/cemacs.ce)
 echo "> ${command[*]}"
 exec "${command[@]}"

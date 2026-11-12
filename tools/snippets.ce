@@ -1,0 +1,23 @@
+(** The program that answers a question of Cemacs about the forms of Cesia: src/ide runs it as cesia run tools/snippets.ce, from a fiber, writes the
+    question in JSON on its input and reads the answer in JSON on its output, one line, after which it ends. It needs no permission: src/snippets holds the forms,
+    which none of the editor loads at its start. *)
+use src/snippets
+use std/io
+use std/json
+use std/result
+use std/sys
+
+defn main()
+  (** The answer to the question on the input, or an Error that says why there is none. *)
+  read = sys.ReadInput()
+  if result.IsErr(read)
+    return {Error: "The question can't be read."}
+  end
+  q = json.Parse(read.Value)
+  if result.IsErr(q)
+    return {Error: "The question isn't JSON."}
+  end
+  snippets.Answered(q.Value)
+end
+
+io.Print(json.Text(main()))

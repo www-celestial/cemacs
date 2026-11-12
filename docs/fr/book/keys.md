@@ -89,8 +89,8 @@ value.Len(dict.Keys(all)) -->
 
 Une commande liée à deux touches, comme `C-x C-f` et `C-c f f`, est la même fonction : la seconde touche n'est pas une copie
 de la première. Sous `C-c`, la lettre de chaque groupe est la première lettre de son nom, comme dans Doom Emacs : `f` files
-(fichiers), `b` buffers, `w` windows (fenêtres), `c` code, `d` debug (débogage), `e` execute (exécuter), les [cellules](cells.md), `t` test, les [tests](running.md#les-tests), `g` [git](git.md), `q` quit
-(quitter).
+(fichiers), `b` buffers, `w` windows (fenêtres), `c` code, `d` debug (débogage), `e` execute (exécuter), les [cellules](cells.md), `t` test, les [tests](running.md#les-tests), `g` [git](git.md), `i` insert, les
+[formes de Cesia](editing.md#les-formes-de-cesia), `o` open, [le shell](shell.md), `q` quit (quitter).
 
 ## Une question sur la prompt line
 

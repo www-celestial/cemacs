@@ -1,0 +1,11 @@
+(** Tests of the forms of C-c i. *)
+use src/snippets
+use std/dict
+use std/list
+use std/text as str
+use std/value
+
+isEachFormEnds() = list.All([str.EndsWith("end", snippets.Forms()[k].Text) for k in dict.Keys(snippets.Forms())])
+isCursorInside() = list.All([snippets.Forms()[k].Cursor.Line <= value.Len(str.Split("\n", snippets.Forms()[k].Text)) for k in dict.Keys(snippets.Forms())])
+isUnknownForm() = dict.Has("Error", snippets.Answered({Do: "loop"}))
+isAnswer() = snippets.Answered({Do: "test"}).Insert.Text == "defn is()\n  \nend"

@@ -245,6 +245,14 @@ textOf(press.Press(["M->", "Hell", "tab"], editor(words, "a.ce"))) --> "Hello = 
 La liste montre huit mots à la fois, et défile avec le mot choisi. Dans un fichier d'un autre langage, Tab tape son texte
 comme avant, et ne complète pas. [Vitesse](performance.md#la-completion) donne ce que coûte une completion.
 
+## Les formes de Cesia
+
+Le groupe `i`, insert (insérer), de `C-c` écrit les formes de Cesia, chacune à l'indentation de sa place, le curseur là où
+va son nom : `C-c i d` une fonction, `C-c i s` une struct, `C-c i f` une boucle, `C-c i m` un match, `C-c i t` une fonction
+de test, `C-c i c` le marqueur d'une cellule, comme `C-c e i` ([Cellules et résultats](cells.md)). Les formes viennent de
+[src/snippets], par `tools/snippets.ce`, comme les autres questions de [src/ide](names.md#how-the-ide-asks) :
+[ide.InsertDefn], [ide.InsertStruct], [ide.InsertFor], [ide.InsertMatch], [ide.InsertTest], [notebook.InsertCell].
+
 ## Effacer
 
 | Touches | Commande | Efface |
