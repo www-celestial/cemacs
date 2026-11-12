@@ -3,9 +3,18 @@ name: ci
 # The suite of Cemacs on each push, against the latest stable Cesia and against the nightly one, as their releases give them:
 # a change of Cesia that breaks Cemacs shows before a release of Cesia. A Cesia older than the one cesia.toml asks for is
 # skipped, and says so: until a release catches up, only the nightly can run Cemacs.
+# A push that changes only the docs runs pages.yml alone, which builds and checks the site; a newer push cancels the run
+# in progress.
 on:
   push:
+    paths-ignore: ["docs/**", "**.md"]
   pull_request:
+    paths-ignore: ["docs/**", "**.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
