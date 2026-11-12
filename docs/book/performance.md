@@ -478,6 +478,38 @@ from those already shown when the filter only grew. These times are from before 
 So the marks of an error come about 30 ms after the half second of pause that starts the check. It runs in its own process,
 from a fiber: the editor doesn't wait for it, and typing goes on.
 
+## The questions of src/ide
+
+The keys of [Names](names.md), of [the search of a project](search.md#searching-a-project), of [Git](git.md) and of
+[the tests](running.md#tests) each ask a program, which Cesia starts, loads and runs: the cost of a key is that process, in
+the background, never a key that types. Each question as Cemacs asks it, on Cemacs's own code, the name `text.Place` in the
+line `b = text.Place(at.Line, at.Column, current(s))` of `core/commands/commands.ce`, a file of 1,636 lines, $n = 21$,
+taking turns, the median and the fastest:
+
+| Question | Program | Median | Fastest |
+|---|---|---|---|
+| `M-.`, the definition | `tools/lookup.ce` | 17.2 ms | 16.0 ms |
+| `C-c c i`, the documentation | `tools/lookup.ce` | 17.0 ms | 15.9 ms |
+| the signature of the call | `tools/lookup.ce` | 18.3 ms | 16.6 ms |
+| `M-?`, the references: 33 places in 13 files | `tools/lookup.ce` | 154.6 ms | 123.8 ms |
+| `C-x p g`, the lines that hold `text.Place` | `tools/grep.ce` | 11.2 ms | 9.7 ms |
+| `C-x g`, the state of Git | `tools/git.ce` | 11.6 ms | 10.5 ms |
+| `C-c g l`, the log | `tools/git.ce` | 15.6 ms | 14.1 ms |
+| `C-c t t`, what to test, before `cesia test` runs | `tools/testing.ce` | 4.8 ms | 4.4 ms |
+
+About 3 ms of each is the start of Cesia, and most of the rest the load of the program's package: src/lookup holds 820
+lines. The references read every file of the project that holds the name, and each top-level definition that holds it
+once more for each of its reads, as [Names](names.md#the-references) tells: that is where their time goes, a sixth of a
+second for a name read in 13 files.
+
+These programs and their packages hold about 2,000 lines of Cesia, which none of the editor loads at its start. Built first
+as apps loaded at the start, they made it 8.7 ms longer, the fastest of 21 starts 96.5 ms against 87.9 ms for the version
+before them, as Cesia's load grows faster than the code it reads. Asked at each key, they leave at the start their keys and
+the app that asks, [src/ide], 460 lines, with the history and the completion of the prompt, 130 lines of
+[core/commands]: the fastest start 82.0 ms against 79.1 ms, the median 88.7 ms against 85.1 ms, $n = 21$, taking turns, the
+heavy lock held on a machine shared with other work. A key typed in a file of Cesia of 2,000 lines, the update, the view and
+the frame of a window of 1280 by 720 with no vsync, 21 samples of 50 keys: 5.72 ms against 5.86 ms, the same.
+
 ## At rest
 
 An editor at rest, one empty buffer, 3 seconds after its start; the memory of every process of the editor, $n = 5$:

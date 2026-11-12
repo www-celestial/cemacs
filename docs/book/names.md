@@ -159,6 +159,6 @@ start and load, then its work.
 ## Speed
 
 A question costs a process: Cesia starts, loads src/lookup and answers, a few tens of milliseconds for a definition, more
-for the references of a name read in many files, all of it in the background; [Speed](performance.md) gives the measures.
+for the references of a name read in many files, all of it in the background; [Speed](performance.md#the-questions-of-src-ide) gives the measures.
 Typing costs nothing more: no key that types asks anything, and the signature is asked at most once for a place of the
 cursor, half a second after the last key.
