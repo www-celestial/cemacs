@@ -25,23 +25,27 @@ before, SDL3 3.4.18, SDL3_ttf 3.2.2, Mesa 26.2.6, tmux 3.8.
 
 ## Start-up
 
-From the command to the first frame of the window, with one empty buffer, $n = 20$:
+From the command to the first frame of the window, with one empty buffer. Cemacs as it is now and `main` at 65ec91c, before
+the indent and the completion, each with the next version of Cesia and with Cesia 1.1.0, the four taking turns, $n = 62$, in
+two series of 31; the others in a series of their own, $n = 20$:
 
 | Editor, as started | Start to the first frame |
 |---|---|
-| Cemacs, in its window, SDL's dummy driver | 51.1 ms [50.9, 51.9] |
-| Cemacs, the version before this one | 49.8 ms [49.5, 50.8] |
+| Cemacs, in its window, SDL's dummy driver, with the next version of Cesia | 51.3 ms [50.8, 51.9] |
+| the same with Cesia 1.1.0 | 57.4 ms [57.0, 58.0] |
+| Cemacs before the indent and the completion, `main` at 65ec91c, with the next version of Cesia | 47.9 ms [47.4, 48.3] |
+| the same with Cesia 1.1.0 | 51.3 ms [50.8, 51.6] |
 | GNU Emacs 31.1, `emacs -Q -nw` | 89.1 ms [88.3, 92.9] |
 | Neovim 0.12.6, `nvim --clean -n` | 13.8 ms [13.6, 13.9] |
 | Vim 9.2, `vim --clean -n` | 9.3 ms [9.2, 9.4] |
 
 Each editor started with no configuration of the user, and was told to draw its screen and quit: `--eval '(progn (redisplay
 t) (kill-emacs))'` for Emacs, `'+redraw!' '+qa!'` for Neovim and Vim. Each run is the time of the process, from its start to
-its end, as a program of Python inside the terminal timed it. This version loads 1.3 ms more than the one before: the search,
-the reader of the states of the colours and the search in the rope add about 475 lines of code, which Cesia reads at each
-start. The check of UTF-8 of [Opening a file](#opening-a-file), one call of Cesia now, took 94 lines off what Cesia reads:
-measured later beside the version before it, at 8ee42e7, taking turns, $n = 11$, 53.2 ms [52.7, 54.7] against 54.1 ms [53.7,
-55.4], no slower.
+its end, as a program of Python inside the terminal timed it. The version that brought the search loaded 1.3 ms more than the
+one before it, 51.1 ms [50.9, 51.9] against 49.8 ms [49.5, 50.8], $n = 20$: the search, the reader of the states of the
+colours and the search in the rope add about 475 lines of code, which Cesia reads at each start. The check of UTF-8 of
+[Opening a file](#opening-a-file), one call of Cesia now, took 94 lines off what Cesia reads: measured later beside the
+version before it, at 8ee42e7, taking turns, $n = 11$, 53.2 ms [52.7, 54.7] against 54.1 ms [53.7, 55.4], no slower.
 
 This version against the one before it, `main` at b2ab23f, taking turns, $n = 15$: 53.7 ms [53.4, 55.3] against 54.7 ms [54.3,
 55.0]. The steps of this version added about 200 lines of code, which made the start 1.9 ms longer, 56.6 ms [56.2, 57.4];
@@ -61,10 +65,12 @@ The cause was not Cesia's reading of the code, which costs the same for each lin
 code live as long as the program, and the minor collection that came in the middle of the load copied the 740,000 words
 young at that moment to the major heap, about 11 ms, wherever the young heap of 16 MB filled. Code added anywhere brought it
 on. The next version of Cesia makes half the garbage while it loads, 1.84 million words for Cemacs instead of 3.38
-million, so the load ends before the young heap is full and nothing is copied during the start. With it, taking turns, n =
-21: the load alone 24.4 ms [24.2, 24.6] against 38.2 ms [37.7, 38.3]; the start to the first frame 51.4 ms [50.8, 51.9]
-against 57.7 ms [56.7, 58.5], with the indent only 50.8 ms [49.7, 51.4], and `main` at 65ec91c 47.3 ms [47.2, 48.0]
-against 51.1 ms [50.9, 51.7]. The 1,000 lines of small functions now cost the same beside Cemacs as alone, 0.9 ms.
+million, so the load ends before the young heap is full and nothing is copied during the start. With it, taking turns,
+$n = 21$: the load alone 24.4 ms [24.2, 24.6] against 38.2 ms [37.7, 38.3], and the 1,000 lines of small functions now cost
+the same beside Cemacs as alone, 0.9 ms. The start to the first frame, in the table above, $n = 62$: 51.3 ms [50.8, 51.9]
+against 57.4 ms [57.0, 58.0] with Cesia 1.1.0, and for `main` at 65ec91c 47.9 ms [47.4, 48.3] against 51.3 ms [50.8,
+51.6]. With the next version of Cesia, the indent and the completion cost 3.4 ms at the start, and Cemacs starts in the same
+time as it did with Cesia 1.1.0 before them.
 
 Where the 51 ms went, with the dummy driver, before this version, each part timed from the one before by the program below with a mark after each part, $n = 20$,
 medians:

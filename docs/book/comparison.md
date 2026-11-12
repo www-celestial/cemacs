@@ -15,8 +15,8 @@ scrolled lines in a series for Cemacs and one for the others, the same afternoon
 
 | Measure | n | Cemacs | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
 |---|---|---|---|---|---|
-| start to the first frame, with the next version of Cesia | 21; 20 for the others | 51.4 ms [50.8, 51.9] | 89.1 ms [88.3, 92.9] | 13.8 ms [13.6, 13.9] | 9.3 ms [9.2, 9.4] |
-| the same with Cesia 1.1.0 | 21 | 57.7 ms [56.7, 58.5] | | | |
+| start to the first frame, with the next version of Cesia | 62; 20 for the others | 51.3 ms [50.8, 51.9] | 89.1 ms [88.3, 92.9] | 13.8 ms [13.6, 13.9] | 9.3 ms [9.2, 9.4] |
+| the same with Cesia 1.1.0 | 62 | 57.4 ms [57.0, 58.0] | | | |
 | start to the first frame, in a Wayland window, before this version | 10 | 236 ms [232, 241] | | | |
 | start and open 0.79 MB | 7 | 66.9 ms [66.2, 71.0] | 98.4 ms [97.7, 109] | 20.5 ms [20.4, 42.7] | 18.0 ms [17.4, 19.8] |
 | start and open 15.9 MB | 7 | 97.8 ms [97.1, 139] | 145 ms [142, 149] | 53.2 ms [52.8, 61.9] | 51.5 ms [50.4, 52.0] |
