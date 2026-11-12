@@ -5,7 +5,6 @@
     input, with the place of the cursor; its answer, one line of JSON on its output, says what to do in the few words this file knows: Say, Open, List, Ask,
     Confirm, with the edits made after a yes, Run and Marks. An answer is input from another program, and each part is checked before a file opens, a
     buffer changes or a test runs. One question at a time: a new one takes the place of the one before. src/cemacs.ce adds the hooks of Hooked and these Keys. *)
-use core/color
 use core/commands
 use core/files
 use core/indent
