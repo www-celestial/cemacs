@@ -59,92 +59,68 @@ end
 (** The places of an answer as path:line:column, the path from the root. *)
 places(root, answer) = ["$(str.Slice(value.Len(root) + 2, value.Len(p.Path), p.Path)):$(p.Line):$(p.Column)" for p in answer.Places]
 
-defn isDefinitionThroughUse()
-  root = project()
-  got = lookup.Definition("$root/src/app/app.ce", 6, 17, {})
-  value.Equal(places(root, got), ["src/shop/shop.ce:6:5"])
-end
+(** Where cesia lsp says that Total and Rate are defined, as src/ide gives it. *)
+total(root) = {Path: "$root/src/shop/shop.ce", Line: 6, Column: 5}
+rate(root) = {Path: "$root/src/shop/shop.ce", Line: 4, Column: 0}
+question(root, definition) = {Path: "$root/src/shop/shop.ce", Line: 6, Column: 7, Definition: definition}
 
-defn isDefinitionInPackage()
-  root = project()
-  value.Equal(places(root, lookup.Definition("$root/src/shop/shop.ce", 9, 15, {})), ["src/shop/shop.ce:4:0"])
-end
-
-defn isDefinitionOfStdIsItsDoc()
-  root = project()
-  got = lookup.Definition("$root/src/shop/shop.ce", 8, 14, {})
-  got.Doc.Signature == "list.Reduce(f, init, xs)"
-end
-
-defn isDefinitionOfTheGivenText()
-  root = project()
-  moved = "\n\n$shop"
-  value.Equal(places(root, lookup.Definition("$root/src/app/app.ce", 6, 17, {"$root/src/shop/shop.ce": moved})), ["src/shop/shop.ce:8:5"])
-end
-
-isNoNameIsAnError() = dict.Has("Error", lookup.Definition("$(project())/src/shop/shop.ce", 3, 0, {}))
+isDefinitionAt() = lookup.DefinitionAt(total(project()), {}).Def.Name == "Total"
+isNoDefinitionAtAnotherColumn() = value.IsMissing(lookup.DefinitionAt({Path: "$(project())/src/shop/shop.ce", Line: 6, Column: 2}, {}))
 
 defn isReferencesOfAPublicName()
   root = project()
-  got = lookup.References("$root/src/shop/shop.ce", 6, 7, {})
+  got = lookup.References(question(root, total(root)), {})
   value.Equal(places(root, got), ["src/shop/shop.ce:6:5", "src/shop/shop.ce:14:9", "src/shop/shop.ce:17:19", "src/shop/shop.test.ce:1:12", "src/app/app.ce:6:16"])
 end
 
 defn isReferencesLeaveAParameterOut()
   root = project()
-  value.Equal(places(root, lookup.References("$root/src/shop/shop.ce", 4, 0, {})), ["src/shop/shop.ce:4:0", "src/shop/shop.ce:9:14", "src/app/app.ce:7:7"])
+  value.Equal(places(root, lookup.References(question(root, rate(root)), {})), ["src/shop/shop.ce:4:0", "src/shop/shop.ce:9:14", "src/app/app.ce:7:7"])
 end
 
 defn isReferencesOfStd()
   root = project()
-  value.Equal(places(root, lookup.References("$root/src/app/app.ce", 6, 5, {})), ["src/app/app.ce:6:5"])
+  value.Equal(places(root, lookup.References({Path: "$root/src/app/app.ce", Line: 6, Column: 5, Definition: missing}, {})), ["src/app/app.ce:6:5"])
 end
 
 defn isRename()
   root = project()
-  got = lookup.Rename("$root/src/shop/shop.ce", 6, 7, "Sum", {})
+  got = lookup.Rename(total(root), "Sum", {})
   got.Files == 3 and value.Len(got.Edits) == 5 and got.To == "Sum"
 end
 
-isRenameKeepsPublic() = dict.Has("Error", lookup.Rename("$(project())/src/shop/shop.ce", 6, 7, "sum", {}))
-isRenameToATakenName() = dict.Has("Error", lookup.Rename("$(project())/src/shop/shop.ce", 6, 7, "Rate", {}))
-isRenameToANonName() = dict.Has("Error", lookup.Rename("$(project())/src/shop/shop.ce", 6, 7, "a b", {}))
-isRenameOfStdRefused() = dict.Has("Error", lookup.Rename("$(project())/src/app/app.ce", 6, 5, "Say", {}))
+isRenameKeepsPublic() = dict.Has("Error", lookup.Rename(total(project()), "sum", {}))
+isRenameToATakenName() = dict.Has("Error", lookup.Rename(total(project()), "Rate", {}))
+isRenameToANonName() = dict.Has("Error", lookup.Rename(total(project()), "a b", {}))
+isRenameOfNoDefinitionRefused() = dict.Has("Error", lookup.Rename({Path: "$(project())/src/shop/shop.ce", Line: 3, Column: 0}, "Say", {}))
 
 defn isRenameCaught()
   (** extra called inside Total, where sum is a local: renamed sum, the call would read the local. *)
-  got = lookup.Rename("$(project())/src/shop/shop.ce", 12, 6, "sum", {})
+  got = lookup.Rename({Path: "$(project())/src/shop/shop.ce", Line: 12, Column: 5}, "sum", {})
   dict.Has("Error", got) and str.StartsWith("sum would be", got.Error)
 end
 
-defn isSignatureOfTheCall()
+defn isDefinitionOfTheGivenText()
   root = project()
-  got = lookup.Signature("$root/src/app/app.ce", 6, 23, {})
-  got.Signature == "Total(prices)" and got.Text == "The total of prices, with the tax."
+  moved = "\n\n$shop"
+  value.Len(lookup.References(question(root, {Path: "$root/src/shop/shop.ce", Line: 8, Column: 5}), {"$root/src/shop/shop.ce": moved}).Places) == 5
 end
 
-isSignatureOfStd() = lookup.Signature("$(project())/src/app/app.ce", 6, 11, {}).Signature == "io.Print(...)"
-isNoSignatureOutsideACall() = value.Equal(lookup.Signature("$(project())/src/app/app.ce", 7, 1, {}), {})
-
-isAnswerChecksTheQuestion() = list.All([dict.Has("Error", lookup.Answered(q)) for q in [1, {Do: "doc"}, {Do: "doc", Path: "a.ce", Line: 1, Column: 0, Texts: {}},
-  {Do: "doc", Path: "/a.txt", Line: 1, Column: 0, Texts: {}}, {Do: "doc", Path: "/a.ce", Line: 0, Column: 0, Texts: {}}, {Do: "doc", Path: "/a.ce", Line: 1, Column: 0, Texts: {"/a.ce": 3}},
-  {Do: "nothing", Path: "/a.ce", Line: 1, Column: 0, Texts: {}}]])
+isAnswerChecksTheQuestion() = list.All([dict.Has("Error", lookup.Answered(q)) for q in [1, {Do: "doc"}, {Do: "references", Path: "a.ce", Line: 1, Column: 0, Texts: {}},
+  {Do: "references", Path: "/a.txt", Line: 1, Column: 0, Texts: {}}, {Do: "references", Path: "/a.ce", Line: 0, Column: 0, Texts: {}},
+  {Do: "references", Path: "/a.ce", Line: 1, Column: 0, Texts: {"/a.ce": 3}}, {Do: "definition", Path: "/a.ce", Line: 1, Column: 0, Texts: {}}]])
 
 defn isRenameAsksThenConfirms()
   root = project()
-  q = {Do: "rename", Path: "$root/src/shop/shop.ce", Line: 6, Column: 7, Texts: {}}
+  q = {Do: "rename", Path: "$root/src/shop/shop.ce", Line: 6, Column: 7, Texts: {}, Definition: total(root)}
   first = lookup.Answered(q)
   second = lookup.Answered(dict.Merge(q, {Answer: "Sum"}))
-  first.Ask.Label == "Rename Total to: " and second.Confirm.Label == "Rename Total to Sum in 5 places of 3 files? (y or n)" and value.Len(second.Confirm.Yes.Edits) == 5
-end
-
-defn isDefinitionOpens()
-  root = project()
-  value.Equal(lookup.Answered({Do: "definition", Path: "$root/src/app/app.ce", Line: 6, Column: 17, Texts: {}}).Open, {Path: "$root/src/shop/shop.ce", Line: 6, Column: 5})
+  first.Ask.Label == "Rename Total to: " and value.Equal(first.Ask.Then.Definition, total(root)) and
+    second.Confirm.Label == "Rename Total to Sum in 5 places of 3 files? (y or n)" and value.Len(second.Confirm.Yes.Edits) == 5
 end
 
 defn isReferencesListed()
   root = project()
-  a = lookup.Answered({Do: "references", Path: "$root/src/shop/shop.ce", Line: 4, Column: 0, Texts: {}})
+  a = lookup.Answered({Do: "references", Path: "$root/src/shop/shop.ce", Line: 4, Column: 0, Texts: {}, Definition: rate(root)})
   a.List.Rows[1].Words == "src/shop/shop.ce:4:1  Rate = 20   (** The tax, in percent. *)" and a.Say == "3 places." and a.List.Keys["enter"] == "open"
 end

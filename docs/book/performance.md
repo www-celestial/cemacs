@@ -481,24 +481,26 @@ from a fiber: the editor doesn't wait for it, and typing goes on.
 ## The questions of src/ide
 
 The keys of [Names](names.md), of [the search of a project](search.md#searching-a-project), of [Git](git.md) and of
-[the tests](running.md#tests) each ask a program, which Cesia starts, loads and runs: the cost of a key is that process, in
-the background, never a key that types. Each question as Cemacs asks it, on Cemacs's own code, the name `text.Place` in the
-line `b = text.Place(at.Line, at.Column, current(s))` of `core/commands/commands.ce`, a file of 1,636 lines, $n = 21$,
-taking turns, the median and the fastest:
+[the tests](running.md#tests) each ask `cesia lsp`, which runs from the first of them, or a program, which Cesia starts,
+loads and runs: the cost of a key is that message or that process, in the background, never a key that types. Each
+question as Cemacs asks it, on Cemacs's own code, the name `text.Place` in the line `b = text.Place(at.Line, at.Column,
+current(s))` of `core/commands/commands.ce`, a file of 1,636 lines, $n = 21$, taking turns, the median and the fastest:
 
-| Question | Program | Median | Fastest |
+| Question | Asked of | Median | Fastest |
 |---|---|---|---|
-| `M-.`, the definition | `tools/lookup.ce` | 17.2 ms | 16.0 ms |
-| `C-c c i`, the documentation | `tools/lookup.ce` | 17.0 ms | 15.9 ms |
-| the signature of the call | `tools/lookup.ce` | 18.3 ms | 16.6 ms |
-| `M-?`, the references: 33 places in 13 files | `tools/lookup.ce` | 154.6 ms | 123.8 ms |
+| `M-.`, the definition | `cesia lsp`, running | 0.80 ms | 0.71 ms |
+| `C-c c i`, the documentation, and the signature of a call | `cesia lsp`, running | 0.70 ms | 0.65 ms |
+| the same after the text of the buffer changed: the server reads it again | `cesia lsp`, running | 8.79 ms | 2.97 ms |
+| the first question of the session, the start of the server included | `cesia lsp` | 20.6 ms, once | |
+| `M-?`, the references: 33 places in 13 files | `cesia lsp`, then `tools/lookup.ce` | 154.6 ms | 123.8 ms |
 | `C-x p g`, the lines that hold `text.Place` | `tools/grep.ce` | 11.2 ms | 9.7 ms |
 | `C-x g`, the state of Git | `tools/git.ce` | 11.6 ms | 10.5 ms |
 | `C-c g l`, the log | `tools/git.ce` | 15.6 ms | 14.1 ms |
 | `C-c t t`, what to test, before `cesia test` runs | `tools/testing.ce` | 4.8 ms | 4.4 ms |
 
-About 3 ms of each is the start of Cesia, and most of the rest the load of the program's package: src/lookup holds 820
-lines. The references read every file of the project that holds the name, and each top-level definition that holds it
+Asked as a program at each key, a definition took 17.2 ms, 16.0 at the fastest: `cesia lsp`, which runs for the session,
+answers twenty times faster, and is Cesia's own way to tell where a name is defined. About 3 ms of each program is the
+start of Cesia, and most of the rest the load of its package. The references read every file of the project that holds the name, and each top-level definition that holds it
 once more for each of its reads, as [Names](names.md#the-references) tells: that is where their time goes, a sixth of a
 second for a name read in 13 files.
 

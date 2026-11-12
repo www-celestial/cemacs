@@ -9,6 +9,7 @@ use core/text
 use core/view
 use std/dict
 use std/fiber
+use std/json
 use std/list
 use std/result
 use std/text as str
@@ -41,16 +42,38 @@ lookup = {Program: "lookup", Do: "definition"}
 isAnErrorSaid() = answered(lookup, "{\"Error\": \"No name here.\"}", stateOf("x", "/p/a.ce")).Message == "No name here."
 isNotJsonSaid() = answered(lookup, "boom\n", stateOf("x", "/p/a.ce")).Message == "The program failed: boom"
 isAnswerEndsTheQuestion() = not ide.Moving(answered(lookup, "{}", stateOf("x", "/p/a.ce")))
-isSignatureErrorQuiet() = answered({Program: "lookup", Do: "signature"}, "{\"Error\": \"x\"}", stateOf("x", "/p/a.ce")).Message == ""
-isSignatureSaid() = answered({Program: "lookup", Do: "signature"}, "{\"Signature\": \"Total(prices): The total.\"}", stateOf("x", "/p/a.ce")).Message == "Total(prices): The total."
+
+defn lspAnswered(after, answer, state)
+  (** A state whose question to cesia lsp has its answer, written as the server writes it. *)
+  s = state
+  ch = fiber.Channel()
+  body = json.Text({jsonrpc: "2.0", id: 1, result: answer})
+  fiber.Send("Content-Length: $(str.ByteLength(body))\r\n\r\n$body", ch)
+  s.Lsp = {Process: missing, Inbox: ch, Bytes: "", Next: 2, Waiting: {"1": after}, Sent: {}, Ended: false}
+  ide.Idle(9.0, s)
+end
+
+hover = {contents: {kind: "markdown", value: "```cesia\nTotal(prices)\n```\n\nThe total. Then more.\n\n```cesia\nTotal([1])\n```"}}
+
+defn isSignatureSaid()
+  s = stateOf("x = Total(", "/p/a.ce")
+  s.Buffers[1] = text.Place(1, 10, here(s))
+  at = {Path: "/p/a.ce", Version: here(s).Version, Line: 1, Column: 10}
+  s.Signed = at
+  lspAnswered({Do: "signature", At: at, Call: true}, hover, s).Message == "Total(prices): The total."
+end
 
 defn isSignatureOfAnotherPlaceDropped()
-  s = stateOf("xy", "/p/a.ce")
-  ch = fiber.Channel()
-  fiber.Send(result.Ok({Code: 0, Out: "{\"Signature\": \"f()\"}", Err: ""}), ch)
-  s.Asking = {Request: {Program: "lookup", Do: "signature"}, Channel: ch, Path: "/p/a.ce", Version: here(s).Version, Line: 1, Column: 1}
-  ide.Finished(s).Message == ""
+  s = stateOf("x = Total(", "/p/a.ce")
+  at = {Path: "/p/a.ce", Version: here(s).Version, Line: 1, Column: 3}
+  s.Signed = at
+  lspAnswered({Do: "signature", At: at, Call: true}, hover, s).Message == ""
 end
+
+isDocShown() = value.Equal(rows(lspAnswered({Do: "doc"}, hover, stateOf("x", "/p/a.ce"))), ["Total(prices)", "The total. Then more.", "  Total([1])"])
+isNoDocSaid() = lspAnswered({Do: "doc"}, missing, stateOf("x", "/p/a.ce")).Message == "No definition or documentation found here."
+isLspAnswerEndsTheWait() = not ide.Moving(lspAnswered({Do: "doc"}, hover, stateOf("x", "/p/a.ce")))
+isFramesWaitForTheWhole() = value.Len(ide.Frames("Content-Length: 9\r\n\r\n{}").Messages) == 0
 
 isBadPlaceRefused() = list.All([answered(lookup, "{\"Open\": $p}", stateOf("x", "/p/a.ce")).Message == "The program gave no place." for p in ["{\"Path\": \"a.ce\", \"Line\": 1, \"Column\": 0}",
   "{\"Path\": \"/a.ce\", \"Line\": 0, \"Column\": 0}", "{\"Path\": \"/a.ce\", \"Line\": 1, \"Column\": -1}", "3"]])

@@ -138,10 +138,11 @@ These are the messages of the commands, in the order of the chapters. A message 
 | Message | What happened |
 |---|---|
 | `Names are those of a file of Cesia.` | `M-.`, `M-?`, `C-c c i` or `C-c c m` in a buffer that isn't a saved `.ce` file, or in a list |
-| `No name here.` | the cursor is on no name, nor just after one |
-| `No definition of NAME found.` | `M-.` on a name that no file of its package, nor of the packages it uses, defines at its top, as a local or a parameter |
-| `No documentation of NAME found.` | `C-c c i` on such a name |
-| `No definition of NAME found in the project.` | `M-?` on a name that isn't defined in the project, nor documented by Cesia |
+| `No definition or documentation found here.` | `M-.` or `C-c c i` where `cesia lsp` finds no definition and no documentation: no name, or a local, or a parameter |
+| `No definition found here, in the project or in std/.` | `M-?` on such a name |
+| `No definition found here in the project: a name of std/, or a local, can't be renamed.` | `C-c c m` on a name that the project doesn't define |
+| `cesia lsp doesn't start: REASON` | `cesia` couldn't start its language server: is it on the `PATH`? |
+| `cesia lsp ended, code N: the next question starts it again.` | the language server ended while a question waited |
 | `No place to go back to.` | `M-,` with no place left on the stack |
 | `N places.`, `N places (by name: a method).` | the list of `M-?`; a method is found by name, every `.NAME` of the project: [Names](names.md#the-references) |
 | `..., N files don't read.` | some files of the project don't read, so their places aren't listed: open them, the check shows why |

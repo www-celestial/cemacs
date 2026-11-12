@@ -1,5 +1,5 @@
-(** Questions about the names of Cesia code, answered without running any of it: where a name is defined, what its documentation says, the signature of a call,
-    every place of a project that reads a name, and the edits that rename it. tools/lookup.ce asks them for Cemacs, in a process of its own that has the read
+(** Questions about the names of Cesia code, answered without running any of it: every place of a project that reads a name, and the edits that rename it,
+    from where cesia lsp says the name is defined, which it alone tells. tools/lookup.ce asks them for Cemacs, in a process of its own that has the read
     permission only, so that none of this code loads at the start of the editor: see src/ide, whose words Answered speaks. A line counts from 1 and a column
     from 0, in characters, as a buffer counts them; given maps a path to its text, for the buffers not saved, and stands for the disk there. *)
 use core/color
@@ -207,184 +207,35 @@ end
 (** The name cesia doc gives a package of std/: text for std/text. *)
 docModule(used) = path.Base(used)
 
-defn Resolve(p, lineNo, column, given)
-  (** What the name at a place of a file stands for, with its Word and the Root of the project: {Kind: "module", Module} for the name of a package,
-      {Kind: "doc", Entry} for a name cesia doc knows, of std/ or a keyword, {Kind: "code", File, Def} for a definition of the project, or {Kind: "none"};
-      missing off a name, or for a file that can't be read. *)
-  t = textOf(p, given)
-  if value.IsMissing(t)
+defn DefinitionAt(place, given)
+  (** The definition at a place where cesia lsp says a name is defined, {Path, Line, Column}, the column of its name from 0: {Kind: "code", Word, Root, File,
+      Def}, or missing when no definition of that file starts its name there. cesia lsp tells where a name is defined, for Cemacs and for every editor: this
+      only reads what is there. *)
+  if not value.IsDict(place) or not value.IsText(dict.GetOr("Path", missing, place)) or not value.IsInt(dict.GetOr("Line", missing, place))
     return missing
   end
-  lines = LinesOf(t)
-  if lineNo < 1 or lineNo > value.Len(lines)
-    return missing
-  end
-  w = WordAt(lines[lineNo], column)
-  if value.IsMissing(w)
-    return missing
-  end
-  root = RootOf(p)
-  defs = defsOf(p, given)
-  uses = UsesOf(if value.IsMissing(defs) [] else defs end)
-  parts = str.Split(".", w.Word)
-  n = value.Len(parts)
-  out = {Word: w.Word, Root: root, Kind: "none"}
-  if not w.Dotted and dict.Has(parts[1], uses)
-    used = uses[parts[1]]
-    if n == 1
-      out.Kind = "module"
-      out.Module = used
-      return out
-    end
-    copy = if value.IsMissing(root) missing else "$root/$used" end
-    if str.StartsWith("std/", used) and (value.IsMissing(copy) or not sys.Exists(copy))
-      entry = cesia.DocEntry("$(docModule(used)).$(str.Join(".", list.Skip(1, parts)))")
-      if not value.IsMissing(entry)
-        out.Kind = "doc"
-        out.Entry = entry
-      end
-      return out
-    end
-    found = if value.IsMissing(copy) missing else findIn(folderFiles(copy, false), parts[n], if n > 2 parts[n - 1] else missing end, given) end
-    return code(found, out)
-  end
-  if not w.Dotted and n == 1 and w.Word in cesia.Keywords()
-    entry = cesia.DocEntry(w.Word)
-    if not value.IsMissing(entry)
-      out.Kind = "doc"
-      out.Entry = entry
-    end
-    return out
-  end
-  owner = if n > 1 parts[n - 1] else if w.Dotted "" else missing end
-  files = homeFiles(p, root, false)
-  if not value.IsMissing(owner) and not value.IsMissing(root)
-    for used in dict.Values(uses)
-      if not str.StartsWith("std/", used)
-        files = list.Concat(files, folderFiles("$root/$used", false))
-      end
-    end
-  end
-  code(findIn(files, parts[n], owner, given), out)
+  defs = defsOf(place.Path, given)
+  d = list.FindFirst(x -> x.Kind != "use" and x.Line == place.Line and x.Column - 1 == place.Column, if value.IsMissing(defs) [] else defs end)
+  if value.IsMissing(d) missing else {Kind: "code", Word: d.Name, Root: RootOf(place.Path), File: place.Path, Def: d} end
 end
 
-defn code(found, out)
-  (** The answer of Resolve for a definition found in the project, or out as it is when none was. *)
-  if value.IsMissing(found)
-    return out
-  end
-  r = out
-  r.Kind = "code"
-  r.File = found.File
-  r.Def = found.Def
-  r
-end
-
-(* ---- Answers. Each gives a map that tools/lookup.ce writes as JSON: places, a doc, or an Error to say. *)
-
-defn Definition(p, lineNo, column, given)
-  (** Where the name at a place is defined, {Places: [{Path, Line, Column}]}; for a name of std/ that has no file in the project, its documentation,
-      {Doc}; or {Error}. *)
-  r = Resolve(p, lineNo, column, given)
-  if value.IsMissing(r)
-    return {Error: "No name here."}
-  end
-  if r.Kind == "code"
-    return {Places: [{Path: r.File, Line: r.Def.Line, Column: r.Def.Column - 1}]}
-  end
-  if r.Kind == "module" and not value.IsMissing(r.Root)
-    files = folderFiles("$(r.Root)/$(r.Module)", false)
-    if value.Len(files) > 0
-      return {Places: [{Path: files[1], Line: 1, Column: 0}]}
-    end
-  end
-  d = docOf(r)
-  if value.IsMissing(d) {Error: "No definition of $(r.Word) found."} else {Doc: d} end
-end
-
-defn docOf(r)
-  (** The documentation of what Resolve found, {Name, Signature, Text, Examples, Place}, or missing. *)
-  if r.Kind == "doc"
-    e = r.Entry
-    {Name: e.Name, Signature: e.Signature, Text: e.Text, Examples: e.Examples, Place: missing}
-  else if r.Kind == "code"
-    d = r.Def
-    {Name: d.Name, Signature: d.Signature, Text: d.Text, Examples: [], Place: {Path: r.File, Line: d.Line, Column: d.Column - 1}}
-  else if r.Kind == "module"
-    words = cesia.Doc(r.Module)
-    {Name: r.Module, Signature: "use $(r.Module)", Text: if value.IsMissing(words) "" else words end, Examples: [], Place: missing}
-  else
-    missing
-  end
-end
-
-defn Doc(p, lineNo, column, given)
-  (** The documentation of the name at a place, {Doc: {Name, Signature, Text, Examples, Place}}, or {Error}. *)
-  r = Resolve(p, lineNo, column, given)
-  d = if value.IsMissing(r) missing else docOf(r) end
-  if not value.IsMissing(d)
-    {Doc: d}
-  else if value.IsMissing(r)
-    {Error: "No name here."}
-  else
-    {Error: "No documentation of $(r.Word) found."}
-  end
-end
-
-defn FirstSentence(words)
-  (** The first sentence of a text, on one line.
-
-        FirstSentence("The total. Then more.") --> "The total."
-        FirstSentence("Two\nlines") --> "Two lines" *)
-  one = str.Trim(str.Replace("\n", " ", words))
-  cut = str.Find(". ", one)
-  if value.IsMissing(cut) one else str.Slice(1, cut, one) end
-end
-
-defn CallAt(line, column)
-  (** The column of the name of the call that a column of a line is inside, as list.Map in list.Map(f, |, or missing outside any call. Texts are skipped,
-      and a list or a map inside the call is gone through.
-
-        CallAt("x = list.Map(f, ", 16) --> 11
-        CallAt("f(a) + g(", 9) --> 7
-        CallAt("f([1, ", 6) --> 0
-        CallAt("f(a)", 4) --> missing *)
-  chars = list.Take(column, str.Chars(line))
-  depth = 0
-  k = value.Len(chars)
-  quoted = math.Mod(value.Len([c for c in chars if c == "\""]), 2) == 1
-  while k >= 1
-    c = chars[k]
-    if c == "\""
-      quoted = not quoted
-    else if not quoted and (c == ")" or c == "]" or c == "}")
-      depth += 1
-    else if not quoted and (c == "(" or c == "[" or c == "{")
-      if depth > 0
-        depth -= 1
-      else if c == "(" and k > 1 and nameChar(chars[k - 1])
-        return k - 2
-      end
-    end
-    k -= 1
-  end
-  missing
-end
-
-defn Signature(p, lineNo, column, given)
-  (** The signature and the first sentence of the call a place is inside, or of the name there, {Signature, Text}; {} when there is none. *)
+defn StdAt(p, lineNo, column, given)
+  (** The name of std/ at a place of a file, read through the name the file gives its package, as list.Map after use std/list: {Kind: "doc", Word, Root,
+      Entry: {Name, Module}}, or missing. *)
   t = textOf(p, given)
   lines = if value.IsMissing(t) [] else LinesOf(t) end
-  if lineNo < 1 or lineNo > value.Len(lines)
-    return {}
+  w = if lineNo >= 1 and lineNo <= value.Len(lines) WordAt(lines[lineNo], column) else missing end
+  defs = defsOf(p, given)
+  if value.IsMissing(w) or w.Dotted or value.IsMissing(defs)
+    return missing
   end
-  at = CallAt(lines[lineNo], column)
-  r = Resolve(p, lineNo, if value.IsMissing(at) column else at end, given)
-  d = if value.IsMissing(r) missing else docOf(r) end
-  if value.IsMissing(d) or d.Signature == "" or (value.IsMissing(at) and not str.Contains("(", d.Signature))
-    return {}
+  parts = str.Split(".", w.Word)
+  uses = UsesOf(defs)
+  used = dict.GetOr(parts[1], missing, uses)
+  if value.Len(parts) != 2 or value.IsMissing(used) or not str.StartsWith("std/", used)
+    return missing
   end
-  {Signature: d.Signature, Text: FirstSentence(d.Text)}
+  {Kind: "doc", Word: w.Word, Root: RootOf(p), Entry: {Name: "$(docModule(used)).$(parts[2])", Module: used}}
 end
 
 (* ---- Reads. A place where code reads a name is found by the compiler's own resolver, cesia.Reads, which gives the first read of each name that a source
@@ -625,25 +476,23 @@ defn dotted(name, line)
   out
 end
 
-defn References(p, lineNo, column, given)
-  (** Every place of the project that reads the name at a place, {Name, Places, Unread, ByName}, or {Error}. *)
-  r = Resolve(p, lineNo, column, given)
-  if value.IsMissing(r)
-    return {Error: "No name here."}
-  end
-  got = ReferencesOf(r, given)
-  if value.IsMissing(got) {Error: "No definition of $(r.Word) found in the project."} else got end
+defn References(q, given)
+  (** Every place of the project that reads the name of a question, {Name, Places, Unread, ByName}, or {Error}: the definition that cesia lsp gave,
+      Definition, or else a name of std/ at the place of the question. *)
+  r = if value.IsDict(dict.GetOr("Definition", missing, q)) DefinitionAt(q.Definition, given) else StdAt(q.Path, q.Line, q.Column, given) end
+  got = if value.IsMissing(r) missing else ReferencesOf(r, given) end
+  if value.IsMissing(got) {Error: "No definition found here, in the project or in std/."} else got end
 end
 
 (* ---- Rename *)
 
-defn Rename(p, lineNo, column, to, given)
-  (** The edits that rename the name at a place to the name to, everywhere the project reads it, {Name, To, Edits: [{Path, Line, Column, End}], Files}, or
-      {Error} with why it can't be. A method, a field, a name of std/ and a public name made private, or the other way, are refused, and so is a name that
-      would read something else after it. *)
-  r = Resolve(p, lineNo, column, given)
-  if value.IsMissing(r) or r.Kind != "code"
-    return {Error: if value.IsMissing(r) "No name here." else "$(r.Word) is not defined in the project." end}
+defn Rename(definition, to, given)
+  (** The edits that rename the name defined at a place that cesia lsp gave to the name to, everywhere the project reads it, {Name, To, Edits: [{Path, Line,
+      Column, End}], Files}, or {Error} with why it can't be. A method, a field, a name of std/ and a public name made private, or the other way, are refused,
+      and so is a name that would read something else after it. *)
+  r = DefinitionAt(definition, given)
+  if value.IsMissing(r)
+    return {Error: "No definition found here in the project: a name of std/, or a local, can't be renamed."}
   end
   d = r.Def
   wrong = renameFault(d, to, r, given)
@@ -714,9 +563,9 @@ end
 (* ---- Questions, in the words of src/ide *)
 
 defn Answered(q)
-  (** The answer to a question of src/ide, in its words: Do, one of definition, doc, signature, references and rename; Path, Line and Column, the place of
-      the name; Texts, the texts of the buffers not saved, by path; and Answer, the new name of a rename once it is asked. A question that isn't one of
-      these is an Error. *)
+  (** The answer to a question of src/ide, in its words: Do, references or rename; Path, Line and Column, the place of the name; Definition, where cesia lsp
+      says it is defined, {Path, Line, Column}, missing for a name it doesn't know; Texts, the texts of the buffers not saved, by path; and Answer, the new
+      name of a rename once it is asked. A question that isn't one of these is an Error. *)
   fault = questionFault(q)
   if not value.IsMissing(fault)
     return {Error: fault}
@@ -724,10 +573,7 @@ defn Answered(q)
   given = q.Texts
   root = RootOf(q.Path)
   match q.Do
-    "definition" -> definitionShown(root, Definition(q.Path, q.Line, q.Column, given))
-    "doc" -> docShown(root, Doc(q.Path, q.Line, q.Column, given))
-    "signature" -> signatureShown(Signature(q.Path, q.Line, q.Column, given))
-    "references" -> referencesShown(root, References(q.Path, q.Line, q.Column, given))
+    "references" -> referencesShown(root, References(q, given))
     "rename" -> renameShown(q, given)
     else -> {Error: "Unknown question: $(q.Do)."}
   end
@@ -754,33 +600,6 @@ end
       ShownPath(missing, "/p/a.ce") --> "/p/a.ce" *)
 ShownPath(root, p) = if not value.IsMissing(root) and str.StartsWith("$root/", p) str.Slice(value.Len(root) + 2, value.Len(p), p) else p end
 
-defn definitionShown(root, a)
-  (** The answer of a definition: go to its place, or else show its documentation. *)
-  if dict.Has("Places", a)
-    p = a.Places[1]
-    {Open: {Path: p.Path, Line: p.Line, Column: p.Column}}
-  else if dict.Has("Doc", a)
-    docShown(root, a)
-  else
-    a
-  end
-end
-
-defn docShown(root, a)
-  (** The answer of a documentation: a list of its signature, its text, its examples and where it is, Enter going there. *)
-  if not dict.Has("Doc", a)
-    return a
-  end
-  d = a.Doc
-  at = d.Place
-  words = list.Concat(list.Concat([[color.Name, d.Signature]], [[color.Plain, l] for l in str.Lines(d.Text)]), [[color.Comment, "  $x"] for x in d.Examples])
-  where = if value.IsMissing(at) [] else [[color.Comment, "$(ShownPath(root, at.Path)):$(at.Line)"]] end
-  {List: {Name: "Doc of $(d.Name)", Rows: [{Words: p[2], Parts: [p], Item: at} for p in list.Concat(words, where)], Keys: {"enter": "open"}}}
-end
-
-(** The answer of a signature: its words on the prompt line, the signature and the first sentence of its text, or nothing. *)
-signatureShown(a) = if dict.Has("Signature", a) {Signature: if a.Text == "" a.Signature else "$(a.Signature): $(a.Text)" end} else {} end
-
 defn referencesShown(root, a)
   (** The answer of the references of a name: the list of its places, path:line:column and the line, Enter going to one. *)
   if not dict.Has("Places", a)
@@ -797,22 +616,20 @@ defn referencesShown(root, a)
 end
 
 defn renameShown(q, given)
-  (** The answers of a rename: first the question of the new name, then, with it, the question of a yes before the edits. *)
+  (** The answers of a rename: first the question of the new name, then, with it, the question of a yes before the edits. The definition comes with each. *)
   answer = dict.GetOr("Answer", missing, q)
+  definition = dict.GetOr("Definition", missing, q)
+  r = DefinitionAt(definition, given)
+  if value.IsMissing(r)
+    return {Error: "No definition found here in the project: a name of std/, or a local, can't be renamed."}
+  end
   if not value.IsText(answer)
-    t = textOf(q.Path, given)
-    lines = if value.IsMissing(t) [] else LinesOf(t) end
-    w = if q.Line <= value.Len(lines) WordAt(lines[q.Line], q.Column) else missing end
-    if value.IsMissing(w)
-      return {Error: "No name here."}
-    end
-    name = list.Last(str.Split(".", w.Word))
-    return {Ask: {Label: "Rename $name to: ", Answer: "", Then: {Program: "lookup", Do: "rename"}}}
+    return {Ask: {Label: "Rename $(r.Def.Name) to: ", Answer: "", Then: {Program: "lookup", Do: "rename", Definition: definition}}}
   end
   if answer == ""
     return {Say: "No name."}
   end
-  got = Rename(q.Path, q.Line, q.Column, answer, given)
+  got = Rename(definition, answer, given)
   if dict.Has("Error", got)
     return got
   end

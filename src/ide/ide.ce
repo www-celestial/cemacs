@@ -3,8 +3,9 @@
     Each key asks a program of Cemacs, which cesia runs at each question with the permissions that Programs gives it: tools/lookup.ce, tools/grep.ce,
     tools/git.ce or tools/testing.ce, so that none of their code loads at the start of the editor and typing never waits. The question goes in JSON on its
     input, with the place of the cursor; its answer, one line of JSON on its output, says what to do in the few words this file knows: Say, Open, List, Ask,
-    Confirm, with the edits made after a yes, Signature, Run and Marks. An answer is input from another program, and each part is checked before a file opens, a
+    Confirm, with the edits made after a yes, Run and Marks. An answer is input from another program, and each part is checked before a file opens, a
     buffer changes or a test runs. One question at a time: a new one takes the place of the one before. src/cemacs.ce adds the hooks of Hooked and these Keys. *)
+use core/color
 use core/commands
 use core/files
 use core/indent
@@ -17,6 +18,8 @@ use std/dict
 use std/fiber
 use std/json
 use std/list
+use std/math
+use std/regex
 use std/result
 use std/sys
 use std/text as str
@@ -37,10 +40,14 @@ QuestionLimit() = 20
 (** The most places kept to go back to. *)
 BackLimit() = 100
 
-Definition(state) = ask({Program: "lookup", Do: "definition"}, state)   (** Goes to the definition of the name at the cursor; M-, comes back. *)
-Documentation(state) = ask({Program: "lookup", Do: "doc"}, state)   (** Shows the documentation of the name at the cursor. *)
-References(state) = ask({Program: "lookup", Do: "references"}, state)   (** Lists every place of the project that reads the name at the cursor. *)
-Rename(state) = ask({Program: "lookup", Do: "rename"}, state)   (** Renames the name at the cursor everywhere the project reads it, after a yes. *)
+Definition(state) = lspAsk("textDocument/definition", {Do: "goto"}, state)   (** Goes to the definition of the name at the cursor; M-, comes back. *)
+Documentation(state) = lspAsk("textDocument/hover", {Do: "doc"}, state)   (** Shows the documentation of the name at the cursor. *)
+
+(** Lists every place of the project that reads the name at the cursor. *)
+References(state) = lspAsk("textDocument/definition", {Do: "program", Request: {Program: "lookup", Do: "references"}}, state)
+
+(** Renames the name at the cursor everywhere the project reads it, after a yes. *)
+Rename(state) = lspAsk("textDocument/definition", {Do: "program", Request: {Program: "lookup", Do: "rename"}}, state)
 Search(state) = ask({Program: "grep", Do: "search"}, state)   (** Lists each line of the project that holds the words asked, the name at the cursor first. *)
 Status(state) = ask({Program: "git", Do: "status"}, state)   (** Lists the state of the Git repository of the file, where a letter is a command. *)
 Log(state) = ask({Program: "git", Do: "log"}, state)   (** Lists the last commits of the repository; Enter shows one. *)
@@ -153,8 +160,8 @@ areEdits(xs) = value.IsArray(xs) and value.Len(xs) <= 20000 and list.All([IsPlac
 isRequest(r) = value.IsDict(r) and value.IsText(dict.GetOr("Do", missing, r)) and dict.Has(value.Text(dict.GetOr("Program", "", r)), Programs())
 
 defn Heard(q, a, state)
-  (** The state after the answer a to the question q: its Say on the prompt line, then the one thing it asks, of Open, List, Ask, Confirm, Signature,
-      Run and Marks; an Error is said, but for a signature. Edits come only inside a Confirm, made after the yes of the person. Each part of the wrong
+  (** The state after the answer a to the question q: its Say on the prompt line, then the one thing it asks, of Open, List, Ask, Confirm, Run and
+      Marks; an Error is said, but for a signature. Edits come only inside a Confirm, made after the yes of the person. Each part of the wrong
       shape is said and does nothing. *)
   if dict.Has("Error", a)
     return if q.Request.Do == "signature" state else commands.Say(value.Text(a.Error), state) end
@@ -176,8 +183,6 @@ defn Heard(q, a, state)
       return commands.Say("The program asked nothing.", s)
     end
     commands.Confirm(a.Confirm.Label, (answer, t) -> if answer == "y" edited(yes, t) else commands.Say(value.Text(dict.GetOr("No", "Nothing done.", a.Confirm)), t) end, s)
-  else if dict.Has("Signature", a)
-    signed(q, a.Signature, s)
   else if dict.Has("Run", a)
     started(q, a.Run, s)
   else if dict.Has("Marks", a)
@@ -429,22 +434,300 @@ defn marked(marks, state)
   s
 end
 
+(* ---- cesia lsp: Cesia's language server tells where a name is defined and what its documentation says, for Cemacs as for every editor. It starts at
+   the first question about a name and stays for the session, so that a question costs a message, under a millisecond, and not a process. Its messages
+   are JSON, each after a Content-Length header, and its columns count UTF-16 code units, as the protocol says. *)
+
+defn lspOf(state)
+  (** The language server of the session, {Process, Inbox, Bytes, Next, Waiting, Sent, Ended}, or missing before the first question about a name. *)
+  match state
+    {Lsp: l} -> l
+    else -> missing
+  end
+end
+
+(** Does a question wait for cesia lsp? *)
+lspWaits(state) = not value.IsMissing(lspOf(state)) and value.Len(lspOf(state).Waiting) > 0
+
+defn reading(p, inbox)
+  (** Puts what a process writes on the channel, chunk by chunk, then its exit code once its output is closed. *)
+  chunk = result.Unwrap(sys.ReadOutput(p))
+  while chunk != ""
+    fiber.Send(chunk, inbox)
+    chunk = result.Unwrap(sys.ReadOutput(p))
+  end
+  fiber.Send({Code: sys.WaitExit(p)}, inbox)
+end
+
+defn lspSend(message, l)
+  (** Writes one message to cesia lsp, after its header. *)
+  body = json.Text(dict.Merge({jsonrpc: "2.0"}, message))
+  _ = sys.WriteInput(l.Process, "Content-Length: $(str.ByteLength(body))\r\n\r\n$body")
+  l
+end
+
+defn lspStarted(state)
+  (** The state with cesia lsp running, started now if it isn't, its first message sent, in an Ok; or an Err of the words to say. *)
+  l = lspOf(state)
+  if not value.IsMissing(l) and not l.Ended
+    return result.Ok(state)
+  end
+  started = sys.Start("cesia", ["lsp"])
+  if result.IsErr(started)
+    return result.Err("cesia lsp doesn't start: $(started.Error.Message)")
+  end
+  inbox = fiber.Channel()
+  p = started.Value
+  _ = fiber.Spawn(() -> reading(p, inbox))
+  fresh = {Process: p, Inbox: inbox, Bytes: "", Next: 1, Waiting: {}, Sent: {}, Ended: false}
+  fresh = lspSend({id: 0, method: "initialize", params: {processId: missing, rootUri: missing, capabilities: {}}}, fresh)
+  fresh = lspSend({method: "initialized", params: {}}, fresh)
+  s = state
+  s.Lsp = fresh
+  result.Ok(s)
+end
+
+defn uriOf(p)
+  (** The URI of a path, file and the path, each byte but letters, digits and a few signs written as % and its two hexadecimal digits.
+
+        uriOf("/a b/c.ce") --> "file:///a%20b/c.ce" *)
+  safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/"
+  hex = "0123456789ABCDEF"
+  out = [if str.Contains(str.FromBytes([n]), safe) str.FromBytes([n]) else "%$(str.Slice(math.Div(n, 16) + 1, math.Div(n, 16) + 1, hex))$(str.Slice(math.Mod(n, 16) + 1, math.Mod(n, 16) + 1, hex))" end for n in str.Bytes(p)]
+  "file://$(str.Join("", out))"
+end
+
+defn pathOf(uri)
+  (** The path of a file:// URI, its %XX read back.
+
+        pathOf("file:///a%20b/c%2Bd.ce") --> "/a b/c+d.ce" *)
+  rest = if str.StartsWith("file://", uri) str.Slice(8, value.Len(uri), uri) else uri end
+  parts = str.Split("%", rest)
+  out = parts[1]
+  digit(c) = str.Find(str.Lower(c), "0123456789abcdef")
+  for part in list.Skip(1, parts)
+    high = if value.Len(part) >= 2 digit(str.Slice(1, 1, part)) else missing end
+    low = if value.Len(part) >= 2 digit(str.Slice(2, 2, part)) else missing end
+    after = if value.Len(part) > 2 str.Slice(3, value.Len(part), part) else "" end
+    out = if value.IsMissing(high) or value.IsMissing(low) "$out%$part" else "$out$(str.FromBytes([(high - 1) * 16 + low - 1]))$after" end
+  end
+  out
+end
+
+(** The UTF-16 code units of the characters of a line before a column, as the protocol counts them. *)
+units(line, column) = list.Sum([if str.Code(c) >= 65536 2 else 1 end for c in list.Take(column, str.Chars(line))])
+
+defn synced(state)
+  (** The state after cesia lsp got the text of the current buffer and of each Cesia buffer not saved, those it hasn't for their version. *)
+  s = state
+  l = s.Lsp
+  for k in 1..value.Len(s.Buffers)
+    b = s.Buffers[k]
+    if isFile(b) and indent.IsCesia(b) and (k == s.Current or text.IsModified(b)) and rope.Size(b.Rope) <= TextLimit()
+      uri = uriOf(absolute(b.Path))
+      sent = dict.GetOr(uri, missing, l.Sent)
+      if sent != b.Version
+        if value.IsMissing(sent)
+          (* The text on the disk first, read once by a question that waits for nothing: cesia lsp keeps the definitions of the last text that read, for
+             one being typed that doesn't read yet. *)
+          disk = sys.Read(absolute(b.Path))
+          first = if result.IsOk(disk) disk.Value else rope.Text(b.Rope) end
+          l = lspSend({method: "textDocument/didOpen", params: {textDocument: {uri: uri, version: 0, languageId: "cesia", text: first}}}, l)
+          l = lspSend({id: l.Next, method: "textDocument/hover", params: {textDocument: {uri: uri}, position: {line: 0, character: 0}}}, l)
+          l.Waiting["$(l.Next)"] = {Do: "none"}
+          l.Next += 1
+        end
+        l = lspSend({method: "textDocument/didChange", params: {textDocument: {uri: uri, version: b.Version}, contentChanges: [{text: rope.Text(b.Rope)}]}}, l)
+        l.Sent[uri] = b.Version
+      end
+    end
+  end
+  s.Lsp = l
+  s
+end
+
+defn lspAsk(method, after, state, column = missing)
+  (** Asks cesia lsp about the name at the cursor, or at a column of its line, and keeps after, what to do with the answer. *)
+  b = state.Buffers[state.Current]
+  if not isFile(b) or not indent.IsCesia(b)
+    return if after.Do == "signature" state else commands.Say("Names are those of a file of Cesia.", state) end
+  end
+  got = lspStarted(state)
+  if result.IsErr(got)
+    return commands.Say(got.Error, state)
+  end
+  s = synced(got.Value)
+  l = s.Lsp
+  at = if value.IsMissing(column) b.Cursor.Column else column end
+  position = {line: b.Cursor.Line - 1, character: units(rope.Line(b.Cursor.Line, b.Rope), at)}
+  l = lspSend({id: l.Next, method: method, params: {textDocument: {uri: uriOf(absolute(b.Path))}, position: position}}, l)
+  l.Waiting["$(l.Next)"] = after
+  l.Next += 1
+  s.Lsp = l
+  s
+end
+
+defn Frames(bytes)
+  (** The messages of the whole frames at the start of what cesia lsp wrote, each a Content-Length header and that many bytes of JSON, and the bytes
+      left: {Messages, Rest}.
+
+        Frames("Content-Length: 2\r\n\r\n{}Content-Le").Rest --> "Content-Le" *)
+  out = []
+  rest = bytes
+  at = str.ByteFind("\r\n\r\n", 1, rest)
+  while not value.IsMissing(at)
+    m = regex.Find("Content-Length: *([0-9]+)", str.ByteSlice(1, at - 1, rest))
+    n = if value.IsMissing(m) 0 else str.Number(m.Groups[1]) end
+    start = at + 4
+    if str.ByteLength(rest) < start + n - 1
+      return {Messages: out, Rest: rest}
+    end
+    parsed = if n == 0 result.Err("empty") else json.Parse(str.ByteSlice(start, start + n - 1, rest)) end
+    if result.IsOk(parsed) and value.IsDict(parsed.Value)
+      out = list.Append(parsed.Value, out)
+    end
+    rest = if str.ByteLength(rest) >= start + n str.ByteSlice(start + n, str.ByteLength(rest), rest) else "" end
+    at = str.ByteFind("\r\n\r\n", 1, rest)
+  end
+  {Messages: out, Rest: rest}
+end
+
+defn lspDrained(state)
+  (** The state at a tick: what cesia lsp wrote since, each answer doing what was kept for it. A server that ended is said, and starts again at the next
+      question. *)
+  l = lspOf(state)
+  if value.IsMissing(l) or l.Ended
+    return state
+  end
+  s = state
+  got = fiber.Receive(l.Inbox, timeout = 0)
+  while result.IsOk(got)
+    if value.IsText(got.Value)
+      l.Bytes = "$(l.Bytes)$(got.Value)"
+    else
+      l.Ended = true
+      waited = value.Len(l.Waiting) > 0
+      l.Waiting = {}
+      s.Lsp = l
+      return if waited commands.Say("cesia lsp ended, code $(got.Value.Code): the next question starts it again.", s) else s end
+    end
+    got = fiber.Receive(l.Inbox, timeout = 0)
+  end
+  read = Frames(l.Bytes)
+  l.Bytes = read.Rest
+  answers = []
+  for m in read.Messages
+    key = "$(dict.GetOr("id", "", m))"
+    if dict.Has("id", m) and dict.Has(key, l.Waiting)
+      answers = list.Append({After: l.Waiting[key], Result: dict.GetOr("result", missing, m)}, answers)
+      l.Waiting = dict.Drop(key, l.Waiting)
+    end
+  end
+  s.Lsp = l
+  list.Reduce((t, x) -> lspHeard(x.After, x.Result, t), s, answers)
+end
+
+defn placeOf(location)
+  (** The place a definition of cesia lsp names, {Path, Line, Column}, or missing for none. Its column counts code units, which are characters but
+      after a character past U+FFFF on the same line. *)
+  loc = if value.IsArray(location) list.First(location) else location end
+  if not value.IsDict(loc) or not value.IsText(dict.GetOr("uri", missing, loc)) or not value.IsDict(dict.GetOr("range", missing, loc))
+    return missing
+  end
+  start = loc.range["start"]
+  {Path: pathOf(loc.uri), Line: start.line + 1, Column: start.character}
+end
+
+defn DocOf(hover)
+  (** The parts of the documentation of a hover of cesia lsp, {Signature, Text, Examples}, from its Markdown: the first block of code, the words after
+      it, and the lines of the other blocks; missing for none.
+
+        DocOf({contents: {value: "```cesia\nf(x)\n```\n\nTwice x.\n\n```cesia\nf(1)\n```"}}) --> {Signature: "f(x)", Text: "Twice x.", Examples: ["f(1)"]} *)
+  if not value.IsDict(hover) or not value.IsDict(dict.GetOr("contents", missing, hover)) or not value.IsText(dict.GetOr("value", missing, hover.contents))
+    return missing
+  end
+  parts = str.Split("```", hover.contents.value)
+  code(k) = str.Lines(str.Trim(if str.StartsWith("cesia", parts[k]) str.Slice(6, value.Len(parts[k]), "$(parts[k]) ") else parts[k] end))
+  if value.Len(parts) < 3
+    return {Signature: "", Text: str.Trim(hover.contents.value), Examples: []}
+  end
+  more = [code(k) for k in 4..value.Len(parts) if math.Mod(k, 2) == 0]
+  {Signature: str.Join(" ", code(2)), Text: if value.Len(parts) > 3 str.Trim(parts[3]) else "" end, Examples: list.Flatten(more)}
+end
+
+defn lspHeard(after, answer, state)
+  (** What an answer of cesia lsp does, by after: goto opens the definition, or else shows the documentation; doc shows it; signature puts it on the prompt
+      line; program asks a program of src/ide with the definition. *)
+  if after.Do == "goto"
+    place = placeOf(answer)
+    if value.IsMissing(place) lspAsk("textDocument/hover", {Do: "doc"}, state) else Visit(place, state) end
+  else if after.Do == "doc"
+    d = DocOf(answer)
+    if value.IsMissing(d)
+      return commands.Say("No definition or documentation found here.", state)
+    end
+    rows = list.Concat(list.Concat([[color.Name, d.Signature]], [[color.Plain, line] for line in str.Lines(d.Text)]), [[color.Comment, "  $x"] for x in d.Examples])
+    commands.ShowList("Doc of $(d.Signature)", [{Words: p[2], Parts: [p], Item: missing} for p in rows], () -> {}, state)
+  else if after.Do == "signature"
+    d = DocOf(answer)
+    if value.IsMissing(d) or d.Signature == "" or (not after.Call and not str.Contains("(", d.Signature))
+      return state
+    end
+    first = str.Split(". ", str.Replace("\n", " ", d.Text))[1]
+    signed(after.At, if d.Text == "" d.Signature else "$(d.Signature): $first$(if str.EndsWith(".", first) "" else "." end)" end, state)
+  else if after.Do == "program"
+    ask(dict.Merge(after.Request, {Definition: placeOf(answer)}), state)
+  else
+    state
+  end
+end
+
+defn CallAt(line, column)
+  (** The column of the name of the call that a column of a line is inside, as list.Map in list.Map(f, |, or missing outside any call. Texts are skipped,
+      and a list or a map inside the call is gone through.
+
+        CallAt("x = list.Map(f, ", 16) --> 11
+        CallAt("f([1, ", 6) --> 0
+        CallAt("f(a)", 4) --> missing *)
+  chars = list.Take(column, str.Chars(line))
+  depth = 0
+  k = value.Len(chars)
+  quoted = math.Mod(value.Len([c for c in chars if c == "\""]), 2) == 1
+  while k >= 1
+    c = chars[k]
+    if c == "\""
+      quoted = not quoted
+    else if not quoted and (c == ")" or c == "]" or c == "}")
+      depth += 1
+    else if not quoted and (c == "(" or c == "[" or c == "{")
+      if depth > 0
+        depth -= 1
+      else if c == "(" and k > 1 and isNameChar(chars[k - 1])
+        return k - 2
+      end
+    end
+    k -= 1
+  end
+  missing
+end
+
 (* ---- Hooks *)
 
 defn Idle(delay, state)
   (** The state at a tick: the answer of the question asked, if it came; the end of a run of tests; or, once the cursor stayed still for delay seconds,
       the signature asked. *)
-  s = ended(Finished(state))
+  s = ended(Finished(lspDrained(state)))
   if not value.IsMissing(asking(s)) or commands.Still(s) < delay or not signable(s)
     return s
   end
   b = s.Buffers[s.Current]
   s.Signed = {Path: b.Path, Version: b.Version, Line: b.Cursor.Line, Column: b.Cursor.Column}
-  ask({Program: "lookup", Do: "signature"}, s)
+  at = CallAt(rope.Line(b.Cursor.Line, b.Rope), b.Cursor.Column)
+  lspAsk("textDocument/hover", {Do: "signature", At: s.Signed, Call: not value.IsMissing(at)}, s, column = at)
 end
 
-(** Do the questions need ticks: one waits for its answer? *)
-Moving(state) = not value.IsMissing(asking(state))
+(** Do the questions need ticks: one waits for its answer, from a program or from cesia lsp? *)
+Moving(state) = not value.IsMissing(asking(state)) or lspWaits(state)
 
 defn Hooked(config)
   (** A config with the hooks of the questions over those it has: at each tick, its Idle then this one's, after its CheckDelay; it moves while either
