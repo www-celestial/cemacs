@@ -253,6 +253,43 @@ defn MarksNoteOf(b)
   end
 end
 
+defn BlocksOf(b)
+  (** The blocks drawn under lines of a buffer, as the results of cells: each {Line, Rows, Draw}, under line Line, Rows rows of the code font high, and
+      Draw(width, look) the commands that draw it, from its top left, at most width pixels wide. They are no text: never typed, never saved. A buffer from
+      before this field has none.
+
+        BlocksOf(Of("a", missing)) --> [] *)
+  match b
+    {Blocks: blocks} -> blocks
+    else -> []
+  end
+end
+
+defn WithBlocks(blocks, b)
+  (** The buffer with these blocks under its lines, in the order of their lines.
+
+        value.Len(BlocksOf(WithBlocks([{Line: 1, Rows: 2, Draw: (w, look) -> []}], Of("a", missing)))) --> 1 *)
+  out = b
+  out.Blocks = blocks
+  out
+end
+
+defn blocksShifted(line, before, after, blocks)
+  (** The blocks after an edit at line that took the text from before lines to after: those below move with their lines, and one under a line of the
+      edit goes under its last line, so that a line added at the end of a cell comes above its result. *)
+  if value.Len(blocks) == 0
+    return blocks
+  end
+  last = line + list.Max(0, before - after)
+  out = []
+  for k in blocks
+    moved = k
+    moved.Line = if k.Line > last k.Line + after - before else if k.Line >= line list.Min(after, k.Line + list.Max(0, after - before)) else k.Line end
+    out = list.Append(moved, out)
+  end
+  out
+end
+
 defn lineMoved(by, m)
   (** A mark moved by some lines. *)
   out = m
@@ -275,6 +312,7 @@ defn edit(r, cursor, line, continues, typing, b)
   merging = continues and b.Typing
   now = b.History.Present
   b.Marks = shifted(line, rope.LineCount(b.Rope), rope.LineCount(r), MarksOf(b))
+  b.Blocks = blocksShifted(line, rope.LineCount(b.Rope), rope.LineCount(r), BlocksOf(b))
   b.Rope = r
   inside = clamp(cursor, b)
   state = {Rope: r, Cursor: inside, Version: version, Before: if merging now.Before else b.Cursor end, Line: if merging list.Min(line, now.Line) else line end}
@@ -584,6 +622,7 @@ end
 defn travel(h, s, cursor, line, b)
   (** The buffer with the text and version of a state of the history, the cursor given, and the colors and the marks known only up to the line given. *)
   b.Marks = shifted(line, rope.LineCount(b.Rope), rope.LineCount(s.Rope), MarksOf(b))
+  b.Blocks = blocksShifted(line, rope.LineCount(b.Rope), rope.LineCount(s.Rope), BlocksOf(b))
   b.Rope = s.Rope
   b.Cursor = cursor
   b.Version = s.Version

@@ -500,3 +500,50 @@ end
 isFarPlaceAtOnce() = farState().Buffers[1].Colors.Known == 1 + view.ColorBatch() and view.Colouring(farState()) and value.Equal(colorOfZ(farState()), [look.Theme.Syntax[color.Plain]])
 isFarColorsExactAfter() = not view.Colouring(ticked(farState())) and value.Equal(colorOfZ(ticked(farState())), [look.Theme.Syntax[color.Comment]]) and value.Equal(view.View(ticked(farState())), view.View(withoutRows(ticked(farState()))))
 isNearPlaceExact() = not view.Colouring(view.FollowState(stateOf([text.Place(view.ColorBatch() - 100, 0, text.Of(farText, "a.ce"))], 800, 600)))
+
+(* ---- Blocks under lines, as the results of cells: rows that no line holds. *)
+
+(** A block of rows rows under line, drawn as one text. *)
+blockAt(line, rows, words) = {Line: line, Rows: rows, Draw: (width, lk) -> [{Kind: "text", X: 0, Y: 0, Text: words, Color: 0}]}
+
+withBlock(line, rows) = text.WithBlocks([blockAt(line, rows, "result")], text.Of(manyLines(100), "a.ce"))
+
+isRowAfterBlock() = view.RowOf(5, withBlock(2, 3), view.Under(withBlock(2, 3))) == 7   (** Line 5 comes three rows later. *)
+
+defn isLineAtRowOfBlock()
+  (** A row inside a block is the row of the line above it; the row after it, the next line. *)
+  b = withBlock(2, 3)
+  u = view.Under(b)
+  view.LineAtRow(2, b, u) == 2 and view.LineAtRow(4, b, u) == 2 and view.LineAtRow(5, b, u) == 3
+end
+
+defn isFollowCountsBlocks()
+  (** The cursor on line 10 of a screen of 10 rows moves the top when a block of 3 rows is above it: past the block, as a screen starts at a line. *)
+  b = withBlock(2, 3)
+  b.Cursor = {Line: 10, Column: 0}
+  f = view.Follow(10, 80, b)
+  f.Top == 3 and view.RowOf(10, f, view.Under(f)) == 7
+end
+
+defn isBlockDrawnUnderItsLine()
+  (** The block's words are drawn on the row under its line, and fewer lines fit. *)
+  state = stateOf([withBlock(2, 3)], 800, 600)
+  layout = view.Layout(state.Width, state.Height, state.Cell, false)
+  s = state
+  s.Buffers = [view.Follow(layout.Rows, layout.Columns, state.Buffers[1])]
+  drawn = view.View(s)
+  result = list.Filter(c -> c.Kind == "text" and c.Text == "result", drawn)
+  words = value.Len(list.Filter(t -> t == "word", textsOf(drawn)))
+  value.Len(result) == 1 and result[1].Y == list.Filter(c -> c.Kind == "text" and c.Text == "3", drawn)[1].Y - 19 * 3 and words == layout.Rows - 3
+end
+
+defn isBlockMovesWithItsLine()
+  (** A line added above a block moves it down; a line added at the end of its line puts the block under the new one. *)
+  b = withBlock(3, 2)
+  b.Cursor = {Line: 1, Column: 0}
+  above = text.NewLine(b)
+  c = withBlock(3, 2)
+  c.Cursor = {Line: 3, Column: 4}
+  after = text.NewLine(c)
+  text.BlocksOf(above)[1].Line == 4 and text.BlocksOf(after)[1].Line == 4
+end

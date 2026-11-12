@@ -153,8 +153,8 @@ defn Follow(rows, columns, b)
     b.Top
   else if line < b.Top
     line
-  else if line >= b.Top + seenRows
-    line - seenRows + 1
+  else if line >= b.Top + seenRows or RowOf(line, b, Under(b)) >= seenRows
+    TopFor(line, seenRows, b)
   else
     b.Top
   end
@@ -359,6 +359,69 @@ inset = 4
 rowY(row, rect, cell) = rect.Y + inset + row * cell.Height
 columnX(column, rect, cell) = rect.X + Gutter + column * cell.Width
 
+defn Under(b)
+  (** The rows that blocks take under the lines of a buffer, by line as a text, or missing for a buffer with no block: most have none, and pay nothing.
+
+        Under(text.Of("a", missing)) --> missing *)
+  blocks = text.BlocksOf(b)
+  if value.Len(blocks) == 0
+    return missing
+  end
+  out = {}
+  for k in blocks
+    out["$(k.Line)"] = dict.GetOr("$(k.Line)", 0, out) + k.Rows
+  end
+  out
+end
+
+(** The rows of blocks under line n. *)
+extra(n, under) = if value.IsMissing(under) 0 else dict.GetOr("$n", 0, under) end
+
+defn RowOf(n, b, under)
+  (** The row of the screen of line n, from 0 at the top line of the buffer: one a line, and the rows of the blocks under the lines above it. *)
+  if value.IsMissing(under) or n <= b.Top
+    return n - b.Top
+  end
+  row = 0
+  for m in b.Top..n - 1
+    row = row + 1 + extra(m, under)
+  end
+  row
+end
+
+defn LineAtRow(row, b, under)
+  (** The line of the buffer on a row of the screen, from 0 at the top: a row of a block is the row of the line above it. *)
+  if value.IsMissing(under) or row <= 0
+    return b.Top + row
+  end
+  n = b.Top
+  r = 0
+  last = rope.LineCount(b.Rope)
+  while n < last and r + 1 + extra(n, under) <= row
+    r = r + 1 + extra(n, under)
+    n = n + 1
+  end
+  if r + 1 + extra(n, under) <= row n + row - r - extra(n, under) else n end
+end
+
+defn TopFor(line, rows, b)
+  (** The top line that shows line at the last row of a screen of rows rows, with the blocks under the lines above it. *)
+  under = Under(b)
+  if value.IsMissing(under)
+    return line - rows + 1
+  end
+  used = 1
+  t = line
+  while t > 1 and used + 1 + extra(t - 1, under) <= rows
+    used = used + 1 + extra(t - 1, under)
+    t = t - 1
+  end
+  t
+end
+
+(** A command of a block moved to its place on the screen. *)
+placed(c, dx, dy) = dict.Merge(c, {X: c.X + dx, Y: c.Y + dy})
+
 defn floorDiv(a, b)
   (** The division of two whole numbers rounded down, also when the first is negative. *)
   if a >= 0
@@ -412,7 +475,7 @@ defn PositionAt(x, y, state)
   lay = LayoutOf(state)
   b = state.Buffers[state.Current]
   at = cellAt(x, y, lay.Code, state.Cell)
-  text.Place(b.Top + at.Row, b.Left + at.Column, b).Cursor
+  text.Place(LineAtRow(at.Row, b, Under(b)), b.Left + at.Column, b).Cursor
 end
 
 defn ClickAt(x, y, state)
@@ -423,10 +486,10 @@ defn ClickAt(x, y, state)
   lay = LayoutOf(state)
   b = state.Buffers[state.Current]
   at = cellAt(x, y, lay.Code, state.Cell)
-  text.Place(b.Top + list.Max(0, list.Min(at.Row, lay.Rows - 1)), b.Left + list.Max(0, list.Min(at.Column, lay.Columns - 1)), b).Cursor
+  text.Place(LineAtRow(list.Max(0, list.Min(at.Row, lay.Rows - 1)), b, Under(b)), b.Left + list.Max(0, list.Min(at.Column, lay.Columns - 1)), b).Cursor
 end
 
-defn selection(b, first, last, lay, look)
+defn selection(b, first, last, lay, look, lineY)
   (** The selection of a buffer on the lines from first to last: one rectangle per line, from the mark to the cursor. A line that the selection
       crosses is filled one character past its end, to show that its line end is selected. *)
   ends = text.Selection(b)
@@ -442,7 +505,7 @@ defn selection(b, first, last, lay, look)
     a = list.Max(from, b.Left)
     z = list.Min(to, b.Left + lay.Columns)
     if z > a
-      out = list.Append(rectCommand(columnX(a - b.Left, rect, cell), rowY(n - b.Top, rect, cell), (z - a) * cell.Width, cell.Height, look.Theme.Fill), out)
+      out = list.Append(rectCommand(columnX(a - b.Left, rect, cell), lineY(n), (z - a) * cell.Width, cell.Height, look.Theme.Fill), out)
     end
   end
   out
@@ -457,8 +520,21 @@ defn code(b, lay, look, focused, marks)
   rect = lay.Code
   out = [box(rect.X, rect.Y, rect.Width, rect.Height, th.Code, 0)]
   first = b.Top
+  under = Under(b)
+  rowOf = {}
   last = list.Min(rope.LineCount(b.Rope), b.Top + lay.Rows - 1)
-  lineY(n) = rowY(n - b.Top, rect, cell)
+  if not value.IsMissing(under)
+    (* The lines that fit with the blocks under them. *)
+    row = 0
+    n = first
+    while n <= rope.LineCount(b.Rope) and row < lay.Rows
+      rowOf["$n"] = row
+      row = row + 1 + extra(n, under)
+      n = n + 1
+    end
+    last = n - 1
+  end
+  lineY = if value.IsMissing(under) (n -> rowY(n - b.Top, rect, cell)) else (n -> rowY(rowOf["$n"], rect, cell)) end
   here = b.Cursor.Line
   if focused and here >= first and here <= last
     out = list.Append(box(rect.X + 4, lineY(here), rect.Width - 8, cell.Height, th.Hover, 4), out)
@@ -467,7 +543,7 @@ defn code(b, lay, look, focused, marks)
   if not value.IsMissing(stopped) and stopped >= first and stopped <= last
     out = list.Append(box(rect.X + 4, lineY(stopped), rect.Width - 8, cell.Height, th.Picked, 4), out)
   end
-  out = list.Concat(out, selection(b, first, last, lay, look))
+  out = list.Concat(out, selection(b, first, last, lay, look, lineY))
   fulls = if last < first [] else screenLines(first, last, b) end
   for n in first..last
     out = list.Concat(out, line(b, n, fulls[n - first + 1], lineY(n), lay.Columns, rect, look))
@@ -476,14 +552,41 @@ defn code(b, lay, look, focused, marks)
     end
     out = list.Concat(out, answer(b, n, marks.Run, lineY(n), lay.Columns, rect, cell, th))
   end
-  out = list.Concat(out, marked(b, first, last, lay, look))
+  if not value.IsMissing(under)
+    out = list.Concat(out, blocksIn(b, first, last, lay, look, lineY))
+  end
+  out = list.Concat(out, marked(b, first, last, lay, look, lineY))
   if here >= first and here <= last and b.Cursor.Column >= b.Left and b.Cursor.Column - b.Left < lay.Columns
     out = list.Append(rectCommand(columnX(b.Cursor.Column - b.Left, rect, cell), lineY(here), 2, cell.Height, if focused th.Bright else th.Faint end), out)
   end
   out
 end
 
-defn marked(b, first, last, lay, look)
+defn blocksIn(b, first, last, lay, look, lineY)
+  (** The blocks under the lines from first to last, each drawn from the left of the text, under its line, the ones below it after it; a command that
+      would go past the bottom of the code area is left out. *)
+  cell = lay.Cell
+  rect = lay.Code
+  x = rect.X + Gutter
+  width = rect.X + rect.Width - x - 8
+  bottom = rect.Y + rect.Height
+  out = []
+  ys = {}
+  for k in text.BlocksOf(b)
+    if k.Line >= first and k.Line <= last
+      y = dict.GetOr("$(k.Line)", lineY(k.Line) + cell.Height, ys)
+      ys["$(k.Line)"] = y + k.Rows * cell.Height
+      for c in k.Draw(width, look)
+        if y + c.Y + dict.GetOr("Height", cell.Height, c) <= bottom
+          out = list.Append(placed(c, x, y), out)
+        end
+      end
+    end
+  end
+  out
+end
+
+defn marked(b, first, last, lay, look, lineY)
   (** The marks of the lines on the screen: a line of two pixels under each span, and after the end of the line, two spaces after it, the words of its first
       mark, cut at the edge, with (+2) when the line has two more. No row is added: a full line keeps only the underline and the color of its number. *)
   cell = lay.Cell
@@ -492,7 +595,7 @@ defn marked(b, first, last, lay, look)
   for n in first..last
     here = marksAt(n, b)
     if value.Len(here) > 0
-      y = rowY(n - b.Top, rect, cell)
+      y = lineY(n)
       for m in here
         from = list.Max(m.Column, b.Left)
         to = list.Min(list.Max(m.End, m.Column + 1), b.Left + lay.Columns)
@@ -613,7 +716,7 @@ defn completions(state, layouts, look)
   b = state.Buffers[state.Current]
   cell = state.Cell
   rect = lay.Code
-  row = b.Cursor.Line - b.Top
+  row = RowOf(b.Cursor.Line, b, Under(b))
   if row < 0 or row >= lay.Rows
     return []
   end
