@@ -564,7 +564,7 @@ end
 
 defn blocksIn(b, first, last, lay, look, lineY)
   (** The blocks under the lines from first to last, each drawn from the left of the text, under its line, the ones below it after it; a command that
-      would go past the bottom of the code area is left out. *)
+      would go past the bottom of the code area is left out, but a graph, which shows what the pane has room for. *)
   cell = lay.Cell
   rect = lay.Code
   x = rect.X + Gutter
@@ -577,7 +577,10 @@ defn blocksIn(b, first, last, lay, look, lineY)
       y = dict.GetOr("$(k.Line)", lineY(k.Line) + cell.Height, ys)
       ys["$(k.Line)"] = y + k.Rows * cell.Height
       for c in k.Draw(width, look)
-        if y + c.Y + dict.GetOr("Height", cell.Height, c) <= bottom
+        if c.Kind == "graph" and y + c.Y < bottom
+          (* A graph that the bottom of the pane cuts shows its top. *)
+          out = list.Append(dict.Put("Visible", bottom - y - c.Y, placed(c, x, y)), out)
+        else if y + c.Y + dict.GetOr("Height", cell.Height, c) <= bottom
           out = list.Append(placed(c, x, y), out)
         end
       end

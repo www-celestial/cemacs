@@ -105,6 +105,26 @@ moved.Still = 1.0
 rested = notebook.Hooked({}).Idle(moved)
 check(shown(rested.Buffers[rested.Current])[1].Line == 11, "a line added above moves the results with their cells")
 
+(* A graph of std/plot under its cell, drawn by sdl from its scene at the width of the pane, and again when that width changes. *)
+plotted = again
+plotted.Buffers[plotted.Current] = text.InsertWords("\n(* %% Plot *)\nuse std/plot\nplot.Line([1, 2, 3], [1, 4, 9])\n", text.ToFileEnd(again.Buffers[again.Current]))
+plotted = settled(notebook.RunCell(plotted))
+graphs = [x for x in text.BlocksOf(plotted.Buffers[plotted.Current]) if value.IsSome(dict.GetOr("Graph", missing, x))]
+check(value.Len(graphs) == 1 and graphs[1].Graph.Scene.Width == notebook.GraphWidth(plotted), "a graph shows under its cell at the width of the pane")
+drawn = [c for c in graphs[1].Draw(1000, look) if c.Kind == "graph"]
+check(value.Len(drawn) == 1 and value.Len(drawn[1].Items) > 10 and value.IsNumber(drawn[1].Items[1].Color), "the block draws the scene, its colors as numbers")
+narrow = plotted
+narrow.Width = 900
+check(notebook.Moving(narrow), "a graph whose pane changed its width asks for ticks")
+narrowed = settled(narrow)
+again2 = [x for x in text.BlocksOf(narrowed.Buffers[narrowed.Current]) if value.IsSome(dict.GetOr("Graph", missing, x))]
+check(again2[1].Graph.Scene.Width == notebook.GraphWidth(narrowed) and notebook.GraphWidth(narrowed) < notebook.GraphWidth(plotted), "the graph is drawn again at the new width")
+prompt = notebook.OpenRepl(commands.ToBuffer(1, narrowed))
+drawing = prompt
+drawing.Buffers[drawing.Current] = text.InsertWords("plot.Of([plot.Line([1, 2], [3, 4])], title = \"In the prompt\")", prompt.Buffers[prompt.Current])
+shownGraph = settled(notebook.Enter(drawing))
+check(value.Len([x for x in text.BlocksOf(shownGraph.Buffers[shownGraph.Current]) if value.IsSome(dict.GetOr("Graph", missing, x))]) == 1, "*repl* draws a graph under its answer")
+
 (* C-c e h: the page beside the file, from the file as saved. *)
 page = settled(notebook.WriteHtml(again))
 html = result.Unwrap(sys.Read("$folder/nb.html"))

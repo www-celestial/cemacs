@@ -10,6 +10,7 @@ use core/run
 use core/text
 use core/view
 use src/rope
+use src/sdl
 use std/cells as nb
 use std/cesia
 use std/debug
@@ -138,7 +139,7 @@ end
 
 defn valueLines(v)
   (** What a value shows, as lines, each with a role: "value", or "note" for a count. *)
-  if value.IsMissing(v)
+  if value.IsMissing(v) or v.Kind == "graph"
     []
   else if v.Kind == "table"
     rows = [{Role: "value", Words: l} for l in TableLines(v.Columns, v.Rows)]
@@ -183,27 +184,85 @@ defn colorOf(role, th)
   end
 end
 
-defn Block(line, lines, cell)
-  (** A block of lines under a line, each {Role, Words}, with a thin bar on its left: drawn at the width of the pane, cut to it.
+defn Block(line, lines, cell, graph = missing)
+  (** A block of lines under a line, each {Role, Words}, with a thin bar on its left: drawn at the width of the pane, cut to it. A graph, {Key,
+      Scene, Font}, comes under the lines, its scene drawn by sdl at its own width, 400 pixels high.
 
         Block(3, [{Role: "value", Words: "42"}], {Width: 8, Height: 19}).Rows --> 1 *)
-  rows = list.Max(1, value.Len(lines))
-  draw = (width, look) -> list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
-    [rowText(k - 1, "  $(fitted(lines[k].Words, width - 2 * cell.Width, cell))", colorOf(lines[k].Role, look.Theme), cell) for k in 1..value.Len(lines)])
-  {Line: line, Rows: rows, Draw: draw, Cell: 0}
+  high = if value.IsMissing(graph) 0 else math.Div(graph.Scene.Height + 8 + cell.Height - 1, cell.Height) end
+  rows = list.Max(1, value.Len(lines) + high)
+  top = value.Len(lines) * cell.Height + 4
+  draw = (width, look) -> list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
+    [rowText(k - 1, "  $(fitted(lines[k].Words, width - 2 * cell.Width, cell))", colorOf(lines[k].Role, look.Theme), cell) for k in 1..value.Len(lines)]),
+    if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font}] end)
+  {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Lines: lines}
 end
 
-(** The block of cell i, under its last line, with its lines. *)
-blockOf(i, lines, r, b, cell) = dict.Merge(Block(anchor(r.Cells[i], b), lines, cell), {Cell: i})
+defn hexColor(color)
+  (** A color of a scene, "#rrggbb", as 0xRRGGBB; "ink" and "grid", the colors of the theme, stay for the draw. *)
+  if not value.IsText(color) or value.Len(color) != 7 or not str.StartsWith("#", color)
+    return color
+  end
+  digits = "0123456789abcdef"
+  n = 0
+  for ch in str.Chars(str.Lower(str.Slice(2, 7, color)))
+    n = n * 16 + list.Max(0, str.Find(ch, digits) - 1)
+  end
+  n
+end
 
-defn withBlock(k, i, lines, state)
+defn Prepared(scene, home)
+  (** A scene of std/plot ready for the screen: its colors as numbers, once, an Id for each item, by which sdl knows that the item it drew is the
+      same, and the font its texts are measured in, that of Cemacs's folder.
+
+        Prepared({Width: 100, Height: 80, Items: [{Kind: "rect", Color: "#ff0000"}]}, ".").Scene.Items[1].Color --> 16711680 *)
+  items = []
+  stamp = sys.Now()
+  for k in 1..value.Len(scene.Items)
+    item = scene.Items[k]
+    one = dict.Put("Color", hexColor(dict.GetOr("Color", missing, item)), item)
+    one.Id = "$stamp/$k"
+    if item.Kind == "line"
+      one.Strip = sdl.IsStrip(one)
+    end
+    if item.Kind == "cells"
+      one.Colors = [if value.IsMissing(x) missing else hexColor(x) end for x in item.Colors]
+    end
+    items = list.Append(one, items)
+  end
+  out = scene
+  out.Items = items
+  {Scene: out, Font: "$home/fonts/NotoSans-Medium.ttf"}
+end
+
+defn themed(items, th)
+  (** The items with the colors of the theme in place of "ink", for the axes and the texts, and "grid", for the grid. *)
+  [if value.IsText(x.Color) dict.Put("Color", if x.Color == "grid" th.Line else th.Ink end, x) else x end for x in items]
+end
+
+(** The width that a graph under a cell takes in the pane being edited, in pixels: the pane's text width, past the bar of the block. *)
+GraphWidth(state) = list.Max(200, view.LayoutOf(state).Code.Width - view.Gutter - 8 - 2 * state.Cell.Width)
+
+(** The block of cell i, under its last line, with its lines and its graph. *)
+blockOf(i, lines, r, b, cell, graph) = dict.Merge(Block(anchor(r.Cells[i], b), lines, cell, graph = graph), {Cell: i})
+
+defn withBlock(k, i, lines, state, graph = missing)
   (** The state with the block of cell i of buffer k in place of the one it had, or none for a cell that printed nothing and shows no value. *)
   b = state.Buffers[k]
   r = runOf(b)
   kept = [x for x in text.BlocksOf(b) if dict.GetOr("Cell", 0, x) != i]
   s = state
-  s.Buffers[k] = text.WithBlocks(if value.Len(lines) == 0 kept else list.SortBy(x -> x.Line, list.Append(blockOf(i, lines, r, b, state.Cell), kept)) end, b)
+  s.Buffers[k] = text.WithBlocks(if value.Len(lines) == 0 and value.IsMissing(graph) kept else list.SortBy(x -> x.Line, list.Append(blockOf(i, lines, r, b, state.Cell, graph), kept)) end, b)
   s
+end
+
+defn graphOf(ran, state)
+  (** The graph that a run shows, ready for the screen, or missing. *)
+  v = if result.IsOk(ran) ran.Value.Value else missing end
+  if value.IsMissing(v) or v.Kind != "graph"
+    return missing
+  end
+  dict.Put("Key", v.Key, Prepared(v.Scene, commands.Home(state)))
 end
 
 (** The words of a cell that runs, with the seconds so far. *)
@@ -224,7 +283,8 @@ defn next(k, state)
     else if str.Trim(r.Cells[i].Source) != ""
       cell = r.Cells[i]
       one = r.Session
-      r.Task = fiber.Spawn(() -> nb.Run(one, cell))
+      width = GraphWidth(s)
+      r.Task = fiber.Spawn(() -> nb.Run(one, cell, width = width))
       r.Index = i
       r.Started = sys.Now()
       s = withBlock(k, i, running(0.0), withRun(k, r, s))
@@ -283,7 +343,7 @@ defn taken(k, state)
   r.Index = 0
   ran = if result.IsOk(got) got.Value else got end
   lines = if result.IsOk(ran) resultLines({Errors: [], Output: ran.Value.Output, Value: ran.Value.Value, Error: ran.Value.Error}) else [{Role: "error", Words: ran.Error.Message}] end
-  s = withBlock(k, i, lines, withRun(k, r, state))
+  s = withBlock(k, i, lines, withRun(k, r, state), graph = graphOf(ran, state))
   if result.IsErr(ran)
     r.Session = missing
     r.Queue = []
@@ -371,6 +431,58 @@ defn moved(k, state)
   s = withRun(k, r, state)
   s.Buffers[k] = text.WithBlocks(list.SortBy(x -> x.Line, out), b)
   s
+end
+
+(* ---- Graphs drawn again at the width of their pane. *)
+
+defn stale(b, state)
+  (** The first block of a buffer whose graph isn't drawn at the width of the pane, or missing. *)
+  want = GraphWidth(state)
+  for x in text.BlocksOf(b)
+    g = dict.GetOr("Graph", missing, x)
+    if value.IsSome(g) and dict.GetOr("Cell", 0, x) > 0 and not dict.GetOr("Fixed", false, g) and math.Abs(g.Scene.Width - want) > 2
+      return x
+    end
+  end
+  missing
+end
+
+defn widened(k, state)
+  (** The state at a tick for buffer k: the scene of a graph asked again at the width of its pane once that width changed, and put in place
+      once it came, the text above it as it was. One at a time, and never while a cell runs. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task)
+    return state
+  end
+  pending = dict.GetOr("Rescene", missing, r)
+  if value.IsSome(pending)
+    got = fiber.Wait(pending.Task, timeout = 0)
+    if result.IsErr(got) and got.Error.Kind == "timeout"
+      return state
+    end
+    r.Rescene = missing
+    s = withRun(k, r, state)
+    scene = if result.IsOk(got) got.Value else got end
+    old = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == pending.Cell, text.BlocksOf(s.Buffers[k]))
+    if value.IsMissing(old) or value.IsMissing(dict.GetOr("Graph", missing, old))
+      return s
+    end
+    if result.IsErr(scene)
+      (* A graph the session no longer holds keeps its width. *)
+      return withBlock(k, pending.Cell, old.Lines, s, graph = dict.Put("Fixed", true, old.Graph))
+    end
+    return withBlock(k, pending.Cell, old.Lines, s, graph = dict.Put("Key", old.Graph.Key, Prepared(scene.Value, commands.Home(s))))
+  end
+  x = stale(b, state)
+  if value.IsMissing(x)
+    return state
+  end
+  one = r.Session
+  key = x.Graph.Key
+  width = GraphWidth(state)
+  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width)), Cell: x.Cell}
+  withRun(k, r, state)
 end
 
 (* ---- The page of a file. *)
@@ -614,7 +726,8 @@ defn replEnter(state)
     return s
   end
   one = r.Session
-  p.Task = fiber.Spawn(() -> nb.Run(one, {Title: "", From: 0, To: 0, Source: code}))
+  width = GraphWidth(state)
+  p.Task = fiber.Spawn(() -> nb.Run(one, {Title: "", From: 0, To: 0, Source: code}, width = width))
   b.Repl = p
   s.Buffers[state.Current] = appended("\n", b)
   s
@@ -640,7 +753,14 @@ defn answered(k, state)
   words = str.Join("", ["$(l.Words)\n" for l in lines])
   b.Repl = p
   s = state
-  s.Buffers[k] = appended("$words$Prompt", b)
+  after = appended("$words$Prompt", b)
+  graph = graphOf(ran, state)
+  if value.IsSome(graph)
+    (* The graph under the last line of the answer, above the new prompt. *)
+    under = rope.LineCount(after.Rope) - 1
+    after = text.WithBlocks(list.Append(Block(under, [], state.Cell, graph = graph), text.BlocksOf(after)), after)
+  end
+  s.Buffers[k] = after
   owner = indexOf(p.Owner, s)
   r = if owner == 0 missing else runOf(s.Buffers[owner]) end
   if value.IsSome(r) and value.IsSome(r.Session)
@@ -694,6 +814,7 @@ defn tick(state)
   end
   s = viewing(s)
   k = s.Current
+  s = widened(k, s)
   if commands.Still(s) >= 0.5 and k <= value.Len(s.Buffers) moved(k, s) else s end
 end
 
@@ -701,11 +822,11 @@ defn busy(b)
   (** Does a buffer wait for its cells, its stop, its page or its prompt? *)
   r = runOf(b)
   p = replOf(b)
-  (value.IsSome(r) and (value.IsSome(r.Task) or value.IsSome(r.Stopping) or value.IsSome(r.Html))) or (value.IsSome(p) and value.IsSome(p.Task))
+  (value.IsSome(r) and (value.IsSome(r.Task) or value.IsSome(r.Stopping) or value.IsSome(r.Html) or value.IsSome(dict.GetOr("Rescene", missing, r)))) or (value.IsSome(p) and value.IsSome(p.Task))
 end
 
-(** Do the cells need ticks: a cell runs, a stop or a page is waited for? *)
-Moving(state) = list.Any([busy(b) for b in state.Buffers])
+(** Do the cells need ticks: a cell runs, a stop or a page is waited for, or a graph waits for the width of its pane? *)
+Moving(state) = list.Any([busy(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state))
 
 defn Hooked(config)
   (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs. *)

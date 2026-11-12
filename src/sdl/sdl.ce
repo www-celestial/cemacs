@@ -60,7 +60,12 @@ defn bindSdl(lib)
   renderTexture = f("SDL_RenderTexture", ["ptr", "ptr", "ptr", "ptr"], "bool")?
   renderTiled = f("SDL_RenderTextureTiled", ["ptr", "ptr", "ptr", "f32", "ptr"], "bool")?
   geometry = f("SDL_RenderGeometry", ["ptr", "ptr", "ptr", "i32", "ptr", "i32"], "bool")?
-  result.Ok({Geometry: geometry, RenderTexture: renderTexture, RenderTiled: renderTiled, CreateTexture: createTexture, UpdateTexture: updateTexture, Nine: nine, ColorMod: colorMod, AlphaMod: alphaMod,
+  geometryRaw = f("SDL_RenderGeometryRaw", ["ptr", "ptr", "ptr", "i32", "ptr", "i32", "ptr", "i32", "i32", "ptr", "i32", "i32"], "bool")?
+  viewport = f("SDL_SetRenderViewport", ["ptr", "ptr"], "bool")?
+  clip = f("SDL_SetRenderClipRect", ["ptr", "ptr"], "bool")?
+  target = f("SDL_SetRenderTarget", ["ptr", "ptr"], "bool")?
+  rotated = f("SDL_RenderTextureRotated", ["ptr", "ptr", "ptr", "ptr", "f64", "ptr", "i32"], "bool")?
+  result.Ok({Geometry: geometry, GeometryRaw: geometryRaw, Viewport: viewport, Clip: clip, Target: target, Rotated: rotated, RenderTexture: renderTexture, RenderTiled: renderTiled, CreateTexture: createTexture, UpdateTexture: updateTexture, Nine: nine, ColorMod: colorMod, AlphaMod: alphaMod,
     TextureBlend: textureBlend, DrawBlend: drawBlend, SetClipboard: setClipboard, GetClipboard: getClipboard, Free: free, SetTitle: setTitle, Poll: poll, Wait: wait, StartText: startText, Version: version, Init: init, Error: error, CreateWindow: createWindow, CreateRenderer: createRenderer,
     Vsync: vsync, Color: color, Clear: clear, FillRect: fillRect, Present: present,
     DestroyRenderer: destroyRenderer, DestroyWindow: destroyWindow, Quit: quit})
@@ -83,7 +88,9 @@ defn bindTtf(lib)
   quit = f("TTF_Quit", [], "void")?
   setFont = f("TTF_SetTextFont", ["ptr", "ptr"], "bool")?
   hinting = f("TTF_SetFontHinting", ["ptr", "i32"], "void")?
-  result.Ok({SetFont: setFont, Hinting: hinting, Init: init, CreateEngine: createEngine, OpenFont: openFont, CreateText: createText, SetText: setText,
+  kerning = f("TTF_SetFontKerning", ["ptr", "bool"], "void")?
+  ascent = f("TTF_GetFontAscent", ["ptr"], "i32")?
+  result.Ok({SetFont: setFont, Hinting: hinting, Kerning: kerning, Ascent: ascent, Init: init, CreateEngine: createEngine, OpenFont: openFont, CreateText: createText, SetText: setText,
     Color: color, DrawText: drawText, StringSize: stringSize, DestroyText: destroyText, CloseFont: closeFont,
     DestroyEngine: destroyEngine, Quit: quit})
 end
@@ -185,7 +192,8 @@ defn textEngine(sdlApi, ttfApi, loaded, created, renderer)
   end
   result.Ok({Sdl: sdlApi, Ttf: ttfApi, Window: created, Renderer: renderer, Engine: engine, Font: loaded, Fonts: dict.Dict([{Key: "body", Value: loaded}]),
       Rect: c.Alloc(16), OutWidth: c.Alloc(4), OutHeight: c.Alloc(4), Event: c.Alloc(128),
-      Objects: c.Alloc(16 + MaxTexts * 8), Images: c.Alloc(8 + MaxImages * 8), Masks: dict.Dict(), ImageBlocks: [], CurveBlocks: [], CurvesRetired: [], CurveUsed: 0, MaskTable: c.Alloc(8 + MaxSharedMasks * MaskEntry), CurveWrites: 0, Drawn: 0, Shaped: dict.Dict(), Made: 0})
+      Objects: c.Alloc(16 + MaxTexts * 8), Images: c.Alloc(8 + MaxImages * 8), Masks: dict.Dict(), ImageBlocks: [], CurveBlocks: [], CurvesRetired: [], CurveUsed: 0, MaskTable: c.Alloc(8 + MaxSharedMasks * MaskEntry), CurveWrites: 0, Drawn: 0, Shaped: dict.Dict(), Made: 0,
+      IRect: c.Alloc(16), GeoBlocks: [], GeoUsed: 0, Turned: dict.Dict(), Strips: [], StripUsed: 0, StripColors: dict.Dict(), StripIndex: missing})
 end
 
 defn AddFont(name, path, size, window, light = false)
@@ -695,6 +703,13 @@ defn freeCurves(block)
   c.Free(block.Indices)
 end
 
+defn forgetShape(block)
+  (** A shape of a graph whose memory must be written again: an older copy of the window wrote it. *)
+  next = block
+  next.Item = missing
+  next
+end
+
 defn forgetItems(block)
   next = block
   next.Items = missing
@@ -714,6 +729,7 @@ defn command(window, one)
     "tile" -> DrawTile(one, window)
     "icon" -> DrawIcon(one, window)
     "curves" -> DrawCurves(one, window)
+    "graph" -> DrawGraph(one, window)
     "text" -> if one.Text == "" window else DrawText(one, window) end
     else -> bug.Panic("A frame has no command \"$(one.Kind)\".")
   end
@@ -726,10 +742,14 @@ defn Draw(commands, window)
     window.Shaped = dict.Dict()  (* an older copy: what it remembers may no longer be in the objects *)
     window.Made = 0
     window.CurveBlocks = list.Map(forgetItems, window.CurveBlocks)
+    window.GeoBlocks = list.Map(forgetShape, dict.GetOr("GeoBlocks", [], window))
+    window.Strips = list.Map(forgetShape, dict.GetOr("Strips", [], window))
   end
   window.Drawn = last + 1
   c.Set("i64", 8, last + 1, window.Objects)
   window.CurveUsed = 0
+  window.GeoUsed = 0
+  window.StripUsed = 0
   list.Reduce(command, window, commands)
 end
 
@@ -913,6 +933,13 @@ defn Close(window)
     freeCurves(block)
   end
   c.Free(window.MaskTable)
+  for block in dict.GetOr("GeoBlocks", [], window)
+    c.Free(block.Verts)
+    c.Free(block.Indices)
+  end
+  if dict.Has("IRect", window)
+    c.Free(window.IRect)
+  end
   for block in window.ImageBlocks
     c.Free(block)
   end
