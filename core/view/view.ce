@@ -126,8 +126,8 @@ defn shownIn(j, state)
   end
 end
 
-(** The name of a buffer: the name of its list, the last part of its path, or untitled. *)
-bufferName(b) = if lists.IsList(b) lists.Of(b).Name else if value.IsMissing(b.Path) "untitled" else list.Last(str.Split("/", b.Path)) end
+(** The name of a buffer: the name of its list, the last part of its path, the Name of a buffer with no file, as *repl*, or untitled. *)
+bufferName(b) = if lists.IsList(b) lists.Of(b).Name else if value.IsMissing(b.Path) dict.GetOr("Name", "untitled", b) else list.Last(str.Split("/", b.Path)) end
 
 (** The name of a buffer, as the mode line and the title of the window show it.
 

@@ -1,0 +1,113 @@
+(** Checks of the cells, as C-c e runs them, against a real session of std/cells on a file in a new folder under /tmp: a cell and the cells that read what it
+    defines, their results drawn under them, an error, the variables and the rows of a viewer, *repl* with a refused definition, a stop, the blocks put back
+    under their cells after an edit, and the page of the file. It is a script, not a test file: it needs permissions. Run it from the root of cemacs with
+    cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/cells-check.ce, CESIA the real path of the cesia that runs it. It prints ok at the end and
+    stops at the first failure. *)
+use core/commands
+use core/lists
+use core/text
+use core/view
+use src/cells
+use src/rope
+use src/ui
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+defn settled(state)
+  (** The state once the cells stop moving, ticked as the editor ticks it, or a failure after ten seconds. *)
+  s = state
+  waited = 0.0
+  while cells.Moving(s)
+    check(waited < 10.0, "the cells never ended")
+    sys.Sleep(0.01)
+    waited = waited + 0.01
+    s = cells.Hooked({}).Idle(s)
+  end
+  s
+end
+
+(** The words of the blocks of a buffer, line by line, each with the line it is under. *)
+shown(b) = [{Line: k.Line, Words: [str.Trim(c.Text) for c in k.Draw(2000, look) if c.Kind == "text"]} for k in text.BlocksOf(b)]
+
+look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/nb.ce"
+source = "use std/frame\nuse std/io\n\n(* %% Data *)\nn = 3\nxs = [i * 10 for i in 1..n]\n\n(* %% Sum *)\nio.Print(\"sum\")\nxs[1] + xs[2] + xs[3]\n\n(* %% Table *)\nframe.Of({\"a\": xs})\n\n(* %% Broken *)\nnope + 1\n"
+_ = result.Unwrap(sys.Write(path, source))
+state = view.Start([], look, {Width: 8, Height: 19}, 1280, 720)
+state = commands.OpenFile(path, state)
+check(cells.IsCells(state.Buffers[state.Current]), "a file with a marker is a file of cells")
+
+(* C-c e a: every cell, from the top. *)
+all = settled(cells.RunAll(state))
+blocks = shown(all.Buffers[all.Current])
+check(value.Len(blocks) == 3, "three cells drew a result: $(blocks)")
+check(blocks[1].Line == 10 and value.Equal(blocks[1].Words, ["sum", "60"]), "the sum prints and shows its value under its last line: $(blocks[1])")
+check(blocks[2].Words[1] == "a" and blocks[2].Words[3] == "20" and blocks[2].Words[5] == "3 rows", "a frame shows as a table: $(blocks[2])")
+check(str.StartsWith("line 16: Name", blocks[3].Words[1]), "a name no cell defines is an error of the analysis: $(blocks[3])")
+
+(* C-c e e on the cell Data: it and the cells that read xs run again. *)
+data = all
+data.Buffers[data.Current] = text.Place(5, 0, all.Buffers[all.Current])
+again = settled(cells.RunCell(data))
+check(value.Len(shown(again.Buffers[again.Current])) == 3, "the cells that read xs ran again, and Data, which shows nothing, has no block")
+
+(* *variables* and a viewer. *)
+vars = cells.ShowVariables(again)
+rows = lists.Of(vars.Buffers[vars.Current]).Rows(vars)
+check(value.Len(rows) == 2 and str.StartsWith("n ", rows[1].Words), "*variables* lists n and xs: $(rows)")
+viewer = lists.Of(vars.Buffers[vars.Current]).Keys()["enter"]("xs", vars)
+seen = lists.Of(viewer.Buffers[viewer.Current]).Rows(viewer)
+check(value.Len(seen) == 4 and str.Contains("30", seen[4].Words), "the viewer of xs shows its rows under their numbers: $(seen)")
+
+(* *repl*: an expression, a definition of a name a cell defines, and code that goes on. *)
+repl = cells.OpenRepl(commands.ToBuffer(1, again))
+b = repl.Buffers[repl.Current]
+check(view.BufferName(b) == "*repl*", "C-c e r opens *repl*")
+typed = repl
+typed.Buffers[typed.Current] = text.InsertWords("n * 7", b)
+answered = settled(cells.Enter(typed))
+words = rope.Text(answered.Buffers[answered.Current].Rope)
+check(str.Contains("\n21\n> ", words), "*repl* shows the value of n * 7: $(words)")
+redefine = answered
+redefine.Buffers[redefine.Current] = text.InsertWords("n = 9", answered.Buffers[answered.Current])
+refused = settled(cells.Enter(redefine))
+check(str.Contains("n is defined by the cell \"Data\"", rope.Text(refused.Buffers[refused.Current].Rope)), "*repl* refuses a name a cell defines")
+open = refused
+open.Buffers[open.Current] = text.InsertWords("if true", refused.Buffers[refused.Current])
+check(str.EndsWith("if true\n. ", rope.Text(cells.Enter(open).Buffers[open.Current].Rope)), "a block not ended goes on on the next line")
+
+(* A stop, then the blocks put back under their cells after a line is added above them. *)
+long = again
+long.Buffers[long.Current] = text.Place(17, 0, text.InsertWords("(* %% Slow *)\nk = 0\nwhile true\n  k = k + 1\nend\n", text.Place(17, 0, again.Buffers[again.Current])))
+running = cells.RunCell(long)
+sys.Sleep(0.3)
+running = cells.Hooked({}).Idle(running)
+stop = settled(cells.StopCell(running))
+slow = list.Filter(x -> x.Line >= 17, shown(stop.Buffers[stop.Current]))
+check(value.Len(slow) == 1 and value.Equal(slow[1].Words, ["Stopped."]), "C-c e s stops the cell that runs: $(slow)")
+moved = stop
+moved.Buffers[moved.Current] = text.InsertWords("\n", text.Place(1, 0, stop.Buffers[stop.Current]))
+moved.Still = 1.0
+rested = cells.Hooked({}).Idle(moved)
+check(shown(rested.Buffers[rested.Current])[1].Line == 11, "a line added above moves the results with their cells")
+
+(* C-c e h: the page beside the file, from the file as saved. *)
+page = settled(cells.WriteHtml(again))
+html = result.Unwrap(sys.Read("$folder/nb.html"))
+check(str.Contains("<h2>Sum</h2>", html) and str.Contains("<pre class=\"output\">sum</pre>", html), "the page has the cells and what they printed")
+_ = result.Unwrap(sys.Run("rm", ["-r", folder]))
+io.Print("ok")

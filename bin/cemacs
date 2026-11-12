@@ -3,4 +3,6 @@
 # makes user/, the folder of the person's own changes, from tools/user-template.
 home="$(dirname "$(dirname "$(readlink -f "$0")")")"
 [ -e "$home/user" ] || "$home/tools/user.sh"
-exec cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf "$home/src/cemacs.ce" "$home" "$@"
+# The session of a file of cells is a process of this same cesia, which std/cells starts by its real path.
+exec cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf --allow "exec=$(readlink -f "$(command -v cesia)")" \
+  "$home/src/cemacs.ce" "$home" "$@"
