@@ -16,8 +16,11 @@ présente le gestionnaire de dossiers. Les commandes sont dans [core/commands], 
 La réponse commence par le dossier du fichier courant, pour qu'un fichier à côté de lui ne demande que son nom. C'est un
 chemin tel que le système le lit : à partir du dossier où Cemacs a démarré pour un chemin relatif ; `~` n'y est qu'un nom,
 pas votre dossier personnel. La prompt line accepte les lettres, Backspace, `C-y`, qui colle la première ligne du
-presse-papiers, Enter et `C-g`, et vous ne modifiez la réponse qu'à son bout. Elle n'a pas de completion (l'aide qui finit
-un nom à partir des fichiers qui existent).
+presse-papiers, Enter et `C-g`, et vous ne modifiez la réponse qu'à son bout. Tab complète le nom (la completion, l'aide qui
+finit un nom à partir des fichiers qui existent), comme dans Emacs : les noms du dossier qui commencent par la fin de la
+réponse la complètent aussi loin qu'ils s'accordent ; quand il en reste plusieurs, ils s'affichent après la réponse, comme
+`{color/ | commands/ | complete/}`. `M-p` et `M-n` reviennent aux fichiers déjà demandés, comme le dit
+[La prompt line](windows.md#la-prompt-line).
 
 Un fichier s'ouvre dans un nouveau buffer, qui devient le buffer courant, celui que vous modifiez. Un fichier déjà ouvert
 n'est pas relu : Cemacs va à son buffer. Deux chemins nomment le même fichier quand ils sont pareils une fois enlevés les `.`,

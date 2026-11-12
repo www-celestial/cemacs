@@ -135,6 +135,20 @@ Un warning porte sur un résultat dont l'`Err` passerait inaperçu, comme un `sy
 livre de Cesia explique chaque sorte, dans son chapitre sur les erreurs. [Les erreurs dans les lignes](check.md) dit quand la
 vérification tourne et ce qu'elle montre.
 
+### Les noms, le projet et Git
+
+| Touches | Ce qu'elles font |
+|---|---|
+| `M-.`, puis `M-,` | va à la définition du nom sous le curseur, puis revient |
+| `M-?` | liste chaque endroit du projet qui lit ce nom |
+| `C-c c m` | le renomme dans tous ces endroits |
+| `C-x p g` | liste chaque ligne du projet qui contient des mots |
+| `C-c t t` | lance le test où est le curseur, ou les tests du dossier du fichier ; les échecs sont marqués dans leurs lignes |
+| `C-x g` | l'état de Git, où `s` stage un fichier et `c` fait un commit |
+
+La prompt line montre la signature de l'appel que vous tapez. [Names](names.md), [Recherche](search.md#chercher-dans-un-projet),
+[Exécuter et déboguer](running.md#les-tests) et [Git](git.md) les décrivent en entier.
+
 ### Exécuter un fichier
 
 `C-c c r` exécute le fichier du buffer courant, tel qu'il est enregistré, comme le ferait `cesia run`, et aussi vite. Ce

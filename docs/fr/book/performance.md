@@ -521,6 +521,15 @@ depuis, sur 1 933 rangées : 288 lettres tapées en 210 ms contre 402 avant.
 [26,7 ; 31,5]. Les marques d'une erreur arrivent donc environ 30 ms après la demi-seconde de pause qui lance la vérification.
 Elle tourne dans son propre processus, depuis une fiber : l'éditeur ne l'attend pas, et la frappe continue.
 
+## Les questions de src/ide
+
+Les touches de [Names](names.md), de [la recherche dans un projet](search.md#chercher-dans-un-projet), de [Git](git.md) et
+des [tests](running.md#les-tests) demandent chacune un programme, que Cesia démarre, charge et lance : le coût d'une touche
+est ce processus, en arrière-plan, jamais une touche qui tape. Mesuré sur le code de Cemacs, $n = 21$, la médiane : une
+définition 17,2 ms, une documentation 17,0 ms, une signature 18,3 ms, les [références](names.md#the-references) d'un nom lu dans 13 fichiers 154,6 ms,
+une recherche 11,2 ms, l'état de Git 11,6 ms. Le démarrage ne charge que [src/ide], 460 lignes, et 130 lignes de
+[core/commands] : 82,0 ms contre 79,1 ms pour le plus rapide de 21, la frappe 5,72 ms contre 5,86 ms par touche.
+
 ## Au repos
 
 Un éditeur au repos, un seul buffer vide, 3 secondes après son démarrage ; la mémoire de chaque processus de l'éditeur,

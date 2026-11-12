@@ -153,6 +153,11 @@ la montre avec un tiret, comme `C-x -`, à la façon dont Emacs affiche en écho
 Une question qui attend `y` ou `n`, comme `Text not saved. Quit anyway? (y or n)`, attend l'une des deux lettres, en
 majuscule ou en minuscule, et ignore les autres ; `C-g` la ferme sans réponse. Toute autre question se termine par Enter.
 
+Chaque réponse donnée avec Enter est gardée, les 100 dernières de chaque question, comme l'historique du minibuffer d'Emacs :
+dans une question, `M-p` ramène la réponse donnée avant à la même question, et `M-n` va dans l'autre sens, jusqu'à ce que
+vous aviez tapé. Dans `Find file: ` et `Save as: `, Tab complète le nom d'un fichier : voir
+[Fichiers et buffers](files.md#ouvrir-un-fichier).
+
 ## La bande des hints
 
 Quand une prefix key attend pendant [emacs.HintDelay] secondes, une demi-seconde, une bande s'ouvre au-dessus de la prompt

@@ -43,6 +43,13 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `This list is read only.` | une commande a essayé de changer le texte d'une liste, et a été défaite |
 | `Nothing here.` | une touche d'une liste sans rangée restante, comme Enter après un filtre qui ne correspond à rien : Backspace défait le filtre |
 
+### La prompt line
+
+| Message | Ce qui s'est passé |
+|---|---|
+| `No answer before this one.`, `No answer after this one.` | `M-p` ou `M-n` au bout des réponses données à la question |
+| `{no match}`, après la réponse | Tab dans `Find file: ` n'a trouvé aucune entrée du dossier qui corresponde |
+
 ### Fichiers et buffers
 
 | Message | Ce qui s'est passé, et que faire |
@@ -82,6 +89,34 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `Can't run git: no such file or directory.` | `git` n'est pas dans le `PATH` : installez-le |
 | `git ls-files failed: REASON` | Git a trouvé le dépôt mais n'a pas pu le lister ; REASON, ce sont les mots de Git lui-même |
 
+### Chercher dans un projet
+
+| Message | Ce qui s'est passé |
+|---|---|
+| `N lines. C-c r replaces in those shown.` | la liste de la recherche ; `, the first 10000 only` quand elle a été coupée là |
+| `No line of the project holds WORDS.` | git grep n'a rien trouvé |
+| `No words to search.` | Entrée sur une réponse vide |
+| `FOLDER/ is in no Git repository.` | la recherche dans un projet en demande un, comme `C-x p f` |
+| `git grep failed: REASON`, `git can't run: REASON` | git a fini sur une erreur, ou n'a pas pu démarrer : est-il dans le `PATH` ? |
+| `No place of WORDS is left in those lines.` | `C-c r` après que les lignes ont changé, ou avec un filtre qui n'en garde aucune |
+| `Replaced WORDS with NEW: N files saved.` | le remplacement est fait, dit comme un renommage |
+| `Not replaced.` | `n` à la question d'un remplacement |
+
+### Git
+
+| Message | Ce qui s'est passé |
+|---|---|
+| `s stage  u unstage  c commit  d diff  l log  g refresh  Enter open` | une lettre qui n'est pas une commande dans l'état de `C-x g` |
+| `Staged PATH.`, `Unstaged PATH.`, `Committed: MESSAGE` | `s`, `u` ou `c` dans l'état |
+| `No file on this row.` | `s`, `u` ou `d` sur la première rangée de l'état |
+| `No message: nothing committed.` | `c`, puis Entrée sur un message vide |
+| `A new file has no diff yet: s stages it.` | `d` sur un nouveau fichier |
+| `No difference.` | le diff est vide |
+| `git COMMAND failed: REASON` | git a fini sur une erreur, comme `git commit failed: nothing to commit` |
+| `This buffer has no file.`, `PATH is out of the repository.` | `C-c g b` ou `C-c g d` sur un buffer sans fichier, ou d'un fichier hors du dépôt |
+| `These lines aren't committed yet.` | Entrée dans un blame sur une ligne pas encore dans un commit |
+| `Not a commit.` | Entrée sur une rangée sans hash |
+
 ### Fenêtre et panes
 
 | Message | Ce qui s'est passé |
@@ -99,6 +134,34 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `PATH isn't there.` | Enter dans la sortie sur l'endroit d'un fichier qui n'existe pas, vu du dossier où Cemacs a démarré |
 | `There is no output yet: C-c c r runs the file.` | `C-c c h` ou `C-c c o` avant toute exécution |
 
+### Les noms
+
+| Message | Ce qui s'est passé |
+|---|---|
+| `Names are those of a file of Cesia.` | `M-.`, `M-?`, `C-c c i` ou `C-c c m` dans un buffer qui n'est pas un fichier `.ce` enregistré, ou dans une liste |
+| `No name here.` | le curseur n'est sur aucun nom, ni juste après |
+| `No definition of NAME found.` | `M-.` sur un nom qu'aucun fichier de son package, ni des packages qu'il utilise, ne définit, comme une variable locale |
+| `No documentation of NAME found.` | `C-c c i` sur un tel nom |
+| `No definition of NAME found in the project.` | `M-?` sur un nom qui n'est défini ni dans le projet, ni dans la documentation de Cesia |
+| `No place to go back to.` | `M-,` sans endroit sur la pile |
+| `N places.`, `N places (by name: a method).` | la liste de `M-?` ; une méthode est trouvée par son nom : [Names](names.md#the-references) |
+| `..., N files don't read.` | des fichiers du projet ne se lisent pas, et leurs endroits ne sont pas listés |
+| `Nothing reads NAME.` | le nom est défini, et rien ne le lit |
+| `The program failed: WORDS` | un programme de [src/ide](names.md#how-the-ide-asks) n'a pas répondu en JSON, ou a fini sur une erreur |
+| `cesia can't run: REASON` | `cesia` n'a pas pu démarrer : est-il dans le `PATH` ? |
+| `The program gave no place.`, `... no list.`, `... no edits.`, `... no marks.`, `The program asked nothing.` | la réponse n'avait pas la forme que src/ide lit, ce qu'il vérifie avant d'ouvrir un fichier ou de changer un buffer |
+| `The program asked a run that isn't one of tests.` | une réponse a demandé de lancer autre chose que `cesia test` : refusé |
+| `No program answers NAME.` | une question a nommé un programme que src/ide ne lance pas |
+| `No name.` | Entrée sur une réponse vide à `Rename NAME to: ` |
+| `NAME is a method: ...` | une méthode ou un champ ne se renomme pas |
+| `NEW is not a name: a letter, then letters and digits.` | le nouveau nom a un autre caractère, ou est un mot de Cesia |
+| `NEW would be public: ...`, `NEW would be private: ...` | un renommage garde la casse de la première lettre, qui dit en Cesia si un nom est public |
+| `NEW is defined already, at PATH:LINE.` | le package a déjà ce nom |
+| `NEW would be another name at PATH:LINE: choose another one.` | à cette ligne, une variable locale du nouveau nom prendrait la place du nom renommé |
+| `PATH doesn't read: fix it first, so that its places of NAME are known.` | un fichier du projet ne se lit pas : un renommage laisserait ses endroits |
+| `Renamed NAME to NEW: N files saved.` | le renommage est fait |
+| `Not renamed.` | `n` à la question d'un renommage |
+
 ### Exécuter et déboguer
 
 | Message | Ce qui s'est passé |
@@ -114,6 +177,11 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `A breakpoint needs a file: save the buffer first.` | `C-c d b` dans un buffer sans fichier |
 | `No program runs under the debugger: C-c d r runs the file under it.` | `C-c d e` sans un programme lancé par `C-c d r` |
 | `The program isn't stopped.` | `C-c d c`, `n`, `s` ou `u` pendant que le programme tourne : ils ne repartent que d'un arrêt |
+| `Testing: cesia test TARGET` | `C-c t t`, `C-c t a` ou `C-c t r` a lancé les tests : [Exécuter et déboguer](running.md#les-tests) |
+| `N passed, M failed` | les tests ont fini ; chaque échec est une marque dans les lignes de son fichier |
+| `The tests ended without their count.` | les tests ont fini sans le compte de `cesia test`, comme quand `C-c c k` les a arrêtés |
+| `Tests are those of a file of Cesia.` | `C-c t t` dans un buffer qui n'est pas un fichier `.ce` |
+| `No test ran yet: C-c t t runs those of the file.` | `C-c t r` avant tout test |
 
 ### Les questions
 
@@ -125,7 +193,11 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `Text not saved. Quit anyway? (y or n)` | quitter avec un buffer non enregistré : `y` perd chaque changement non enregistré |
 | `File changed on disk. Overwrite? (y or n)` | le fichier a changé depuis que Cemacs l'a lu, ou un fichier est déjà là : `y` écrit par-dessus |
 | `New file, or folder/: ` | dans le gestionnaire de dossiers, le nom à créer |
-| `Rename NAME to: ` | dans le gestionnaire de dossiers, le nouveau nom ou le nouveau chemin |
+| `Rename NAME to: ` | dans le gestionnaire de dossiers, le nouveau nom ou le nouveau chemin ; dans un fichier de Cesia, après `C-c c m`, le nouveau nom d'un nom du code |
+| `Rename NAME to NEW in N places of M files? (y or n)` | `C-c c m` : `y` fait les modifications, comme le dit [Names](names.md#a-rename) |
+| `Search project: ` | `C-x p g` : les mots à chercher dans le projet |
+| `Replace WORDS with: `, `Replace N places of WORDS in M files with NEW? (y or n)` | `C-c r` dans la liste d'une recherche |
+| `Commit message: ` | `c` dans l'état de `C-x g` : le message du commit, une ligne |
 | `Move NAME to the trash? (y or n)` | dans le gestionnaire de dossiers |
 | `I-search: `, `I-search backward: ` | une recherche est ouverte : ce que vous tapez est cherché, Enter reste à l'endroit, `C-g` revient en arrière ; voir [Recherche](search.md#chercher-dans-un-buffer) |
 | `Failing I-search: ` | il ne reste plus d'endroit des mots dans ce sens : `C-s` ou `C-r` à nouveau fait le tour par le bout, `C-g` défait ce qui n'a rien trouvé |
