@@ -10,7 +10,6 @@ use core/run
 use core/text
 use core/view
 use src/rope
-use src/sdl
 use std/cells as nb
 use std/cesia
 use std/debug
@@ -222,9 +221,6 @@ defn Prepared(scene, home)
     item = scene.Items[k]
     one = dict.Put("Color", hexColor(dict.GetOr("Color", missing, item)), item)
     one.Id = "$stamp/$k"
-    if item.Kind == "line"
-      one.Strip = sdl.IsStrip(one)
-    end
     if item.Kind == "cells"
       one.Colors = [if value.IsMissing(x) missing else hexColor(x) end for x in item.Colors]
     end

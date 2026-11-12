@@ -1,6 +1,7 @@
 (* The command that draws a graph of std/plot from its scene: {Kind: "graph", X, Y, Width, Height, Visible, Items, Font}. Its items are those of
    plot.Scene in pixels from the top left of the graph, with their colors as 0xRRGGBB: lines, areas, rectangles, marks and cells become triangles,
-   which the Nth shape of a frame keeps in its memory and writes again only when it changes, so that a graph on the screen costs a call a shape;
+   which the Nth shape of a frame keeps in its memory and writes again only when it changes, so that a graph on the screen costs a call a shape.
+   A shape is made as arrays of numbers, its positions, its colors and its indices, and each goes to C in one c.Write;
    texts are drawn with the font Font at their size, without kerning and without hinting, as std/plot measured them, and a text turned by -90
    degrees is drawn once into an image that turns. Visible is the height that the pane shows, from the top. *)
 use std/bug
@@ -10,50 +11,14 @@ use std/list
 use std/math
 use std/value
 
-(** The bytes of one vertex for SDL_RenderGeometry: x and y, then red, green, blue and alpha from 0 to 1, then two texture coordinates. *)
-VertexBytes = 32
-
 defn irect(x, y, width, height, window)
   (** The rectangle of whole pixels that the viewport and the clip take. *)
-  c.Set("i32", 0, WholeNumber(x), window.IRect)
-  c.Set("i32", 4, WholeNumber(y), window.IRect)
-  c.Set("i32", 8, WholeNumber(list.Max(0, width)), window.IRect)
-  c.Set("i32", 12, WholeNumber(list.Max(0, height)), window.IRect)
+  c.Write("i32", 0, [WholeNumber(x), WholeNumber(y), WholeNumber(list.Max(0, width)), WholeNumber(list.Max(0, height))], window.IRect)
   window.IRect
 end
 
-defn geoBlock(verts, indices)
-  (** The memory of a shape of a graph, with room for this many vertices and indices. *)
-  {Verts: c.Alloc(verts * VertexBytes), Indices: c.Alloc(indices * 4), VCap: verts, ICap: indices, Item: missing, NV: 0, NI: 0}
-end
-
-(** What a shape needs: its vertices and its indices, before they are written. *)
-needs(item) = match item.Kind
-  "line" -> {V: list.Max(0, value.Len(item.Xs) - 1) * 8, I: list.Max(0, value.Len(item.Xs) - 1) * 18}
-  "area" -> {V: value.Len(item.Xs), I: list.Max(0, value.Len(item.Xs) - 2) * 3}
-  "rect" -> {V: 4, I: 6}
-  "marks" -> {V: value.Len(item.Xs) * 9, I: value.Len(item.Xs) * 24}
-  else -> {V: (value.Len(item.Xs) - 1) * (value.Len(item.Ys) - 1) * 4, I: (value.Len(item.Xs) - 1) * (value.Len(item.Ys) - 1) * 6}
-end
-
-defn vertex(at, x, y, color, alpha, block)
-  (** Writes one vertex at a byte offset, and gives the next offset. *)
-  c.Set("f32", at, x, block)
-  c.Set("f32", at + 4, y, block)
-  c.Set("f32", at + 8, Red(color) / 255.0, block)
-  c.Set("f32", at + 12, Green(color) / 255.0, block)
-  c.Set("f32", at + 16, Blue(color) / 255.0, block)
-  c.Set("f32", at + 20, alpha, block)
-  at + VertexBytes
-end
-
-defn triangle(at, a, b, d, block)
-  (** Writes the indices of one triangle at a byte offset, and gives the next offset. *)
-  c.Set("i32", at, a, block)
-  c.Set("i32", at + 4, b, block)
-  c.Set("i32", at + 8, d, block)
-  at + 12
-end
+(** The color of a vertex for SDL: red, green, blue and alpha from 0 to 1. *)
+rgba(color, alpha) = [Red(color) / 255.0, Green(color) / 255.0, Blue(color) / 255.0, alpha]
 
 defn runs(item)
   (** The pieces of a line between its gaps: a missing point, where the data had a NaN, cuts it. *)
@@ -126,92 +91,164 @@ defn dashed(item)
   if on and value.Len(xs) > 1 list.Append({Xs: xs, Ys: ys}, out) else out end
 end
 
-defn lineShape(item, block)
-  (** A line as one quad a segment, four vertices across, its two edges a pixel of fading alpha: soft without a mask. *)
+defn lineArrays(item)
+  (** A line as strips of four vertices across each point, its two edges a pixel of fading alpha: soft without a mask. A point's normal is that of
+      the segment from the point before it to the one after it, so that the strip bends at a joint. *)
   half = list.Max(0.5, item.Width / 2.0)
-  across = [-(half + 0.6), -(half - 0.4), half - 0.4, half + 0.6]
+  across = [0.0 - (half + 0.6), 0.0 - (half - 0.4), half - 0.4, half + 0.6]
   fade = [0.0, 1.0, 1.0, 0.0]
-  at = 0
-  ti = 0
-  nv = 0
-  for piece in pieces(item)
-    for i in 1..value.Len(piece.Xs) - 1
-      x0 = piece.Xs[i]
-      y0 = piece.Ys[i]
-      x1 = piece.Xs[i + 1]
-      y1 = piece.Ys[i + 1]
-      size = math.Sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0))
-      nx = if size > 0.000001 (y0 - y1) / size else 0.0 end
-      ny = if size > 0.000001 (x1 - x0) / size else 1.0 end
+  parts = pieces(item)
+  points = list.Sum([value.Len(p.Xs) for p in parts])
+  segments = points - value.Len(parts)
+  xy = list.Fill(0.0, points * 8)
+  colors = list.Fill(0.0, points * 16)
+  index = list.Fill(0, list.Max(1, segments * 18))
+  r = Red(item.Color) / 255.0
+  g = Green(item.Color) / 255.0
+  b = Blue(item.Color) / 255.0
+  v = 0
+  ti = 1
+  for p in parts
+    n = value.Len(p.Xs)
+    for i in 1..n
+      a = list.Max(1, i - 1)
+      z = list.Min(n, i + 1)
+      dx = p.Xs[z] - p.Xs[a]
+      dy = p.Ys[z] - p.Ys[a]
+      size = math.Sqrt(dx * dx + dy * dy)
+      nx = if size > 0.000001 (0.0 - dy) / size else 0.0 end
+      ny = if size > 0.000001 dx / size else 1.0 end
       for j in 1..4
-        at = vertex(at, x0 + nx * across[j], y0 + ny * across[j], item.Color, fade[j], block.Verts)
-        at = vertex(at, x1 + nx * across[j], y1 + ny * across[j], item.Color, fade[j], block.Verts)
+        k = v + j - 1
+        xy[2 * k + 1] = p.Xs[i] + nx * across[j]
+        xy[2 * k + 2] = p.Ys[i] + ny * across[j]
+        colors[4 * k + 1] = r
+        colors[4 * k + 2] = g
+        colors[4 * k + 3] = b
+        colors[4 * k + 4] = fade[j]
       end
-      for j in 0..2
-        a = nv + 2 * j
-        ti = triangle(triangle(ti, a, a + 1, a + 2, block.Indices), a + 1, a + 3, a + 2, block.Indices)
+      if i < n
+        for j in 0..2
+          q = v + j
+          index[ti] = q
+          index[ti + 1] = q + 1
+          index[ti + 2] = q + 4
+          index[ti + 3] = q + 1
+          index[ti + 4] = q + 5
+          index[ti + 5] = q + 4
+          ti = ti + 6
+        end
       end
-      nv = nv + 8
+      v = v + 4
     end
   end
-  {NV: nv, NI: math.Div(ti, 4)}
+  {XY: xy, Colors: colors, Index: index, NV: points * 4, NI: segments * 18}
 end
 
-defn areaShape(item, block)
-  (** A band between two curves, as plot.Area gives it: its upper points, then its lower ones back, joined pair by pair. *)
+defn areaArrays(item)
+  (** A band between two curves, as plot.Area gives it: its upper points, then its lower ones back, joined pair by pair; one color. *)
   n = value.Len(item.Xs)
-  alpha = dict.GetOr("Opacity", 1.0, item)
-  at = 0
+  xy = list.Fill(0.0, n * 2)
   for i in 1..n
-    at = vertex(at, item.Xs[i], item.Ys[i], item.Color, alpha, block.Verts)
+    xy[2 * i - 1] = item.Xs[i]
+    xy[2 * i] = item.Ys[i]
   end
-  ti = 0
   m = math.Div(n, 2)
+  index = list.Fill(0, list.Max(1, (m - 1) * 6))
+  ti = 1
   for i in 0..m - 2
-    a = i
-    b = i + 1
-    lowA = n - 1 - i
-    lowB = n - 2 - i
-    ti = triangle(triangle(ti, a, b, lowA, block.Indices), b, lowB, lowA, block.Indices)
+    index[ti] = i
+    index[ti + 1] = i + 1
+    index[ti + 2] = n - 1 - i
+    index[ti + 3] = i + 1
+    index[ti + 4] = n - 2 - i
+    index[ti + 5] = n - 1 - i
+    ti = ti + 6
   end
-  {NV: n, NI: math.Div(ti, 4)}
+  {XY: xy, Color: rgba(item.Color, dict.GetOr("Opacity", 1.0, item)), Index: index, NV: n, NI: (m - 1) * 6}
 end
 
-defn quad(at, ti, nv, x, y, w, h, color, alpha, block)
-  (** One rectangle: four vertices and two triangles. Gives the offsets after them. *)
-  v = vertex(vertex(vertex(vertex(at, x, y, color, alpha, block.Verts), x + w, y, color, alpha, block.Verts), x + w, y + h, color, alpha, block.Verts), x, y + h, color, alpha, block.Verts)
-  t = triangle(triangle(ti, nv, nv + 1, nv + 2, block.Indices), nv, nv + 2, nv + 3, block.Indices)
-  {At: v, Ti: t}
-end
+(** A filled rectangle, with its opacity; one color. *)
+rectArrays(item) = {XY: [item.X, item.Y, item.X + item.W, item.Y, item.X + item.W, item.Y + item.H, item.X, item.Y + item.H],
+  Color: rgba(item.Color, dict.GetOr("Opacity", 1.0, item)), Index: [0, 1, 2, 0, 2, 3], NV: 4, NI: 6}
 
-defn rectShape(item, block)
-  (** A filled rectangle, with its opacity. *)
-  q = quad(0, 0, 0, item.X, item.Y, item.W, item.H, item.Color, dict.GetOr("Opacity", 1.0, item), block)
-  {NV: 4, NI: 6}
-end
-
-defn marksShape(item, block)
-  (** The marks of a layer: each a fan of eight triangles around its point, a circle as an octagon, a square, a triangle or a diamond by its
-      corners, a cross and a plus as two thin bars. *)
+defn marksArrays(item)
+  (** The marks of a layer: each a fan of eight triangles around its point, the corners of its shape (see markPoint); one color. *)
   r = item.Size / 2.0
   n = value.Len(item.Xs)
-  at = 0
-  ti = 0
-  nv = 0
+  corners = [markPoint(item.Shape, k, r) for k in 0..7]
+  xy = list.Fill(0.0, n * 18)
+  index = list.Fill(0, n * 24)
   for i in 1..n
+    base = (i - 1) * 18
     x = item.Xs[i]
     y = item.Ys[i]
-    at = vertex(at, x, y, item.Color, 1.0, block.Verts)
-    for k in 0..7
-      p = markPoint(item.Shape, k, r)
-      at = vertex(at, x + p.X, y + p.Y, item.Color, 1.0, block.Verts)
+    xy[base + 1] = x
+    xy[base + 2] = y
+    for k in 1..8
+      xy[base + 2 * k + 1] = x + corners[k].X
+      xy[base + 2 * k + 2] = y + corners[k].Y
     end
+    v = (i - 1) * 9
+    t = (i - 1) * 24
     for k in 0..7
-      ti = triangle(ti, nv, nv + 1 + k, nv + 1 + math.Mod(k + 1, 8), block.Indices)
+      index[t + 3 * k + 1] = v
+      index[t + 3 * k + 2] = v + 1 + k
+      index[t + 3 * k + 3] = v + 1 + math.Mod(k + 1, 8)
     end
-    nv = nv + 9
   end
-  {NV: nv, NI: math.Div(ti, 4)}
+  {XY: xy, Color: rgba(item.Color, 1.0), Index: index, NV: n * 9, NI: n * 24}
+end
+
+defn cellsArrays(item)
+  (** The cells of a heatmap or a density: a rectangle each, of its color; an empty cell is left out. *)
+  cols = value.Len(item.Xs) - 1
+  rows = value.Len(item.Ys) - 1
+  filled = value.Len([x for x in item.Colors if value.IsSome(x)])
+  xy = list.Fill(0.0, list.Max(1, filled * 8))
+  colors = list.Fill(0.0, list.Max(1, filled * 16))
+  index = list.Fill(0, list.Max(1, filled * 6))
+  q = 0
+  for r in 1..rows
+    for k in 1..cols
+      color = item.Colors[(r - 1) * cols + k]
+      if value.IsSome(color)
+        x0 = item.Xs[k]
+        x1 = item.Xs[k + 1]
+        y0 = item.Ys[r]
+        y1 = item.Ys[r + 1]
+        p = q * 8
+        xy[p + 1] = x0
+        xy[p + 2] = y0
+        xy[p + 3] = x1
+        xy[p + 4] = y0
+        xy[p + 5] = x1
+        xy[p + 6] = y1
+        xy[p + 7] = x0
+        xy[p + 8] = y1
+        cr = Red(color) / 255.0
+        cg = Green(color) / 255.0
+        cb = Blue(color) / 255.0
+        for j in 0..3
+          o = q * 16 + j * 4
+          colors[o + 1] = cr
+          colors[o + 2] = cg
+          colors[o + 3] = cb
+          colors[o + 4] = 1.0
+        end
+        v = q * 4
+        t = q * 6
+        index[t + 1] = v
+        index[t + 2] = v + 1
+        index[t + 3] = v + 2
+        index[t + 4] = v
+        index[t + 5] = v + 2
+        index[t + 6] = v + 3
+        q = q + 1
+      end
+    end
+  end
+  {XY: xy, Colors: colors, Index: index, NV: filled * 4, NI: filled * 6}
 end
 
 defn markPoint(shape, k, r)
@@ -235,168 +272,141 @@ defn markPoint(shape, k, r)
   end
 end
 
-defn cellsShape(item, block)
-  (** The cells of a heatmap or a density: a rectangle each, of its color; an empty cell is left out. *)
-  cols = value.Len(item.Xs) - 1
-  rows = value.Len(item.Ys) - 1
-  at = 0
-  ti = 0
-  nv = 0
-  for r in 1..rows
-    for k in 1..cols
-      color = item.Colors[(r - 1) * cols + k]
-      if value.IsSome(color)
-        q = quad(at, ti, nv, item.Xs[k], item.Ys[r], item.Xs[k + 1] - item.Xs[k], item.Ys[r + 1] - item.Ys[r], color, 1.0, block)
-        at = q.At
-        ti = q.Ti
-        nv = nv + 4
-      end
-    end
-  end
-  {NV: nv, NI: math.Div(ti, 4)}
-end
-
 (** What tells that a shape changed: the Id that the scene's owner gives each item, with its color, or else the whole item. *)
 stampOf(item) = if dict.Has("Id", item) "$(item.Id)#$(item.Color)" else item end
 
 (** Is a shape the one a block holds? *)
 same(item, kept) = value.IsSome(kept) and value.Equal(stampOf(item), kept)
 
-(* ---- A line of one piece as a strip of four vertices across each point: only the positions change with the line, two numbers a vertex; the
-   colors, a pattern of alpha 0, 1, 1, 0 across, and the indices, the same for every strip, are written once for a color and a length. *)
-
-defn stripColors(color, capacity, window)
-  (** The colors of the vertices of a strip of this many points, for a color: kept by color, grown when a longer line comes. *)
-  key = "$color"
-  kept = dict.Get(key, window.StripColors)
-  if value.IsSome(kept) and kept.Capacity >= capacity
-    return {Block: kept.Block, Window: window}
+defn grown(block, cap, bytes)
+  (** A block of C memory for at least this many bytes: the one given if it is large enough, else a new one, the old one freed. *)
+  if value.IsSome(block) and cap >= bytes
+    return {Block: block, Cap: cap}
   end
-  if value.IsSome(kept)
-    c.Free(kept.Block)
+  if value.IsSome(block)
+    c.Free(block)
   end
-  n = list.Max(capacity, if value.IsSome(kept) 2 * kept.Capacity else 256 end)
-  block = c.Alloc(n * 4 * 16)
-  fade = [0.0, 1.0, 1.0, 0.0]
-  at = 0
-  for i in 1..n
-    for j in 1..4
-      c.Set("f32", at, Red(color) / 255.0, block)
-      c.Set("f32", at + 4, Green(color) / 255.0, block)
-      c.Set("f32", at + 8, Blue(color) / 255.0, block)
-      c.Set("f32", at + 12, fade[j], block)
-      at = at + 16
-    end
-  end
-  next = window
-  next.StripColors = dict.Put(key, {Block: block, Capacity: n}, window.StripColors)
-  {Block: block, Window: next}
+  size = list.Max(64, 2 * bytes)
+  {Block: c.Alloc(size), Cap: size}
 end
 
-defn stripIndex(capacity, window)
-  (** The indices of a strip of this many points: three bands of two triangles between each two points. *)
-  kept = window.StripIndex
-  if value.IsSome(kept) and kept.Capacity >= capacity
-    return {Block: kept.Block, Window: window}
-  end
-  if value.IsSome(kept)
-    c.Free(kept.Block)
-  end
-  n = list.Max(capacity, if value.IsSome(kept) 2 * kept.Capacity else 256 end)
-  block = c.Alloc((n - 1) * 18 * 4)
-  at = 0
-  for i in 0..n - 2
-    for j in 0..2
-      a = i * 4 + j
-      at = triangle(triangle(at, a, a + 1, a + 4, block), a + 1, a + 5, a + 4, block)
-    end
-  end
-  next = window
-  next.StripIndex = {Block: block, Capacity: n}
-  {Block: block, Window: next}
+defn memoryFor(arrays, block)
+  (** The memory of a shape, grown to hold its arrays, which are written to it, each in one c.Write. *)
+  out = if value.IsMissing(block) {XY: missing, XYCap: 0, Colors: missing, CCap: 0, Index: missing, ICap: 0, Item: missing} else block end
+  xy = grown(out.XY, out.XYCap, value.Len(arrays.XY) * 4)
+  out.XY = xy.Block
+  out.XYCap = xy.Cap
+  colors = if dict.Has("Colors", arrays) arrays.Colors else arrays.Color end
+  cs = grown(out.Colors, out.CCap, value.Len(colors) * 4)
+  out.Colors = cs.Block
+  out.CCap = cs.Cap
+  ix = grown(out.Index, out.ICap, value.Len(arrays.Index) * 4)
+  out.Index = ix.Block
+  out.ICap = ix.Cap
+  c.Write("f32", 0, arrays.XY, out.XY)
+  c.Write("f32", 0, colors, out.Colors)
+  c.Write("i32", 0, arrays.Index, out.Index)
+  out.Stride = if dict.Has("Colors", arrays) 16 else 0 end
+  out.NV = arrays.NV
+  out.NI = arrays.NI
+  out
 end
 
-defn stripped(item, window)
-  (** Draws a line of one piece from the memory of the Nth strip of the frame, its positions written again only when it changed. *)
-  n = value.Len(item.Xs)
-  next = window
-  next.StripUsed = dict.GetOr("StripUsed", 0, window) + 1
-  at = next.StripUsed
-  strips = dict.GetOr("Strips", [], window)
-  if at > value.Len(strips)
-    strips = list.Append({XY: c.Alloc(list.Max(64, n) * 4 * 8), Capacity: list.Max(64, n), Item: missing, N: 0}, strips)
-  else if n > strips[at].Capacity
-    c.Free(strips[at].XY)
-    strips[at] = {XY: c.Alloc(list.Max(n, 2 * strips[at].Capacity) * 4 * 8), Capacity: list.Max(n, 2 * strips[at].Capacity), Item: missing, N: 0}
+defn evenly(edges)
+  (** Are the edges of the columns or of the rows of a grid evenly spaced, to a quarter of a pixel, as a scene rounds them? Then an image of a pixel
+      a cell, stretched, draws the cells, each edge less than a quarter of a pixel from its place. *)
+  n = value.Len(edges)
+  step = (edges[n] - edges[1]) / (n - 1)
+  for i in 2..n
+    if math.Abs(edges[i] - edges[1] - step * (i - 1)) > 0.25
+      return false
+    end
   end
-  one = strips[at]
-  if not same(item, one.Item)
-    half = list.Max(0.5, item.Width / 2.0)
-    across = [0.0 - (half + 0.6), 0.0 - (half - 0.4), half - 0.4, half + 0.6]
-    off = 0
-    for i in 1..n
-      a = list.Max(1, i - 1)
-      b = list.Min(n, i + 1)
-      dx = item.Xs[b] - item.Xs[a]
-      dy = item.Ys[b] - item.Ys[a]
-      size = math.Sqrt(dx * dx + dy * dy)
-      nx = if size > 0.000001 (0.0 - dy) / size else 0.0 end
-      ny = if size > 0.000001 dx / size else 1.0 end
-      for j in 1..4
-        c.Set("f32", off, item.Xs[i] + nx * across[j], one.XY)
-        c.Set("f32", off + 4, item.Ys[i] + ny * across[j], one.XY)
-        off = off + 8
+  true
+end
+
+defn cellsImage(item, window)
+  (** The cells of a grid of even columns as an image of one pixel a cell, written in one c.Write and stretched over the grid, sharp: a heatmap of
+      a million cells costs an image, not two million triangles; rows of unequal heights are drawn one by one, each at its place. Its texture is
+      kept by the Nth image of the frame and written again only when the item changed. *)
+  cols = value.Len(item.Xs) - 1
+  rows = value.Len(item.Ys) - 1
+  next = window
+  next.ImageUsed = dict.GetOr("ImageUsed", 0, window) + 1
+  at = next.ImageUsed
+  images = dict.GetOr("GraphImages", [], window)
+  if at > value.Len(images)
+    images = list.Append(missing, images)
+  end
+  one = images[at]
+  if value.IsMissing(one) or not same(item, one.Item)
+    if value.IsSome(one) and (one.W != cols or one.H != rows)
+      next.Sdl.DestroyTexture(one.Texture)
+      c.Free(one.Pixels)
+      one = missing
+    end
+    if value.IsMissing(one)
+      texture = next.Sdl.CreateTexture(next.Renderer, PixelsRgba, 0, cols, rows)
+      if value.IsMissing(texture)
+        bug.Panic(next.Sdl.Error())
       end
+      next.Sdl.TextureBlend(texture, BlendAlpha)
+      next.Sdl.ScaleMode(texture, 0)
+      one = {Texture: texture, Pixels: c.Alloc(cols * rows * 4), W: cols, H: rows, Item: missing}
     end
+    pixels = [if value.IsMissing(x) 0 else Rgba(Red(x), Green(x), Blue(x), 255) end for x in item.Colors]
+    c.Write("u32", 0, pixels, one.Pixels)
+    checked(next.Sdl.UpdateTexture(one.Texture, missing, one.Pixels, cols * 4), next)
     one.Item = stampOf(item)
-    one.N = n
-    strips[at] = one
+    images[at] = one
   end
-  next.Strips = strips
-  colors = stripColors(item.Color, n, next)
-  index = stripIndex(n, colors.Window)
-  w = index.Window
-  checked(w.Sdl.GeometryRaw(w.Renderer, missing, one.XY, 8, colors.Block, 16, one.XY, 8, n * 4, index.Block, (n - 1) * 18, 4), w)
-  w
+  next.GraphImages = images
+  left = list.Min(item.Xs[1], item.Xs[cols + 1])
+  wide = math.Abs(item.Xs[cols + 1] - item.Xs[1])
+  if evenly(item.Ys)
+    flip = if item.Ys[1] > item.Ys[rows + 1] 2 else 0 end
+    box = area(left, list.Min(item.Ys[1], item.Ys[rows + 1]), wide, math.Abs(item.Ys[rows + 1] - item.Ys[1]), next)
+    checked(next.Sdl.Rotated(next.Renderer, one.Texture, missing, box, 0.0, missing, flip), next)
+    return next
+  end
+  (* Rows of unequal heights, as merged rows give: each row of the image goes to its own place. *)
+  for r in 1..rows
+    c.Write("f32", 0, [0.0, r - 1.0, cols * 1.0, 1.0], next.SrcRect)
+    box = area(left, list.Min(item.Ys[r], item.Ys[r + 1]), wide, math.Abs(item.Ys[r + 1] - item.Ys[r]), next)
+    checked(next.Sdl.RenderTexture(next.Renderer, one.Texture, next.SrcRect, box), next)
+  end
+  next
 end
-
-(** Can a line be one strip: no dash and no gap? The owner of a scene can say it once, as Strip, so that a frame doesn't look through its points. *)
-IsStrip(item) = item.Kind == "line" and dict.GetOr("Strip", value.IsMissing(item.Dash) and value.Len(item.Xs) > 1 and not list.Any([value.IsMissing(x) for x in item.Ys]), item)
 
 defn shaped(item, window)
-  (** Draws one shape of a graph from the memory of the Nth shape of the frame, written again only when its item changed. *)
+  (** Draws one shape of a graph from the memory of the Nth shape of the frame, made again only when its item changed: positions, then colors, a
+      color for each vertex or one for all, then indices, for SDL_RenderGeometryRaw. Cells of an even grid are an image. *)
+  if item.Kind == "cells" and value.Len(item.Xs) > 1 and value.Len(item.Ys) > 1 and evenly(item.Xs)
+    return cellsImage(item, window)
+  end
   next = window
   next.GeoUsed = dict.GetOr("GeoUsed", 0, window) + 1
   at = next.GeoUsed
   blocks = dict.GetOr("GeoBlocks", [], window)
-  need = needs(item)
-  if need.V == 0 or need.I == 0
-    return next
-  end
   if at > value.Len(blocks)
-    blocks = list.Append(geoBlock(list.Max(64, need.V), list.Max(96, need.I)), blocks)
-  else if need.V > blocks[at].VCap or need.I > blocks[at].ICap
-    c.Free(blocks[at].Verts)
-    c.Free(blocks[at].Indices)
-    blocks[at] = geoBlock(list.Max(need.V, 2 * blocks[at].VCap), list.Max(need.I, 2 * blocks[at].ICap))
+    blocks = list.Append(missing, blocks)
   end
   block = blocks[at]
-  if not same(item, block.Item)
-    made = match item.Kind
-      "line" -> lineShape(item, block)
-      "area" -> areaShape(item, block)
-      "rect" -> rectShape(item, block)
-      "marks" -> marksShape(item, block)
-      else -> cellsShape(item, block)
+  if value.IsMissing(block) or not same(item, block.Item)
+    arrays = match item.Kind
+      "line" -> lineArrays(item)
+      "area" -> areaArrays(item)
+      "rect" -> rectArrays(item)
+      "marks" -> marksArrays(item)
+      else -> cellsArrays(item)
     end
+    block = memoryFor(arrays, block)
     block.Item = stampOf(item)
-    block.NV = made.NV
-    block.NI = made.NI
     blocks[at] = block
   end
   next.GeoBlocks = blocks
   if block.NI > 0
-    checked(next.Sdl.Geometry(next.Renderer, missing, block.Verts, block.NV, block.Indices, block.NI), next)
+    checked(next.Sdl.GeometryRaw(next.Renderer, missing, block.XY, 8, block.Colors, block.Stride, block.XY, 8, block.NV, block.Index, block.NI, 4), next)
   end
   next
 end
@@ -488,7 +498,7 @@ defn DrawGraph(one, window)
   checked(w.Sdl.Viewport(w.Renderer, irect(one.X, one.Y, one.Width, one.Height, w)), w)
   for item in one.Items
     clipTo(dict.GetOr("Clip", missing, item), visible, one, w)
-    w = if item.Kind == "text" plotText(item, one.Font, w) else if IsStrip(item) stripped(item, w) else shaped(item, w) end
+    w = if item.Kind == "text" plotText(item, one.Font, w) else shaped(item, w) end
   end
   checked(w.Sdl.Clip(w.Renderer, missing), w)
   checked(w.Sdl.Viewport(w.Renderer, missing), w)

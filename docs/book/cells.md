@@ -111,7 +111,8 @@ the 16.7 ms of one refresh of a screen at 60 Hz.
 
 A graph of 100,000 points, which std/plot's scene brings down to four points per pixel column, under a cell of a pane 1,800
 pixels wide, with marks, a band, a title, a legend and its axes: drawn by SDL's OpenGL renderer in an offscreen window, 21
-frames taking turns with the same screen without it, a frame takes 2.7 ms, against 1.3 ms without the graph. The first frame
-of a new scene, after a change of width, writes its 29,000 vertices from Cesia, one number at a time, and takes 21.8 ms,
-over one refresh; the scene itself takes 6.6 ms in the session. A still graph costs a call a shape: what is written stays
-until the scene changes.
+frames taking turns with a new scene, a frame takes 2.2 ms. The first frame of a new scene, after a change of width,
+makes the arrays of its 29,000 vertices and gives each to C in one `c.Write`, and takes 12.7 ms, within one refresh; the
+scene itself takes 6.6 ms in the session. A still graph costs a call a shape: what is written stays until the scene
+changes. 100,000 marks take 249 ms for the first frame of their scene and 53 ms for the next ones, as SDL sends their
+900,000 vertices again at each frame; a heatmap of 1,000 by 1,000, one image of a pixel a cell, 116 ms and 3.0 ms.
