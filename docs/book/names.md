@@ -41,9 +41,10 @@ back to are kept as a stack, the last 100 of them: `M-,` again goes further back
 ## Which definition
 
 Where a name is defined is told by Cesia's own language server, `cesia lsp`, the one every editor that speaks the Language
-Server Protocol asks, so that Cemacs and the others find the same place, by the same rules. Cemacs starts it at the first
-`M-.`, `M-?`, `C-c c i`, `C-c c m` or signature of the session, and keeps it until it ends: a question is then a message to a
-process that runs already, under a millisecond. The name under the cursor is read with its dots: on `Map` of `list.Map(f)`,
+Server Protocol asks, so that Cemacs and the others find the same place, by the same rules. At the first `M-.`, `M-?`,
+`C-c c i`, `C-c c m` or signature of the session, Cemacs starts `tools/names.ce`, which starts `cesia lsp` and speaks its
+protocol, so that none of that code loads with the editor; both stay until Cemacs ends, and a question is then a message to
+processes that run already, about a millisecond. The name under the cursor is read with its dots: on `Map` of `list.Map(f)`,
 the name is `list.Map`; on `list`, it is the package. Then:
 
 - a name of the file's own package, as `Rate` or `extra`, is looked for in the files of its folder, the file itself first;
@@ -55,8 +56,8 @@ the name is `list.Map`; on `list`, it is the package. Then:
 - a name after the dot of a value, as `Area` in `r.Area()`, is a method: the one of that name in the file's package, or in
   the packages of the project that it uses.
 
-Before a question, Cemacs gives the server the text of the current buffer and of each Cesia buffer not saved, so that a
-definition you just typed is found. The first time it gives a buffer, it gives the text on the disk first, so that a text
+With a question, Cemacs gives the text of the current buffer and of each Cesia buffer not saved, when it changed since the
+last question, so that a definition you just typed is found. The first time it gives a buffer, it gives the text on the disk first, so that a text
 that doesn't read yet, as a call half typed, stands for its file with the definitions the server read in the saved one.
 Two things are the server's today: a name through the name of a package, as `shop.Total`, is found where the package's
 file on the disk has it, not in a buffer of that file not saved, and its documentation is its signature without its text.
@@ -134,6 +135,7 @@ that src/ide knows:
 
 | Program | Its work | Its permissions |
 |---|---|---|
+| `tools/names.ce` | [src/names]: for the session, it asks `cesia lsp` where a name is defined and what its documentation says | `read`, `exec=cesia`, to start `cesia lsp` |
 | `tools/lookup.ce` | [src/lookup]: the places that read a name, and the edits of a rename, from where `cesia lsp` says it is defined | `read` |
 | `tools/grep.ce` | [src/grep]: the search of a project | `read`, `exec=git` |
 | `tools/git.ce` | [src/git]: Git | `read`, `exec=git` |
@@ -142,8 +144,10 @@ that src/ide knows:
 | `tools/shell.ce` | [the shell](shell.md): it starts your shell and passes it the commands of its buffer, for as long as the buffer is open | `exec=` your shell, alone |
 
 The question waits in a fiber, as the check does, and each tick of the editor takes the answer once it has come, so that
-typing never waits; a new question takes the place of one not answered yet. `cesia lsp` answers the same way, from a fiber:
-its messages are JSON, each after a `Content-Length` header, and its columns count UTF-16 code units, as the protocol says.
+typing never waits; a new question takes the place of one not answered yet. `tools/names.ce` and `tools/shell.ce` run for
+the session instead: a question to the names goes as its length on a line and its JSON, their answers come as lines of JSON,
+in order, read from a fiber. `tools/names.ce` speaks to `cesia lsp` as the protocol says: JSON after a `Content-Length`
+header, columns in UTF-16 code units.
 So none of this work loads when Cemacs starts:
 every line of Cesia that loads at the start costs about 5 µs, more as the code grows, and the four programs and their
 packages hold about 2,000 lines, which would add over 8 ms to each start. A question costs a process instead, about 15 ms to
@@ -152,8 +156,8 @@ start and load, then its work.
 ## Security
 
 - The lookup runs no code: it reads files, and asks `cesia.Definitions` and `cesia.Reads`, which parse and resolve without
-  running anything. Its only permission is `read`: it can't write, connect, or start a program. `cesia lsp` reads files and
-  never writes one, as Cesia's book tells.
+  running anything. Its only permission is `read`: it can't write, connect, or start a program. `tools/names.ce` has `read`
+  and `exec=cesia`, the one program it starts being `cesia lsp`, which reads files and never writes one, as Cesia's book tells.
 - Each program runs with the permissions of the table above, which src/ide gives it; an answer can't ask for others, nor
   name a program that isn't in the table: a request of an answer that does is refused.
 - An answer is read as input from another program: every place is checked, a path from the root, a line from 1, a column
