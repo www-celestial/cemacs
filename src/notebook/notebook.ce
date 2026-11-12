@@ -210,6 +210,109 @@ defn hexColor(color)
   n
 end
 
+(* ---- A scene comes from the session, another process: it is input, checked before anything is made of it. *)
+
+(** The most vertices that the shapes of one scene may make, and the most items, cells and marks: past them a scene is refused, not drawn. *)
+SceneLimits() = {Vertices: 4000000, Items: 20000, Cells: 4194304, Edges: 8193, Marks: 250000, Points: 1000000, Text: 1000}
+
+(** Is every element of an array a number, or missing where a gap is allowed? *)
+numbers(xs, gaps) = value.IsArray(xs) and list.All([value.IsNumber(x) or (gaps and value.IsMissing(x)) for x in xs])
+
+(** Is a value a number from low to high? *)
+within(x, low, high) = value.IsNumber(x) and x >= low and x <= high
+
+defn itemFault(item, lim)
+  (** What is wrong with an item of a scene, or missing; with the vertices it makes when it is right. *)
+  if not value.IsDict(item) or not dict.Has("Kind", item)
+    return {Fault: "an item is no shape"}
+  end
+  clip = dict.GetOr("Clip", missing, item)
+  if value.IsSome(clip) and not (value.IsArray(clip) and value.Len(clip) == 4 and numbers(clip, false))
+    return {Fault: "a clip is no rectangle"}
+  end
+  color = dict.GetOr("Color", missing, item)
+  if value.IsSome(color) and not value.IsText(color)
+    return {Fault: "a color is no text"}
+  end
+  k = item.Kind
+  if k == "line" or k == "area" or k == "marks"
+    n = value.Len(dict.GetOr("Xs", [], item))
+    most = if k == "marks" lim.Marks else lim.Points end
+    if n > most or not numbers(dict.GetOr("Xs", missing, item), k == "line") or not numbers(dict.GetOr("Ys", missing, item), k == "line") or value.Len(item.Ys) != n
+      return {Fault: "a $k has no points, or more than $most, or not as many y as x"}
+    end
+    if k == "line" and not within(dict.GetOr("Width", missing, item), 0, 50)
+      return {Fault: "a line is no width from 0 to 50"}
+    end
+    dash = dict.GetOr("Dash", missing, item)
+    if k == "line" and value.IsSome(dash) and not (value.IsArray(dash) and value.Len(dash) == 2 and list.All([within(d, 0.5, 1000) for d in dash]))
+      return {Fault: "a dash is no pair of lengths"}
+    end
+    if k == "marks" and not within(dict.GetOr("Size", missing, item), 0, 100)
+      return {Fault: "marks have no size from 0 to 100"}
+    end
+    return {Vertices: if k == "line" n * 4 else if k == "marks" n * 9 else n end}
+  end
+  if k == "rect"
+    if not numbers([dict.GetOr("X", missing, item), dict.GetOr("Y", missing, item), dict.GetOr("W", missing, item), dict.GetOr("H", missing, item)], false)
+      return {Fault: "a rectangle has no place"}
+    end
+    return {Vertices: 4}
+  end
+  if k == "cells"
+    xs = dict.GetOr("Xs", missing, item)
+    ys = dict.GetOr("Ys", missing, item)
+    if not numbers(xs, false) or not numbers(ys, false) or value.Len(xs) < 2 or value.Len(ys) < 2 or value.Len(xs) > lim.Edges or value.Len(ys) > lim.Edges
+      return {Fault: "cells have no grid of 2 to $(lim.Edges) edges a side"}
+    end
+    count = (value.Len(xs) - 1) * (value.Len(ys) - 1)
+    colors = dict.GetOr("Colors", missing, item)
+    if count > lim.Cells or not value.IsArray(colors) or value.Len(colors) != count or not list.All([value.IsText(x) or value.IsMissing(x) for x in colors])
+      return {Fault: "cells have more than $(lim.Cells) cells, or not a color each"}
+    end
+    return {Vertices: count * 4}
+  end
+  if k == "text"
+    words = dict.GetOr("Text", missing, item)
+    if not value.IsText(words) or value.Len(words) > lim.Text or not within(dict.GetOr("Size", missing, item), 4, 96) or not numbers([dict.GetOr("X", missing, item), dict.GetOr("Y", missing, item), dict.GetOr("Width", missing, item)], false)
+      return {Fault: "a text has no words, no size from 4 to 96 or no place"}
+    end
+    if not (dict.GetOr("Anchor", "start", item) in ["start", "middle", "end"]) or not (dict.GetOr("Angle", 0, item) in [0, -90])
+      return {Fault: "a text has an anchor or an angle std/plot never gives"}
+    end
+    return {Vertices: 0}
+  end
+  {Fault: "an item of kind $(k) is unknown"}
+end
+
+defn SceneFault(scene)
+  (** What is wrong with a scene that the session sent, or missing: its size, its items and, for all of them, the vertices they would make,
+      checked against SceneLimits() before any memory is taken for it.
+
+        SceneFault({Width: 100, Height: 80, Items: [{Kind: "rect", X: 0, Y: 0, W: 10, H: 10, Color: "#ff0000"}]}) --> missing
+        SceneFault({Width: 100, Height: 80, Items: [{Kind: "line", Xs: [1, 2], Ys: [1], Width: 1}]}) --> "a line has no points, or more than 1000000, or not as many y as x" *)
+  lim = SceneLimits()
+  if not value.IsDict(scene) or not within(dict.GetOr("Width", missing, scene), 100, 8192) or not within(dict.GetOr("Height", missing, scene), 80, 4096)
+    return "it is no scene from 100 by 80 to 8192 by 4096 pixels"
+  end
+  items = dict.GetOr("Items", missing, scene)
+  if not value.IsArray(items) or value.Len(items) > lim.Items
+    return "it has no items, or more than $(lim.Items)"
+  end
+  total = 0
+  for item in items
+    f = itemFault(item, lim)
+    if dict.Has("Fault", f)
+      return f.Fault
+    end
+    total = total + f.Vertices
+    if total > lim.Vertices
+      return "its shapes would make more than $(lim.Vertices) vertices"
+    end
+  end
+  missing
+end
+
 defn Prepared(scene, home)
   (** A scene of std/plot ready for the screen: its colors as numbers, once, an Id for each item, by which sdl knows that the item it drew is the
       same, and the font its texts are measured in, that of Cemacs's folder.
@@ -257,6 +360,10 @@ defn graphOf(ran, state)
   v = if result.IsOk(ran) ran.Value.Value else missing end
   if value.IsMissing(v) or v.Kind != "graph"
     return missing
+  end
+  fault = SceneFault(dict.GetOr("Scene", missing, v))
+  if value.IsSome(fault)
+    return {Fault: "This graph isn't drawn: $fault."}
   end
   dict.Put("Key", v.Key, Prepared(v.Scene, commands.Home(state)))
 end
@@ -339,7 +446,12 @@ defn taken(k, state)
   r.Index = 0
   ran = if result.IsOk(got) got.Value else got end
   lines = if result.IsOk(ran) resultLines({Errors: [], Output: ran.Value.Output, Value: ran.Value.Value, Error: ran.Value.Error}) else [{Role: "error", Words: ran.Error.Message}] end
-  s = withBlock(k, i, lines, withRun(k, r, state), graph = graphOf(ran, state))
+  graph = graphOf(ran, state)
+  if value.IsSome(graph) and dict.Has("Fault", graph)
+    lines = list.Append({Role: "error", Words: graph.Fault}, lines)
+    graph = missing
+  end
+  s = withBlock(k, i, lines, withRun(k, r, state), graph = graph)
   if result.IsErr(ran)
     r.Session = missing
     r.Queue = []
@@ -464,8 +576,8 @@ defn widened(k, state)
     if value.IsMissing(old) or value.IsMissing(dict.GetOr("Graph", missing, old))
       return s
     end
-    if result.IsErr(scene)
-      (* A graph the session no longer holds keeps its width. *)
+    if result.IsErr(scene) or value.IsSome(SceneFault(scene.Value))
+      (* A graph the session no longer holds, or a scene that isn't sane, keeps its width. *)
       return withBlock(k, pending.Cell, old.Lines, s, graph = dict.Put("Fixed", true, old.Graph))
     end
     return withBlock(k, pending.Cell, old.Lines, s, graph = dict.Put("Key", old.Graph.Key, Prepared(scene.Value, commands.Home(s))))
@@ -751,6 +863,10 @@ defn answered(k, state)
   s = state
   after = appended("$words$Prompt", b)
   graph = graphOf(ran, state)
+  if value.IsSome(graph) and dict.Has("Fault", graph)
+    after = appended("$words$(graph.Fault)\n$Prompt", b)
+    graph = missing
+  end
   if value.IsSome(graph)
     (* The graph under the last line of the answer, above the new prompt. *)
     under = rope.LineCount(after.Rope) - 1

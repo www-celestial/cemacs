@@ -100,6 +100,15 @@ such a name in its cell, or under another name.
 code coloured as Cesia's docs colour it, what it printed and its value, as a table or a text, or its error. The page needs
 no other file and no script, and shows what `cesia run` computes, not the state of the window.
 
+## Security
+
+A scene comes from the session, another process, and Cemacs reads it as input: before anything is made of it, its size,
+the kind and the fields of each item, and the vertices all of them would make are checked against [notebook.SceneLimits],
+four million vertices and twenty thousand items at most; a scene past them, or of a shape std/plot never gives, is
+refused, and the cell says why in red. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
+a million cells. The memory the shapes take is written by `c.Write`, which checks its whole length against the block
+before it writes.
+
 ## Speed
 
 Typing in a file of cells costs what typing in any file costs: the cells are read again only when a cell runs, and half a

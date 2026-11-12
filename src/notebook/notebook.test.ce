@@ -1,0 +1,15 @@
+(** Tests of the checks of a scene from the session, which is input: wrong shapes and sizes past the limits are refused before anything is made. *)
+use src/notebook
+use std/list
+use std/text as str
+use std/value
+
+scene(items) = {Width: 640, Height: 400, Items: items}   (** A scene of these items. *)
+
+isSaneSceneAccepted() = value.IsMissing(notebook.SceneFault(scene([{Kind: "line", Xs: [1.0, 2.0, missing], Ys: [3.0, 4.0, missing], Width: 1.5, Dash: missing, Color: "ink"}])))
+isHugeSceneRefused() = value.IsSome(notebook.SceneFault({Width: 100000, Height: 400, Items: []}))
+isTooManyMarksRefused() = str.StartsWith("a marks has", notebook.SceneFault(scene([{Kind: "marks", Xs: list.Fill(1.0, 250001), Ys: list.Fill(1.0, 250001), Size: 6, Shape: "circle", Color: "#000000"}])))
+isTextPointRefused() = value.IsSome(notebook.SceneFault(scene([{Kind: "area", Xs: [1.0, "x"], Ys: [1.0, 2.0], Color: "#000000"}])))
+isCellsWithoutColorsRefused() = value.IsSome(notebook.SceneFault(scene([{Kind: "cells", Xs: [0.0, 1.0, 2.0], Ys: [0.0, 1.0], Colors: ["#000000"]}])))
+isUnknownKindRefused() = value.IsSome(notebook.SceneFault(scene([{Kind: "polygon"}])))
+isTooManyVerticesRefused() = str.Contains("vertices", notebook.SceneFault(scene(list.Fill({Kind: "line", Xs: list.Fill(1.0, 900000), Ys: list.Fill(1.0, 900000), Width: 1}, 2))))
