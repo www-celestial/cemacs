@@ -3,6 +3,7 @@
     These are functions and not variables, for --watch: a reload changes functions and reruns no file-level statement. Keys = {...} would keep its old value
     until a restart, and a new variable would be read before it has a value, which panics. A function gives what the code says at the next key. *)
 use core/commands
+use src/ui
 
 (** What Tab types. *)
 TabText() = "  "
@@ -15,6 +16,15 @@ DragZone() = 4
 
 (** The size of the three fonts. The window reads it when it opens, so a change shows at the next start. *)
 FontSize() = 15
+
+(** The theme, ui.Dark or ui.Light of src/ui, or a record of the same fields. The window reads it when it opens, so a change shows at the next start. *)
+Theme() = ui.Dark
+
+(** The size of the window when it opens, in pixels, {Width, Height}: the window can be resized after. A change shows at the next start. *)
+Window() = {Width: 1280, Height: 720}
+
+(** What the editor does once at its start, after it opened the files it was given: a function from a state to a state, as a command is. Here, nothing. *)
+Start(state) = state
 
 (** The seconds that the first keys of a pair or a group wait before the band above the prompt line shows what can follow them. *)
 HintDelay() = 0.5
@@ -110,7 +120,9 @@ ListKeys() = {"backspace": commands.ListBack, "S-backspace": commands.ListBack, 
 CompleteKeys() = {"C-n": commands.CompleteNext, "down": commands.CompleteNext, "C-p": commands.CompletePrevious, "up": commands.CompletePrevious,
   "tab": commands.CompleteAccept}
 
-(** What the editor runs on, for the Config of a state: keys, the global keys given, and the other keys and the settings of this file. src/cemacs.ce gives
-    it the keys of every app. Each field is a function, read at the next key, so that a change applies under --watch. *)
+(** What the editor runs on, for the Config of a state: keys, the global keys given, and the other keys, the settings and the start of this file. src/cemacs.ce
+    gives it the keys of every app. Each field is a function, read at the next key, so that a change applies under --watch; FontSize, Theme and Window are
+    read once, when the window opens, and Start runs once, after the files opened. *)
 Config(keys) = {Keys: keys, PromptKeys: PromptKeys, MouseKeys: MouseKeys, PromptMouseKeys: PromptMouseKeys, ListKeys: ListKeys, CompleteKeys: CompleteKeys,
-  TabText: TabText, WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay, CheckDelay: CheckDelay}
+  TabText: TabText, WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay, CheckDelay: CheckDelay, Theme: Theme, Window: Window,
+  Start: Start}

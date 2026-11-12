@@ -605,7 +605,8 @@ isSecondKeyOtherTextDropped() = wordsOf(played([keyWith("x", true, false, false)
 defn isEveryKeyAndSettingVisible()
   (** cesia doc emacs lists every key and every setting, as it does the commands. *)
   shown = cesia.DocNames("emacs")
-  names = ["Keys", "PromptKeys", "MouseKeys", "PromptMouseKeys", "CompleteKeys", "TabText", "WheelLines", "DragZone", "FontSize", "Config"]
+  names = ["Keys", "PromptKeys", "MouseKeys", "PromptMouseKeys", "CompleteKeys", "TabText", "WheelLines", "DragZone", "FontSize", "Theme", "Window", "Start",
+    "Config"]
   value.Len(list.Filter(name -> not ("emacs.$name" in shown), names)) == 0
 end
 (** The core holds no key: a state with no config, as from a session before it, runs no command and doesn't panic, and text still types. *)
@@ -613,6 +614,8 @@ isNoConfigRunsNothing() = here(press.Press(["C-f"], view.Start([text.Of("ab", mi
 isNoConfigTypes() = wordsOf(press.Press(["x"], view.Start([text.Of("ab", missing)], look, cell, 800, 600))) == "xab"
 (** The font size is a setting, so that the tests and the editor read the same one. *)
 isFontSize() = emacs.FontSize() == 15
+(** The theme, the size of the window and the start of Cemacs as it comes: dark, 1280 by 720, and a start that does nothing. *)
+isStartSettings() = value.Equal(emacs.Theme(), ui.Dark) and value.Equal(emacs.Window(), {Width: 1280, Height: 720}) and value.Equal(emacs.Start(stateOf("ab")), stateOf("ab"))
 
 (** Lists: a buffer of rows from an app, which typing filters. This one has four rows that stand for 10 to 40, and enter says which one is under the cursor. *)
 fruits(state) = [{Words: "apple", Item: 10}, {Words: "banana", Item: 20}, {Words: "cherry", Item: 30}, {Words: "date", Item: 40}]

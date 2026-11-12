@@ -9,26 +9,55 @@ use std/result
 use std/sys
 use std/value
 
-defn opened(home, size)
-  (** The window, with the three fonts of Cemacs found in fonts/ under its home, all of this size: body, strong and code. *)
-  first = sdl.Open("Cemacs", 1280, 720, "$home/fonts/AdwaitaSans-Regular.ttf", size = size, light = true)?
+defn opened(home, size, window)
+  (** The window, of the size window gives, {Width, Height} in pixels, with the three fonts of Cemacs found in fonts/ under its home, all of this size: body,
+      strong and code. *)
+  first = sdl.Open("Cemacs", window.Width, window.Height, "$home/fonts/AdwaitaSans-Regular.ttf", size = size, light = true)?
   second = sdl.AddFont("strong", "$home/fonts/NotoSans-Medium.ttf", size, first, light = true)?
   sdl.AddFont("code", "$home/fonts/JetBrainsMono-Regular.ttf", size, second)
 end
 
+defn themeOf(c)
+  (** The theme that the Theme of a config gives, or ui.Dark for a config without one, as one made before this field: see view.Start. *)
+  match c
+    {Theme: f} -> f()
+    else -> ui.Dark
+  end
+end
+
+defn windowOf(c)
+  (** The size of the window at the start, {Width, Height} in pixels, that the Window of a config gives, or 1280 by 720 for a config without one. *)
+  match c
+    {Window: f} -> f()
+    else -> {Width: 1280, Height: 720}
+  end
+end
+
+defn begun(c, state)
+  (** The state after the Start of a config, the function from a state to a state that runs once, after the files opened; the state as it is for a config
+      without one. *)
+  match c
+    {Start: f} -> f(state)
+    else -> state
+  end
+end
+
 defn Start(config)
-  (** Opens the window with config, the function that gives the keys and the settings, opens the files given after the home or one empty buffer, and runs until
-      the editor ends. bin/cemacs gives the home of Cemacs first, then the files to open; cesia do dev runs from the home and gives nothing. *)
+  (** Opens the window with config, the function that gives the keys and the settings, opens the files given after the home or one empty buffer, runs the
+      Start of the config, and runs until the editor ends. The size of the window, its theme and its fonts are read once, here. bin/cemacs gives the home of
+      Cemacs first, then the files to open; cesia do dev runs from the home and gives nothing. *)
   home = if value.Len(sys.Args) == 0 "." else sys.Args[1] end
-  window = opened(home, config().FontSize())?
+  c = config()
+  size = windowOf(c)
+  window = opened(home, c.FontSize(), size)?
   measured = sdl.Measure(window)
-  look = ui.Look(ui.Dark, measured.Width, measured.Height)
+  look = ui.Look(themeOf(c), measured.Width, measured.Height)
   cell = {Width: look.Width("M", "code"), Height: sdl.TextSize("Ag", window, font = "code").Height + view.LineGap}
-  empty = view.Start([text.Of("", missing)], look, cell, 1280, 720)
+  empty = view.Start([text.Of("", missing)], look, cell, size.Width, size.Height)
   empty.Window = window
   empty.Config = config
   empty.Home = home
-  state = commands.Settled(commands.OpenAll(list.Skip(1, sys.Args), empty))
+  state = commands.Settled(begun(c, commands.OpenAll(list.Skip(1, sys.Args), empty)))
   sdl.Run(state, commands.Update, view.View, window, moving = commands.Moving)
   sdl.Close(window)
   result.Ok(missing)

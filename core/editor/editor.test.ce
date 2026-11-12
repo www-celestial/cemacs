@@ -1,0 +1,30 @@
+(** Tests of what the window reads from a config once, at its start: the theme, the size of the window and the start, each with a default for a config
+    without it, as one made before these fields. *)
+use src/emacs
+use src/ui
+use core/commands
+use core/text
+use core/view
+use std/value
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+first() = view.Start([text.Of("", missing)], look, {Width: 8, Height: 19}, 800, 600)   (** A state of one empty buffer, with no window. *)
+
+(** A config as one made before Theme, Window and Start: the settings that the core read then, and no more. *)
+older() = {Keys: emacs.Keys, FontSize: emacs.FontSize, TabText: emacs.TabText}
+
+defn mine()
+  (** The config of Cemacs with a theme, a window and a start of its own. *)
+  c = emacs.Config(emacs.Keys)
+  c.Theme = () -> ui.Light
+  c.Window = () -> {Width: 1600, Height: 900}
+  c.Start = s -> commands.Say("started with $(value.Len(s.Buffers)) buffer", s)
+  c
+end
+
+isThemeRead() = value.Equal(themeOf(mine()), ui.Light) and value.Equal(themeOf(emacs.Config(emacs.Keys)), ui.Dark)
+isThemeDefault() = value.Equal(themeOf(older()), ui.Dark)
+isWindowRead() = value.Equal(windowOf(mine()), {Width: 1600, Height: 900}) and value.Equal(windowOf(emacs.Config(emacs.Keys)), {Width: 1280, Height: 720})
+isWindowDefault() = value.Equal(windowOf(older()), {Width: 1280, Height: 720})
+isStartRun() = begun(mine(), first()).Message == "started with 1 buffer"
+isStartDefault() = value.Equal(begun(older(), first()), first()) and value.Equal(begun(emacs.Config(emacs.Keys), first()), first())
