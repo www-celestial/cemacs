@@ -34,6 +34,7 @@ use src/check
 use src/emacs
 use src/folders
 use src/help
+use src/notebook
 use src/output
 use src/project
 use std/cesia
@@ -44,8 +45,8 @@ use std/text as str
 use std/value
 
 (* The keys as src/cemacs.ce merges them: that file opens the window when it loads, so the page makes the same merge. *)
-all = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()), check.Keys()),
-  output.Keys()))
+all = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()),
+  check.Keys()), output.Keys()), notebook.Keys()))
 
 defn about(f)
   (** The name of a command as the reference writes it, as a link, and the first sentence of its text. *)
@@ -87,7 +88,7 @@ value.Len(dict.Keys(all)) -->
 
 Une commande liée à deux touches, comme `C-x C-f` et `C-c f f`, est la même fonction : la seconde touche n'est pas une copie
 de la première. Sous `C-c`, la lettre de chaque groupe est la première lettre de son nom, comme dans Doom Emacs : `f` files
-(fichiers), `b` buffers, `w` windows (fenêtres), `c` code, `d` debug (débogage), `q` quit (quitter).
+(fichiers), `b` buffers, `w` windows (fenêtres), `c` code, `d` debug (débogage), `e` execute (exécuter), les [cellules](cells.md), `q` quit (quitter).
 
 ## Une question sur la prompt line
 

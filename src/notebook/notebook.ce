@@ -1,6 +1,6 @@
 (** Cells: a file of Cesia cut by (* %% Title *) comments runs as a notebook, its results drawn under its cells, as blocks of the buffer: never typed,
     never saved. C-c e e runs the cell of the cursor and the cells that read what it defines, C-c e a every cell from the top; each cell file has a session
-    of std/cells, a Cesia process that keeps the names its cells defined. *variables* lists them beside, *repl* below runs code in the same session, and
+    of std/cells, a Cesia process that keeps the names its cells defined. `*variables*` lists them beside, `*repl*` below runs code in the same session, and
     C-c e h writes the page of the file. The work is std/cells': runs wait in fibers, and each tick takes their results, so that typing never waits.
     src/cemacs.ce adds the hooks of Hooked to the config and these Keys. *)
 use core/commands
@@ -22,7 +22,7 @@ use std/sys
 use std/text as str
 use std/value
 
-(** The keys of the cells, in their group of C-c: e for execute. M-p and M-n go through the history in *repl*, and Enter there runs what was typed. *)
+(** The keys of the cells, in their group of C-c: e for execute. M-p and M-n go through the history in `*repl*`, and Enter there runs what was typed. *)
 Keys() = {"C-c e": "execute", "C-c e e": RunCell, "C-c e a": RunAll, "C-c e i": InsertCell, "C-c e v": ShowVariables, "C-c e r": OpenRepl,
   "C-c e s": StopCell, "C-c e h": WriteHtml, "C-c e k": ClearResults, "enter": Enter, "S-enter": Enter, "M-p": HistoryBack, "M-n": HistoryOn}
 
@@ -415,10 +415,10 @@ defn exported(k, state)
   commands.Say(if result.IsOk(wrote) "Wrote $path." else "Can't write $path." end, s)
 end
 
-(* ---- *variables*: the names of the session beside the file; Enter on one shows its rows. *)
+(* ---- `*variables*`: the names of the session beside the file; Enter on one shows its rows. *)
 
 defn ownerOf(state)
-  (** The buffer of cells that the current one belongs to: itself, or the one a list or *repl* came from, or 0. *)
+  (** The buffer of cells that the current one belongs to: itself, or the one a list or `*repl*` came from, or 0. *)
   b = state.Buffers[state.Current]
   p = replOf(b)
   path = if lists.IsList(b) dict.GetOr("Owner", missing, lists.Of(b)) else if value.IsSome(p) p.Owner else missing end
@@ -442,7 +442,7 @@ defn varRows(path, state)
 end
 
 defn ShowVariables(state)
-  (** C-c e v: opens *variables* beside the file of cells: the names its cells defined, each with its type, its size and the start of its value. *)
+  (** C-c e v: opens `*variables*` beside the file of cells: the names its cells defined, each with its type, its size and the start of its value. *)
   k = ownerOf(state)
   if k == 0
     return commands.Say("The variables are those of a file of cells: run one with C-c e e first.", state)
@@ -491,7 +491,7 @@ defn fetched(k, upto, state)
 end
 
 defn viewOf(path, name, state)
-  (** Enter on a row of *variables*: a viewer of the value of that name, a frame or a matrix in full, its rows fetched as the screen reaches them. *)
+  (** Enter on a row of `*variables*`: a viewer of the value of that name, a frame or a matrix in full, its rows fetched as the screen reaches them. *)
   s = commands.ShowList("*$name*", st -> viewRows(path, name, st), () -> {}, state)
   l = lists.Of(s.Buffers[s.Current])
   l.Owner = path
@@ -516,13 +516,13 @@ defn viewing(state)
   fetched(state.Current, b.Top + 2 * Chunk(), state)
 end
 
-(* ---- *repl*: a prompt in the session of a file of cells. *)
+(* ---- `*repl*`: a prompt in the session of a file of cells. *)
 
-Prompt = "> "   (** The prompt of *repl*, before the code typed. *)
-More = ". "   (** The start of a line of *repl* that goes on with the code above it. *)
+Prompt = "> "   (** The prompt of `*repl*`, before the code typed. *)
+More = ". "   (** The start of a line of `*repl*` that goes on with the code above it. *)
 
 defn replOf(b)
-  (** The prompt of a buffer, {Owner, History, At, Task}, or missing: only *repl* has one. *)
+  (** The prompt of a buffer, {Owner, History, At, Task}, or missing: only `*repl*` has one. *)
   match b
     {Repl: p} -> p
     else -> missing
@@ -530,7 +530,7 @@ defn replOf(b)
 end
 
 defn OpenRepl(state)
-  (** C-c e r: opens *repl* below the file of cells, a prompt in its session: an expression shows its value. *)
+  (** C-c e r: opens `*repl*` below the file of cells, a prompt in its session: an expression shows its value. *)
   k = ownerOf(state)
   if k == 0
     return commands.Say("*repl* runs in the session of a file of cells: open one first.", state)
@@ -553,7 +553,7 @@ defn OpenRepl(state)
 end
 
 defn typedCode(b)
-  (** The code typed after the last prompt of *repl*, its lines without their prompts. *)
+  (** The code typed after the last prompt of `*repl*`, its lines without their prompts. *)
   all = str.Lines(rope.Text(b.Rope))
   k = value.Len(all)
   while k > 1 and not str.StartsWith(Prompt, all[k])
@@ -585,7 +585,7 @@ defn refused(code, path, state)
 end
 
 defn replEnter(state)
-  (** Enter in *repl*: what was typed runs in the session when it is whole, and the next line goes on with ". " when it isn't. *)
+  (** Enter in `*repl*`: what was typed runs in the session when it is whole, and the next line goes on with ". " when it isn't. *)
   b = state.Buffers[state.Current]
   p = replOf(b)
   if value.IsSome(p.Task)
@@ -618,11 +618,11 @@ defn replEnter(state)
   s
 end
 
-(** Enter: in *repl* it runs what was typed; anywhere else it is a new line, as always. *)
+(** Enter: in `*repl*` it runs what was typed; anywhere else it is a new line, as always. *)
 Enter(state) = if value.IsSome(replOf(state.Buffers[state.Current])) replEnter(state) else commands.NewLine(state) end
 
 defn answered(k, state)
-  (** The state after a tick for *repl* in buffer k: the answer of its code, once it came, then a new prompt. *)
+  (** The state after a tick for `*repl*` in buffer k: the answer of its code, once it came, then a new prompt. *)
   b = state.Buffers[k]
   p = replOf(b)
   if value.IsMissing(p) or value.IsMissing(p.Task)
@@ -650,7 +650,7 @@ defn answered(k, state)
 end
 
 defn historyMoved(by, state)
-  (** M-p and M-n in *repl*: the code typed before, or after, in place of what follows the last prompt. *)
+  (** M-p and M-n in `*repl*`: the code typed before, or after, in place of what follows the last prompt. *)
   b = state.Buffers[state.Current]
   p = replOf(b)
   if value.IsMissing(p) or value.Len(p.History) == 0
@@ -679,7 +679,7 @@ HistoryOn(state) = historyMoved(-1, state)   (** M-n: the code typed after. *)
 (* ---- The hooks. *)
 
 defn tick(state)
-  (** The state at a tick: the results of each buffer's cells, its stops and its page, the answers of *repl*, the rows of a viewer, and the blocks moved
+  (** The state at a tick: the results of each buffer's cells, its stops and its page, the answers of `*repl*`, the rows of a viewer, and the blocks moved
       back under their cells once the text rests. *)
   s = state
   for k in 1..value.Len(s.Buffers)

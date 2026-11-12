@@ -132,7 +132,7 @@ C'est un petit script `bash`. Il trouve le dossier de Cemacs à partir de sa pro
 symbolique, crée `user/` par `tools/user.sh` s'il manque, et lance :
 
 ```bash
-cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf \
+cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf --allow "exec=$(readlink -f "$(command -v cesia)")" \
   "$home/src/cemacs.ce" "$home" "$@"
 ```
 
@@ -148,6 +148,7 @@ demande celles-ci :
 |---|---|
 | `read`, `write` | pour ouvrir et enregistrer tout fichier que vous choisissez, et pour lister les dossiers |
 | `exec=cesia` | pour lancer `cesia check` sur votre code et `cesia run` ou `cesia do` sur vos programmes |
+| `exec=` le vrai chemin de `cesia` | pour démarrer la session d'un fichier de [cellules](cells.md) avec le même `cesia` que celui qui lance Cemacs |
 | `exec=git` | pour lister les fichiers d'un projet, `git ls-files`, pour `C-x p f` : aucun autre programme |
 | `env=HOME` | `~/` dans le gestionnaire de dossiers, et la corbeille |
 | `env=PWD` | le dossier où vous avez lancé Cemacs : un chemin relatif, et le `cesia.toml` dont la tâche exécute un fichier |
@@ -178,7 +179,7 @@ run = ["tools/dev.sh"]
 `tools/dev.sh` crée `user/` s'il manque, comme le fait `bin/cemacs`, puis montre la commande qu'il lance, et la lance :
 
 ```bash
-cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME --watch src/cemacs.ce
+cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME --allow "exec=$(readlink -f "$(command -v cesia)")" --watch src/cemacs.ce
 ```
 
 La tâche est un script et pas le programme lui-même, puisque Cesia lit les dossiers du code avant de lancer un programme,
