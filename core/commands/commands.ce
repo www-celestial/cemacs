@@ -774,12 +774,24 @@ end
 defn store(k, path, force, disk, state)
   (** Writes buffer k to path, if the file is still the one of disk, or whatever is there when force is true. An Err of kind changed asks first,
       one of kind saved counts as a save whose time is unknown, and any other Err is a message with the text still modified. *)
-  words = rope.Text(state.Buffers[k].Rope)
-  r = if force files.ForceSave(path, words) else files.SaveFile(path, words, disk) end
-  match r
-    result.Ok(now) -> saved(k, path, now, "Saved $path", state)
-    result.Err(e) -> failed(k, path, disk, e, state)
+  typed = rope.Text(state.Buffers[k].Rope)
+  shaped = formatted(path, typed, state)
+  s = state
+  if shaped.Words != typed
+    s.Buffers[k] = text.Retyped(shaped.Words, state.Buffers[k])
   end
+  r = if force files.ForceSave(path, shaped.Words) else files.SaveFile(path, shaped.Words, disk) end
+  match r
+    result.Ok(now) -> saved(k, path, now, if value.IsMissing(shaped.Error) "Saved $path" else "Saved $path as typed: $(shaped.Error)" end, s)
+    result.Err(e) -> failed(k, path, disk, e, s)
+  end
+end
+
+defn formatted(path, words, state)
+  (** The words to save at path, as the Format of the config gives them, {Words, Error}: src/ide passes a file of Cesia through cesia fmt. A config
+      without it saves the words as they are. *)
+  f = dict.GetOr("Format", missing, config(state))
+  if value.IsMissing(f) {Words: words, Error: missing} else f(path, words, state) end
 end
 
 defn failed(k, path, disk, e, state)

@@ -711,6 +711,35 @@ defn CallAt(line, column)
   missing
 end
 
+(* ---- Format on save: a file of Cesia is saved as cesia fmt writes it. *)
+
+defn Formatted(path, words, state)
+  (** The words of a file to save, as cesia fmt writes them, {Words, Error}: the words go to a file of their own in .cesia/fmt/ of the folder of Cemacs,
+      cesia fmt formats it, and the formatted words come back, the file removed. A text that doesn't read is saved as typed, Error saying why; so is a file
+      that isn't one of Cesia, or one over TextLimit() bytes. *)
+  if not str.EndsWith(".ce", path) or str.ByteLength(words) > TextLimit()
+    return {Words: words, Error: missing}
+  end
+  dir = "$(commands.Home(state))/.cesia/fmt"
+  name = "$dir/$(math.Div(math.Floor(sys.Now() * 1000000.0), 1))-$(folders.BaseName(path))"
+  made = sys.Mkdir(dir)
+  wrote = if result.IsOk(made) sys.Write(name, words) else made end
+  if result.IsErr(wrote)
+    return {Words: words, Error: "cesia fmt has no place to write: $(wrote.Error.Message)"}
+  end
+  ran = sys.Run("cesia", ["fmt", name], timeout = QuestionLimit())
+  back = sys.Read(name)
+  _ = sys.Remove(name)
+  if result.IsErr(ran) or result.IsErr(back)
+    return {Words: words, Error: "cesia fmt can't run"}
+  end
+  if ran.Value.Code != 0
+    said = list.First([str.Replace(name, path, l) for l in str.Lines("$(ran.Value.Out)$(ran.Value.Err)") if str.Trim(l) != "" and l != name])
+    return {Words: words, Error: if value.IsMissing(said) "cesia fmt ended with code $(ran.Value.Code)" else said end}
+  end
+  {Words: back.Value, Error: missing}
+end
+
 (* ---- Hooks *)
 
 defn Idle(delay, state)
@@ -731,12 +760,13 @@ Moving(state) = not value.IsMissing(asking(state)) or lspWaits(state)
 
 defn Hooked(config)
   (** A config with the hooks of the questions over those it has: at each tick, its Idle then this one's, after its CheckDelay; it moves while either
-      needs. *)
+      needs; and Format, which saves a file of Cesia as cesia fmt writes it. *)
   c = config
   idle = dict.GetOr("Idle", s -> s, config)
   moving = dict.GetOr("Moving", s -> false, config)
   c.Idle = s -> Idle(config.CheckDelay(), idle(s))
   c.Saved = dict.GetOr("Saved", s -> s, config)
   c.Moving = s -> moving(s) or Moving(s)
+  c.Format = Formatted
   c
 end

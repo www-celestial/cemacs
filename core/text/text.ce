@@ -622,6 +622,26 @@ defn Replaced(spans, b)
   edit(r, b.Cursor, list.Min([s.Line for s in spans]), false, false, b)
 end
 
+defn Retyped(words, b)
+  (** The buffer with its whole text replaced by words, as one step of undo, as cesia fmt gives it at a save: the cursor stays on its line, moved with the
+      indent of that line when the lines didn't change in number, and brought inside the text.
+
+        Retyped("  x = 1", Place(1, 4, Of("x = 1", missing))).Cursor --> {Line: 1, Column: 6} *)
+  before = rope.Text(b.Rope)
+  if words == before
+    return b
+  end
+  old = str.Split("\n", before)
+  new = str.Split("\n", words)
+  c = b.Cursor
+  column = c.Column
+  if value.Len(old) == value.Len(new) and c.Line <= value.Len(old)
+    lead(l) = value.Len(list.TakeWhile(ch -> ch == " ", str.Chars(l)))
+    column = list.Max(0, c.Column + lead(new[c.Line]) - lead(old[c.Line]))
+  end
+  edit(rope.Of(words), {Line: c.Line, Column: column}, 1, false, false, b)
+end
+
 defn CutLine(b)
   (** Cuts from the cursor to the end of its line, or the line end itself if the cursor is already there: {Buffer, Cut}, cut being the removed
       text. At the end of the file there is nothing to cut.
