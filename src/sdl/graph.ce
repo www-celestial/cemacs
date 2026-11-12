@@ -1,0 +1,506 @@
+(* The command that draws a graph of std/plot from its scene: {Kind: "graph", X, Y, Width, Height, Visible, Items, Font}. Its items are those of
+   plot.Scene in pixels from the top left of the graph, with their colors as 0xRRGGBB: lines, areas, rectangles, marks and cells become triangles,
+   which the Nth shape of a frame keeps in its memory and writes again only when it changes, so that a graph on the screen costs a call a shape.
+   A shape is made as arrays of numbers, its positions, its colors and its indices, and each goes to C in one c.Write;
+   texts are drawn with the font Font at their size, without kerning and without hinting, as std/plot measured them, and a text turned by -90
+   degrees is drawn once into an image that turns. Visible is the height that the pane shows, from the top. *)
+use std/bug
+use std/c
+use std/dict
+use std/list
+use std/math
+use std/value
+
+defn irect(x, y, width, height, window)
+  (** The rectangle of whole pixels that the viewport and the clip take. *)
+  c.Write("i32", 0, [WholeNumber(x), WholeNumber(y), WholeNumber(list.Max(0, width)), WholeNumber(list.Max(0, height))], window.IRect)
+  window.IRect
+end
+
+(** The color of a vertex for SDL: red, green, blue and alpha from 0 to 1. *)
+rgba(color, alpha) = [Red(color) / 255.0, Green(color) / 255.0, Blue(color) / 255.0, alpha]
+
+defn runs(item)
+  (** The pieces of a line between its gaps: a missing point, where the data had a NaN, cuts it. *)
+  out = []
+  xs = []
+  ys = []
+  for i in 1..value.Len(item.Xs)
+    if value.IsMissing(item.Xs[i]) or value.IsMissing(item.Ys[i])
+      if value.Len(xs) > 1
+        out = list.Append({Xs: xs, Ys: ys, Dash: item.Dash}, out)
+      end
+      xs = []
+      ys = []
+    else
+      xs = list.Append(item.Xs[i], xs)
+      ys = list.Append(item.Ys[i], ys)
+    end
+  end
+  if value.Len(xs) > 1 list.Append({Xs: xs, Ys: ys, Dash: item.Dash}, out) else out end
+end
+
+(** The pieces of a line drawn with its dash, its gaps left out. *)
+pieces(item) = list.FlatMap(dashed, runs(item))
+
+defn dashed(item)
+  (** The pieces of a line drawn with its dash: [on, off] lengths in pixels repeat along it; a line without one is one piece. *)
+  if value.IsMissing(item.Dash) or value.Len(item.Dash) < 2
+    return [{Xs: item.Xs, Ys: item.Ys}]
+  end
+  out = []
+  xs = []
+  ys = []
+  k = 1
+  left = item.Dash[1]
+  on = true
+  n = value.Len(item.Xs)
+  for i in 1..n - 1
+    x = item.Xs[i]
+    y = item.Ys[i]
+    if on and value.Len(xs) == 0
+      xs = [x]
+      ys = [y]
+    end
+    tx = item.Xs[i + 1]
+    ty = item.Ys[i + 1]
+    length = math.Sqrt((tx - x) * (tx - x) + (ty - y) * (ty - y))
+    done = 0.0
+    while length - done > left
+      done = done + left
+      px = x + (tx - x) * done / length
+      py = y + (ty - y) * done / length
+      if on
+        out = list.Append({Xs: list.Append(px, xs), Ys: list.Append(py, ys)}, out)
+        xs = []
+        ys = []
+      else
+        xs = [px]
+        ys = [py]
+      end
+      on = not on
+      k = if k == 1 2 else 1 end
+      left = item.Dash[k]
+    end
+    left = left - (length - done)
+    if on
+      xs = list.Append(tx, xs)
+      ys = list.Append(ty, ys)
+    end
+  end
+  if on and value.Len(xs) > 1 list.Append({Xs: xs, Ys: ys}, out) else out end
+end
+
+defn lineArrays(item)
+  (** A line as strips of four vertices across each point, its two edges a pixel of fading alpha: soft without a mask. A point's normal is that of
+      the segment from the point before it to the one after it, so that the strip bends at a joint. *)
+  half = list.Max(0.5, item.Width / 2.0)
+  across = [0.0 - (half + 0.6), 0.0 - (half - 0.4), half - 0.4, half + 0.6]
+  fade = [0.0, 1.0, 1.0, 0.0]
+  parts = pieces(item)
+  points = list.Sum([value.Len(p.Xs) for p in parts])
+  segments = points - value.Len(parts)
+  xy = list.Fill(0.0, points * 8)
+  colors = list.Fill(0.0, points * 16)
+  index = list.Fill(0, list.Max(1, segments * 18))
+  r = Red(item.Color) / 255.0
+  g = Green(item.Color) / 255.0
+  b = Blue(item.Color) / 255.0
+  v = 0
+  ti = 1
+  for p in parts
+    n = value.Len(p.Xs)
+    for i in 1..n
+      a = list.Max(1, i - 1)
+      z = list.Min(n, i + 1)
+      dx = p.Xs[z] - p.Xs[a]
+      dy = p.Ys[z] - p.Ys[a]
+      size = math.Sqrt(dx * dx + dy * dy)
+      nx = if size > 0.000001 (0.0 - dy) / size else 0.0 end
+      ny = if size > 0.000001 dx / size else 1.0 end
+      for j in 1..4
+        k = v + j - 1
+        xy[2 * k + 1] = p.Xs[i] + nx * across[j]
+        xy[2 * k + 2] = p.Ys[i] + ny * across[j]
+        colors[4 * k + 1] = r
+        colors[4 * k + 2] = g
+        colors[4 * k + 3] = b
+        colors[4 * k + 4] = fade[j]
+      end
+      if i < n
+        for j in 0..2
+          q = v + j
+          index[ti] = q
+          index[ti + 1] = q + 1
+          index[ti + 2] = q + 4
+          index[ti + 3] = q + 1
+          index[ti + 4] = q + 5
+          index[ti + 5] = q + 4
+          ti = ti + 6
+        end
+      end
+      v = v + 4
+    end
+  end
+  {XY: xy, Colors: colors, Index: index, NV: points * 4, NI: segments * 18}
+end
+
+defn areaArrays(item)
+  (** A band between two curves, as plot.Area gives it: its upper points, then its lower ones back, joined pair by pair; one color. *)
+  n = value.Len(item.Xs)
+  xy = list.Fill(0.0, n * 2)
+  for i in 1..n
+    xy[2 * i - 1] = item.Xs[i]
+    xy[2 * i] = item.Ys[i]
+  end
+  m = math.Div(n, 2)
+  index = list.Fill(0, list.Max(1, (m - 1) * 6))
+  ti = 1
+  for i in 0..m - 2
+    index[ti] = i
+    index[ti + 1] = i + 1
+    index[ti + 2] = n - 1 - i
+    index[ti + 3] = i + 1
+    index[ti + 4] = n - 2 - i
+    index[ti + 5] = n - 1 - i
+    ti = ti + 6
+  end
+  {XY: xy, Color: rgba(item.Color, dict.GetOr("Opacity", 1.0, item)), Index: index, NV: n, NI: (m - 1) * 6}
+end
+
+(** A filled rectangle, with its opacity; one color. *)
+rectArrays(item) = {XY: [item.X, item.Y, item.X + item.W, item.Y, item.X + item.W, item.Y + item.H, item.X, item.Y + item.H],
+  Color: rgba(item.Color, dict.GetOr("Opacity", 1.0, item)), Index: [0, 1, 2, 0, 2, 3], NV: 4, NI: 6}
+
+defn marksArrays(item)
+  (** The marks of a layer: each a fan of eight triangles around its point, the corners of its shape (see markPoint); one color. *)
+  r = item.Size / 2.0
+  n = value.Len(item.Xs)
+  corners = [markPoint(item.Shape, k, r) for k in 0..7]
+  xy = list.Fill(0.0, n * 18)
+  index = list.Fill(0, n * 24)
+  for i in 1..n
+    base = (i - 1) * 18
+    x = item.Xs[i]
+    y = item.Ys[i]
+    xy[base + 1] = x
+    xy[base + 2] = y
+    for k in 1..8
+      xy[base + 2 * k + 1] = x + corners[k].X
+      xy[base + 2 * k + 2] = y + corners[k].Y
+    end
+    v = (i - 1) * 9
+    t = (i - 1) * 24
+    for k in 0..7
+      index[t + 3 * k + 1] = v
+      index[t + 3 * k + 2] = v + 1 + k
+      index[t + 3 * k + 3] = v + 1 + math.Mod(k + 1, 8)
+    end
+  end
+  {XY: xy, Color: rgba(item.Color, 1.0), Index: index, NV: n * 9, NI: n * 24}
+end
+
+defn cellsArrays(item)
+  (** The cells of a heatmap or a density: a rectangle each, of its color; an empty cell is left out. *)
+  cols = value.Len(item.Xs) - 1
+  rows = value.Len(item.Ys) - 1
+  filled = value.Len([x for x in item.Colors if value.IsSome(x)])
+  xy = list.Fill(0.0, list.Max(1, filled * 8))
+  colors = list.Fill(0.0, list.Max(1, filled * 16))
+  index = list.Fill(0, list.Max(1, filled * 6))
+  q = 0
+  for r in 1..rows
+    for k in 1..cols
+      color = item.Colors[(r - 1) * cols + k]
+      if value.IsSome(color)
+        x0 = item.Xs[k]
+        x1 = item.Xs[k + 1]
+        y0 = item.Ys[r]
+        y1 = item.Ys[r + 1]
+        p = q * 8
+        xy[p + 1] = x0
+        xy[p + 2] = y0
+        xy[p + 3] = x1
+        xy[p + 4] = y0
+        xy[p + 5] = x1
+        xy[p + 6] = y1
+        xy[p + 7] = x0
+        xy[p + 8] = y1
+        cr = Red(color) / 255.0
+        cg = Green(color) / 255.0
+        cb = Blue(color) / 255.0
+        for j in 0..3
+          o = q * 16 + j * 4
+          colors[o + 1] = cr
+          colors[o + 2] = cg
+          colors[o + 3] = cb
+          colors[o + 4] = 1.0
+        end
+        v = q * 4
+        t = q * 6
+        index[t + 1] = v
+        index[t + 2] = v + 1
+        index[t + 3] = v + 2
+        index[t + 4] = v
+        index[t + 5] = v + 2
+        index[t + 6] = v + 3
+        q = q + 1
+      end
+    end
+  end
+  {XY: xy, Colors: colors, Index: index, NV: filled * 4, NI: filled * 6}
+end
+
+defn markPoint(shape, k, r)
+  (** Corner k, from 0 to 7, of a mark of radius r around its point. *)
+  t = math.Pi * 2.0 * k / 8.0
+  if shape == "square"
+    s = [[1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [-1.0, 1.0], [-1.0, 0.0], [-1.0, -1.0], [0.0, -1.0], [1.0, -1.0]][k + 1]
+    {X: s[1] * r, Y: s[2] * r}
+  else if shape == "diamond"
+    s = [[1.0, 0.0], [0.5, 0.5], [0.0, 1.0], [-0.5, 0.5], [-1.0, 0.0], [-0.5, -0.5], [0.0, -1.0], [0.5, -0.5]][k + 1]
+    {X: s[1] * r, Y: s[2] * r}
+  else if shape == "triangle"
+    s = [[0.0, -1.0], [0.5, 0.0], [1.0, 1.0], [0.0, 1.0], [-1.0, 1.0], [-0.5, 0.0], [0.0, -1.0], [0.0, -1.0]][k + 1]
+    {X: s[1] * r, Y: s[2] * r}
+  else if shape == "cross" or shape == "plus"
+    a = if shape == "cross" math.Pi / 4.0 else 0.0 end
+    w = if math.Mod(k, 2) == 0 r else 0.25 * r end
+    {X: w * math.Cos(t + a), Y: w * math.Sin(t + a)}
+  else
+    {X: r * math.Cos(t), Y: r * math.Sin(t)}
+  end
+end
+
+(** What tells that a shape changed: the Id that the scene's owner gives each item, with its color, or else the whole item. *)
+stampOf(item) = if dict.Has("Id", item) "$(item.Id)#$(item.Color)" else item end
+
+(** Is a shape the one a block holds? *)
+same(item, kept) = value.IsSome(kept) and value.Equal(stampOf(item), kept)
+
+defn grown(block, cap, bytes)
+  (** A block of C memory for at least this many bytes: the one given if it is large enough, else a new one, the old one freed. *)
+  if value.IsSome(block) and cap >= bytes
+    return {Block: block, Cap: cap}
+  end
+  if value.IsSome(block)
+    c.Free(block)
+  end
+  size = list.Max(64, 2 * bytes)
+  {Block: c.Alloc(size), Cap: size}
+end
+
+defn memoryFor(arrays, block)
+  (** The memory of a shape, grown to hold its arrays, which are written to it, each in one c.Write. *)
+  out = if value.IsMissing(block) {XY: missing, XYCap: 0, Colors: missing, CCap: 0, Index: missing, ICap: 0, Item: missing} else block end
+  xy = grown(out.XY, out.XYCap, value.Len(arrays.XY) * 4)
+  out.XY = xy.Block
+  out.XYCap = xy.Cap
+  colors = if dict.Has("Colors", arrays) arrays.Colors else arrays.Color end
+  cs = grown(out.Colors, out.CCap, value.Len(colors) * 4)
+  out.Colors = cs.Block
+  out.CCap = cs.Cap
+  ix = grown(out.Index, out.ICap, value.Len(arrays.Index) * 4)
+  out.Index = ix.Block
+  out.ICap = ix.Cap
+  c.Write("f32", 0, arrays.XY, out.XY)
+  c.Write("f32", 0, colors, out.Colors)
+  c.Write("i32", 0, arrays.Index, out.Index)
+  out.Stride = if dict.Has("Colors", arrays) 16 else 0 end
+  out.NV = arrays.NV
+  out.NI = arrays.NI
+  out
+end
+
+defn evenly(edges)
+  (** Are the edges of the columns or of the rows of a grid evenly spaced, to a quarter of a pixel, as a scene rounds them? Then an image of a pixel
+      a cell, stretched, draws the cells, each edge less than a quarter of a pixel from its place. *)
+  n = value.Len(edges)
+  step = (edges[n] - edges[1]) / (n - 1)
+  for i in 2..n
+    if math.Abs(edges[i] - edges[1] - step * (i - 1)) > 0.25
+      return false
+    end
+  end
+  true
+end
+
+defn cellsImage(item, window)
+  (** The cells of a grid of even columns as an image of one pixel a cell, written in one c.Write and stretched over the grid, sharp: a heatmap of
+      a million cells costs an image, not two million triangles; rows of unequal heights are drawn one by one, each at its place. Its texture is
+      kept by the Nth image of the frame and written again only when the item changed. *)
+  cols = value.Len(item.Xs) - 1
+  rows = value.Len(item.Ys) - 1
+  next = window
+  next.ImageUsed = dict.GetOr("ImageUsed", 0, window) + 1
+  at = next.ImageUsed
+  images = dict.GetOr("GraphImages", [], window)
+  if at > value.Len(images)
+    images = list.Append(missing, images)
+  end
+  one = images[at]
+  if value.IsMissing(one) or not same(item, one.Item)
+    if value.IsSome(one) and (one.W != cols or one.H != rows)
+      next.Sdl.DestroyTexture(one.Texture)
+      c.Free(one.Pixels)
+      one = missing
+    end
+    if value.IsMissing(one)
+      texture = next.Sdl.CreateTexture(next.Renderer, PixelsRgba, 0, cols, rows)
+      if value.IsMissing(texture)
+        bug.Panic(next.Sdl.Error())
+      end
+      next.Sdl.TextureBlend(texture, BlendAlpha)
+      next.Sdl.ScaleMode(texture, 0)
+      one = {Texture: texture, Pixels: c.Alloc(cols * rows * 4), W: cols, H: rows, Item: missing}
+    end
+    pixels = [if value.IsMissing(x) 0 else Rgba(Red(x), Green(x), Blue(x), 255) end for x in item.Colors]
+    c.Write("u32", 0, pixels, one.Pixels)
+    checked(next.Sdl.UpdateTexture(one.Texture, missing, one.Pixels, cols * 4), next)
+    one.Item = stampOf(item)
+    images[at] = one
+  end
+  next.GraphImages = images
+  left = list.Min(item.Xs[1], item.Xs[cols + 1])
+  wide = math.Abs(item.Xs[cols + 1] - item.Xs[1])
+  if evenly(item.Ys)
+    flip = if item.Ys[1] > item.Ys[rows + 1] 2 else 0 end
+    box = area(left, list.Min(item.Ys[1], item.Ys[rows + 1]), wide, math.Abs(item.Ys[rows + 1] - item.Ys[1]), next)
+    checked(next.Sdl.Rotated(next.Renderer, one.Texture, missing, box, 0.0, missing, flip), next)
+    return next
+  end
+  (* Rows of unequal heights, as merged rows give: each row of the image goes to its own place. *)
+  for r in 1..rows
+    c.Write("f32", 0, [0.0, r - 1.0, cols * 1.0, 1.0], next.SrcRect)
+    box = area(left, list.Min(item.Ys[r], item.Ys[r + 1]), wide, math.Abs(item.Ys[r + 1] - item.Ys[r]), next)
+    checked(next.Sdl.RenderTexture(next.Renderer, one.Texture, next.SrcRect, box), next)
+  end
+  next
+end
+
+defn shaped(item, window)
+  (** Draws one shape of a graph from the memory of the Nth shape of the frame, made again only when its item changed: positions, then colors, a
+      color for each vertex or one for all, then indices, for SDL_RenderGeometryRaw. Cells of an even grid are an image. *)
+  if item.Kind == "cells" and value.Len(item.Xs) > 1 and value.Len(item.Ys) > 1 and evenly(item.Xs)
+    return cellsImage(item, window)
+  end
+  next = window
+  next.GeoUsed = dict.GetOr("GeoUsed", 0, window) + 1
+  at = next.GeoUsed
+  blocks = dict.GetOr("GeoBlocks", [], window)
+  if at > value.Len(blocks)
+    blocks = list.Append(missing, blocks)
+  end
+  block = blocks[at]
+  if value.IsMissing(block) or not same(item, block.Item)
+    arrays = match item.Kind
+      "line" -> lineArrays(item)
+      "area" -> areaArrays(item)
+      "rect" -> rectArrays(item)
+      "marks" -> marksArrays(item)
+      else -> cellsArrays(item)
+    end
+    block = memoryFor(arrays, block)
+    block.Item = stampOf(item)
+    blocks[at] = block
+  end
+  next.GeoBlocks = blocks
+  if block.NI > 0
+    checked(next.Sdl.GeometryRaw(next.Renderer, missing, block.XY, 8, block.Colors, block.Stride, block.XY, 8, block.NV, block.Index, block.NI, 4), next)
+  end
+  next
+end
+
+defn plotFont(size, path, window)
+  (** The font of the texts of graphs at a size, opened the first time, without kerning and without hinting: the widths std/plot measured. *)
+  name = "plot$(size)"
+  if dict.Has(name, window.Fonts)
+    return {Name: name, Window: window}
+  end
+  loaded = window.Ttf.OpenFont(path, size * 1.0)
+  if value.IsMissing(loaded)
+    bug.Panic(window.Sdl.Error())
+  end
+  window.Ttf.Kerning(loaded, false)
+  window.Ttf.Hinting(loaded, 3)
+  next = window
+  next.Fonts = dict.Put(name, loaded, window.Fonts)
+  {Name: name, Window: next}
+end
+
+(** Where a text starts, from its anchor: the start, the middle or the end of its measured width. *)
+startOf(item) = if item.Anchor == "middle" item.X - item.Width / 2.0 else if item.Anchor == "end" item.X - item.Width else item.X end
+
+defn turned(item, font, window)
+  (** The image of a text turned by -90 degrees, drawn once into a texture of its own and kept by its words, size and color. *)
+  key = "$(item.Text)\n$(item.Size)\n$(item.Color)"
+  kept = dict.Get(key, dict.GetOr("Turned", dict.Dict(), window))
+  if value.IsSome(kept)
+    return {Image: kept, Window: window}
+  end
+  w = window
+  height = WholeNumber(item.Size * 1.4) + 2
+  width = WholeNumber(item.Width) + 4
+  texture = w.Sdl.CreateTexture(w.Renderer, PixelsRgba, 2, width, height)
+  if value.IsMissing(texture)
+    bug.Panic(w.Sdl.Error())
+  end
+  w.Sdl.TextureBlend(texture, BlendAlpha)
+  checked(w.Sdl.Target(w.Renderer, texture), w)
+  w.Sdl.Color(w.Renderer, Red(item.Color), Green(item.Color), Blue(item.Color), 0)
+  checked(w.Sdl.Clear(w.Renderer), w)
+  w = DrawText({Kind: "text", Text: item.Text, X: 2, Y: 1, Color: item.Color, Font: font}, w)
+  checked(w.Sdl.Target(w.Renderer, missing), w)
+  image = {Texture: texture, Width: width, Height: height, Ascent: w.Ttf.Ascent(fontNamed(font, w))}
+  w.Turned = dict.Put(key, image, dict.GetOr("Turned", dict.Dict(), w))
+  {Image: image, Window: w}
+end
+
+defn plotText(item, path, window)
+  (** A text of a graph: its baseline at Y, its anchor at X; turned by -90 degrees about that point for an axis title. *)
+  f = plotFont(item.Size, path, window)
+  w = f.Window
+  if dict.GetOr("Angle", 0, item) == 0
+    ascent = w.Ttf.Ascent(fontNamed(f.Name, w))
+    return DrawText({Kind: "text", Text: item.Text, X: startOf(item), Y: item.Y - ascent, Color: item.Color, Font: f.Name}, w)
+  end
+  t = turned(item, f.Name, w)
+  w = t.Window
+  im = t.Image
+  (* Turned, the text runs upward through (X, Y), its tops to the left: the image turns about its center. *)
+  cx = item.X - (im.Ascent + 1) + im.Height / 2.0
+  cy = item.Y
+  checked(w.Sdl.Rotated(w.Renderer, im.Texture, missing, area(cx - im.Width / 2.0, cy - im.Height / 2.0, im.Width, im.Height, w), -90.0, missing, 0), w)
+  w
+end
+
+defn clipTo(clip, visible, one, window)
+  (** The clip of an item, [x, y, width, height] in the graph, cut to the part of the graph that the pane shows. *)
+  box = if value.IsMissing(clip) [0, 0, one.Width, visible] else clip end
+  bottom = list.Min(box[2] + box[4], visible)
+  checked(window.Sdl.Clip(window.Renderer, irect(box[1], box[2], box[3], bottom - box[2], window)), window)
+end
+
+defn DrawGraph(one, window)
+  (** Draws a graph from its scene: {Kind: "graph", X, Y, Width, Height, Visible, Items, Font}, the items in the order of the scene, each cut to
+      its Clip and to the Visible height. The texts turned are made first, while no viewport is set. *)
+  w = window
+  visible = list.Min(dict.GetOr("Visible", one.Height, one), one.Height)
+  if visible <= 0
+    return w
+  end
+  for item in one.Items
+    if item.Kind == "text" and dict.GetOr("Angle", 0, item) != 0
+      f = plotFont(item.Size, one.Font, w)
+      w = turned(item, f.Name, f.Window).Window
+    end
+  end
+  checked(w.Sdl.Viewport(w.Renderer, irect(one.X, one.Y, one.Width, one.Height, w)), w)
+  for item in one.Items
+    clipTo(dict.GetOr("Clip", missing, item), visible, one, w)
+    w = if item.Kind == "text" plotText(item, one.Font, w) else shaped(item, w) end
+  end
+  checked(w.Sdl.Clip(w.Renderer, missing), w)
+  checked(w.Sdl.Viewport(w.Renderer, missing), w)
+  w
+end

@@ -1,0 +1,953 @@
+(** Cells: a file of Cesia cut by (* %% Title *) comments runs as a notebook, its results drawn under its cells, as blocks of the buffer: never typed,
+    never saved. C-c e e runs the cell of the cursor and the cells that read what it defines, C-c e a every cell from the top; each cell file has a session
+    of std/cells, a Cesia process that keeps the names its cells defined. `*variables*` lists them beside, `*repl*` below runs code in the same session, and
+    C-c e h writes the page of the file. The work is std/cells': runs wait in fibers, and each tick takes their results, so that typing never waits.
+    src/cemacs.ce adds the hooks of Hooked to the config and these Keys. *)
+use core/commands
+use core/files
+use core/lists
+use core/run
+use core/text
+use core/view
+use src/rope
+use std/cells as nb
+use std/cesia
+use std/debug
+use std/dict
+use std/fiber
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The keys of the cells, in their group of C-c: e for execute. M-p and M-n go through the history in `*repl*`, and Enter there runs what was typed. *)
+Keys() = {"C-c e": "execute", "C-c e e": RunCell, "C-c e a": RunAll, "C-c e i": InsertCell, "C-c e v": ShowVariables, "C-c e r": OpenRepl,
+  "C-c e s": StopCell, "C-c e h": WriteHtml, "C-c e k": ClearResults, "enter": Enter, "S-enter": Enter, "M-p": HistoryBack, "M-n": HistoryOn}
+
+(** The most lines of a result drawn under a cell: its output, then its value, each cut there with a line that says how many more. *)
+MaxLines() = 40
+
+(* ---- The run of a buffer: {Session, Cells, Analysis, Queue, Task, Index, Started, Stopping, Html, Vars, Version}. *)
+
+defn runOf(b)
+  (** The cells run of a buffer, or missing: a buffer from before this field has none. *)
+  match b
+    {CellRun: r} -> r
+    else -> missing
+  end
+end
+
+(** Does the text of a buffer have a cell marker? A file of cells is a file of Cesia with one. *)
+IsCells(b) = not lists.IsList(b) and not value.IsMissing(b.Path) and str.EndsWith(".ce", b.Path) and value.Len(nb.Parse(rope.Text(b.Rope))) > 1
+
+defn withRun(k, r, state)
+  (** The state with the cells run of buffer k. *)
+  s = state
+  s.Buffers[k].CellRun = r
+  s
+end
+
+defn allowOf(path)
+  (** The permissions of the task of cesia.toml that runs the file at path, as C-c c r gives them, or none. *)
+  read = files.ReadFile("cesia.toml")
+  if result.IsErr(read) or read.Value.Words == ""
+    return []
+  end
+  name = run.TaskFor(read.Value.Words, path, sys.Env("PWD"))
+  tables = cesia.Toml(read.Value.Words)
+  if value.IsMissing(name) or result.IsErr(tables)
+    return []
+  end
+  for t in tables.Value
+    if value.Len(t.Path) == 2 and t.Path[1] == "tasks" and t.Path[2] == name
+      for e in t.Entries
+        if e.Key == "allow" and value.IsArray(e.Value)
+          return e.Value
+        end
+      end
+    end
+  end
+  []
+end
+
+defn session(k, state)
+  (** The run of buffer k with a session, started if it had none: an Ok, or an Err that says why it can't start. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  if not value.IsMissing(r) and not value.IsMissing(r.Session)
+    return result.Ok(r)
+  end
+  s = nb.Session(b.Path, allow = allowOf(b.Path))?
+  result.Ok({Session: s, Cells: [], Analysis: [], Queue: [], Task: missing, Index: 0, Started: 0.0, Stopping: missing, Html: missing, Vars: [],
+    Version: -1})
+end
+
+defn analysed(k, r, state)
+  (** The run with the cells and the analysis of the text of buffer k now, with its unsaved changes: the cells run what the buffer shows. *)
+  b = state.Buffers[k]
+  out = r
+  if r.Version != b.Version
+    out.Cells = nb.Parse(rope.Text(b.Rope))
+    out.Analysis = nb.Analyse(out.Cells)
+    out.Version = b.Version
+  end
+  out
+end
+
+defn CellAt(line, cells)
+  (** The index of the cell that holds a line.
+
+        CellAt(3, nb.Parse("use std/io\n(* %% A *)\nx = 1")) --> 2 *)
+  found = 1
+  for i in 1..value.Len(cells)
+    if cells[i].From <= line
+      found = i
+    end
+  end
+  found
+end
+
+defn anchor(cell, b)
+  (** The line under which the result of a cell is drawn: its last line that isn't blank, or its marker. *)
+  n = list.Min(cell.To, rope.LineCount(b.Rope))
+  while n > cell.From and str.Trim(rope.Line(n, b.Rope)) == ""
+    n = n - 1
+  end
+  list.Max(1, n)
+end
+
+(* ---- Results, drawn. *)
+
+(** A row of a block: words in a color, at a row from 0. *)
+rowText(k, words, paint, cell) = {Kind: "text", X: 0, Y: k * cell.Height, Text: words, Color: paint, Font: "code"}
+
+(** The words cut to the columns of a width. *)
+fitted(words, width, cell) = if value.Len(words) * cell.Width <= width words else str.Join("", list.Take(list.Max(0, math.Div(width, cell.Width) - 1), str.Chars(words))) end
+
+defn TableLines(columns, rows)
+  (** A table as lines of text, each column as wide as its widest text, numbers on the right.
+
+        TableLines(["a", "name"], [["10", "x"], ["2", "yz"]]) --> ["a   name", "10  x   ", " 2  yz  "] *)
+  all = list.Prepend(columns, rows)
+  widths = [list.Max([value.Len(r[j]) for r in all]) for j in 1..value.Len(columns)]
+  pad = (t, j) -> if value.IsSome(str.Number(t)) str.PadLeft(widths[j], " ", t) else str.PadRight(widths[j], " ", t) end
+  [str.Join("  ", [pad(r[j], j) for j in 1..value.Len(columns)]) for r in all]
+end
+
+defn valueLines(v)
+  (** What a value shows, as lines, each with a role: "value", or "note" for a count. *)
+  if value.IsMissing(v) or v.Kind == "graph"
+    []
+  else if v.Kind == "table"
+    rows = [{Role: "value", Words: l} for l in TableLines(v.Columns, v.Rows)]
+    list.Append({Role: "note", Words: if v.Count > value.Len(v.Rows) "$(value.Len(v.Rows)) of $(v.Count) rows" else "$(v.Count) rows" end}, rows)
+  else if v.Kind == "array"
+    shape = str.Join(" × ", ["$n" for n in v.Shape])
+    list.Prepend({Role: "note", Words: shape}, [{Role: "value", Words: l} for l in TableLines(["" for c in v.Rows[1]], v.Rows) if str.Trim(l) != ""])
+  else
+    [{Role: "value", Words: l} for l in str.Lines(v.Text)]
+  end
+end
+
+defn capped(lines)
+  (** At most MaxLines() lines, the last saying how many were left out. *)
+  if value.Len(lines) <= MaxLines()
+    lines
+  else
+    list.Append({Role: "note", Words: "… $(value.Len(lines) - MaxLines() + 1) more lines"}, list.Take(MaxLines() - 1, lines))
+  end
+end
+
+defn resultLines(done)
+  (** The lines of a result: the errors of the analysis, or what the cell printed then its value or its error. *)
+  if value.Len(done.Errors) > 0
+    return [{Role: "error", Words: "line $(e.Line): $(e.Message)"} for e in done.Errors]
+  end
+  printed = [{Role: "output", Words: l} for l in done.Output]
+  shown = if value.IsSome(done.Error) [{Role: "error", Words: l} for l in str.Lines(done.Error.Text)] else valueLines(done.Value) end
+  list.Concat(capped(printed), capped(shown))
+end
+
+defn colorOf(role, th)
+  (** The color of a line of a result. *)
+  if role == "error"
+    view.ErrorColor
+  else if role == "output"
+    th.Ink
+  else if role == "note"
+    th.Faint
+  else
+    th.Muted
+  end
+end
+
+defn Block(line, lines, cell, graph = missing)
+  (** A block of lines under a line, each {Role, Words}, with a thin bar on its left: drawn at the width of the pane, cut to it. A graph, {Key,
+      Scene, Font}, comes under the lines, its scene drawn by sdl at its own width, 400 pixels high.
+
+        Block(3, [{Role: "value", Words: "42"}], {Width: 8, Height: 19}).Rows --> 1 *)
+  high = if value.IsMissing(graph) 0 else math.Div(graph.Scene.Height + 8 + cell.Height - 1, cell.Height) end
+  rows = list.Max(1, value.Len(lines) + high)
+  top = value.Len(lines) * cell.Height + 4
+  draw = (width, look) -> list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
+    [rowText(k - 1, "  $(fitted(lines[k].Words, width - 2 * cell.Width, cell))", colorOf(lines[k].Role, look.Theme), cell) for k in 1..value.Len(lines)]),
+    if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font}] end)
+  {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Lines: lines}
+end
+
+defn hexColor(color)
+  (** A color of a scene, "#rrggbb", as 0xRRGGBB; "ink" and "grid", the colors of the theme, stay for the draw. *)
+  if not value.IsText(color) or value.Len(color) != 7 or not str.StartsWith("#", color)
+    return color
+  end
+  digits = "0123456789abcdef"
+  n = 0
+  for ch in str.Chars(str.Lower(str.Slice(2, 7, color)))
+    n = n * 16 + list.Max(0, str.Find(ch, digits) - 1)
+  end
+  n
+end
+
+(* ---- A scene comes from the session, another process: it is input, checked before anything is made of it. *)
+
+(** The most vertices that the shapes of one scene may make, and the most items, cells and marks: past them a scene is refused, not drawn. *)
+SceneLimits() = {Vertices: 4000000, Items: 20000, Cells: 4194304, Edges: 8193, Marks: 250000, Points: 1000000, Text: 1000}
+
+(** Is every element of an array a number, or missing where a gap is allowed? *)
+numbers(xs, gaps) = value.IsArray(xs) and list.All([value.IsNumber(x) or (gaps and value.IsMissing(x)) for x in xs])
+
+(** Is a value a number from low to high? *)
+within(x, low, high) = value.IsNumber(x) and x >= low and x <= high
+
+defn itemFault(item, lim)
+  (** What is wrong with an item of a scene, or missing; with the vertices it makes when it is right. *)
+  if not value.IsDict(item) or not dict.Has("Kind", item)
+    return {Fault: "an item is no shape"}
+  end
+  clip = dict.GetOr("Clip", missing, item)
+  if value.IsSome(clip) and not (value.IsArray(clip) and value.Len(clip) == 4 and numbers(clip, false))
+    return {Fault: "a clip is no rectangle"}
+  end
+  color = dict.GetOr("Color", missing, item)
+  if value.IsSome(color) and not value.IsText(color)
+    return {Fault: "a color is no text"}
+  end
+  k = item.Kind
+  if k == "line" or k == "area" or k == "marks"
+    n = value.Len(dict.GetOr("Xs", [], item))
+    most = if k == "marks" lim.Marks else lim.Points end
+    if n > most or not numbers(dict.GetOr("Xs", missing, item), k == "line") or not numbers(dict.GetOr("Ys", missing, item), k == "line") or value.Len(item.Ys) != n
+      return {Fault: "a $k has no points, or more than $most, or not as many y as x"}
+    end
+    if k == "line" and not within(dict.GetOr("Width", missing, item), 0, 50)
+      return {Fault: "a line is no width from 0 to 50"}
+    end
+    dash = dict.GetOr("Dash", missing, item)
+    if k == "line" and value.IsSome(dash) and not (value.IsArray(dash) and value.Len(dash) == 2 and list.All([within(d, 0.5, 1000) for d in dash]))
+      return {Fault: "a dash is no pair of lengths"}
+    end
+    if k == "marks" and not within(dict.GetOr("Size", missing, item), 0, 100)
+      return {Fault: "marks have no size from 0 to 100"}
+    end
+    return {Vertices: if k == "line" n * 4 else if k == "marks" n * 9 else n end}
+  end
+  if k == "rect"
+    if not numbers([dict.GetOr("X", missing, item), dict.GetOr("Y", missing, item), dict.GetOr("W", missing, item), dict.GetOr("H", missing, item)], false)
+      return {Fault: "a rectangle has no place"}
+    end
+    return {Vertices: 4}
+  end
+  if k == "cells"
+    xs = dict.GetOr("Xs", missing, item)
+    ys = dict.GetOr("Ys", missing, item)
+    if not numbers(xs, false) or not numbers(ys, false) or value.Len(xs) < 2 or value.Len(ys) < 2 or value.Len(xs) > lim.Edges or value.Len(ys) > lim.Edges
+      return {Fault: "cells have no grid of 2 to $(lim.Edges) edges a side"}
+    end
+    count = (value.Len(xs) - 1) * (value.Len(ys) - 1)
+    colors = dict.GetOr("Colors", missing, item)
+    if count > lim.Cells or not value.IsArray(colors) or value.Len(colors) != count or not list.All([value.IsText(x) or value.IsMissing(x) for x in colors])
+      return {Fault: "cells have more than $(lim.Cells) cells, or not a color each"}
+    end
+    return {Vertices: count * 4}
+  end
+  if k == "text"
+    words = dict.GetOr("Text", missing, item)
+    if not value.IsText(words) or value.Len(words) > lim.Text or not within(dict.GetOr("Size", missing, item), 4, 96) or not numbers([dict.GetOr("X", missing, item), dict.GetOr("Y", missing, item), dict.GetOr("Width", missing, item)], false)
+      return {Fault: "a text has no words, no size from 4 to 96 or no place"}
+    end
+    if not (dict.GetOr("Anchor", "start", item) in ["start", "middle", "end"]) or not (dict.GetOr("Angle", 0, item) in [0, -90])
+      return {Fault: "a text has an anchor or an angle std/plot never gives"}
+    end
+    return {Vertices: 0}
+  end
+  {Fault: "an item of kind $(k) is unknown"}
+end
+
+defn SceneFault(scene)
+  (** What is wrong with a scene that the session sent, or missing: its size, its items and, for all of them, the vertices they would make,
+      checked against SceneLimits() before any memory is taken for it.
+
+        SceneFault({Width: 100, Height: 80, Items: [{Kind: "rect", X: 0, Y: 0, W: 10, H: 10, Color: "#ff0000"}]}) --> missing
+        SceneFault({Width: 100, Height: 80, Items: [{Kind: "line", Xs: [1, 2], Ys: [1], Width: 1}]}) --> "a line has no points, or more than 1000000, or not as many y as x" *)
+  lim = SceneLimits()
+  if not value.IsDict(scene) or not within(dict.GetOr("Width", missing, scene), 100, 8192) or not within(dict.GetOr("Height", missing, scene), 80, 4096)
+    return "it is no scene from 100 by 80 to 8192 by 4096 pixels"
+  end
+  items = dict.GetOr("Items", missing, scene)
+  if not value.IsArray(items) or value.Len(items) > lim.Items
+    return "it has no items, or more than $(lim.Items)"
+  end
+  total = 0
+  for item in items
+    f = itemFault(item, lim)
+    if dict.Has("Fault", f)
+      return f.Fault
+    end
+    total = total + f.Vertices
+    if total > lim.Vertices
+      return "its shapes would make more than $(lim.Vertices) vertices"
+    end
+  end
+  missing
+end
+
+defn Prepared(scene, home)
+  (** A scene of std/plot ready for the screen: its colors as numbers, once, an Id for each item, by which sdl knows that the item it drew is the
+      same, and the font its texts are measured in, that of Cemacs's folder.
+
+        Prepared({Width: 100, Height: 80, Items: [{Kind: "rect", Color: "#ff0000"}]}, ".").Scene.Items[1].Color --> 16711680 *)
+  items = []
+  stamp = sys.Now()
+  for k in 1..value.Len(scene.Items)
+    item = scene.Items[k]
+    one = dict.Put("Color", hexColor(dict.GetOr("Color", missing, item)), item)
+    one.Id = "$stamp/$k"
+    if item.Kind == "cells"
+      one.Colors = [if value.IsMissing(x) missing else hexColor(x) end for x in item.Colors]
+    end
+    items = list.Append(one, items)
+  end
+  out = scene
+  out.Items = items
+  {Scene: out, Font: "$home/fonts/NotoSans-Medium.ttf"}
+end
+
+defn themed(items, th)
+  (** The items with the colors of the theme in place of "ink", for the axes and the texts, and "grid", for the grid. *)
+  [if value.IsText(x.Color) dict.Put("Color", if x.Color == "grid" th.Line else th.Ink end, x) else x end for x in items]
+end
+
+(** The width that a graph under a cell takes in the pane being edited, in pixels: the pane's text width, past the bar of the block. *)
+GraphWidth(state) = list.Max(200, view.LayoutOf(state).Code.Width - view.Gutter - 8 - 2 * state.Cell.Width)
+
+(** The block of cell i, under its last line, with its lines and its graph. *)
+blockOf(i, lines, r, b, cell, graph) = dict.Merge(Block(anchor(r.Cells[i], b), lines, cell, graph = graph), {Cell: i})
+
+defn withBlock(k, i, lines, state, graph = missing)
+  (** The state with the block of cell i of buffer k in place of the one it had, or none for a cell that printed nothing and shows no value. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  kept = [x for x in text.BlocksOf(b) if dict.GetOr("Cell", 0, x) != i]
+  s = state
+  s.Buffers[k] = text.WithBlocks(if value.Len(lines) == 0 and value.IsMissing(graph) kept else list.SortBy(x -> x.Line, list.Append(blockOf(i, lines, r, b, state.Cell, graph), kept)) end, b)
+  s
+end
+
+defn graphOf(ran, state)
+  (** The graph that a run shows, ready for the screen, or missing. *)
+  v = if result.IsOk(ran) ran.Value.Value else missing end
+  if value.IsMissing(v) or v.Kind != "graph"
+    return missing
+  end
+  fault = SceneFault(dict.GetOr("Scene", missing, v))
+  if value.IsSome(fault)
+    return {Fault: "This graph isn't drawn: $fault."}
+  end
+  dict.Put("Key", v.Key, Prepared(v.Scene, commands.Home(state)))
+end
+
+(** The words of a cell that runs, with the seconds so far. *)
+running(seconds) = [{Role: "note", Words: "running… $(str.Decimals(1, seconds)) s"}]
+
+(* ---- Running cells, one at a time, from a queue. *)
+
+defn next(k, state)
+  (** The state with the next cell of the queue of buffer k started, if none runs: a cell with errors of the analysis shows them and the queue goes on. *)
+  r = runOf(state.Buffers[k])
+  s = state
+  while value.IsMissing(r.Task) and value.Len(r.Queue) > 0
+    i = r.Queue[1]
+    r.Queue = list.Skip(1, r.Queue)
+    errors = r.Analysis[i].Errors
+    if value.Len(errors) > 0
+      s = withBlock(k, i, resultLines({Errors: errors}), withRun(k, r, s))
+    else if str.Trim(r.Cells[i].Source) != ""
+      cell = r.Cells[i]
+      one = r.Session
+      width = GraphWidth(s)
+      r.Task = fiber.Spawn(() -> nb.Run(one, cell, width = width))
+      r.Index = i
+      r.Started = sys.Now()
+      s = withBlock(k, i, running(0.0), withRun(k, r, s))
+    else
+      s = withBlock(k, i, [], withRun(k, r, s))
+    end
+  end
+  withRun(k, r, s)
+end
+
+defn queued(k, order, state)
+  (** The state with the cells of order queued after the one that runs, in buffer k, each shown as waiting. *)
+  r = runOf(state.Buffers[k])
+  r.Queue = list.Concat([i for i in r.Queue if not (i in order)], [i for i in order if i != r.Index or value.IsMissing(r.Task)])
+  s = withRun(k, r, state)
+  for i in r.Queue
+    s = withBlock(k, i, [{Role: "note", Words: "waiting"}], s)
+  end
+  next(k, s)
+end
+
+defn started(order, state)
+  (** Runs cells of the current buffer, in a session started if needed: order gives them from the analysis. *)
+  k = state.Current
+  b = state.Buffers[k]
+  if not IsCells(b)
+    return commands.Say("This buffer has no cell: (* %% Title *) on a line of a .ce file starts one, and C-c e i writes it.", state)
+  end
+  got = session(k, state)
+  if result.IsErr(got)
+    return commands.Say("No session for $(b.Path): $(got.Error.Message)", state)
+  end
+  r = analysed(k, got.Value, state)
+  queued(k, order(r), withRun(k, r, state))
+end
+
+(** C-c e e: runs the cell of the cursor, then the cells that read, directly or not, what it defines. *)
+RunCell(state) = started(r -> nb.ToRun(r.Analysis, CellAt(state.Buffers[state.Current].Cursor.Line, r.Cells)), state)
+
+(** C-c e a: runs every cell, from the top. *)
+RunAll(state) = started(r -> [i for i in 1..value.Len(r.Cells)], state)
+
+defn taken(k, state)
+  (** The state after a tick for buffer k: the result of the cell that ran, if it ended, and the next one started; the time of the one that runs. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Task)
+    return state
+  end
+  got = fiber.Wait(r.Task, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    seconds = sys.Now() - r.Started
+    return if value.Len(text.BlocksOf(state.Buffers[k])) > 0 withBlock(k, r.Index, running(seconds), state) else state end
+  end
+  i = r.Index
+  r.Task = missing
+  r.Index = 0
+  ran = if result.IsOk(got) got.Value else got end
+  lines = if result.IsOk(ran) resultLines({Errors: [], Output: ran.Value.Output, Value: ran.Value.Value, Error: ran.Value.Error}) else [{Role: "error", Words: ran.Error.Message}] end
+  graph = graphOf(ran, state)
+  if value.IsSome(graph) and dict.Has("Fault", graph)
+    lines = list.Append({Role: "error", Words: graph.Fault}, lines)
+    graph = missing
+  end
+  s = withBlock(k, i, lines, withRun(k, r, state), graph = graph)
+  if result.IsErr(ran)
+    r.Session = missing
+    r.Queue = []
+    return commands.Say("The session of $(state.Buffers[k].Path) has ended: C-c e a starts a new one.", withRun(k, r, s))
+  end
+  s = next(k, s)
+  r = runOf(s.Buffers[k])
+  if value.IsMissing(r.Task)
+    vars = nb.Variables(r.Session)
+    r.Vars = if result.IsOk(vars) vars.Value else [] end
+    s = withRun(k, r, s)
+  end
+  s
+end
+
+defn stopped(k, state)
+  (** The state once the stop asked in buffer k answered: with a new session, the cells run again from the top. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Stopping)
+    return state
+  end
+  got = fiber.Wait(r.Stopping, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  r.Stopping = missing
+  answer = if result.IsOk(got) got.Value else got end
+  if result.IsErr(answer)
+    r.Session = missing
+    return commands.Say("The session can't stop: $(answer.Error.Message)", withRun(k, r, state))
+  end
+  r.Session = answer.Value
+  if answer.Value.Restarted
+    r.Task = missing
+    r.Queue = []
+    s = withRun(k, r, state)
+    return commands.Say("The cell didn't stop within 2 s: a new session runs the cells from the top.", queued(k, [i for i in 1..value.Len(r.Cells)], s))
+  end
+  commands.Say("Stopped.", withRun(k, r, state))
+end
+
+defn StopCell(state)
+  (** C-c e s: stops the cell that runs; the cells after it in the queue don't run. *)
+  k = state.Current
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Task)
+    return commands.Say("No cell is running.", state)
+  end
+  one = r.Session
+  r.Queue = []
+  r.Stopping = fiber.Spawn(() -> nb.Stop(one))
+  commands.Say("Stopping the cell.", withRun(k, r, state))
+end
+
+defn ClearResults(state)
+  (** C-c e k: the results drawn under the cells cleared; the session keeps its names. *)
+  s = state
+  s.Buffers[state.Current] = text.WithBlocks([], state.Buffers[state.Current])
+  commands.Say("Results cleared.", s)
+end
+
+defn InsertCell(state)
+  (** C-c e i: a cell marker above the line of the cursor, the cursor where its title goes. *)
+  b = state.Buffers[state.Current]
+  line = b.Cursor.Line
+  s = state
+  s.Buffers[state.Current] = text.Place(line, 6, text.InsertWords("(* %%  *)\n", text.Place(line, 0, b)))
+  s
+end
+
+defn moved(k, state)
+  (** The blocks of buffer k put back under the last lines of their cells, after edits moved them, once the text rests. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  blocks = text.BlocksOf(b)
+  if value.IsMissing(r) or value.Len(blocks) == 0 or r.Version == b.Version or value.IsSome(r.Task)
+    return state
+  end
+  r = analysed(k, r, state)
+  out = []
+  for x in blocks
+    i = CellAt(x.Line, r.Cells)
+    out = list.Append(dict.Merge(x, {Line: anchor(r.Cells[i], b), Cell: i}), out)
+  end
+  s = withRun(k, r, state)
+  s.Buffers[k] = text.WithBlocks(list.SortBy(x -> x.Line, out), b)
+  s
+end
+
+(* ---- Graphs drawn again at the width of their pane. *)
+
+defn stale(b, state)
+  (** The first block of a buffer whose graph isn't drawn at the width of the pane, or missing. *)
+  want = GraphWidth(state)
+  for x in text.BlocksOf(b)
+    g = dict.GetOr("Graph", missing, x)
+    if value.IsSome(g) and dict.GetOr("Cell", 0, x) > 0 and not dict.GetOr("Fixed", false, g) and math.Abs(g.Scene.Width - want) > 2
+      return x
+    end
+  end
+  missing
+end
+
+defn widened(k, state)
+  (** The state at a tick for buffer k: the scene of a graph asked again at the width of its pane once that width changed, and put in place
+      once it came, the text above it as it was. One at a time, and never while a cell runs. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task)
+    return state
+  end
+  pending = dict.GetOr("Rescene", missing, r)
+  if value.IsSome(pending)
+    got = fiber.Wait(pending.Task, timeout = 0)
+    if result.IsErr(got) and got.Error.Kind == "timeout"
+      return state
+    end
+    r.Rescene = missing
+    s = withRun(k, r, state)
+    scene = if result.IsOk(got) got.Value else got end
+    old = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == pending.Cell, text.BlocksOf(s.Buffers[k]))
+    if value.IsMissing(old) or value.IsMissing(dict.GetOr("Graph", missing, old))
+      return s
+    end
+    if result.IsErr(scene) or value.IsSome(SceneFault(scene.Value))
+      (* A graph the session no longer holds, or a scene that isn't sane, keeps its width. *)
+      return withBlock(k, pending.Cell, old.Lines, s, graph = dict.Put("Fixed", true, old.Graph))
+    end
+    return withBlock(k, pending.Cell, old.Lines, s, graph = dict.Put("Key", old.Graph.Key, Prepared(scene.Value, commands.Home(s))))
+  end
+  x = stale(b, state)
+  if value.IsMissing(x)
+    return state
+  end
+  one = r.Session
+  key = x.Graph.Key
+  width = GraphWidth(state)
+  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width)), Cell: x.Cell}
+  withRun(k, r, state)
+end
+
+(* ---- The page of a file. *)
+
+defn WriteHtml(state)
+  (** C-c e h: runs every cell of the file as saved in a new session, and writes its page beside it, the same name ending in .html. *)
+  k = state.Current
+  b = state.Buffers[k]
+  if not IsCells(b)
+    return commands.Say("This buffer has no cell to export.", state)
+  end
+  path = b.Path
+  allow = allowOf(path)
+  r = runOf(b)
+  r = if value.IsMissing(r) {Session: missing, Cells: [], Analysis: [], Queue: [], Task: missing, Index: 0, Started: 0.0, Stopping: missing, Html: missing, Vars: [], Version: -1} else r end
+  r.Html = fiber.Spawn(() -> nb.Html(path, allow = allow))
+  how = if text.IsModified(b) " as saved, without the changes here" else "" end
+  commands.Say("Running every cell of $path$how for its page.", withRun(k, r, state))
+end
+
+(** The path of the page of a file of cells.
+
+      HtmlPath("notes/sim.ce") --> "notes/sim.html" *)
+HtmlPath(path) = "$(str.Slice(1, value.Len(path) - 3, path)).html"
+
+defn exported(k, state)
+  (** The state once the page asked in buffer k is made: written, and said. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Html)
+    return state
+  end
+  got = fiber.Wait(r.Html, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  r.Html = missing
+  s = withRun(k, r, state)
+  page = if result.IsOk(got) got.Value else got end
+  if result.IsErr(page)
+    return commands.Say("No page: $(page.Error.Message)", s)
+  end
+  path = HtmlPath(state.Buffers[k].Path)
+  wrote = sys.Write(path, page.Value)
+  commands.Say(if result.IsOk(wrote) "Wrote $path." else "Can't write $path." end, s)
+end
+
+(* ---- `*variables*`: the names of the session beside the file; Enter on one shows its rows. *)
+
+defn ownerOf(state)
+  (** The buffer of cells that the current one belongs to: itself, or the one a list or `*repl*` came from, or 0. *)
+  b = state.Buffers[state.Current]
+  p = replOf(b)
+  path = if lists.IsList(b) dict.GetOr("Owner", missing, lists.Of(b)) else if value.IsSome(p) p.Owner else missing end
+  if value.IsMissing(path)
+    return if IsCells(b) state.Current else 0 end
+  end
+  indexOf(path, state)
+end
+
+indexOf(path, state) = list.Reduce((found, k) -> if found == 0 and state.Buffers[k].Path == path k else found end, 0, 1..value.Len(state.Buffers))   (** The buffer of a path, or 0. *)
+
+defn varRows(path, state)
+  (** One row for each name of the session of the file at path, standing for its name. *)
+  k = indexOf(path, state)
+  r = if k == 0 missing else runOf(state.Buffers[k]) end
+  vars = if value.IsMissing(r) [] else r.Vars end
+  width = list.Reduce((w, v) -> list.Max(w, value.Len(v.Name)), 4, vars)
+  kinds = list.Reduce((w, v) -> list.Max(w, value.Len(v.Type)), 4, vars)
+  sizes = list.Reduce((w, v) -> list.Max(w, value.Len(v.Size)), 4, vars)
+  [{Words: "$(str.PadRight(width, " ", v.Name))  $(str.PadRight(kinds, " ", v.Type))  $(str.PadRight(sizes, " ", v.Size))  $(v.Preview)", Item: v.Name} for v in vars]
+end
+
+defn ShowVariables(state)
+  (** C-c e v: opens `*variables*` beside the file of cells: the names its cells defined, each with its type, its size and the start of its value. *)
+  k = ownerOf(state)
+  if k == 0
+    return commands.Say("The variables are those of a file of cells: run one with C-c e e first.", state)
+  end
+  path = state.Buffers[k].Path
+  s = commands.NextPane(commands.SplitRight(commands.ToBuffer(k, state)))
+  s = commands.ShowList("*variables*", st -> varRows(path, st), () -> {"enter": (name, st) -> viewOf(path, name, st)}, s)
+  l = lists.Of(s.Buffers[s.Current])
+  l.Owner = path
+  s.Buffers[s.Current].List = l
+  s
+end
+
+(** The rows a viewer fetches at a time. *)
+Chunk() = 200
+
+defn viewRows(path, name, state)
+  (** The rows of a viewer: those fetched so far of the value of name. *)
+  b = state.Buffers[state.Current]
+  got = dict.GetOr("Fetched", [], lists.Of(b))
+  [{Words: got[i], Item: i} for i in 1..value.Len(got)]
+end
+
+defn fetched(k, upto, state)
+  (** The viewer in buffer k with its rows fetched up to row upto, a chunk at a time: only what the screen shows comes from the session. *)
+  l = lists.Of(state.Buffers[k])
+  have = value.Len(l.Fetched) - 1
+  if have >= upto or have >= l.Count
+    return state
+  end
+  owner = indexOf(l.Owner, state)
+  r = if owner == 0 missing else runOf(state.Buffers[owner]) end
+  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task)
+    return state
+  end
+  got = nb.Rows(r.Session, l.Value, have + 1, have + Chunk())
+  if result.IsErr(got)
+    return state
+  end
+  lines = TableLines(list.Prepend("", got.Value.Columns), [list.Prepend("$(have + i)", got.Value.Rows[i]) for i in 1..value.Len(got.Value.Rows)])
+  l.Fetched = if have < 0 lines else list.Concat(l.Fetched, list.Skip(1, lines)) end
+  l.Count = got.Value.Count
+  s = state
+  s.Buffers[k].List = l
+  s
+end
+
+defn viewOf(path, name, state)
+  (** Enter on a row of `*variables*`: a viewer of the value of that name, a frame or a matrix in full, its rows fetched as the screen reaches them. *)
+  s = commands.ShowList("*$name*", st -> viewRows(path, name, st), () -> {}, state)
+  l = lists.Of(s.Buffers[s.Current])
+  l.Owner = path
+  l.Value = name
+  l.Fetched = []
+  l.Count = 1
+  s.Buffers[s.Current].List = l
+  s = fetched(s.Current, Chunk(), s)
+  if value.Len(lists.Of(s.Buffers[s.Current]).Fetched) == 0
+    return commands.Say("$name has no rows to show: it is no frame, matrix or list.", s)
+  end
+  s
+end
+
+defn viewing(state)
+  (** At a tick: the viewer in the current buffer fetches the rows that its screen nears. *)
+  b = state.Buffers[state.Current]
+  l = lists.Of(b)
+  if value.IsMissing(l) or not dict.Has("Fetched", l)
+    return state
+  end
+  fetched(state.Current, b.Top + 2 * Chunk(), state)
+end
+
+(* ---- `*repl*`: a prompt in the session of a file of cells. *)
+
+Prompt = "> "   (** The prompt of `*repl*`, before the code typed. *)
+More = ". "   (** The start of a line of `*repl*` that goes on with the code above it. *)
+
+defn replOf(b)
+  (** The prompt of a buffer, {Owner, History, At, Task}, or missing: only `*repl*` has one. *)
+  match b
+    {Repl: p} -> p
+    else -> missing
+  end
+end
+
+defn OpenRepl(state)
+  (** C-c e r: opens `*repl*` below the file of cells, a prompt in its session: an expression shows its value. *)
+  k = ownerOf(state)
+  if k == 0
+    return commands.Say("*repl* runs in the session of a file of cells: open one first.", state)
+  end
+  path = state.Buffers[k].Path
+  s = commands.ToBuffer(k, state)
+  for j in 1..value.Len(s.Buffers)
+    p = replOf(s.Buffers[j])
+    if value.IsSome(p) and p.Owner == path
+      return commands.NextPane(commands.SplitBelow(commands.ToBuffer(j, s)))
+    end
+  end
+  b = text.Of(Prompt, missing)
+  b = text.Place(1, 2, b)
+  b.Repl = {Owner: path, History: [], At: 0, Task: missing}
+  b.Name = "*repl*"
+  s.Buffers = list.Append(b, s.Buffers)
+  s = commands.NextPane(commands.SplitBelow(s))
+  commands.ToBuffer(value.Len(s.Buffers), s)
+end
+
+defn typedCode(b)
+  (** The code typed after the last prompt of `*repl*`, its lines without their prompts. *)
+  all = str.Lines(rope.Text(b.Rope))
+  k = value.Len(all)
+  while k > 1 and not str.StartsWith(Prompt, all[k])
+    k = k - 1
+  end
+  str.Join("\n", [str.Slice(3, value.Len(l), l) for l in list.Skip(k - 1, all) if value.Len(l) >= 2])
+end
+
+(** The buffer with words at its end, the cursor after them. *)
+appended(words, b) = text.ToFileEnd(text.InsertWords(words, text.ToFileEnd(b)))
+
+defn refused(code, path, state)
+  (** Why the code typed can't run, or missing: a definition of a name that a cell defines, as the file then would lie (D9). *)
+  k = indexOf(path, state)
+  r = if k == 0 missing else runOf(state.Buffers[k]) end
+  defs = cesia.Definitions(code)
+  if value.IsMissing(r) or result.IsErr(defs)
+    return missing
+  end
+  for d in defs.Value
+    for i in 1..value.Len(r.Analysis)
+      if d.Name in r.Analysis[i].Defines
+        title = if r.Cells[i].Title == "" "the cell at line $(list.Max(1, r.Cells[i].From))" else "the cell \"$(r.Cells[i].Title)\"" end
+        return "$(d.Name) is defined by $title: change it there."
+      end
+    end
+  end
+  missing
+end
+
+defn replEnter(state)
+  (** Enter in `*repl*`: what was typed runs in the session when it is whole, and the next line goes on with ". " when it isn't. *)
+  b = state.Buffers[state.Current]
+  p = replOf(b)
+  if value.IsSome(p.Task)
+    return commands.Say("The code before still runs.", state)
+  end
+  code = typedCode(b)
+  s = state
+  if not debug.IsComplete(code)
+    s.Buffers[state.Current] = appended("\n$More", b)
+    return s
+  end
+  k = indexOf(p.Owner, state)
+  r = if k == 0 missing else runOf(state.Buffers[k]) end
+  if value.IsMissing(r) or value.IsMissing(r.Session)
+    s.Buffers[state.Current] = appended("\nNo session: C-c e e in $(p.Owner) runs a cell first.\n$Prompt", b)
+    return s
+  end
+  no = refused(code, p.Owner, state)
+  p.History = if str.Trim(code) == "" p.History else list.Append(code, p.History) end
+  p.At = 0
+  if value.IsSome(no)
+    b.Repl = p
+    s.Buffers[state.Current] = appended("\n$no\n$Prompt", b)
+    return s
+  end
+  one = r.Session
+  width = GraphWidth(state)
+  p.Task = fiber.Spawn(() -> nb.Run(one, {Title: "", From: 0, To: 0, Source: code}, width = width))
+  b.Repl = p
+  s.Buffers[state.Current] = appended("\n", b)
+  s
+end
+
+(** Enter: in `*repl*` it runs what was typed; anywhere else it is a new line, as always. *)
+Enter(state) = if value.IsSome(replOf(state.Buffers[state.Current])) replEnter(state) else commands.NewLine(state) end
+
+defn answered(k, state)
+  (** The state after a tick for `*repl*` in buffer k: the answer of its code, once it came, then a new prompt. *)
+  b = state.Buffers[k]
+  p = replOf(b)
+  if value.IsMissing(p) or value.IsMissing(p.Task)
+    return state
+  end
+  got = fiber.Wait(p.Task, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  p.Task = missing
+  ran = if result.IsOk(got) got.Value else got end
+  lines = if result.IsOk(ran) resultLines({Errors: [], Output: ran.Value.Output, Value: ran.Value.Value, Error: ran.Value.Error}) else [{Role: "error", Words: ran.Error.Message}] end
+  words = str.Join("", ["$(l.Words)\n" for l in lines])
+  b.Repl = p
+  s = state
+  after = appended("$words$Prompt", b)
+  graph = graphOf(ran, state)
+  if value.IsSome(graph) and dict.Has("Fault", graph)
+    after = appended("$words$(graph.Fault)\n$Prompt", b)
+    graph = missing
+  end
+  if value.IsSome(graph)
+    (* The graph under the last line of the answer, above the new prompt. *)
+    under = rope.LineCount(after.Rope) - 1
+    after = text.WithBlocks(list.Append(Block(under, [], state.Cell, graph = graph), text.BlocksOf(after)), after)
+  end
+  s.Buffers[k] = after
+  owner = indexOf(p.Owner, s)
+  r = if owner == 0 missing else runOf(s.Buffers[owner]) end
+  if value.IsSome(r) and value.IsSome(r.Session)
+    vars = nb.Variables(r.Session)
+    r.Vars = if result.IsOk(vars) vars.Value else r.Vars end
+    s = withRun(owner, r, s)
+  end
+  s
+end
+
+defn historyMoved(by, state)
+  (** M-p and M-n in `*repl*`: the code typed before, or after, in place of what follows the last prompt. *)
+  b = state.Buffers[state.Current]
+  p = replOf(b)
+  if value.IsMissing(p) or value.Len(p.History) == 0
+    return state
+  end
+  at = list.Max(0, list.Min(value.Len(p.History), p.At + by))
+  code = if at == 0 "" else p.History[value.Len(p.History) - at + 1] end
+  all = str.Lines(rope.Text(b.Rope))
+  k = value.Len(all)
+  while k > 1 and not str.StartsWith(Prompt, all[k])
+    k = k - 1
+  end
+  before = str.Join("", ["$(l)\n" for l in list.Take(k - 1, all)])
+  fresh = text.Of("$(before)$(Prompt)$(str.Replace("\n", "\n$More", code))", missing)
+  p.At = at
+  fresh.Repl = p
+  fresh.Name = b.Name
+  s = state
+  s.Buffers[state.Current] = text.ToFileEnd(fresh)
+  s
+end
+
+HistoryBack(state) = historyMoved(1, state)   (** M-p: the code typed before. *)
+HistoryOn(state) = historyMoved(-1, state)   (** M-n: the code typed after. *)
+
+(* ---- The hooks. *)
+
+defn tick(state)
+  (** The state at a tick: the results of each buffer's cells, its stops and its page, the answers of `*repl*`, the rows of a viewer, and the blocks moved
+      back under their cells once the text rests. *)
+  s = state
+  for k in 1..value.Len(s.Buffers)
+    if value.IsSome(runOf(s.Buffers[k]))
+      s = exported(k, stopped(k, taken(k, s)))
+    end
+    if value.IsSome(replOf(s.Buffers[k]))
+      s = answered(k, s)
+    end
+  end
+  s = viewing(s)
+  k = s.Current
+  s = widened(k, s)
+  if commands.Still(s) >= 0.5 and k <= value.Len(s.Buffers) moved(k, s) else s end
+end
+
+defn busy(b)
+  (** Does a buffer wait for its cells, its stop, its page or its prompt? *)
+  r = runOf(b)
+  p = replOf(b)
+  (value.IsSome(r) and (value.IsSome(r.Task) or value.IsSome(r.Stopping) or value.IsSome(r.Html) or value.IsSome(dict.GetOr("Rescene", missing, r)))) or (value.IsSome(p) and value.IsSome(p.Task))
+end
+
+(** Do the cells need ticks: a cell runs, a stop or a page is waited for, or a graph waits for the width of its pane? *)
+Moving(state) = list.Any([busy(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state))
+
+defn Hooked(config)
+  (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs. *)
+  c = config
+  idle = dict.GetOr("Idle", s -> s, config)
+  saved = dict.GetOr("Saved", s -> s, config)
+  moving = dict.GetOr("Moving", s -> false, config)
+  c.Idle = s -> tick(idle(s))
+  c.Saved = saved
+  c.Moving = s -> moving(s) or Moving(s)
+  c
+end
