@@ -1,0 +1,50 @@
+(** The program that answers the questions of Cemacs about names, for the whole session: src/ide starts it at the first one, as cesia run --allow
+    read,exec=cesia tools/names.ce, and it starts cesia lsp, the one program it runs. Each question comes on its input as its length in bytes on a line,
+    then that many bytes of JSON; each answer goes on its output as one line of JSON, in the order of the questions. It ends with its input, and cesia lsp
+    with it. src/names does the work, which none of the editor loads at its start. *)
+use src/names
+use std/io
+use std/json
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn question()
+  (** The next question on the input, a map, missing at the end of the input, or an Err for one that isn't JSON. *)
+  head = ""
+  c = result.Unwrap(sys.ReadInput(count = 1))
+  while c != "\n"
+    if c == ""
+      return missing
+    end
+    head = "$head$c"
+    c = result.Unwrap(sys.ReadInput(count = 1))
+  end
+  n = str.Number(head)
+  if not value.IsInt(n) or n < 0 or n > 64000000
+    return result.Err("A question starts with its length.")
+  end
+  json.Parse(result.Unwrap(sys.ReadInput(count = n)))
+end
+
+defn main()
+  (** Answers the questions until the input ends. *)
+  started = names.Started()
+  server = if result.IsOk(started) started.Value else missing end
+  q = question()
+  while not value.IsMissing(q)
+    if value.IsMissing(server)
+      io.Print(json.Text({Error: started.Error}))
+    else if result.IsErr(q)
+      io.Print(json.Text({Error: "The question isn't JSON."}))
+    else
+      got = names.Answered(q.Value, server)
+      server = got.Server
+      io.Print(json.Text(got.Answer))
+    end
+    q = question()
+  end
+end
+
+main()

@@ -1,0 +1,22 @@
+(** The forms of Cesia that C-c i writes for src/ide: a function, a struct, a loop, a match and a test, each a text with the place where the cursor goes,
+    {Text, Cursor}, the cursor from line 1 and column 0 of the text. src/ide writes the text under the cursor and gives each line the indent cesia fmt gives
+    it. tools/snippets.ce answers with them, a program that needs no permission, so that none of this loads at the start of the editor. *)
+use std/dict
+use std/value
+
+(** The forms by name: defn, struct, for, match and test.
+
+      Forms()["for"].Cursor --> {Line: 1, Column: 4} *)
+Forms() = {
+  "defn": {Text: "defn ()\n  (**  *)\n  \nend", Cursor: {Line: 1, Column: 5}},
+  "struct": {Text: "struct \n  \nend", Cursor: {Line: 1, Column: 7}},
+  "for": {Text: "for  in \n  \nend", Cursor: {Line: 1, Column: 4}},
+  "match": {Text: "match \n   -> \n  else -> \nend", Cursor: {Line: 1, Column: 6}},
+  "test": {Text: "defn is()\n  \nend", Cursor: {Line: 1, Column: 7}}
+}
+
+defn Answered(q)
+  (** The answer to a question of src/ide: the form named by Do, to write under the cursor, as {Insert: {Text, Cursor}}, or an Error. *)
+  form = if value.IsDict(q) and value.IsText(dict.GetOr("Do", missing, q)) dict.GetOr(q.Do, missing, Forms()) else missing end
+  if value.IsMissing(form) {Error: "No such form."} else {Insert: form} end
+end

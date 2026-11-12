@@ -1,0 +1,126 @@
+(** Tests of the questions about names, on a small project made in the folder of each test: a package src/shop, its test, and src/app, which uses it. *)
+use src/lookup
+use std/dict
+use std/list
+use std/result
+use std/sys
+use std/test
+use std/text as str
+use std/value
+
+d = str.Char(36)   (** A dollar, which shop writes in a text without reading a name. *)
+
+shop = "(** A shop. *)
+use std/list
+
+Rate = 20   (** The tax, in percent. *)
+
+defn Total(prices)
+  (** The total of prices, with the tax. *)
+  sum = list.Reduce((a, b) -> a + b, 0, prices)
+  sum + sum * Rate / 100 + extra(0)
+end
+
+defn extra(rate)
+  (** A private one, which a parameter of its own name can't hide. *)
+  rate + Total([])
+end
+
+Note() = \"Total: $d(Total([1]))\"   (** Total read in a text. *)
+
+defn other(Rate)
+  (** A parameter that hides Rate. *)
+  Rate * 2
+end
+"
+
+app = "use src/shop
+use std/io
+
+defn Main()
+  (** Prints the total. *)
+  io.Print(shop.Total([1, 2]))
+  shop.Rate
+end
+"
+
+defn project()
+  (** A new project, its root. *)
+  root = test.Temp()
+  result.Unwrap(sys.Mkdir("$root/src/shop"))
+  result.Unwrap(sys.Mkdir("$root/src/app"))
+  result.Unwrap(sys.Write("$root/cesia.toml", "[project]\nname = \"p\"\nsrc = [\"src\"]\n"))
+  result.Unwrap(sys.Write("$root/src/shop/shop.ce", shop))
+  result.Unwrap(sys.Write("$root/src/shop/shop.test.ce", "isTotal() = Total([100]) == 120   (** The tax is added. *)\n"))
+  result.Unwrap(sys.Write("$root/src/app/app.ce", app))
+  root
+end
+
+(** The places of an answer as path:line:column, the path from the root. *)
+places(root, answer) = ["$(str.Slice(value.Len(root) + 2, value.Len(p.Path), p.Path)):$(p.Line):$(p.Column)" for p in answer.Places]
+
+(** Where cesia lsp says that Total and Rate are defined, as src/ide gives it. *)
+total(root) = {Path: "$root/src/shop/shop.ce", Line: 6, Column: 5}
+rate(root) = {Path: "$root/src/shop/shop.ce", Line: 4, Column: 0}
+question(root, definition) = {Path: "$root/src/shop/shop.ce", Line: 6, Column: 7, Definition: definition}
+
+isDefinitionAt() = lookup.DefinitionAt(total(project()), {}).Def.Name == "Total"
+isNoDefinitionAtAnotherColumn() = value.IsMissing(lookup.DefinitionAt({Path: "$(project())/src/shop/shop.ce", Line: 6, Column: 2}, {}))
+
+defn isReferencesOfAPublicName()
+  root = project()
+  got = lookup.References(question(root, total(root)), {})
+  value.Equal(places(root, got), ["src/shop/shop.ce:6:5", "src/shop/shop.ce:14:9", "src/shop/shop.ce:17:19", "src/shop/shop.test.ce:1:12", "src/app/app.ce:6:16"])
+end
+
+defn isReferencesLeaveAParameterOut()
+  root = project()
+  value.Equal(places(root, lookup.References(question(root, rate(root)), {})), ["src/shop/shop.ce:4:0", "src/shop/shop.ce:9:14", "src/app/app.ce:7:7"])
+end
+
+defn isReferencesOfStd()
+  root = project()
+  value.Equal(places(root, lookup.References({Path: "$root/src/app/app.ce", Line: 6, Column: 5, Definition: missing}, {})), ["src/app/app.ce:6:5"])
+end
+
+defn isRename()
+  root = project()
+  got = lookup.Rename(total(root), "Sum", {})
+  got.Files == 3 and value.Len(got.Edits) == 5 and got.To == "Sum"
+end
+
+isRenameKeepsPublic() = dict.Has("Error", lookup.Rename(total(project()), "sum", {}))
+isRenameToATakenName() = dict.Has("Error", lookup.Rename(total(project()), "Rate", {}))
+isRenameToANonName() = dict.Has("Error", lookup.Rename(total(project()), "a b", {}))
+isRenameOfNoDefinitionRefused() = dict.Has("Error", lookup.Rename({Path: "$(project())/src/shop/shop.ce", Line: 3, Column: 0}, "Say", {}))
+
+defn isRenameCaught()
+  (** extra called inside Total, where sum is a local: renamed sum, the call would read the local. *)
+  got = lookup.Rename({Path: "$(project())/src/shop/shop.ce", Line: 12, Column: 5}, "sum", {})
+  dict.Has("Error", got) and str.StartsWith("sum would be", got.Error)
+end
+
+defn isDefinitionOfTheGivenText()
+  root = project()
+  moved = "\n\n$shop"
+  value.Len(lookup.References(question(root, {Path: "$root/src/shop/shop.ce", Line: 8, Column: 5}), {"$root/src/shop/shop.ce": moved}).Places) == 5
+end
+
+isAnswerChecksTheQuestion() = list.All([dict.Has("Error", lookup.Answered(q)) for q in [1, {Do: "doc"}, {Do: "references", Path: "a.ce", Line: 1, Column: 0, Texts: {}},
+  {Do: "references", Path: "/a.txt", Line: 1, Column: 0, Texts: {}}, {Do: "references", Path: "/a.ce", Line: 0, Column: 0, Texts: {}},
+  {Do: "references", Path: "/a.ce", Line: 1, Column: 0, Texts: {"/a.ce": 3}}, {Do: "definition", Path: "/a.ce", Line: 1, Column: 0, Texts: {}}]])
+
+defn isRenameAsksThenConfirms()
+  root = project()
+  q = {Do: "rename", Path: "$root/src/shop/shop.ce", Line: 6, Column: 7, Texts: {}, Definition: total(root)}
+  first = lookup.Answered(q)
+  second = lookup.Answered(dict.Merge(q, {Answer: "Sum"}))
+  first.Ask.Label == "Rename Total to: " and value.Equal(first.Ask.Then.Definition, total(root)) and
+    second.Confirm.Label == "Rename Total to Sum in 5 places of 3 files? (y or n)" and value.Len(second.Confirm.Yes.Edits) == 5
+end
+
+defn isReferencesListed()
+  root = project()
+  a = lookup.Answered({Do: "references", Path: "$root/src/shop/shop.ce", Line: 4, Column: 0, Texts: {}, Definition: rate(root)})
+  a.List.Rows[1].Words == "src/shop/shop.ce:4:1  Rate = 20   (** The tax, in percent. *)" and a.Say == "3 places." and a.List.Keys["enter"] == "open"
+end

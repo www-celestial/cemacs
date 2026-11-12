@@ -96,6 +96,35 @@ qui prend ce signal pour lui-même peut demander un second `C-c c k`. Sans progr
 `No program is running.` (aucun programme ne tourne), et `C-c c h` sans exécution encore dit
 `There is no output yet: C-c c r runs the file.` (il n'y a pas encore de sortie : C-c c r exécute le fichier)
 
+## Les tests
+
+Les tests de Cesia sont les exemples de la documentation d'une fonction, une ligne avec `-->` et la valeur qu'elle doit
+donner, et les fonctions de test des fichiers `.test.ce`, dont le nom commence par `is` et une capitale : le livre de Cesia
+les décrit dans son chapitre sur les [tests](https://www-celestial.github.io/cesia-lang/tests.html). Les touches forment un
+groupe de `C-c`, `t` pour test, de [src/ide], qui demande à [src/testing] quoi lancer :
+
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `C-c t t` | [ide.TestHere] | dans un fichier `.test.ce`, lance la fonction de test où est le curseur ; ailleurs, les tests du dossier du fichier |
+| `C-c t a` | [ide.TestAll] | lance tous les tests du projet |
+| `C-c t r` | [ide.TestAgain] | relance les derniers tests, depuis n'importe quel buffer |
+
+Chacune lance `cesia test` comme `C-c c r` lance un programme, dans le dossier où Cemacs a démarré : dans `isTotal` de
+`src/shop/shop.test.ce`, `cesia test src/shop/shop.test.ce:isTotal` ; dans `src/shop/shop.ce`, `cesia test src/shop`, le
+package avec ses exemples et ses tests. Dans un test, `--> 5` dit ce que doit donner un exemple :
+
+```cesia norun
+(** Twice.
+
+      Twice(2) --> 5 *)
+Twice(x) = x * 2
+```
+
+Quand les tests finissent, la prompt line dit le compte de `cesia test`, comme `1 passed, 2 failed`, et chaque échec devient
+une marque rouge sur sa ligne, dans le buffer de son fichier, comme les erreurs des [Erreurs dans les lignes](check.md) :
+`M-g n` y va, la vérification la garde, les tests suivants l'enlèvent. `cesia test` donne aux tests les permissions de
+`[test]` dans `cesia.toml`, et pas plus.
+
 ## Déboguer
 
 | Touches | Commande | Ce qu'elle fait |

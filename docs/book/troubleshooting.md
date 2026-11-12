@@ -42,6 +42,13 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `This list is read only.` | a command tried to change the text of a list, and was taken back |
 | `Nothing here.` | a key of a list with no row left, as Enter after a filter that matches nothing: Backspace takes the filter back |
 
+### The prompt line
+
+| Message | What happened |
+|---|---|
+| `No answer before this one.`, `No answer after this one.` | `M-p` or `M-n` at an end of the answers given to the question |
+| `{no match}`, after the answer | Tab in `Find file: ` found no entry of the folder that matches the last part of the answer |
+
 ### Files and buffers
 
 | Message | What happened, and what to do |
@@ -81,6 +88,34 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `Can't run git: no such file or directory.` | `git` is not on the `PATH`: install it |
 | `git ls-files failed: REASON` | Git found the repository but couldn't list it; REASON is Git's own words |
 
+### Searching a project
+
+| Message | What happened |
+|---|---|
+| `N lines. C-c r replaces in those shown.` | the list of the search; `, the first 10000 only` when it was cut there |
+| `No line of the project holds WORDS.` | git grep found nothing |
+| `No words to search.` | Enter on an empty answer |
+| `FOLDER/ is in no Git repository.` | the search of a project needs one, as `C-x p f` |
+| `git grep failed: REASON`, `git can't run: REASON` | git ended with an error, or couldn't start: is it on the `PATH`? |
+| `No place of WORDS is left in those lines.` | `C-c r` after the lines changed, or a filter that kept none |
+| `Replaced WORDS with NEW: N files saved.` | the replace is done, told as a rename tells it |
+| `Not replaced.` | `n` to the question of a replace |
+
+### Git
+
+| Message | What happened |
+|---|---|
+| `s stage  u unstage  c commit  d diff  l log  g refresh  Enter open` | a letter that is no command in the state of `C-x g` |
+| `Staged PATH.`, `Unstaged PATH.`, `Committed: MESSAGE` | `s`, `u` or `c` in the state |
+| `No file on this row.` | `s`, `u` or `d` on the first row of the state |
+| `No message: nothing committed.` | `c`, then Enter on an empty message |
+| `A new file has no diff yet: s stages it.` | `d` on a new file |
+| `No difference.` | the diff is empty |
+| `git COMMAND failed: REASON` | git ended with an error, as `git commit failed: nothing to commit` |
+| `This buffer has no file.`, `PATH is out of the repository.` | `C-c g b` or `C-c g d` on a buffer of no file, or of a file outside |
+| `These lines aren't committed yet.` | Enter in a blame on a line not committed |
+| `Not a commit.` | Enter on a row that holds no hash |
+
 ### Windows and panes
 
 | Message | What happened |
@@ -98,6 +133,48 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `PATH isn't there.` | Enter in the output on a place of a file that doesn't exist from the folder where Cemacs started |
 | `There is no output yet: C-c c r runs the file.` | `C-c c h` or `C-c c o` before any run |
 
+### Names
+
+| Message | What happened |
+|---|---|
+| `Names are those of a file of Cesia.` | `M-.`, `M-?`, `C-c c i` or `C-c c m` in a buffer that isn't a saved `.ce` file, or in a list |
+| `No definition or documentation found here.` | `M-.` or `C-c c i` where `cesia lsp` finds no definition and no documentation: no name, or a local, or a parameter |
+| `No definition found here, in the project or in std/.` | `M-?` on such a name |
+| `No definition found here in the project: a name of std/, or a local, can't be renamed.` | `C-c c m` on a name that the project doesn't define |
+| `cesia lsp doesn't start: REASON` | `cesia` couldn't start its language server: is it on the `PATH`? |
+| `cesia lsp ended, code N: the next question starts it again.` | the language server ended while a question waited |
+| `No place to go back to.` | `M-,` with no place left on the stack |
+| `N places.`, `N places (by name: a method).` | the list of `M-?`; a method is found by name, every `.NAME` of the project: [Names](names.md#the-references) |
+| `..., N files don't read.` | some files of the project don't read, so their places aren't listed: open them, the check shows why |
+| `Nothing reads NAME.` | the name is defined, and nothing reads it |
+| `The program failed: WORDS` | a program of [src/ide](names.md#how-the-ide-asks) didn't answer in JSON, or ended with an error: WORDS is the first line it wrote |
+| `cesia can't run: REASON` | `cesia` couldn't start: is it on the `PATH`? |
+| `The program gave no place.`, `... no list.`, `... no edits.`, `... no marks.`, `The program asked nothing.` | the answer wasn't of the shape src/ide reads, which it checks before it opens a file or changes a buffer |
+| `The program asked a run that isn't one of tests.` | an answer asked to run something else than `cesia test`, or came from another program than the one of the tests: refused |
+| `No program answers NAME.` | a question named a program that src/ide doesn't run |
+| `No name.` | Enter on an empty answer to `Rename NAME to: ` |
+| `NAME is a method: its calls ... can't be told from those of other methods of the name.` | a method or a field can't be renamed |
+| `NEW is not a name: a letter, then letters and digits.` | the new name of a rename has another character, or is a word of Cesia |
+| `NEW would be public: ...`, `NEW would be private: ...` | a rename keeps the case of the first letter, which says in Cesia whether a name is public |
+| `NEW is defined already, at PATH:LINE.` | the package has that name already |
+| `NEW would be another name at PATH:LINE: choose another one.` | at that line, a local or a parameter of the new name would take the place of the renamed one |
+| `PATH doesn't read: fix it first, so that its places of NAME are known.` | a file of the project that reads the package doesn't parse: a rename would leave its places |
+| `Renamed NAME to NEW: N files saved.` | the rename is done; `, N left unsaved, with changes of their own` and `, N changed since, left as they are` tell the files it didn't save or didn't change |
+| `Not renamed.` | `n` to the question of a rename |
+| `Saved PATH as typed: WORDS` | the text of a file of Cesia doesn't read, so `cesia fmt` left it, and it was saved as typed; WORDS say why |
+| `cesia fmt has no place to write: REASON`, `cesia fmt can't run` | the save of a file of Cesia couldn't go through `cesia fmt`: it was saved as typed |
+
+### The shell and the forms
+
+| Message | What happened |
+|---|---|
+| `SHELL in FOLDER: each line after $ runs at Enter.` | `C-c o t` started the shell: [The shell](shell.md) |
+| `The shell doesn't start: REASON` | `cesia` couldn't start `tools/shell.ce`, or it couldn't start the shell |
+| `The shell ended: close this buffer, and C-c o t starts another.` | Enter after the shell ended, as after `exit` |
+| `[the shell ended, code N]`, in the buffer | the shell ended, with that exit code |
+| `Nothing to write here.` | `C-c i` in a list, or a form of the wrong shape |
+| `Only the forms of C-c i are written by an answer.` | an answer of another program asked to write text: refused |
+
 ### Running and debugging
 
 | Message | What happened |
@@ -113,6 +190,12 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `A breakpoint needs a file: save the buffer first.` | `C-c d b` in a buffer with no file |
 | `No program runs under the debugger: C-c d r runs the file under it.` | `C-c d e` without a program run by `C-c d r` |
 | `The program isn't stopped.` | `C-c d c`, `n`, `s` or `u` while the program runs: they go on from a stop only |
+| `Testing: cesia test TARGET` | `C-c t t`, `C-c t a` or `C-c t r` started the tests: [Running and debugging](running.md#tests) |
+| `N passed, M failed` | the tests ended; each failure is a mark in the lines of its file |
+| `The tests ended without their count.` | the tests ended without the count of `cesia test`, as when `C-c c k` stopped them |
+| `Tests are those of a file of Cesia.` | `C-c t t` in a buffer that isn't a `.ce` file |
+| `No test ran yet: C-c t t runs those of the file.` | `C-c t r` before any test ran |
+| `cesia test doesn't run: REASON` | `cesia` couldn't start: is it on the `PATH`? |
 
 ### Questions
 
@@ -124,7 +207,11 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `Text not saved. Quit anyway? (y or n)` | quitting with a buffer not saved: `y` loses every unsaved change |
 | `File changed on disk. Overwrite? (y or n)` | the file changed since Cemacs read it, or a file is there already: `y` writes over it |
 | `New file, or folder/: ` | in the folder manager, the name to make |
-| `Rename NAME to: ` | in the folder manager, the new name or path |
+| `Rename NAME to: ` | in the folder manager, the new name or path; in a file of Cesia, after `C-c c m`, the new name of a name of the code |
+| `Rename NAME to NEW in N places of M files? (y or n)` | `C-c c m`: `y` makes the edits, as [Names](names.md#a-rename) tells |
+| `Search project: ` | `C-x p g`: the words to look for in the project |
+| `Commit message: ` | `c` in the state of `C-x g`: the message of the commit, one line |
+| `Replace WORDS with: `, `Replace N places of WORDS in M files with NEW? (y or n)` | `C-c r` in the list of a search |
 | `Move NAME to the trash? (y or n)` | in the folder manager |
 | `I-search: `, `I-search backward: ` | a search is open: what you type is looked for, Enter stays, `C-g` goes back; see [Search](search.md#searching-a-buffer) |
 | `Failing I-search: ` | no place of the words is left that way: `C-s` or `C-r` again goes round the end, `C-g` takes back what matched nothing |

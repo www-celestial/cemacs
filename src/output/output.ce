@@ -20,15 +20,23 @@ Here() = {"enter": Visit}   (** The keys of the list. Letters filter it, and the
 (** What starts an error of Cesia: its path, line and column. A function, so that a reload under --watch reads it at once. *)
 errorStart() = "^([^ :][^:]*):([0-9]+):([0-9]+): "
 
+(** What starts a failure of cesia test: the path of a file of Cesia and a line. *)
+testStart() = "^([^ :][^:]*[.]ce):([0-9]+): "
+
 defn PlaceIn(line)
   (** The place of a file that a line of output names, {Path, Line, Column} with columns from 1, or missing. The calls under an error name a line only.
 
         PlaceIn("src/a.ce:4:11: Index 5 is outside this array of 2 elements.") --> {Path: "src/a.ce", Line: 4, Column: 11}
         PlaceIn("  called from f (a.ce:3)") --> {Path: "a.ce", Line: 3, Column: 1}
+        PlaceIn("src/a.test.ce:4: isTotal failed") --> {Path: "src/a.test.ce", Line: 4, Column: 1}
         PlaceIn("> cesia run a.ce") --> missing *)
   error = regex.Find(errorStart(), line)
   if not value.IsMissing(error)
     return {Path: error.Groups[1], Line: str.Number(error.Groups[2]), Column: str.Number(error.Groups[3])}
+  end
+  failed = regex.Find(testStart(), line)
+  if not value.IsMissing(failed)
+    return {Path: failed.Groups[1], Line: str.Number(failed.Groups[2]), Column: 1}
   end
   call = regex.Find("\\(([^() :][^():]*):([0-9]+)\\)$", line)
   if value.IsMissing(call) missing else {Path: call.Groups[1], Line: str.Number(call.Groups[2]), Column: 1} end
@@ -44,7 +52,7 @@ defn lastError(lines)
   (** The line of the last error, path:line:column, or else the last line. *)
   k = value.Len(lines)
   while k > 0
-    if not value.IsMissing(regex.Find(errorStart(), lines[k]))
+    if not value.IsMissing(regex.Find(errorStart(), lines[k])) or not value.IsMissing(regex.Find(testStart(), lines[k]))
       return k
     end
     k = k - 1

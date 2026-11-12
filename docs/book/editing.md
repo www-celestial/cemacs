@@ -227,6 +227,24 @@ textOf(press.Press(["M->", "Hell", "tab"], editor(words, "a.ce"))) --> "Hello = 
 The list shows eight words at a time, and moves with the word chosen. In a file of another language, Tab types its text as
 before, and doesn't complete. [Speed](performance.md#completion) gives what a completion costs.
 
+## Forms of Cesia
+
+The group `i`, insert, of `C-c` writes the forms of Cesia that a program is made of, each at the indent of its place, the
+cursor where its name or its first word goes: on the line of the cursor when it is blank, else on a new line after it.
+
+| Keys | Command | What it writes |
+|---|---|---|
+| `C-c i d` | [ide.InsertDefn] | `defn ()`, a line for its documentation, a blank line and `end`, the cursor where the name goes |
+| `C-c i s` | [ide.InsertStruct] | `struct `, a line for a field and `end` |
+| `C-c i f` | [ide.InsertFor] | `for  in `, a blank line and `end`, the cursor where the name of the loop goes |
+| `C-c i m` | [ide.InsertMatch] | `match `, a case `->`, `else ->` and `end` |
+| `C-c i t` | [ide.InsertTest] | `defn is()`, a blank line and `end`: a test function, its name after `is` |
+| `C-c i c` | [notebook.InsertCell] | the marker of a cell, as `C-c e i`: [Cells and results](cells.md) |
+
+The forms come from [src/snippets], through `tools/snippets.ce`, a program that needs no permission, as the other
+questions of [src/ide](names.md#how-the-ide-asks) do; Cemacs writes the text and gives each line the indent that Tab
+gives it.
+
 ## Deleting
 
 | Keys | Command | Deletes |

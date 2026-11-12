@@ -125,6 +125,21 @@ cursor, with its hint, the words that say how to fix it. The mode line counts th
 A warning is about a result whose `Err` would go unseen, such as a `sys.Read` used as a plain value: Cesia's book explains
 each kind, in its chapter on errors. [Errors in the lines](check.md) tells when the check runs and what it shows.
 
+### Names, the project and Git
+
+| Keys | What they do |
+|---|---|
+| `M-.`, then `M-,` | goes to the definition of the name at the cursor, then back |
+| `M-?` | lists every place of the project that reads the name |
+| `C-c c m` | renames it in all of them |
+| `C-x p g` | lists every line of the project that holds some words |
+| `C-c t t` | runs the test the cursor is in, or the tests of the file's folder; failures are marked in their lines |
+| `C-x g` | the state of Git, where `s` stages a file and `c` commits |
+
+The prompt line shows the signature of the call you type, `Total(prices): The total of prices, with the tax.`
+[Names](names.md), [Search](search.md#searching-a-project), [Running and debugging](running.md#tests) and [Git](git.md) tell
+them in full.
+
 ### Running a file
 
 `C-c c r` runs the file of the current buffer, as saved, as `cesia run` would, and as fast. What it prints shows in the

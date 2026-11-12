@@ -53,28 +53,33 @@ peut lire.
 6. [Recherche](search.md) : l'incremental search dans un buffer, `C-s` et `C-r`, et ce que Cemacs trouve d'autre : des
    rangées de listes, des touches, des erreurs, des endroits.
 7. [Touches](keys.md) : chaque touche, générée à partir du code, et comment une touche devient une commande.
-8. [Exécuter et déboguer](running.md) : exécuter un fichier avec ses permissions, sa sortie, les breakpoints, le pas à pas,
-   fix and continue.
+8. [Exécuter et déboguer](running.md) : exécuter un fichier avec ses permissions, sa sortie, les tests et leurs échecs dans
+   les lignes, les breakpoints, le pas à pas, fix and continue.
 9. [Les erreurs dans les lignes](check.md) : ce que montre la vérification, quand elle tourne, et comment aller d'une erreur
    à la suivante.
-10. [Cellules et résultats](cells.md) : un fichier de Cesia comme un notebook (du code coupé en cellules, chacune avec
+10. [Names](names.md) (en anglais) : la définition d'un nom et le retour, sa documentation, la signature d'un appel, chaque
+    endroit qui le lit, et son renommage dans tout le projet.
+11. [Git](git.md) (en anglais) : l'état d'un dépôt, où une lettre stage, unstage ou commit, le log, un commit, un diff et
+    le commit de chaque ligne.
+12. [The shell](shell.md) (en anglais) : un buffer où les commandes que vous tapez tournent dans votre shell.
+13. [Cellules et résultats](cells.md) : un fichier de Cesia comme un notebook (du code coupé en cellules, chacune avec
     son résultat), ses résultats sous ses cellules, `*variables*`, `*repl*` et la page d'un fichier.
-11. [Modifier Cemacs](customising.md) : votre dossier `user/`, les réglages, vos propres touches et commandes, une app à
+14. [Modifier Cemacs](customising.md) : votre dossier `user/`, les réglages, vos propres touches et commandes, une app à
     vous, et le rechargement pendant qu'il tourne.
-12. [Recettes](recipes.md) : de petites tâches faites dans `user/`, chacune avec son code, sa touche et ce qu'elle montre :
+15. [Recettes](recipes.md) : de petites tâches faites dans `user/`, chacune avec son code, sa touche et ce qu'elle montre :
     vos réglages, des fichiers au démarrage, un nouveau buffer, un groupe de touches, une question, une liste, un hook,
     une app.
-13. [À l'intérieur de Cemacs](internals.md) : l'état et sa mise à jour, la rope, l'historique, les couleurs,
+16. [À l'intérieur de Cemacs](internals.md) : l'état et sa mise à jour, la rope, l'historique, les couleurs,
     l'indentation, la frame, la boucle des événements, l'enregistrement.
-14. [Vitesse](performance.md) : ce qui a été mesuré, comment, et les chiffres.
-15. [Cemacs et les autres éditeurs](comparison.md) : à côté de GNU Emacs, Neovim, Vim et VS Code, en chiffres et en
+17. [Vitesse](performance.md) : ce qui a été mesuré, comment, et les chiffres.
+18. [Cemacs et les autres éditeurs](comparison.md) : à côté de GNU Emacs, Neovim, Vim et VS Code, en chiffres et en
     fonctions.
-16. [Un cas : trouver un fichier à partir de quelques lettres](finding.md) : un vrai problème, de son énoncé jusqu'à la
+19. [Un cas : trouver un fichier à partir de quelques lettres](finding.md) : un vrai problème, de son énoncé jusqu'à la
     preuve qu'il est résolu, par les méthodes de la recherche scientifique : une base de comparaison, une hypothèse, les
     articles, le plus petit changement, des tests et des mesures.
-17. [Dépannage](troubleshooting.md) : chaque message de Cemacs, ce qu'il veut dire et que faire.
-18. [Glossaire](glossary.md) : les mots des éditeurs, tels que Cemacs les emploie.
-19. [Références](references.md) : les travaux et les normes que suit Cemacs.
+20. [Dépannage](troubleshooting.md) : chaque message de Cemacs, ce qu'il veut dire et que faire.
+21. [Glossaire](glossary.md) : les mots des éditeurs, tels que Cemacs les emploie.
+22. [Références](references.md) : les travaux et les normes que suit Cemacs.
 
 La référence, sous [Reference](ref/index.html), liste chaque package de Cemacs et chaque nom public, à partir de son code.
 

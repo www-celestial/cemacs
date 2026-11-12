@@ -7,6 +7,7 @@ use src/emacs
 use core/editor
 use src/folders
 use src/help
+use src/ide
 use src/notebook
 use src/output
 use src/project
@@ -15,14 +16,14 @@ use std/dict
 use std/io
 
 (** Every key of the editor: the Emacs keys, then the keys of each app. For a key in two, the later one wins. *)
-Keys() = dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()), check.Keys()), output.Keys()),
-  notebook.Keys())
+Keys() = dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()), check.Keys()),
+  output.Keys()), notebook.Keys()), ide.Keys())
 
 defn Config()
-  (** What the editor runs on: these keys, the other keys and the settings of src/emacs and the hooks of the check and the cells, as the Changed of user/config changes them,
+  (** What the editor runs on: these keys, the other keys and the settings of src/emacs and the hooks of the check, the cells and the questions of src/ide, as the Changed of user/config changes them,
       then ? after the first keys of every pair or group, those of the person too, which lists what follows them. It runs at each key, so a change of
       user/config under cesia do dev works at the next one. *)
-  c = user.Changed(notebook.Hooked(check.Hooked(emacs.Config(Keys))))
+  c = user.Changed(ide.Hooked(notebook.Hooked(check.Hooked(emacs.Config(Keys)))))
   keys = c.Keys
   c.Keys = () -> help.WithHelp(keys())
   c

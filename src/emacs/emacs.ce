@@ -93,9 +93,11 @@ Keys() = {
 }
 
 (** The keys while a prompt is open. Any other key does nothing, but in a search, which it ends before it does what it does; a prompt has no pairs.
-    C-s and C-r go on with a search, and do nothing in another prompt. *)
+    C-s and C-r go on with a search, and do nothing in another prompt; M-p and M-n go through the answers given before to the question, and Tab completes
+    the name of a file in Find file and Save as. *)
 PromptKeys() = {
   "enter": commands.PromptAccept, "S-enter": commands.PromptAccept,
+  "M-p": commands.PromptHistoryBack, "M-n": commands.PromptHistoryOn, "tab": commands.PromptComplete,
   "C-s": commands.SearchForward, "C-r": commands.SearchBackward,
   "backspace": commands.PromptDeleteBefore, "S-backspace": commands.PromptDeleteBefore,
   "C-y": commands.PromptPaste,

@@ -662,7 +662,10 @@ defn prompt(state, lay, look)
   here = if value.IsMissing(state.Prompt) and state.Message == "" and not filtering underCursor(b) else [] end
   words = if not value.IsMissing(state.Prompt) "$(state.Prompt.Label)$(state.Prompt.Answer)" else if filtering "$(lists.LabelOf(lists.Of(b)))$(lists.Of(b).Filter)" else if value.Len(here) > 0 markText(here[1]) else state.Message end
   bar = if value.IsMissing(state.Prompt) and not filtering [] else [rectCommand(rect.X + 12 + look.Width(words, "body"), y, 2, look.Height, th.Bright)] end
-  list.Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, if value.Len(here) > 0 markColor(here[1]) else th.Ink end)], bar)
+  (* The names that Tab left, after the answer of a prompt for a file. *)
+  hint = if value.IsMissing(state.Prompt) "" else dict.GetOr("Hint", "", state.Prompt) end
+  after = if hint == "" [] else [textCommand(rect.X + 24 + look.Width(words, "body"), y, hint, th.Muted)] end
+  list.Concat(list.Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, if value.Len(here) > 0 markColor(here[1]) else th.Ink end)], bar), after)
 end
 
 defn underCursor(b)

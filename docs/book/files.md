@@ -14,7 +14,11 @@ another, and the folder manager. The commands are in [core/commands], the folder
 The answer starts with the folder of the current file, so that a file beside it takes only its name. It is a path as the
 system reads it: from the folder where Cemacs started for a relative one; `~` is only a name there, not your home. The
 prompt line takes letters, Backspace, `C-y`, which pastes the first line of the clipboard, Enter and `C-g`, and you edit only
-at the end of the answer. It has no completion, the help that finishes a name from the files that exist.
+at the end of the answer. Tab completes the name, from the entries of its folder, as Emacs does: the names that start with
+the last part of the answer complete it as far as they agree, a folder with its `/`; when several are left, they show after
+the answer, as `{color/ | commands/ | complete/}`, ten at most. With none that starts so, the names that hold its letters in
+order match, as the filter of a list does: `nms` and Tab give `names/`. `M-p` and `M-n` go back and on through the files
+answered before, as [The prompt line](windows.md#the-prompt-line) tells.
 
 A file opens in a new buffer, which becomes the current one, the buffer you edit. A file that is open already isn't read
 again: Cemacs goes to its buffer. Two paths name the same file when they are the same once `.` and `..` and doubled slashes
@@ -151,6 +155,16 @@ files.SaveFile("notes.txt", "third", read.Disk) --> result.Err({Kind: "changed",
 The second save gives the size and the time of the first reading, and the file has changed since: the save in between made
 it a new file. Cemacs looks only when it saves: it doesn't reload a file that changes while it is open, as Emacs's
 `auto-revert-mode` would, and it has no command to read it again.
+
+### Saved as cesia fmt writes it
+
+A file of Cesia, a `.ce` file, is saved as [`cesia fmt`](https://www-celestial.github.io/cesia-lang/commands.html) writes it:
+each line at the indent of its blocks, no spaces at the end of a line, no two blank lines in a row. The text goes to a file
+of its own in `.cesia/fmt/` of the folder of Cemacs, `cesia fmt` formats it, and the formatted text is what is saved; the
+buffer takes it too, as one step of undo, so that `C-/` gives back what you typed, the cursor on its line. The file in
+`.cesia/fmt/` is removed at once. A text that doesn't read, as one with a bracket left open, is saved as typed, and the
+prompt line says `Saved PATH as typed:` and why `cesia fmt` left it. A save of a file of 2,000 lines takes 60 ms through
+`cesia fmt`, 8 ms without: [Speed](performance.md#paste-undo-and-save).
 
 ### Save as
 

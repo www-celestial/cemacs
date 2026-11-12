@@ -1,0 +1,779 @@
+(** The keys that ask about code and about the project: M-. goes to a definition and M-, back, M-? lists the places that read a name, C-c c m renames it,
+    C-c c i shows its documentation and the prompt line the signature of a call; C-x p g searches the project; C-x g shows the state of Git; C-c t runs the tests.
+    Each key asks a program of Cemacs, which cesia runs at each question with the permissions that Programs gives it: tools/lookup.ce, tools/grep.ce,
+    tools/git.ce or tools/testing.ce, so that none of their code loads at the start of the editor and typing never waits. The question goes in JSON on its
+    input, with the place of the cursor; its answer, one line of JSON on its output, says what to do in the few words this file knows: Say, Open, List, Ask,
+    Confirm, with the edits made after a yes, Run and Marks. An answer is input from another program, and each part is checked before a file opens, a
+    buffer changes or a test runs. One question at a time: a new one takes the place of the one before. src/cemacs.ce adds the hooks of Hooked and these Keys. *)
+use core/commands
+use core/files
+use core/indent
+use core/lists
+use core/run
+use core/text
+use src/folders
+use src/notebook
+use src/rope
+use std/dict
+use std/fiber
+use std/json
+use std/list
+use std/math
+use std/regex
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The keys: M-., M-, and M-? as Emacs's cross references; the group of the code of C-c; C-x p g and C-x g as Emacs and Magit; the groups g for git, t
+    for the tests, i to insert a form of Cesia and o to open the shell, of C-c, as in Doom Emacs; and Enter, which runs a command in the shell. *)
+Keys() = {"M-.": Definition, "C-c c d": Definition, "M-,": Back, "C-c c b": Back, "M-?": References, "M-S-/": References, "C-c c f": References,
+  "C-c c i": Documentation, "C-c c m": Rename, "C-x p g": Search, "C-c s p": Search, "C-x g": Status, "C-c g": "git", "C-c g g": Status, "C-c g l": Log,
+  "C-c g b": Blame, "C-c g d": Diff, "C-c t": "test", "C-c t t": TestHere, "C-c t a": TestAll, "C-c t r": TestAgain, "C-c i": "insert", "C-c i d": InsertDefn,
+  "C-c i s": InsertStruct, "C-c i f": InsertFor, "C-c i m": InsertMatch, "C-c i t": InsertTest, "C-c i c": notebook.InsertCell, "C-c o": "open", "C-c o t": Terminal,
+  "enter": Enter, "S-enter": Enter}
+
+(** The programs that answer, each with the permissions it runs with: these and no others, whatever an answer asks. *)
+Programs() = {lookup: "read", grep: "read,exec=git", git: "read,exec=git", testing: "read", snippets: ""}
+
+(** The seconds a question may take before its program is ended. *)
+QuestionLimit() = 20
+
+(** The most places kept to go back to. *)
+BackLimit() = 100
+
+Definition(state) = askName("definition", state)   (** Goes to the definition of the name at the cursor; M-, comes back. *)
+Documentation(state) = askName("doc", state)   (** Shows the documentation of the name at the cursor. *)
+References(state) = askName("references", state)   (** Lists every place of the project that reads the name at the cursor. *)
+Rename(state) = askName("rename", state)   (** Renames the name at the cursor everywhere the project reads it, after a yes. *)
+Search(state) = ask({Program: "grep", Do: "search"}, state)   (** Lists each line of the project that holds the words asked, the name at the cursor first. *)
+Status(state) = ask({Program: "git", Do: "status"}, state)   (** Lists the state of the Git repository of the file, where a letter is a command. *)
+Log(state) = ask({Program: "git", Do: "log"}, state)   (** Lists the last commits of the repository; Enter shows one. *)
+Blame(state) = ask({Program: "git", Do: "blame"}, state)   (** Lists the lines of the buffer with the commit that last changed each one. *)
+Diff(state) = ask({Program: "git", Do: "diff"}, state)   (** Shows what changed in the file of the buffer, as saved, since what is staged of it. *)
+TestHere(state) = ask({Program: "testing", Do: "here"}, state)   (** Runs the test function at the cursor, or else the tests of the folder of the file. *)
+TestAll(state) = ask({Program: "testing", Do: "all"}, state)   (** Runs every test of the project. *)
+InsertDefn(state) = ask({Program: "snippets", Do: "defn"}, state)   (** Writes a function under the cursor, defn and end, the cursor where its name goes. *)
+InsertStruct(state) = ask({Program: "snippets", Do: "struct"}, state)   (** Writes a struct under the cursor, the cursor where its name goes. *)
+InsertFor(state) = ask({Program: "snippets", Do: "for"}, state)   (** Writes a loop under the cursor, for, in and end. *)
+InsertMatch(state) = ask({Program: "snippets", Do: "match"}, state)   (** Writes a match under the cursor, a case, else and end. *)
+InsertTest(state) = ask({Program: "snippets", Do: "test"}, state)   (** Writes a test function under the cursor, the cursor where its name goes after is. *)
+
+(* ---- Questions *)
+
+defn asking(state)
+  (** The question that waits for its answer, {Request, Channel, Path, Version, Line, Column}, or missing: a state from before this field has none. *)
+  match state
+    {Asking: q} -> q
+    else -> missing
+  end
+end
+
+(** Is a buffer one of a file, as a question tells it? *)
+isFile(b) = not lists.IsList(b) and not value.IsMissing(b.Path)
+
+(** A path from the root, as a program wants it: one from the folder Cemacs started in is read from there. *)
+absolute(p) = if str.StartsWith("/", p) files.Normal(p) else folders.Absolute(p, sys.Env("PWD")) end
+
+defn context(state)
+  (** What a question says of the editor: the folder Cemacs started in, Pwd; the file of the current buffer, Path, its text, Text, and the place of the
+      cursor; the folder of that file, Folder; and Texts, the texts of the Cesia buffers not saved, by path; a text over TextLimit() bytes stays out. *)
+  b = state.Buffers[state.Current]
+  pwd = sys.Env("PWD")
+  out = {Pwd: pwd, Folder: absolute("."), Line: b.Cursor.Line, Column: b.Cursor.Column, Texts: {}}
+  if isFile(b)
+    out.Path = absolute(b.Path)
+    out.Folder = folders.Parent(out.Path)
+    if rope.Size(b.Rope) <= TextLimit()
+      out.Text = rope.Text(b.Rope)
+    end
+  end
+  for other in state.Buffers
+    if isFile(other) and indent.IsCesia(other) and text.IsModified(other) and rope.Size(other.Rope) <= TextLimit()
+      out.Texts[absolute(other.Path)] = rope.Text(other.Rope)
+    end
+  end
+  out
+end
+
+(** The largest text of a buffer a question carries, in bytes, as the check reads no larger one. *)
+TextLimit() = 1000000
+
+defn ask(request, state)
+  (** The state with a question sent to its program, from a fiber: the request, a map with Program and Do, and what context gives of the editor. *)
+  program = dict.GetOr("Program", missing, request)
+  allowed = if value.IsText(program) dict.GetOr(program, missing, Programs()) else missing end
+  if value.IsMissing(allowed)
+    return commands.Say("No program answers $(value.Text(program)).", state)
+  end
+  words = json.Text(dict.Merge(context(state), request))
+  path = "$(commands.Home(state))/tools/$program.ce"
+  ch = fiber.Channel()
+  args = if allowed == "" ["run", path] else ["run", "--allow", allowed, path] end
+  _ = fiber.Spawn(() -> fiber.Send(sys.Run("cesia", args, input = words, timeout = QuestionLimit()), ch))
+  b = state.Buffers[state.Current]
+  s = state
+  s.Asking = {Request: request, Channel: ch, Path: b.Path, Version: b.Version, Line: b.Cursor.Line, Column: b.Cursor.Column}
+  s
+end
+
+defn answerOf(got)
+  (** The answer in what the process gave, a map, or an Err of the words to say. *)
+  if result.IsErr(got)
+    return result.Err("cesia can't run: $(if value.IsText(got.Error) got.Error else got.Error.Message end)")
+  end
+  ran = got.Value
+  parsed = json.Parse(str.Trim(ran.Out))
+  if ran.Code != 0 or result.IsErr(parsed) or not value.IsDict(parsed.Value)
+    words = list.First([l for l in str.Lines(ran.Out) if str.Trim(l) != ""])
+    return result.Err("The program failed: $(if value.IsMissing(words) "code $(ran.Code)" else words end)")
+  end
+  result.Ok(parsed.Value)
+end
+
+defn Finished(state)
+  (** The state once the question asked has its answer, if it has: what the answer does. *)
+  q = asking(state)
+  if value.IsMissing(q)
+    return state
+  end
+  got = fiber.Receive(q.Channel, timeout = 0)
+  if result.IsErr(got)
+    return state
+  end
+  s = state
+  s.Asking = missing
+  quiet = q.Request.Do == "signature"
+  match answerOf(got.Value)
+    result.Ok(a) -> Heard(q, a, s)
+    result.Err(words) -> if quiet s else commands.Say(words, s) end
+  end
+end
+
+(* ---- Answers *)
+
+(** Is a value a place of a file, {Path, Line, Column}: a path from the root, a line from 1 and a column from 0? *)
+IsPlace(p) = value.IsDict(p) and value.IsText(dict.GetOr("Path", missing, p)) and str.StartsWith("/", p.Path) and value.IsInt(dict.GetOr("Line", missing, p)) and
+  p.Line >= 1 and value.IsInt(dict.GetOr("Column", missing, p)) and p.Column >= 0
+
+(** Is a value a list of at most 20,000 edits, places with End at or past their Column, Old and Text? *)
+areEdits(xs) = value.IsArray(xs) and value.Len(xs) <= 20000 and list.All([IsPlace(e) and value.IsInt(dict.GetOr("End", missing, e)) and e.End >= e.Column and
+  value.IsText(dict.GetOr("Old", missing, e)) and value.IsText(dict.GetOr("Text", missing, e)) for e in xs])
+
+(** Is a value a request a program may be asked: a map with a Program of Programs and a Do? *)
+isRequest(r) = value.IsDict(r) and value.IsText(dict.GetOr("Do", missing, r)) and dict.Has(value.Text(dict.GetOr("Program", "", r)), Programs())
+
+defn Heard(q, a, state)
+  (** The state after the answer a to the question q: its Say on the prompt line, then the one thing it asks, of Open, List, Ask, Confirm, Run and
+      Marks; an Error is said, but for a signature. Edits come only inside a Confirm, made after the yes of the person. Each part of the wrong
+      shape is said and does nothing. *)
+  if dict.Has("Error", a)
+    return if q.Request.Do == "signature" state else commands.Say(value.Text(a.Error), state) end
+  end
+  s = if value.IsText(dict.GetOr("Say", missing, a)) commands.Say(a.Say, state) else state end
+  if dict.Has("Open", a)
+    if IsPlace(a.Open) Visit(a.Open, s) else commands.Say("The program gave no place.", s) end
+  else if dict.Has("List", a)
+    listed(a.List, s)
+  else if dict.Has("Ask", a)
+    next = dict.GetOr("Then", missing, a.Ask)
+    if not value.IsText(dict.GetOr("Label", missing, a.Ask)) or not isRequest(next)
+      return commands.Say("The program asked nothing.", s)
+    end
+    commands.Ask(a.Ask.Label, value.Text(dict.GetOr("Answer", "", a.Ask)), (answer, t) -> ask(dict.Merge(next, {Answer: answer}), t), s)
+  else if dict.Has("Confirm", a)
+    yes = dict.GetOr("Yes", missing, a.Confirm)
+    if not value.IsText(dict.GetOr("Label", missing, a.Confirm)) or not value.IsDict(yes) or not areEdits(dict.GetOr("Edits", missing, yes))
+      return commands.Say("The program asked nothing.", s)
+    end
+    commands.Confirm(a.Confirm.Label, (answer, t) -> if answer == "y" edited(yes, t) else commands.Say(value.Text(dict.GetOr("No", "Nothing done.", a.Confirm)), t) end, s)
+  else if dict.Has("Signature", a) and q.Request.Program == "names"
+    signed(q, a.Signature, s)
+  else if dict.Has("Then", a) and q.Request.Program == "names"
+    if isRequest(a.Then) ask(a.Then, s) else commands.Say("The program asked nothing.", s) end
+  else if dict.Has("Run", a)
+    started(q, a.Run, s)
+  else if dict.Has("Marks", a)
+    marked(a.Marks, s)
+  else if dict.Has("Insert", a)
+    if q.Request.Program == "snippets" inserted(a.Insert, s) else commands.Say("Only the forms of C-c i are written by an answer.", s) end
+  else
+    s
+  end
+end
+
+defn edited(yes, state)
+  (** After the yes of a Confirm: its edits made in the buffers, and what was done said after its Words. *)
+  done = Apply(yes.Edits, state)
+  commands.Say("$(value.Text(dict.GetOr("Words", "Done", yes))): $(done.Words)", done.State)
+end
+
+(* ---- Going there and back *)
+
+defn backOf(state)
+  (** The places to go back to, the last one last: a state from before this field has none. *)
+  match state
+    {Back: places} -> places
+    else -> []
+  end
+end
+
+defn PathFor(p, state)
+  (** The path to open a file at, given from the root: that of the buffer open on it, if one is, so that no file gets two buffers; else from the folder
+      Cemacs started in, when it is inside it, as the files named at the start are. *)
+  for b in state.Buffers
+    if isFile(b) and absolute(b.Path) == p
+      return b.Path
+    end
+  end
+  pwd = sys.Env("PWD")
+  if not value.IsMissing(pwd) and str.StartsWith("$pwd/", p) str.Slice(value.Len(pwd) + 2, value.Len(p), p) else p end
+end
+
+defn Visit(place, state)
+  (** Goes to a place {Path, Line, Column}, keeping the place of the cursor to come back to with M-,. A file that can't be opened is a message. *)
+  b = state.Buffers[state.Current]
+  here = if isFile(b) {Path: b.Path, Line: b.Cursor.Line, Column: b.Cursor.Column} else missing end
+  s = commands.OpenFile(PathFor(place.Path, state), state)
+  opened = s.Buffers[s.Current]
+  if not isFile(opened) or absolute(opened.Path) != place.Path
+    return s
+  end
+  s.Buffers[s.Current] = text.Place(place.Line, place.Column, opened)
+  if not value.IsMissing(here)
+    s.Back = list.TakeLast(BackLimit(), list.Append(here, backOf(state)))
+  end
+  s
+end
+
+defn Back(state)
+  (** Goes back to the place the last M-. or a place opened from a list left. *)
+  places = backOf(state)
+  if value.Len(places) == 0
+    return commands.Say("No place to go back to.", state)
+  end
+  p = list.Last(places)
+  s = commands.OpenFile(PathFor(absolute(p.Path), state), state)
+  s.Back = list.DropLast(1, places)
+  b = s.Buffers[s.Current]
+  if isFile(b) and absolute(b.Path) == absolute(p.Path)
+    s.Buffers[s.Current] = text.Place(p.Line, p.Column, b)
+  end
+  s
+end
+
+(* ---- Lists *)
+
+defn act(action, item, state)
+  (** What a key of a list of a program does with the item of its row: "open" goes to the place the item is, the list closed; a request asks it, with the
+      item, and the items the list shows when it says Shown. *)
+  if action == "open"
+    if not IsPlace(item)
+      return commands.Say("Nothing to open here.", state)
+    end
+    return Visit(item, commands.ToBuffer(lists.Of(state.Buffers[state.Current]).Back, state))
+  end
+  shown = if dict.GetOr("Shown", false, action) == true [i for i in lists.Of(state.Buffers[state.Current]).Items if not value.IsMissing(i)] else missing end
+  ask(dict.Merge(action, {Item: item, Items: shown}), state)
+end
+
+(** Is a value a row of a list: Words, and Parts, if any, of [role, words]? *)
+isRow(r) = value.IsDict(r) and value.IsText(dict.GetOr("Words", missing, r)) and (not dict.Has("Parts", r) or (value.IsArray(r.Parts) and list.All([value.IsArray(p) and value.Len(p) == 2 and
+  value.IsInt(p[1]) and value.IsText(p[2]) for p in r.Parts])))
+
+defn listed(l, state)
+  (** Opens the list a program gave, {Name, Rows, Keys, Typed, Line}: its rows, their items, the keys of its rows, each "open" or a request, what a typed
+      letter asks in place of the filter, and the line of the cursor. *)
+  ok = value.IsDict(l) and value.IsText(dict.GetOr("Name", missing, l)) and value.IsArray(dict.GetOr("Rows", missing, l)) and value.Len(l.Rows) <= 20000 and list.All([isRow(r) for r in l.Rows])
+  keys = if ok dict.GetOr("Keys", {}, l) else missing end
+  if not ok or not value.IsDict(keys) or not list.All([keys[k] == "open" or isRequest(keys[k]) for k in dict.Keys(keys)])
+    return commands.Say("The program gave no list.", state)
+  end
+  rows = [dict.Merge(r, {Item: dict.GetOr("Item", missing, r)}) for r in l.Rows]
+  rowKeys = () -> dict.Dict([{Key: k, Value: (item, s) -> act(keys[k], item, s)} for k in dict.Keys(keys)])
+  typed = dict.GetOr("Typed", missing, l)
+  letters = missing
+  if isRequest(typed)
+    letters = (words, s) -> ask(dict.Merge(typed, {Text: words, Item: lists.ItemAt(s.Buffers[s.Current])}), s)
+  end
+  s = commands.ShowList(l.Name, rows, rowKeys, state, typed = letters)
+  line = dict.GetOr("Line", missing, l)
+  if value.IsInt(line) and line >= 1
+    s.Buffers[s.Current] = text.Place(line, 0, s.Buffers[s.Current])
+  end
+  s
+end
+
+(* ---- Edits *)
+
+defn Apply(edits, state)
+  (** The state with edits made in the buffers of their files, each {Path, Line, Column, End, Old, Text}: a file not open opens; a buffer gets its edits as
+      one step of undo, and is saved after them if it was saved before, so that the disk holds the project as it reads now; one with changes of its own
+      stays unsaved. A file whose text no longer holds Old where an edit says is left as it is. {State, Words}: the state, and what was done. *)
+  back = state.Current
+  s = state
+  saved = 0
+  unsaved = 0
+  left = 0
+  for p in list.Unique([e.Path for e in edits])
+    s = commands.OpenFile(PathFor(p, s), s)
+    b = s.Buffers[s.Current]
+    mine = [e for e in edits if e.Path == p]
+    if not isFile(b) or absolute(b.Path) != p or not list.All([holds(e, b) for e in mine])
+      left += 1
+    else
+      was = not text.IsModified(b)
+      s.Buffers[s.Current] = text.Replaced([{Line: e.Line, Column: e.Column, End: e.End, Text: e.Text} for e in mine], b)
+      if was and value.IsMissing(s.Prompt)
+        s = commands.Save(s)
+        saved += 1
+      else
+        unsaved += 1
+      end
+    end
+  end
+  s.Current = list.Min(back, value.Len(s.Buffers))
+  words = "$saved files saved$(if unsaved > 0 ", $unsaved left unsaved, with changes of their own" else "" end)$(if left > 0 ", $left changed since, left as they are" else "" end)"
+  {State: s, Words: "$words."}
+end
+
+defn holds(e, b)
+  (** Does a buffer hold the old words of an edit where it says? *)
+  if e.Line > rope.LineCount(b.Rope)
+    return false
+  end
+  line = rope.Line(e.Line, b.Rope)
+  e.End <= value.Len(line) and e.End - e.Column == value.Len(e.Old) and (e.Old == "" or str.Slice(e.Column + 1, e.End, line) == e.Old)
+end
+
+(* ---- The signature, on the prompt line once the cursor stays still *)
+
+defn signed(q, words, state)
+  (** The state with a signature on the prompt line, if the buffer and the cursor are still where it was asked and nothing else is said there. *)
+  b = state.Buffers[state.Current]
+  if not value.IsText(words) or b.Path != q.Path or b.Version != q.Version or b.Cursor.Line != q.Line or b.Cursor.Column != q.Column or state.Message != "" or
+    not value.IsMissing(state.Prompt)
+    return state
+  end
+  commands.Say(words, state)
+end
+
+defn signedAt(state)
+  (** Where the last signature was asked, or missing: a state from before this field has none. *)
+  match state
+    {Signed: at} -> at
+    else -> missing
+  end
+end
+
+defn signable(state)
+  (** Can a signature be asked: a file of Cesia, nothing on the prompt line, no mark on the line of the cursor, a ( before it on its line or a name at it,
+      at a place not asked yet? *)
+  b = state.Buffers[state.Current]
+  if not isFile(b) or not indent.IsCesia(b) or state.Message != "" or not value.IsMissing(state.Prompt) or state.Pending != ""
+    return false
+  end
+  c = b.Cursor
+  at = signedAt(state)
+  if not value.IsMissing(at) and at.Path == b.Path and at.Version == b.Version and at.Line == c.Line and at.Column == c.Column
+    return false
+  end
+  chars = str.Chars(rope.Line(c.Line, b.Rope))
+  touches = (c.Column >= 1 and c.Column <= value.Len(chars) and isNameChar(chars[c.Column])) or (c.Column < value.Len(chars) and isNameChar(chars[c.Column + 1]))
+  value.Len([m for m in text.MarksOf(b) if m.Line == c.Line]) == 0 and ("(" in list.Take(c.Column, chars) or touches)
+end
+
+(** Can a character be part of a name? *)
+isNameChar(c) = str.Code(c) >= 128 or c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or (c >= "0" and c <= "9")
+
+(* ---- Tests: a run of cesia test, and the marks of its failures *)
+
+defn started(q, r, state)
+  (** A run that the tests asked: cesia test only, with the words to say and the request to send with its output once it ends. *)
+  args = dict.GetOr("Args", missing, r)
+  if q.Request.Program != "testing" or not value.IsArray(args) or value.Len(args) == 0 or args[1] != "test" or not list.All([value.IsText(x) for x in args]) or
+    not isRequest(dict.GetOr("Then", missing, r))
+    return commands.Say("The program asked a run that isn't one of tests.", state)
+  end
+  s = state
+  s.Buffers = [text.WithMarks([m for m in text.MarksOf(b) if dict.GetOr("Source", "", m) != "test"], b, note = text.MarksNoteOf(b)) for b in state.Buffers]
+  s = commands.Launch(args, value.Text(dict.GetOr("Words", "Testing.", r)), s, tag = "tests")
+  if not value.IsMissing(s.Run) and dict.GetOr("Tag", missing, s.Run) == "tests"
+    s.Run.Then = r.Then
+  end
+  s.LastRun = {Request: q.Request, Run: r}
+  s
+end
+
+defn TestAgain(state)
+  (** Runs the last tests again, from any buffer. *)
+  match state
+    {LastRun: last} -> started(last, last.Run, state)
+    else -> commands.Say("No test ran yet: C-c t t runs those of the file.", state)
+  end
+end
+
+defn ended(state)
+  (** Once a run of tests has ended: its output sent to the program that asked it, which answers with the marks of its failures. *)
+  r = state.Run
+  if value.IsMissing(r) or dict.GetOr("Tag", missing, r) != "tests" or not r.Ended or dict.GetOr("Marked", false, r) or not value.IsMissing(asking(state))
+    return state
+  end
+  s = state
+  s.Run.Marked = true
+  ask(dict.Merge(r.Then, {Lines: run.Lines(r)}), s)
+end
+
+defn marked(marks, state)
+  (** The state with each failure {Path, Line, Message} a red mark on its line, in the buffer of its file, as a check's error; the next tests take it away. *)
+  if not value.IsArray(marks) or not list.All([IsPlace(dict.Merge(m, {Column: 0})) and value.IsText(dict.GetOr("Message", missing, m)) for m in marks])
+    return commands.Say("The program gave no marks.", state)
+  end
+  s = state
+  for k in 1..value.Len(s.Buffers)
+    b = s.Buffers[k]
+    if isFile(b)
+      here = absolute(b.Path)
+      mine = [m for m in marks if m.Path == here and m.Line <= rope.LineCount(b.Rope)]
+      if value.Len(mine) > 0
+        added = [{Line: m.Line, Column: 0, End: list.Max(1, text.LineWidth(m.Line, b)), Severity: "error", Message: m.Message, Hint: missing, Source: "test"} for m in mine]
+        s.Buffers[k] = text.WithMarks(list.SortBy(m -> m.Line * 1000000 + m.Column, list.Concat(text.MarksOf(b), added)), b, note = text.MarksNoteOf(b))
+      end
+    end
+  end
+  s
+end
+
+(* ---- Sessions: programs of Cemacs that run for the session, tools/names.ce and tools/shell.ce, each read line by line from a fiber. *)
+
+defn reading(p, inbox)
+  (** Puts what a process writes on the channel, chunk by chunk, then its exit code once its output is closed. *)
+  chunk = result.Unwrap(sys.ReadOutput(p))
+  while chunk != ""
+    fiber.Send(chunk, inbox)
+    chunk = result.Unwrap(sys.ReadOutput(p))
+  end
+  fiber.Send({Code: sys.WaitExit(p)}, inbox)
+end
+
+defn sessionStarted(args)
+  (** A program of Cemacs that runs for the session, started by cesia with args: {Process, Inbox, Raw, Ended} in an Ok, or an Err of the words to say. *)
+  started = sys.Start("cesia", args)
+  if result.IsErr(started)
+    return result.Err(started.Error.Message)
+  end
+  inbox = fiber.Channel()
+  p = started.Value
+  _ = fiber.Spawn(() -> reading(p, inbox))
+  result.Ok({Process: p, Inbox: inbox, Raw: "", Ended: false})
+end
+
+defn sessionLines(se)
+  (** What a session wrote since the last time, {Session, Lines, Code}: its whole lines, the one not ended kept for the next time, and its exit code once
+      it ended, or missing. *)
+  out = se
+  lines = []
+  code = missing
+  got = fiber.Receive(se.Inbox, timeout = 0)
+  while result.IsOk(got)
+    if value.IsText(got.Value)
+      cut = str.Split("\n", "$(out.Raw)$(got.Value)")
+      out.Raw = list.Last(cut)
+      lines = list.Concat(lines, list.DropLast(1, cut))
+    else
+      code = got.Value.Code
+      out.Ended = true
+    end
+    got = fiber.Receive(se.Inbox, timeout = 0)
+  end
+  {Session: out, Lines: lines, Code: code}
+end
+
+(* ---- Names: tools/names.ce, which asks cesia lsp, Cesia's own language server, where a name is defined and what its documentation says. It starts at
+   the first question about a name and stays for the session: a question is then a message, answered in a millisecond or so, not a process. *)
+
+defn namesOf(state)
+  (** The session of the names, {Process, Inbox, Raw, Ended, Waiting, Sent}: the questions not answered yet, in their order, and the version of each text
+      it has; missing before the first question. *)
+  match state
+    {Names: n} -> n
+    else -> missing
+  end
+end
+
+(** Does a question wait for the names? *)
+namesWait(state) = not value.IsMissing(namesOf(state)) and value.Len(namesOf(state).Waiting) > 0
+
+defn askName(what, state)
+  (** The state with a question about the name at the cursor sent to tools/names.ce, started now if it doesn't run: definition, doc, signature,
+      references or rename. With it go the texts of the current buffer and of the Cesia buffers not saved that it doesn't have in their version. *)
+  b = state.Buffers[state.Current]
+  if not isFile(b) or not indent.IsCesia(b)
+    return if what == "signature" state else commands.Say("Names are those of a file of Cesia.", state) end
+  end
+  n = namesOf(state)
+  if value.IsMissing(n) or n.Ended
+    got = sessionStarted(["run", "--allow", "read,exec=cesia", "$(commands.Home(state))/tools/names.ce"])
+    if result.IsErr(got)
+      return commands.Say("The names don't start: $(got.Error)", state)
+    end
+    n = dict.Merge(got.Value, {Waiting: [], Sent: {}})
+  end
+  docs = {}
+  for k in 1..value.Len(state.Buffers)
+    other = state.Buffers[k]
+    if isFile(other) and indent.IsCesia(other) and (k == state.Current or text.IsModified(other)) and rope.Size(other.Rope) <= TextLimit()
+      p = absolute(other.Path)
+      if dict.GetOr(p, missing, n.Sent) != other.Version
+        docs[p] = {Text: rope.Text(other.Rope), Version: other.Version}
+        n.Sent[p] = other.Version
+      end
+    end
+  end
+  words = json.Text({Do: what, Path: absolute(b.Path), Line: b.Cursor.Line, Column: b.Cursor.Column, Docs: docs})
+  _ = sys.WriteInput(n.Process, "$(str.ByteLength(words))\n$words")
+  n.Waiting = list.Append({Request: {Program: "names", Do: what}, Path: b.Path, Version: b.Version, Line: b.Cursor.Line, Column: b.Cursor.Column}, n.Waiting)
+  s = state
+  s.Names = n
+  s
+end
+
+defn namesHeard(state)
+  (** The state at a tick: each answer of the names, in the order of the questions, doing what it says. A session that ended is said, and starts again at
+      the next question. *)
+  n = namesOf(state)
+  if value.IsMissing(n) or n.Ended
+    return state
+  end
+  got = sessionLines(n)
+  n = dict.Merge(n, got.Session)
+  s = state
+  for line in got.Lines
+    a = json.Parse(line)
+    if value.Len(n.Waiting) > 0
+      q = n.Waiting[1]
+      n.Waiting = list.Skip(1, n.Waiting)
+      s.Names = n
+      s = if result.IsOk(a) and value.IsDict(a.Value) Heard(q, a.Value, s) else commands.Say("The names answered what isn't JSON.", s) end
+    end
+  end
+  if n.Ended and value.Len(n.Waiting) > 0
+    n.Waiting = []
+    s = commands.Say("The names ended, code $(got.Code): the next question starts them again.", s)
+  end
+  s.Names = n
+  s
+end
+
+(* ---- Forms of Cesia, C-c i *)
+
+defn inserted(form, state)
+  (** The current buffer with a form written under the cursor, {Text, Cursor}: on the line of the cursor when it is blank, else on a new line after it;
+      each line at the indent cesia fmt gives it, and the cursor where the form says, from its first line. *)
+  b = state.Buffers[state.Current]
+  cursor = dict.GetOr("Cursor", missing, form)
+  if not value.IsText(dict.GetOr("Text", missing, form)) or not value.IsDict(cursor) or not value.IsInt(dict.GetOr("Line", missing, cursor)) or lists.IsList(b)
+    return commands.Say("Nothing to write here.", state)
+  end
+  blank = str.Trim(rope.Line(b.Cursor.Line, b.Rope)) == ""
+  first = if blank b.Cursor.Line else b.Cursor.Line + 1 end
+  at = if blank text.Place(first, 0, text.Replaced([{Line: first, Column: 0, End: text.LineWidth(first, b), Text: ""}], b)) else text.InsertWords("\n", text.ToLineEnd(b)) end
+  written = text.InsertWords(form.Text, at)
+  last = first + value.Len(str.Split("\n", form.Text)) - 1
+  shaped = written
+  if indent.IsCesia(written)
+    shaped.Mark = {Line: first, Column: 0}
+    shaped.Cursor = {Line: last, Column: 0}
+    shaped = text.Indent(shaped)
+  end
+  line = first + cursor.Line - 1
+  lead = value.Len(list.TakeWhile(c -> c == " ", str.Chars(rope.Line(line, shaped.Rope))))
+  s = state
+  s.Buffers[s.Current] = text.Place(line, lead + dict.GetOr("Column", 0, cursor), text.ClearMark(shaped))
+  s
+end
+
+(* ---- The shell, C-c o t: a buffer where the person types commands for the shell of $SHELL. Cemacs never holds the permission to run the shell: it runs
+   tools/shell.ce with exec of that shell alone, which starts it and passes the commands and the output. *)
+
+defn shellOf(state)
+  (** The shell of the session, its session with Partial, a line of the shell not ended yet, and Heard, when it last wrote; missing before C-c o t. *)
+  match state
+    {Shell: sh} -> sh
+    else -> missing
+  end
+end
+
+(** Is a buffer the one of the shell? *)
+isShell(b) = dict.GetOr("IsShell", false, b) == true
+
+(** The prompt that starts the line where a command is typed. *)
+Prompt() = "$ "
+
+defn Terminal(state)
+  (** Opens the buffer of the shell, starting the shell of $SHELL, or /bin/sh, in the folder of the file, or goes to it when it is open. Each line typed
+      after the prompt runs at Enter, and what the shell writes comes above the prompt. The buffer has no file: what the shell wrote counts as saved, and only
+      a command typed and not run makes C-x k ask. *)
+  for k in 1..value.Len(state.Buffers)
+    if isShell(state.Buffers[k])
+      return commands.ToBuffer(k, state)
+    end
+  end
+  given = sys.Env("SHELL")
+  shell = if value.IsText(given) and str.StartsWith("/", given) and not str.Contains(",", given) given else "/bin/sh" end
+  b = state.Buffers[state.Current]
+  folder = if isFile(b) folders.Parent(absolute(b.Path)) else absolute(".") end
+  started = sessionStarted(["run", "--allow", "exec=$shell", "$(commands.Home(state))/tools/shell.ce", shell, folder])
+  if result.IsErr(started)
+    return commands.Say("The shell doesn't start: $(started.Error)", state)
+  end
+  shown = text.ToFileEnd(text.Of(Prompt(), missing))
+  shown.Name = "*shell*"
+  shown.IsShell = true
+  s = state
+  s.Shell = dict.Merge(started.Value, {Partial: "", Heard: sys.Now()})
+  s.Buffers = list.Append(shown, s.Buffers)
+  s.Current = value.Len(s.Buffers)
+  commands.Say("$shell in $folder: each line after $(Prompt())runs at Enter.", s)
+end
+
+defn Enter(state)
+  (** Enter: in the buffer of the shell, the command of its last line runs; anywhere else, Enter of the cells, which is a new line outside *repl*. *)
+  b = state.Buffers[state.Current]
+  sh = shellOf(state)
+  if not isShell(b)
+    return notebook.Enter(state)
+  end
+  if value.IsMissing(sh) or sh.Ended
+    return commands.Say("The shell ended: close this buffer, and C-c o t starts another.", state)
+  end
+  n = rope.LineCount(b.Rope)
+  line = rope.Line(n, b.Rope)
+  command = if str.StartsWith(Prompt(), line) str.Slice(value.Len(Prompt()) + 1, value.Len(line) + 1, "$line ") else line end
+  _ = sys.WriteInput(sh.Process, "$(str.Trim(command))\n")
+  s = state
+  s.Buffers[s.Current] = text.MarkSaved(missing, text.ToFileEnd(text.InsertWords("\n$(Prompt())", text.ToFileEnd(b))))
+  s.Shell.Heard = sys.Now()
+  s
+end
+
+defn shellHeard(state)
+  (** The state at a tick: what the shell wrote, above the prompt of its buffer, its colours taken away; its end said; and a shell whose buffer closed
+      ended. *)
+  sh = shellOf(state)
+  if value.IsMissing(sh)
+    return state
+  end
+  k = list.FindFirst(i -> isShell(state.Buffers[i]), 1..value.Len(state.Buffers))
+  s = state
+  if value.IsMissing(k)
+    if not sh.Ended
+      sys.Stop(sh.Process)
+    end
+    s.Shell = missing
+    return s
+  end
+  words = sh.Partial
+  got = sessionLines(sh)
+  sh = dict.Merge(sh, got.Session)
+  for line in got.Lines
+    piece = json.Parse(line)
+    if result.IsOk(piece) and value.IsText(piece.Value)
+      words = "$words$(piece.Value)"
+    else if result.IsOk(piece) and value.IsDict(piece.Value)
+      words = "$words\n[the shell ended, code $(dict.GetOr("Code", "?", piece.Value))]\n"
+    end
+  end
+  if value.Len(got.Lines) > 0 or got.Session.Ended
+    sh.Heard = sys.Now()
+  end
+  cut = str.Split("\n", words)
+  whole = str.Join("\n", list.DropLast(1, cut))
+  sh.Partial = list.Last(cut)
+  if sys.Now() - sh.Heard > 0.3 and sh.Partial != ""
+    whole = if value.Len(cut) > 1 "$whole\n$(sh.Partial)" else sh.Partial end
+    cut = ["", ""]
+    sh.Partial = ""
+  end
+  s.Shell = sh
+  if value.Len(cut) < 2
+    return s
+  end
+  b = s.Buffers[k]
+  last = rope.LineCount(b.Rope)
+  out = "$(Plain(whole))\n"
+  added = value.Len(str.Split("\n", out)) - 1
+  moved = text.Replaced([{Line: last, Column: 0, End: 0, Text: out}], b)
+  if b.Cursor.Line == last
+    moved.Cursor = {Line: last + added, Column: b.Cursor.Column}
+  end
+  s.Buffers[k] = if text.IsModified(b) moved else text.MarkSaved(missing, moved) end
+  s
+end
+
+(** A text without the escapes that colour a terminal, which a buffer has no use for.
+
+      Plain("$(str.Char(27))[31mred$(str.Char(27))[0m") --> "red" *)
+Plain(words) = regex.Replace("$(str.Char(27))\\[[0-9;?]*[A-Za-z]", "", str.Replace("\r", "", words))
+
+(** Does the shell need ticks: it wrote in the last three seconds, or a command was typed? *)
+shellMoving(state) = not value.IsMissing(shellOf(state)) and not shellOf(state).Ended and sys.Now() - shellOf(state).Heard < 3.0
+
+(* ---- Format on save: a file of Cesia is saved as cesia fmt writes it. *)
+
+defn Formatted(path, words, state)
+  (** The words of a file to save, as cesia fmt writes them, {Words, Error}: the words go to a file of their own in .cesia/fmt/ of the folder of Cemacs,
+      cesia fmt formats it, and the formatted words come back, the file removed. A text that doesn't read is saved as typed, Error saying why; so is a file
+      that isn't one of Cesia, or one over TextLimit() bytes. *)
+  if not str.EndsWith(".ce", path) or str.ByteLength(words) > TextLimit()
+    return {Words: words, Error: missing}
+  end
+  dir = "$(commands.Home(state))/.cesia/fmt"
+  name = "$dir/$(math.Div(math.Floor(sys.Now() * 1000000.0), 1))-$(folders.BaseName(path))"
+  made = sys.Mkdir(dir)
+  wrote = if result.IsOk(made) sys.Write(name, words) else made end
+  if result.IsErr(wrote)
+    return {Words: words, Error: "cesia fmt has no place to write: $(wrote.Error.Message)"}
+  end
+  ran = sys.Run("cesia", ["fmt", name], timeout = QuestionLimit())
+  back = sys.Read(name)
+  _ = sys.Remove(name)
+  if result.IsErr(ran) or result.IsErr(back)
+    return {Words: words, Error: "cesia fmt can't run"}
+  end
+  if ran.Value.Code != 0
+    said = list.First([str.Replace(name, path, l) for l in str.Lines("$(ran.Value.Out)$(ran.Value.Err)") if str.Trim(l) != "" and l != name])
+    return {Words: words, Error: if value.IsMissing(said) "cesia fmt ended with code $(ran.Value.Code)" else said end}
+  end
+  {Words: back.Value, Error: missing}
+end
+
+(* ---- Hooks *)
+
+defn Idle(delay, state)
+  (** The state at a tick: the answer of the question asked, if it came; the end of a run of tests; or, once the cursor stayed still for delay seconds,
+      the signature asked. *)
+  s = shellHeard(ended(Finished(namesHeard(state))))
+  if not value.IsMissing(asking(s)) or commands.Still(s) < delay or not signable(s)
+    return s
+  end
+  b = s.Buffers[s.Current]
+  s.Signed = {Path: b.Path, Version: b.Version, Line: b.Cursor.Line, Column: b.Cursor.Column}
+  askName("signature", s)
+end
+
+(** Do the questions need ticks: one waits for its answer, from a program or from the names, or the shell is busy? *)
+Moving(state) = not value.IsMissing(asking(state)) or namesWait(state) or shellMoving(state)
+
+defn Hooked(config)
+  (** A config with the hooks of the questions over those it has: at each tick, its Idle then this one's, after its CheckDelay; it moves while either
+      needs; and Format, which saves a file of Cesia as cesia fmt writes it. *)
+  c = config
+  idle = dict.GetOr("Idle", s -> s, config)
+  moving = dict.GetOr("Moving", s -> false, config)
+  c.Idle = s -> Idle(config.CheckDelay(), idle(s))
+  c.Saved = dict.GetOr("Saved", s -> s, config)
+  c.Moving = s -> moving(s) or Moving(s)
+  c.Format = Formatted
+  c
+end

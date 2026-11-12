@@ -164,6 +164,20 @@ chemins semblables, le plus court. [lists.Ranked] donne cet ordre ;
 [r.Item for r in lists.Ranked("cmd", rows)] --> [2, 3]
 ```
 
+## Chercher dans un projet
+
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `C-x p g`, `C-c s p` | [ide.Search] | demande des mots, le nom sous le curseur d'abord, et liste chaque ligne du projet qui les contient |
+| `C-c r`, dans cette liste | | demande ce qui remplace les mots, puis un oui, et les remplace dans les lignes montrées |
+
+Le projet est le dépôt Git qui contient le fichier du buffer courant, comme pour `C-x p f` : voir
+[Fichiers et buffers](files.md#les-fichiers-dun-projet). La recherche est faite par [src/grep], que [src/ide] demande par
+`tools/grep.ce` : `git grep -F`, du texte fixe, jamais un motif, sans tenir compte de la casse quand les mots n'ont pas de
+capitale. Entrée va à la ligne et garde l'endroit quitté pour `M-,`, comme une liste de
+[références](names.md#the-references). `C-c r` remplace comme un [renommage](names.md#a-rename) : chaque fichier ouvert,
+ses modifications en une étape d'annulation, enregistré s'il l'était.
+
 ## Les touches
 
 Pour trouver une touche sans la connaître :

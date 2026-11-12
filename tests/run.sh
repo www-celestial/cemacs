@@ -30,6 +30,11 @@ root="$PWD"
 project=$(mktemp -d)
 (cd "$project" && timeout -s KILL 60 cesia run --allow read,write,exec=cesia,env=PWD "$root/tests/task-check.ce")
 rm -rf "$project"
+# The keys of src/ide in a project and a Git repository of their own, made in a new folder, where its programs run and cesia test names the failures from
+# the folder Cemacs started in.
+project=$(mktemp -d)
+(cd "$project" && SHELL=/bin/sh timeout -s KILL 180 cesia run --allow read,write,exec=cesia,exec=git,env=PWD,env=SHELL "$root/tests/ide-check.ce" "$root")
+rm -rf "$project"
 trash=$(mktemp -d)
 XDG_DATA_HOME="$trash" timeout -s KILL 60 cesia run --allow read,write,env=HOME,env=PWD,env=XDG_DATA_HOME tests/folders-check.ce
 rm -rf "$trash"

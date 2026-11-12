@@ -74,6 +74,12 @@ and keeps one text in it: it has no kill ring. See [Editing](editing.md#cutting-
 What a key runs. In Cemacs, any function from the state of the editor to a new state; Emacs asks a command to be marked as
 interactive. See [Keys](keys.md#words).
 
+## Commit and index
+
+In Git, a commit is a state of the files of a project kept with a message, its author and its date; the index, which Git
+also calls the staging area, holds what the next commit will take, file by file. To stage a file is to put it in the index.
+[Git](git.md).
+
 ## Completion
 
 Typing the start of a word and letting the editor write the rest, from the words it knows. In a file of Cesia, Tab
@@ -103,6 +109,12 @@ The place between two characters where typing inserts text, a line and a column 
 A language server is a program that knows one language and tells any editor the errors, completions and definitions of its
 code, over the Language Server Protocol; a debug adapter does the same for a debugger, over the Debug Adapter Protocol.
 Cemacs uses neither: see [Cemacs and other editors](comparison.md#in-features).
+
+## Definition and reference
+
+The definition of a name is the line that gives it its value: `defn Total(prices)`, `Rate = 20`, `struct Rect`. A reference
+is a place that reads the name. Emacs calls the work of going between them cross references, *xref*: `M-.` and `M-?` in
+Cemacs too. [Names](names.md).
 
 ## Delta debugging
 
@@ -354,6 +366,12 @@ A score is a number given to each row that a filter keeps, saying how well the f
 order of their scores, the best first. The list of a project's files ranks by fzy's score, [lists.Score]; the other lists
 keep their order. See [Search](search.md#how-a-filter-matches).
 
+## Resolver of names
+
+The part of a compiler that tells, for each name the code reads, what it stands for: a parameter, a local, a definition of
+the file, of its package, or of a package it uses. Cesia gives its own to tools as `cesia.Reads`, and Cemacs finds the
+references of a name with it. [Names](names.md#the-references).
+
 ## Response time
 
 The time from an action, a key, to what the screen shows of it. Miller (1968) asks 0.1 second for a key's effect, and Card,
@@ -382,6 +400,11 @@ screen is not shaped again. See [Inside Cemacs](internals.md#the-frame).
 
 A selection made by holding Shift while moving, which the next move without Shift ends. See
 [Editing](editing.md#the-mark-and-the-selection).
+
+## Signature
+
+The name of a function and its parameters, as `Total(prices)` or `list.Map(f, xs)`: what a call needs. The prompt line shows
+the signature of the call being typed, as Emacs's *eldoc* does. [Names](names.md#the-documentation-and-the-signature).
 
 ## Statement
 

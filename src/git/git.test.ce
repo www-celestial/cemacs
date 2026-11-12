@@ -1,0 +1,11 @@
+(** Tests of the rows of git, without git: the state as a list. tests/ide-check.ce runs the real git. *)
+use src/git
+use std/value
+
+entries = {Root: "/p", Branch: "main", Files: [{Path: "a.ce", Staged: true, Changed: true, New: false}, {Path: "b.ce", Staged: false, Changed: false, New: true}]}
+isStatusRows() = value.Equal([r.Words for r in git.StatusRows(entries)], ["On main    s stage  u unstage  c commit  d diff  l log  g refresh  Enter open", "staged    a.ce",
+  "changed   a.ce", "new       b.ce"])
+isFirstRowIsNoFile() = value.IsMissing(git.StatusRows(entries)[1].Item)
+isStagedRowKnowsIt() = git.StatusRows(entries)[2].Item.Staged and not git.StatusRows(entries)[3].Item.Staged
+isRowIsAPlace() = git.StatusRows(entries)[2].Item.Path == "/p/a.ce" and git.StatusRows(entries)[2].Item.File == "a.ce"
+isQuestionChecked() = git.Answered({Do: "status"}).Error == "A question needs Do and a Folder."

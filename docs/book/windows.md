@@ -148,6 +148,13 @@ A message lasts until the next key or click. While a prefix key waits for the ke
 A question that takes `y` or `n`, such as `Text not saved. Quit anyway? (y or n)`, waits for one of the two letters, in either
 case, and ignores the others; `C-g` closes it with no answer. Any other question ends with Enter.
 
+Each answer given with Enter is kept, the last 100 for each question, as Emacs's minibuffer keeps its *history*: in a
+question, `M-p` brings back the answer given before to the same question, the one before it at the next `M-p`, and `M-n`
+goes the other way, back to what you had typed; at an end, the prompt line says `No answer before this one.` or `No
+answer after this one.` A question is known by its words, so `Find file: ` has its own answers, and `Search project: `
+its own. In `Find file: ` and `Save as: `, Tab completes the name of a file: see
+[Files and buffers](files.md#opening-a-file). The history lasts until Cemacs ends.
+
 ## The band of hints
 
 When a prefix key waits for [emacs.HintDelay] seconds, half a second, a band opens above the prompt line. It lists each key

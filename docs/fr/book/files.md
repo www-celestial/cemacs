@@ -16,8 +16,11 @@ présente le gestionnaire de dossiers. Les commandes sont dans [core/commands], 
 La réponse commence par le dossier du fichier courant, pour qu'un fichier à côté de lui ne demande que son nom. C'est un
 chemin tel que le système le lit : à partir du dossier où Cemacs a démarré pour un chemin relatif ; `~` n'y est qu'un nom,
 pas votre dossier personnel. La prompt line accepte les lettres, Backspace, `C-y`, qui colle la première ligne du
-presse-papiers, Enter et `C-g`, et vous ne modifiez la réponse qu'à son bout. Elle n'a pas de completion (l'aide qui finit
-un nom à partir des fichiers qui existent).
+presse-papiers, Enter et `C-g`, et vous ne modifiez la réponse qu'à son bout. Tab complète le nom (la completion, l'aide qui
+finit un nom à partir des fichiers qui existent), comme dans Emacs : les noms du dossier qui commencent par la fin de la
+réponse la complètent aussi loin qu'ils s'accordent ; quand il en reste plusieurs, ils s'affichent après la réponse, comme
+`{color/ | commands/ | complete/}`. `M-p` et `M-n` reviennent aux fichiers déjà demandés, comme le dit
+[La prompt line](windows.md#la-prompt-line).
 
 Un fichier s'ouvre dans un nouveau buffer, qui devient le buffer courant, celui que vous modifiez. Un fichier déjà ouvert
 n'est pas relu : Cemacs va à son buffer. Deux chemins nomment le même fichier quand ils sont pareils une fois enlevés les `.`,
@@ -165,6 +168,14 @@ files.SaveFile("notes.txt", "third", read.Disk) --> result.Err({Kind: "changed",
 Le second enregistrement donne la taille et l'heure de la première lecture, et le fichier a changé depuis : l'enregistrement
 entre les deux en a fait un nouveau fichier. Cemacs ne regarde qu'au moment d'enregistrer : il ne recharge pas un fichier qui
 change pendant qu'il est ouvert, comme le ferait l'`auto-revert-mode` d'Emacs, et il n'a pas de commande pour le relire.
+
+### Enregistré comme cesia fmt l'écrit
+
+Un fichier de Cesia, un fichier `.ce`, est enregistré comme
+[`cesia fmt`](https://www-celestial.github.io/cesia-lang/commands.html) l'écrit : chaque ligne à l'indentation de ses blocs,
+pas d'espace en fin de ligne, pas deux lignes vides de suite. Le buffer prend ce texte, en une étape d'annulation : `C-/`
+rend ce que vous avez tapé. Un texte qui ne se lit pas est enregistré tel qu'il est tapé, et la prompt line dit pourquoi.
+Un enregistrement d'un fichier de 2 000 lignes prend 60 ms : [Vitesse](performance.md#coller-annuler-et-enregistrer).
 
 ### Enregistrer sous
 

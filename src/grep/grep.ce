@@ -1,0 +1,193 @@
+(** The search of a whole project, for src/ide: the lines of the Git repository that hold some words, as git grep finds them, and the edits that replace the
+    words in some of those lines. tools/grep.ce runs it for each question, with the permissions to read and to run git, so that none of it loads at the
+    start of the editor. git runs with each word one argument, never through a shell, and the words are fixed text, never a pattern. *)
+use core/color
+use std/dict
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The most places a search lists: past them the list says it is cut. *)
+PlaceLimit() = 10000
+
+(** The seconds git may take. *)
+GitLimit() = 20
+
+(** Does a search fold the case of letters? It does when its words hold no capital, as C-s in Emacs. Cesia knows the case of ASCII letters only.
+
+      Folds("total") --> true
+      Folds("Total") --> false *)
+Folds(words) = str.Lower(words) == words
+
+defn Root(folder)
+  (** The root of the Git repository that holds a folder, in an Ok, or an Err of the words to say. *)
+  top = sys.Run("git", ["-C", folder, "rev-parse", "--show-toplevel"], timeout = GitLimit())
+  if result.IsErr(top)
+    return result.Err("git can't run: $(top.Error.Message)")
+  end
+  if top.Value.Code != 0 result.Err("$folder/ is in no Git repository.") else result.Ok(str.Trim(top.Value.Out)) end
+end
+
+(** The arguments of git grep for words, from the root: line, column, no binary file, the paths ended by a 0 byte, fixed text, the case folded when the
+    words hold no capital.
+
+      Args("/p", "total") --> ["-C", "/p", "grep", "-n", "--column", "-I", "-z", "--no-color", "-F", "-i", "-e", "total"] *)
+Args(root, words) = list.Concat(["-C", root, "grep", "-n", "--column", "-I", "-z", "--no-color", "-F"], list.Concat(if Folds(words) ["-i"] else [] end, ["-e", words]))
+
+defn Places(root, out)
+  (** The places in what git grep -n --column -z wrote, each {Path, Shown, Line, Column, Words}: the path from the root and from the repository, the line from
+      1, the column from 0 in characters, and the words of the line; at most PlaceLimit(). A line of another shape is left out.
+
+        Places("/p", str.Join(str.FromBytes([0]), ["a.ce", "2", "6", "x = é1\n"])) --> [{Path: "/p/a.ce", Shown: "a.ce", Line: 2, Column: 5, Words: "x = é1"}] *)
+  zero = str.FromBytes([0])
+  found = []
+  for line in str.Lines(out)
+    if value.Len(found) >= PlaceLimit()
+      return found
+    end
+    parts = str.Split(zero, line)
+    n = if value.Len(parts) == 4 str.Number(parts[2]) else missing end
+    byte = if value.Len(parts) == 4 str.Number(parts[3]) else missing end
+    if value.IsInt(n) and value.IsInt(byte) and n >= 1 and byte >= 1
+      words = parts[4]
+      column = if byte == 1 0 else value.Len(str.ByteSlice(1, list.Min(byte - 1, str.ByteLength(words)), words)) end
+      found = list.Append({Path: "$root/$(parts[1])", Shown: parts[1], Line: n, Column: column, Words: words}, found)
+    end
+  end
+  found
+end
+
+defn Spans(words, line, fold)
+  (** The columns of each place of words in a line, from 0, {Column, End}, side by side ones apart, with the case of letters folded or not.
+
+        Spans("ab", "ab Ab ab", true) --> [{Column: 0, End: 2}, {Column: 3, End: 5}, {Column: 6, End: 8}]
+        Spans("ab", "ab Ab", false) --> [{Column: 0, End: 2}] *)
+  hay = if fold str.Lower(line) else line end
+  w = if fold str.Lower(words) else words end
+  n = value.Len(w)
+  out = []
+  from = 1
+  while n > 0 and from <= value.Len(hay) - n + 1
+    at = str.Find(w, str.Slice(from, value.Len(hay), hay))
+    if value.IsMissing(at)
+      return out
+    end
+    column = from + at - 2
+    out = list.Append({Column: column, End: column + n}, out)
+    from = column + n + 1
+  end
+  out
+end
+
+defn WordAt(t, lineNo, column)
+  (** The name under a column of a line of a text, or just before it, or "".
+
+        WordAt("x = price + 1", 1, 6) --> "price"
+        WordAt("x = 1", 1, 3) --> "" *)
+  lines = str.Split("\n", t)
+  if lineNo < 1 or lineNo > value.Len(lines)
+    return ""
+  end
+  chars = str.Chars(lines[lineNo])
+  isName(c) = str.Code(c) >= 128 or c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or (c >= "0" and c <= "9")
+  at = column + 1
+  if at > value.Len(chars) or not isName(chars[at])
+    at -= 1
+  end
+  if at < 1 or at > value.Len(chars) or not isName(chars[at])
+    return ""
+  end
+  first = at
+  while first > 1 and isName(chars[first - 1])
+    first -= 1
+  end
+  stop = at
+  while stop < value.Len(chars) and isName(chars[stop + 1])
+    stop += 1
+  end
+  str.Join("", chars[first..stop])
+end
+
+defn textOf(p, given)
+  (** The text of a file: the one given for its path, else the one on the disk, or missing. *)
+  if dict.Has(p, given)
+    return given[p]
+  end
+  read = sys.Read(p)
+  if result.IsOk(read) read.Value else missing end
+end
+
+(* ---- Questions, in the words of src/ide *)
+
+defn Answered(q)
+  (** The answer to a question of src/ide: Do search asks for the words, the name at the cursor first, then lists the lines that hold them; Do replace,
+      from that list, asks what replaces them in the lines it shows, Items, then asks for a yes before the edits. *)
+  if not value.IsDict(q) or not value.IsText(dict.GetOr("Do", missing, q)) or not value.IsText(dict.GetOr("Folder", missing, q))
+    return {Error: "A question needs Do and a Folder."}
+  end
+  answer = dict.GetOr("Answer", missing, q)
+  if q.Do == "search"
+    if not value.IsText(answer)
+      first = if value.IsText(dict.GetOr("Text", missing, q)) and value.IsInt(dict.GetOr("Line", missing, q)) WordAt(q.Text, q.Line, q.Column) else "" end
+      return {Ask: {Label: "Search project: ", Answer: first, Then: {Program: "grep", Do: "search"}}}
+    end
+    return if answer == "" {Say: "No words to search."} else searched(answer, q.Folder) end
+  else if q.Do == "replace"
+    return replaced(q, answer)
+  end
+  {Error: "Unknown question: $(q.Do)."}
+end
+
+defn searched(words, folder)
+  (** The list of the lines of the repository of folder that hold words, Enter going to one and C-c r asking for a replace. *)
+  root = Root(folder)
+  if result.IsErr(root)
+    return {Error: root.Error}
+  end
+  ran = sys.Run("git", Args(root.Value, words), timeout = GitLimit())
+  if result.IsErr(ran) or ran.Value.Code > 1
+    return {Error: if result.IsErr(ran) "git can't run: $(ran.Error.Message)" else "git grep failed: $(str.Trim(ran.Value.Err))" end}
+  end
+  places = Places(root.Value, ran.Value.Out)
+  if value.Len(places) == 0
+    return {Say: "No line of the project holds $words."}
+  end
+  rows = [{Words: "$(p.Shown):$(p.Line):$(p.Column + 1)  $(p.Words)", Item: {Path: p.Path, Line: p.Line, Column: p.Column},
+    Parts: [[color.Comment, "$(p.Shown):$(p.Line):$(p.Column + 1)  "], [color.Plain, p.Words]]} for p in places]
+  cut = if value.Len(places) >= PlaceLimit() ", the first $(PlaceLimit()) only" else "" end
+  {List: {Name: "Search: $words", Rows: rows, Keys: {"enter": "open", "C-c r": {Program: "grep", Do: "replace", Words: words, Shown: true}}},
+    Say: "$(value.Len(places)) lines$cut. C-c r replaces in those shown."}
+end
+
+defn replaced(q, answer)
+  (** The answers of a replace: the question of the new words, then, with them, the question of a yes before the edits of the lines shown. *)
+  words = dict.GetOr("Words", missing, q)
+  items = dict.GetOr("Items", missing, q)
+  if not value.IsText(words) or words == "" or not value.IsArray(items)
+    return {Error: "A replace needs the Words and the Items of a search."}
+  end
+  if not value.IsText(answer)
+    return {Ask: {Label: "Replace $words with: ", Answer: "", Then: {Program: "grep", Do: "replace", Words: words, Items: items}}}
+  end
+  given = if value.IsDict(dict.GetOr("Texts", missing, q)) q.Texts else {} end
+  fold = Folds(words)
+  edits = []
+  for p in list.Unique([i.Path for i in items if value.IsDict(i) and value.IsText(dict.GetOr("Path", missing, i))])
+    t = textOf(p, given)
+    lines = if value.IsMissing(t) [] else str.Split("\n", t) end
+    for n in list.Unique([i.Line for i in items if value.IsDict(i) and dict.GetOr("Path", missing, i) == p and value.IsInt(dict.GetOr("Line", missing, i))])
+      if n >= 1 and n <= value.Len(lines)
+        line = lines[n]
+        edits = list.Concat(edits, [{Path: p, Line: n, Column: x.Column, End: x.End, Old: str.Slice(x.Column + 1, x.End, line), Text: answer} for x in Spans(words, line, fold)])
+      end
+    end
+  end
+  if value.Len(edits) == 0
+    return {Say: "No place of $words is left in those lines."}
+  end
+  count = value.Len(list.Unique([e.Path for e in edits]))
+  {Confirm: {Label: "Replace $(value.Len(edits)) places of $words in $count files with $answer? (y or n)", Yes: {Edits: edits, Words: "Replaced $words with $answer"},
+    No: "Not replaced."}}
+end

@@ -1,0 +1,285 @@
+(** The names of Cesia code for src/ide, through cesia lsp, Cesia's own language server, which tells where a name is defined and what its documentation
+    says, for Cemacs as for every editor that speaks its protocol. tools/names.ce runs this for the session, started at the first question about a name: it
+    starts cesia lsp, gives it the texts of the buffers, asks it, and answers src/ide in its words, so that none of this code loads at the start of the
+    editor. The messages of cesia lsp are JSON, each after a Content-Length header, and its columns count UTF-16 code units, as the protocol says. *)
+use core/color
+use std/dict
+use std/fiber
+use std/json
+use std/list
+use std/math
+use std/regex
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The seconds an answer of cesia lsp may take. *)
+AnswerLimit() = 10
+
+(** The most lines a documentation shows. *)
+DocLimit() = 200
+
+defn reading(p, inbox)
+  (** Puts what cesia lsp writes on the channel, chunk by chunk, then its exit code once its output is closed. *)
+  chunk = result.Unwrap(sys.ReadOutput(p))
+  while chunk != ""
+    fiber.Send(chunk, inbox)
+    chunk = result.Unwrap(sys.ReadOutput(p))
+  end
+  fiber.Send({Code: sys.WaitExit(p)}, inbox)
+end
+
+defn Started()
+  (** cesia lsp started, its first messages sent: {Process, Inbox, Bytes, Next, Sent, Texts} in an Ok, or an Err of the words to say: Sent, the version of
+      each text it has; Texts, those texts, by path. *)
+  p = sys.Start("cesia", ["lsp"])
+  if result.IsErr(p)
+    return result.Err("cesia lsp doesn't start: $(p.Error.Message)")
+  end
+  inbox = fiber.Channel()
+  process = p.Value
+  _ = fiber.Spawn(() -> reading(process, inbox))
+  l = {Process: process, Inbox: inbox, Bytes: "", Next: 1, Sent: {}, Texts: {}}
+  l = sent({id: 0, method: "initialize", params: {processId: missing, rootUri: missing, capabilities: {}}}, l)
+  result.Ok(sent({method: "initialized", params: {}}, l))
+end
+
+defn sent(message, l)
+  (** The server after one message written to it, after its header. *)
+  body = json.Text(dict.Merge({jsonrpc: "2.0"}, message))
+  _ = sys.WriteInput(l.Process, "Content-Length: $(str.ByteLength(body))\r\n\r\n$body")
+  l
+end
+
+defn asked(method, params, l)
+  (** The answer of cesia lsp to a request, {Server, Result}: its result, missing when it has none, or when it doesn't come in AnswerLimit() seconds. *)
+  id = l.Next
+  s = sent({id: id, method: method, params: params}, l)
+  s.Next = id + 1
+  waited = sys.Now()
+  while sys.Now() - waited < AnswerLimit()
+    read = Frames(s.Bytes)
+    s.Bytes = read.Rest
+    for m in read.Messages
+      if dict.GetOr("id", missing, m) == id
+        return {Server: s, Result: dict.GetOr("result", missing, m)}
+      end
+    end
+    got = fiber.Receive(s.Inbox, timeout = AnswerLimit())
+    if result.IsErr(got) or not value.IsText(got.Value)
+      return {Server: s, Result: missing}
+    end
+    s.Bytes = "$(s.Bytes)$(got.Value)"
+  end
+  {Server: s, Result: missing}
+end
+
+defn UriOf(p)
+  (** The URI of a path, file and the path, each byte but letters, digits and a few signs written as % and its two hexadecimal digits.
+
+        UriOf("/a b/c.ce") --> "file:///a%20b/c.ce" *)
+  safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/"
+  hex = "0123456789ABCDEF"
+  out = [if str.Contains(str.FromBytes([n]), safe) str.FromBytes([n]) else "%$(str.Slice(math.Div(n, 16) + 1, math.Div(n, 16) + 1, hex))$(str.Slice(math.Mod(n, 16) + 1, math.Mod(n, 16) + 1, hex))" end for n in str.Bytes(p)]
+  "file://$(str.Join("", out))"
+end
+
+defn pathOf(uri)
+  (** The path of a file:// URI, its %XX read back.
+
+        pathOf("file:///a%20b/c%2Bd.ce") --> "/a b/c+d.ce" *)
+  rest = if str.StartsWith("file://", uri) str.Slice(8, value.Len(uri), uri) else uri end
+  parts = str.Split("%", rest)
+  out = parts[1]
+  digit(c) = str.Find(str.Lower(c), "0123456789abcdef")
+  for part in list.Skip(1, parts)
+    high = if value.Len(part) >= 2 digit(str.Slice(1, 1, part)) else missing end
+    low = if value.Len(part) >= 2 digit(str.Slice(2, 2, part)) else missing end
+    after = if value.Len(part) > 2 str.Slice(3, value.Len(part), part) else "" end
+    out = if value.IsMissing(high) or value.IsMissing(low) "$out%$part" else "$out$(str.FromBytes([(high - 1) * 16 + low - 1]))$after" end
+  end
+  out
+end
+
+defn PathOf(uri)
+  (** The path of a file:// URI, its %XX read back.
+
+        PathOf("file:///a%20b/c%2Bd.ce") --> "/a b/c+d.ce" *)
+  rest = if str.StartsWith("file://", uri) str.Slice(8, value.Len(uri), uri) else uri end
+  parts = str.Split("%", rest)
+  out = parts[1]
+  digit(c) = str.Find(str.Lower(c), "0123456789abcdef")
+  for part in list.Skip(1, parts)
+    high = if value.Len(part) >= 2 digit(str.Slice(1, 1, part)) else missing end
+    low = if value.Len(part) >= 2 digit(str.Slice(2, 2, part)) else missing end
+    after = if value.Len(part) > 2 str.Slice(3, value.Len(part), part) else "" end
+    out = if value.IsMissing(high) or value.IsMissing(low) "$out%$part" else "$out$(str.FromBytes([(high - 1) * 16 + low - 1]))$after" end
+  end
+  out
+end
+
+(** The UTF-16 code units of the characters of a line before a column, as the protocol counts them. *)
+units(line, column) = list.Sum([if str.Code(c) >= 65536 2 else 1 end for c in list.Take(column, str.Chars(line))])
+
+defn Synced(docs, l)
+  (** The server after it got each text of docs, {path: {Text, Version}}, that it hasn't for its version. The first time it gets a file, it gets the text on
+      the disk first, read by a question whose answer counts for nothing: cesia lsp keeps the definitions of the last text that read, for one being typed
+      that doesn't read yet. *)
+  s = l
+  for p in dict.Keys(docs)
+    d = docs[p]
+    uri = UriOf(p)
+    was = dict.GetOr(uri, missing, s.Sent)
+    if was != d.Version
+      if value.IsMissing(was)
+        disk = sys.Read(p)
+        s = sent({method: "textDocument/didOpen", params: {textDocument: {uri: uri, version: 0, languageId: "cesia", text: if result.IsOk(disk) disk.Value else d.Text end}}}, s)
+        s = asked("textDocument/hover", {textDocument: {uri: uri}, position: {line: 0, character: 0}}, s).Server
+      end
+      s = sent({method: "textDocument/didChange", params: {textDocument: {uri: uri, version: d.Version}, contentChanges: [{text: d.Text}]}}, s)
+      s.Sent[uri] = d.Version
+    end
+  end
+  s
+end
+
+defn Frames(bytes)
+  (** The messages of the whole frames at the start of what cesia lsp wrote, each a Content-Length header and that many bytes of JSON, and the bytes
+      left: {Messages, Rest}.
+
+        Frames("Content-Length: 2\r\n\r\n{}Content-Le").Rest --> "Content-Le" *)
+  out = []
+  rest = bytes
+  at = str.ByteFind("\r\n\r\n", 1, rest)
+  while not value.IsMissing(at)
+    m = regex.Find("Content-Length: *([0-9]+)", str.ByteSlice(1, at - 1, rest))
+    n = if value.IsMissing(m) 0 else str.Number(m.Groups[1]) end
+    start = at + 4
+    if str.ByteLength(rest) < start + n - 1
+      return {Messages: out, Rest: rest}
+    end
+    parsed = if n == 0 result.Err("empty") else json.Parse(str.ByteSlice(start, start + n - 1, rest)) end
+    if result.IsOk(parsed) and value.IsDict(parsed.Value)
+      out = list.Append(parsed.Value, out)
+    end
+    rest = if str.ByteLength(rest) >= start + n str.ByteSlice(start + n, str.ByteLength(rest), rest) else "" end
+    at = str.ByteFind("\r\n\r\n", 1, rest)
+  end
+  {Messages: out, Rest: rest}
+end
+
+defn PlaceOf(location)
+  (** The place a definition of cesia lsp names, {Path, Line, Column}, or missing for none. Its column counts code units, which are characters but
+      after a character past U+FFFF on the same line. *)
+  loc = if value.IsArray(location) list.First(location) else location end
+  if not value.IsDict(loc) or not value.IsText(dict.GetOr("uri", missing, loc)) or not value.IsDict(dict.GetOr("range", missing, loc))
+    return missing
+  end
+  start = loc.range["start"]
+  {Path: PathOf(loc.uri), Line: start.line + 1, Column: start.character}
+end
+
+defn DocOf(hover)
+  (** The parts of the documentation of a hover of cesia lsp, {Signature, Text, Examples}, from its Markdown: the first block of code, the words after
+      it, and the lines of the other blocks; missing for none.
+
+        DocOf({contents: {value: "```cesia\nf(x)\n```\n\nTwice x.\n\n```cesia\nf(1)\n```"}}) --> {Signature: "f(x)", Text: "Twice x.", Examples: ["f(1)"]} *)
+  if not value.IsDict(hover) or not value.IsDict(dict.GetOr("contents", missing, hover)) or not value.IsText(dict.GetOr("value", missing, hover.contents))
+    return missing
+  end
+  parts = str.Split("```", hover.contents.value)
+  code(k) = str.Lines(str.Trim(if str.StartsWith("cesia", parts[k]) str.Slice(6, value.Len(parts[k]), "$(parts[k]) ") else parts[k] end))
+  if value.Len(parts) < 3
+    return {Signature: "", Text: str.Trim(hover.contents.value), Examples: []}
+  end
+  more = [code(k) for k in 4..value.Len(parts) if math.Mod(k, 2) == 0]
+  {Signature: str.Join(" ", code(2)), Text: if value.Len(parts) >= 3 str.Trim(parts[3]) else "" end, Examples: list.Flatten(more)}
+end
+
+defn CallAt(line, column)
+  (** The column of the name of the call that a column of a line is inside, as list.Map in list.Map(f, |, or missing outside any call. Texts are skipped,
+      and a list or a map inside the call is gone through.
+
+        CallAt("x = list.Map(f, ", 16) --> 11
+        CallAt("f([1, ", 6) --> 0
+        CallAt("f(a)", 4) --> missing *)
+  chars = list.Take(column, str.Chars(line))
+  depth = 0
+  k = value.Len(chars)
+  quoted = math.Mod(value.Len([c for c in chars if c == "\""]), 2) == 1
+  while k >= 1
+    c = chars[k]
+    if c == "\""
+      quoted = not quoted
+    else if not quoted and (c == ")" or c == "]" or c == "}")
+      depth += 1
+    else if not quoted and (c == "(" or c == "[" or c == "{")
+      if depth > 0
+        depth -= 1
+      else if c == "(" and k > 1 and isNameChar(chars[k - 1])
+        return k - 2
+      end
+    end
+    k -= 1
+  end
+  missing
+end
+
+(** Can a character be part of a name? *)
+isNameChar(c) = str.Code(c) >= 128 or c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or (c >= "0" and c <= "9")
+
+(* ---- Questions, in the words of src/ide *)
+
+defn docList(d)
+  (** A documentation as a list of src/ide: its signature, its text and its examples. *)
+  rows = list.Concat(list.Concat([[color.Name, d.Signature]], [[color.Plain, line] for line in str.Lines(d.Text)]), [[color.Comment, "  $x"] for x in d.Examples])
+  {List: {Name: "Doc of $(d.Signature)", Rows: [{Words: p[2], Parts: [p]} for p in list.Take(DocLimit(), rows)], Keys: {}}}
+end
+
+defn Answered(q, l)
+  (** The answer to a question of src/ide, {Server, Answer}: Do definition, doc, signature, references or rename about the name at Line and Column, from 1
+      and 0, of the file at Path, with Docs, {path: {Text, Version}}, the texts of the buffers that changed since the last question. definition opens its place, or shows the
+      documentation of a name of std/; doc shows it; signature gives the words of the prompt line; references and rename give src/lookup the place of the
+      definition, which it can't tell itself. *)
+  if not value.IsDict(q) or not value.IsText(dict.GetOr("Path", missing, q)) or not value.IsInt(dict.GetOr("Line", missing, q)) or not value.IsInt(dict.GetOr("Column", missing, q)) or
+    not value.IsDict(dict.GetOr("Docs", missing, q)) or not list.All([value.IsDict(d) and value.IsText(dict.GetOr("Text", missing, d)) for d in dict.Values(q.Docs)])
+    return {Server: l, Answer: {Error: "Names are those of a file of Cesia."}}
+  end
+  s = Synced(q.Docs, l)
+  for p in dict.Keys(q.Docs)
+    s.Texts[p] = q.Docs[p].Text
+  end
+  known = dict.GetOr(q.Path, missing, s.Texts)
+  disk = if value.IsMissing(known) sys.Read(q.Path) else result.Ok(known) end
+  lines = str.Split("\n", if result.IsOk(disk) disk.Value else "" end)
+  line = if q.Line >= 1 and q.Line <= value.Len(lines) lines[q.Line] else "" end
+  at = if q.Do == "signature" CallAt(line, q.Column) else q.Column end
+  where = {textDocument: {uri: UriOf(q.Path)}, position: {line: q.Line - 1, character: units(line, if value.IsMissing(at) q.Column else at end)}}
+  if q.Do == "signature"
+    got = asked("textDocument/hover", where, s)
+    d = DocOf(got.Result)
+    words = if value.IsMissing(d) or d.Signature == "" or (value.IsMissing(at) and not str.Contains("(", d.Signature)) missing
+    else if d.Text == "" d.Signature else "$(d.Signature): $(str.Split(". ", str.Replace("\n", " ", d.Text))[1])$(if str.EndsWith(".", str.Split(". ", str.Replace("\n", " ", d.Text))[1]) "" else "." end)" end
+    return {Server: got.Server, Answer: if value.IsMissing(words) {} else {Signature: words} end}
+  end
+  if q.Do == "doc"
+    got = asked("textDocument/hover", where, s)
+    d = DocOf(got.Result)
+    return {Server: got.Server, Answer: if value.IsMissing(d) {Error: "No definition or documentation found here."} else docList(d) end}
+  end
+  got = asked("textDocument/definition", where, s)
+  place = PlaceOf(got.Result)
+  if q.Do == "references" or q.Do == "rename"
+    return {Server: got.Server, Answer: {Then: {Program: "lookup", Do: q.Do, Definition: place}}}
+  end
+  if q.Do != "definition"
+    return {Server: got.Server, Answer: {Error: "Unknown question: $(q.Do)."}}
+  end
+  if not value.IsMissing(place)
+    return {Server: got.Server, Answer: {Open: place}}
+  end
+  hover = asked("textDocument/hover", where, got.Server)
+  d = DocOf(hover.Result)
+  {Server: hover.Server, Answer: if value.IsMissing(d) {Error: "No definition or documentation found here."} else docList(d) end}
+end

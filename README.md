@@ -2,7 +2,8 @@
 
 Cemacs is a text editor for [Cesia](https://github.com/www-celestial/cesia-lang), written in Cesia. It has the keys of Emacs
 and the colours of Cesia's code. A band shows what a key can lead to, so you don't need to learn the keys before you start.
-Errors show in the lines as you type, and a program runs, and stops at its breakpoints, inside the window. You change Cemacs
+Errors show in the lines as you type, `M-.` goes to a definition and `M-?` to every place that reads it, tests and
+programs run, and stop at their breakpoints, inside the window, and `C-x g` shows Git. You change Cemacs
 in Cesia, in a folder of your own that `git pull` never touches, and it reloads while it runs.
 
 **Documentation: https://www-celestial.github.io/cemacs/** (start with

@@ -124,7 +124,7 @@ It is a small `bash` script. It finds the folder of Cemacs from its own place, e
 with `tools/user.sh` if it is missing, and runs:
 
 ```bash
-cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf --allow "exec=$(readlink -f "$(command -v cesia)")" \
+cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=SHELL,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf --allow "exec=$(readlink -f "$(command -v cesia)")" \
   "$home/src/cemacs.ce" "$home" "$@"
 ```
 
@@ -138,11 +138,12 @@ A Cesia program has no permission until it is given one: the `--allow` list name
 | Permission | Why Cemacs needs it |
 |---|---|
 | `read`, `write` | to open and save any file you choose, and to list folders |
-| `exec=cesia` | to run `cesia check` on your code and `cesia run` or `cesia do` on your programs |
-| `exec=git` | to list the files of a project, `git ls-files`, for `C-x p f`: no other program |
+| `exec=cesia` | to run `cesia check` on your code, `cesia run --allow read tools/lookup.ce` for the [names](names.md), and `cesia run` or `cesia do` on your programs |
+| `exec=git` | to list the files of a project, `git ls-files`, for `C-x p f`, to search them, `git grep`, for `C-x p g`, and for [Git](git.md), `C-x g`: no other program |
 | `exec=` the real path of `cesia` | to start the session of a file of [cells](cells.md) with the same `cesia` that runs Cemacs |
 | `env=HOME` | `~/` in the folder manager, and the trash |
 | `env=PWD` | the folder you started in: a relative path, and the `cesia.toml` whose task runs a file |
+| `env=SHELL` | the shell that [the shell buffer](shell.md), `C-c o t`, starts: Cemacs never runs it itself |
 | `env=XDG_DATA_HOME` | the place of the trash, as the freedesktop.org specification says |
 | `ffi=SDL3`, `ffi=SDL3_ttf` | to load the two libraries of the window |
 
@@ -169,7 +170,7 @@ run = ["tools/dev.sh"]
 `tools/dev.sh` makes `user/` if it is missing, as `bin/cemacs` does, then shows the command it runs, and runs it:
 
 ```bash
-cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME --allow "exec=$(readlink -f "$(command -v cesia)")" --watch src/cemacs.ce
+cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=SHELL,env=XDG_DATA_HOME --allow "exec=$(readlink -f "$(command -v cesia)")" --watch src/cemacs.ce
 ```
 
 The task is a script and not the program itself, since Cesia reads the folders of the code before it runs a program, and

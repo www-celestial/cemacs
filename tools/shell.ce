@@ -1,0 +1,38 @@
+(** The relay of the shell buffer of Cemacs: src/ide runs it as cesia run --allow exec=SHELL tools/shell.ce SHELL FOLDER, when the person opens the shell
+    with C-c o t, so that Cemacs itself never holds the permission to run the shell: only this program does, for that buffer. It starts the shell in the
+    folder, passes it what comes on its own input, the commands the person types, and writes each piece of what the shell writes, its errors too, as one line
+    of JSON, a text, and the exit code of the shell, {Code}, at its end. *)
+use std/fiber
+use std/io
+use std/json
+use std/result
+use std/sys
+
+defn forward(p)
+  (** Passes what comes on the input to the shell, byte by byte as it comes, and closes the shell's input at the end of its own. *)
+  c = result.Unwrap(sys.ReadInput(count = 1))
+  while c != ""
+    _ = sys.WriteInput(p, c)
+    c = result.Unwrap(sys.ReadInput(count = 1))
+  end
+  _ = sys.CloseInput(p)
+end
+
+defn main()
+  (** Runs the shell until it ends: its output written as JSON lines, then its exit code. *)
+  started = sys.Start(sys.Args[1], dir = sys.Args[2])
+  if result.IsErr(started)
+    io.Print(json.Text({Code: -1, Error: started.Error.Message}))
+    return missing
+  end
+  p = started.Value
+  _ = fiber.Spawn(() -> forward(p))
+  chunk = result.Unwrap(sys.ReadOutput(p))
+  while chunk != ""
+    io.Print(json.Text(chunk))
+    chunk = result.Unwrap(sys.ReadOutput(p))
+  end
+  io.Print(json.Text({Code: sys.WaitExit(p)}))
+end
+
+main()

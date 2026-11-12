@@ -83,6 +83,12 @@ bureau. Cemacs emploie celui du système, et y garde un seul texte : il n'a pas 
 En français : la commande. Ce qu'une touche lance. Dans Cemacs, n'importe quelle fonction qui va de l'état de l'éditeur à un
 nouvel état ; Emacs demande qu'une commande soit marquée interactive. Voir [Touches](keys.md#les-mots).
 
+## Commit and index
+
+Dans Git, un commit est un état des fichiers d'un projet, gardé avec un message, son auteur et sa date ; l'index, que Git
+appelle aussi la staging area, tient ce que le prochain commit prendra, fichier par fichier. Stager un fichier, c'est le
+mettre dans l'index. [Git](git.md).
+
 ## Completion
 
 Taper le début d'un mot et laisser l'éditeur écrire le reste, d'après les mots qu'il connaît. Dans un fichier de Cesia, Tab
@@ -112,6 +118,12 @@ Cemacs. Emacs l'appelle le point. Voir [Édition](editing.md#le-curseur).
 Un language server est un programme qui connaît un langage et donne à n'importe quel éditeur les erreurs, les completions et
 les définitions de son code, par le Language Server Protocol ; un debug adapter fait de même pour un debugger, par le Debug
 Adapter Protocol. Cemacs n'emploie ni l'un ni l'autre : voir [Cemacs et les autres éditeurs](comparison.md#en-fonctions).
+
+## Definition and reference
+
+La définition d'un nom est la ligne qui lui donne sa valeur : `defn Total(prices)`, `Rate = 20`, `struct Rect`. Une
+référence est un endroit qui lit ce nom. Emacs appelle le travail d'aller de l'une aux autres les cross references, *xref* :
+`M-.` et `M-?` dans Cemacs aussi. [Names](names.md).
 
 ## Delta debugging
 
@@ -384,6 +396,12 @@ point le filtre lui va ; classer met les rangées dans l'ordre de leurs scores, 
 d'un projet classe par le score de fzy, [lists.Score] ; les autres listes gardent leur ordre. Voir
 [Recherche](search.md#quand-une-rangée-correspond-à-un-filtre).
 
+## Resolver of names
+
+La partie d'un compilateur qui dit, pour chaque nom que lit le code, ce qu'il désigne : un paramètre, une variable locale,
+une définition du fichier, de son package ou d'un package qu'il utilise. Cesia donne le sien aux outils, `cesia.Reads`, et
+Cemacs trouve avec lui les références d'un nom. [Names](names.md#the-references).
+
 ## Response time
 
 En français : le temps de réponse. Le temps qui va d'une action, une touche, à ce que l'écran en montre. Miller (1968)
@@ -413,6 +431,12 @@ passé par le shaping rangé par ses mots, pour qu'une ligne qui bouge à l'écr
 
 Une sélection faite en tenant Shift pendant un déplacement, que le déplacement suivant sans Shift finit. Voir
 [Édition](editing.md#la-mark-et-la-sélection).
+
+## Signature
+
+Le nom d'une fonction et ses paramètres, comme `Total(prices)` ou `list.Map(f, xs)` : ce qu'un appel demande. La prompt line
+montre la signature de l'appel en train d'être tapé, comme le fait *eldoc* dans Emacs.
+[Names](names.md#the-documentation-and-the-signature).
 
 ## Statement
 

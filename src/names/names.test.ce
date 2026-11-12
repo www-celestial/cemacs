@@ -1,0 +1,10 @@
+(** Tests of the bridge to cesia lsp, without the server: the questions it refuses, and the documentation it shows. tests/ide-check.ce runs the server. *)
+use src/names
+use std/dict
+use std/value
+
+isBadQuestionRefused() = dict.Has("Error", names.Answered({Do: "definition"}, {}).Answer)
+isDocWithoutExamples() = value.Equal(names.DocOf({contents: {value: "```cesia\nf(x)\n```\n\nTwice."}}), {Signature: "f(x)", Text: "Twice.", Examples: []})
+isDocOfPlainWords() = names.DocOf({contents: {value: "Some words."}}).Text == "Some words."
+isNoDocOfNothing() = value.IsMissing(names.DocOf(missing))
+isPlaceOfAList() = names.PlaceOf([{uri: "file:///a.ce", range: {"start": {line: 2, character: 4}, "end": {line: 2, character: 9}}}]).Line == 3

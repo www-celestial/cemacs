@@ -29,6 +29,7 @@ use src/check
 use src/emacs
 use src/folders
 use src/help
+use src/ide
 use src/notebook
 use src/output
 use src/project
@@ -40,8 +41,8 @@ use std/text as str
 use std/value
 
 (* The keys as src/cemacs.ce merges them: that file opens the window when it loads, so the page makes the same merge. *)
-all = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()),
-  check.Keys()), output.Keys()), notebook.Keys()))
+all = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()),
+  project.Keys()), check.Keys()), output.Keys()), notebook.Keys()), ide.Keys()))
 
 defn about(f)
   (** The name of a command as the reference writes it, as a link, and the first sentence of its text. *)
@@ -83,7 +84,8 @@ value.Len(dict.Keys(all)) -->
 
 A command bound to two keys, as `C-x C-f` and `C-c f f`, is the same function: the second key is no copy of the first.
 Under `C-c`, the letter of each group is the first letter of its name, as in Doom Emacs: `f` files, `b` buffers, `w`
-windows, `c` code, `d` debug, `e` execute, the [cells](cells.md), `q` quit.
+windows, `c` code, `d` debug, `e` execute, the [cells](cells.md), `t` test, the [tests](running.md#tests), `g` [git](git.md), `i` insert, the
+[forms of Cesia](editing.md#forms-of-cesia), `o` open, [the shell](shell.md), `q` quit.
 
 ## A question on the prompt line
 

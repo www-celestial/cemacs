@@ -1,0 +1,12 @@
+(** Tests of the questions of the tests, without cesia test: what a key runs, and the marks of an output. tests/ide-check.ce runs the real cesia test. *)
+use src/testing
+use std/value
+
+isHereRunsTheTest() = value.Equal(testing.Answered({Do: "here", Pwd: "/p", Path: "/p/src/a/a.test.ce", Text: "isA() = 1 == 1", Line: 1}).Run.Args, ["test", "src/a/a.test.ce:isA"])
+isAllRunsAll() = value.Equal(testing.Answered({Do: "all", Pwd: "/p"}).Run.Args, ["test"])
+isNoFileSaid() = testing.Answered({Do: "here", Pwd: "/p"}).Say == "Tests are those of a file of Cesia."
+defn isEndedMarks()
+  a = testing.Answered({Do: "ended", Pwd: "/p", Lines: ["> cesia test src/a", "src/a/a.ce:5: Twice(2) --> 5, got 4", "1 passed, 1 failed"]})
+  a.Say == "1 passed, 1 failed" and a.Marks[1].Path == "/p/src/a/a.ce" and a.Marks[1].Line == 5
+end
+isQuestionChecked() = testing.Answered({Do: "here"}).Error == "A question needs Do and a Pwd."
