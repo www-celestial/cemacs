@@ -81,6 +81,20 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `Can't run git: no such file or directory.` | `git` is not on the `PATH`: install it |
 | `git ls-files failed: REASON` | Git found the repository but couldn't list it; REASON is Git's own words |
 
+### Searching a project
+
+| Message | What happened |
+|---|---|
+| `Searching NAME for WORDS...` | `C-x p g` started git grep in the repository NAME |
+| `N lines. C-c r replaces in those shown.` | the list of the search; `, the first 10000 only` when it was cut there |
+| `No line of the project holds WORDS.` | git grep found nothing |
+| `No words to search.` | Enter on an empty answer |
+| `FOLDER/ is in no Git repository.` | the search of a project needs one, as `C-x p f` |
+| `git grep failed: REASON`, `git can't run: REASON` | git ended with an error, or couldn't start: is it on the `PATH`? |
+| `No place of WORDS is left in those lines.` | `C-c r` after the lines changed, or a filter that kept none |
+| `Replaced WORDS with NEW: N files saved.` | the replace is done, told as a rename tells it |
+| `Not replaced.` | `n` to the question of a replace |
+
 ### Windows and panes
 
 | Message | What happened |
@@ -157,6 +171,8 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `New file, or folder/: ` | in the folder manager, the name to make |
 | `Rename NAME to: ` | in the folder manager, the new name or path; in a file of Cesia, after `C-c c m`, the new name of a name of the code |
 | `Rename NAME to NEW in N places of M files? (y or n)` | `C-c c m`: `y` makes the edits, as [Names](names.md#a-rename) tells |
+| `Search project: ` | `C-x p g`: the words to look for in the project |
+| `Replace WORDS with: `, `Replace N places of WORDS in M files with NEW? (y or n)` | `C-c r` in the list of a search |
 | `Move NAME to the trash? (y or n)` | in the folder manager |
 | `I-search: `, `I-search backward: ` | a search is open: what you type is looked for, Enter stays, `C-g` goes back; see [Search](search.md#searching-a-buffer) |
 | `Failing I-search: ` | no place of the words is left that way: `C-s` or `C-r` again goes round the end, `C-g` takes back what matched nothing |

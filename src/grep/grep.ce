@@ -1,0 +1,201 @@
+(** The search of a whole project: C-x p g, as in Emacs, or C-c s p, asks for words, the name at the cursor first, and lists each line of the files of the
+    Git repository that holds them, as git grep finds them; Enter goes to one, and C-c r in the list replaces the words in the lines it shows. git runs from
+    a fiber, so that the editor never waits, with each word one argument and never through a shell; the words are fixed text, never a pattern. src/cemacs.ce
+    adds the hooks of Hooked to the config and these Keys. *)
+use core/commands
+use core/files
+use core/lists
+use core/color
+use core/text
+use src/folders
+use src/names
+use src/rope
+use std/dict
+use std/fiber
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The keys of the search: C-x p g in the group of the project, as Emacs, and C-c s p in the group of the search. *)
+Keys() = {"C-x p g": Search, "C-c s p": Search}
+
+(** The most places a search lists: past them the list says it is cut. *)
+PlaceLimit() = 10000
+
+(** The seconds a search may take before git is ended. *)
+SearchLimit() = 20
+
+defn searching(state)
+  (** The search that waits for git, {Channel, Root, Words}, or missing: a state from before this field has none. *)
+  match state
+    {Grepping: g} -> g
+    else -> missing
+  end
+end
+
+defn Search(state)
+  (** Asks for words, the name at the cursor first, and lists each line of the project that holds them. *)
+  b = state.Buffers[state.Current]
+  first = if lists.IsList(b) "" else names.WordHere(b) end
+  commands.Ask("Search project: ", first, searched, state)
+end
+
+defn folderOf(state)
+  (** The folder the project is looked for from: that of the file of the current buffer, or the one Cemacs started in. *)
+  b = state.Buffers[state.Current]
+  pwd = sys.Env("PWD")
+  if value.IsMissing(b.Path) or lists.IsList(b) folders.Absolute(".", pwd) else folders.Parent(folders.Absolute(b.Path, pwd)) end
+end
+
+(** The arguments of git grep for words, from the root: line, column, no binary file, the paths ended by a 0 byte, fixed text, the case folded when the
+    words hold no capital, as C-s folds it.
+
+      Args("/p", "total") --> ["-C", "/p", "grep", "-n", "--column", "-I", "-z", "--no-color", "-F", "-i", "-e", "total"] *)
+Args(root, words) = list.Concat(["-C", root, "grep", "-n", "--column", "-I", "-z", "--no-color", "-F"], list.Concat(if commands.Folds(words) ["-i"] else [] end, ["-e", words]))
+
+defn searched(words, state)
+  (** The answer of the question: git grep started in a fiber, from the root of the Git repository of the file. *)
+  if words == ""
+    return commands.Say("No words to search.", state)
+  end
+  top = sys.Run("git", ["-C", folderOf(state), "rev-parse", "--show-toplevel"], timeout = SearchLimit())
+  if result.IsErr(top) or top.Value.Code != 0
+    return commands.Say(if result.IsErr(top) "git can't run: $(top.Error.Message)" else "$(folders.Slashed(folderOf(state))) is in no Git repository." end, state)
+  end
+  root = str.Trim(top.Value.Out)
+  ch = fiber.Channel()
+  args = Args(root, words)
+  _ = fiber.Spawn(() -> fiber.Send(sys.Run("git", args, timeout = SearchLimit()), ch))
+  s = state
+  s.Grepping = {Channel: ch, Root: root, Words: words}
+  commands.Say("Searching $(folders.BaseName(root)) for $words...", s)
+end
+
+defn Places(root, out)
+  (** The places in what git grep -n --column -z wrote, each {Path, Line, Column, Words}: the path from the root, the line from 1, the column from 0 in
+      characters, and the words of the line; at most PlaceLimit(). A line that isn't of that shape is left out.
+
+        Places("/p", str.Join(str.FromBytes([0]), ["a.ce", "2", "6", "x = é1\n"])) --> [{Path: "/p/a.ce", Shown: "a.ce", Line: 2, Column: 5, Words: "x = é1"}] *)
+  zero = str.FromBytes([0])
+  found = []
+  for line in str.Lines(out)
+    if value.Len(found) >= PlaceLimit()
+      return found
+    end
+    parts = str.Split(zero, line)
+    n = if value.Len(parts) == 4 str.Number(parts[2]) else missing end
+    byte = if value.Len(parts) == 4 str.Number(parts[3]) else missing end
+    if value.IsInt(n) and value.IsInt(byte) and n >= 1 and byte >= 1
+      words = parts[4]
+      column = if byte == 1 0 else value.Len(str.ByteSlice(1, list.Min(byte - 1, str.ByteLength(words)), words)) end
+      found = list.Append({Path: "$root/$(parts[1])", Shown: parts[1], Line: n, Column: column, Words: words}, found)
+    end
+  end
+  found
+end
+
+defn Finished(state)
+  (** The state once git has answered the search, if it has: the list of the places, or what went wrong. *)
+  g = searching(state)
+  if value.IsMissing(g)
+    return state
+  end
+  got = fiber.Receive(g.Channel, timeout = 0)
+  if result.IsErr(got)
+    return state
+  end
+  s = state
+  s.Grepping = missing
+  ran = got.Value
+  if result.IsErr(ran)
+    return commands.Say("git can't run: $(if value.IsText(ran.Error) ran.Error else ran.Error.Message end)", s)
+  end
+  if ran.Value.Code > 1
+    return commands.Say("git grep failed: $(str.Trim(ran.Value.Err))", s)
+  end
+  shown(g.Words, Places(g.Root, ran.Value.Out), s)
+end
+
+defn shown(words, places, state)
+  (** Opens the list of the places of words: path:line:column and the words of the line. *)
+  if value.Len(places) == 0
+    return commands.Say("No line of the project holds $words.", state)
+  end
+  rows = [{Words: "$(p.Shown):$(p.Line):$(p.Column + 1)  $(p.Words)", Item: {Path: p.Path, Line: p.Line, Column: p.Column},
+    Parts: [[color.Comment, "$(p.Shown):$(p.Line):$(p.Column + 1)  "], [color.Plain, p.Words]]} for p in places]
+  here = () -> {"enter": (item, s) -> names.Visit(item, commands.ToBuffer(lists.Of(s.Buffers[s.Current]).Back, s)), "C-c r": (item, s) -> asked(words, s)}
+  s = commands.ShowList("Search: $words", rows, here, state)
+  cut = if value.Len(places) >= PlaceLimit() ", the first $(PlaceLimit()) only" else "" end
+  commands.Say("$(value.Len(places)) lines$cut. C-c r replaces in those shown.", s)
+end
+
+defn asked(words, state)
+  (** C-c r in the list: asks what replaces the words, in the lines the list shows, the filter kept. *)
+  items = [i for i in lists.Of(state.Buffers[state.Current]).Items if not value.IsMissing(i)]
+  commands.Ask("Replace $words with: ", "", (by, s) -> planned(words, by, items, s), state)
+end
+
+defn Spans(words, line, fold)
+  (** The columns of each place of words in a line, from 0, {Column, End}, side by side ones apart, with the case of letters folded or not.
+
+        Spans("ab", "ab Ab ab", true) --> [{Column: 0, End: 2}, {Column: 3, End: 5}, {Column: 6, End: 8}]
+        Spans("ab", "ab Ab", false) --> [{Column: 0, End: 2}] *)
+  hay = if fold str.Lower(line) else line end
+  w = if fold str.Lower(words) else words end
+  n = value.Len(w)
+  out = []
+  from = 1
+  while from <= value.Len(hay) - n + 1
+    rest = str.Slice(from, value.Len(hay), hay)
+    at = str.Find(w, rest)
+    if value.IsMissing(at)
+      return out
+    end
+    column = from + at - 2
+    out = list.Append({Column: column, End: column + n}, out)
+    from = column + n + 1
+  end
+  out
+end
+
+defn planned(words, by, items, state)
+  (** After the words that replace: the edits of each line listed, from the text of its buffer, the files opened, and a question before they are made. *)
+  fold = commands.Folds(words)
+  s = state
+  edits = []
+  for p in list.Unique([i.Path for i in items])
+    s = commands.OpenFile(names.PathFor(p, s), s)
+    b = s.Buffers[s.Current]
+    if not value.IsMissing(b.Path)
+      for line in list.Unique([i.Line for i in items if i.Path == p])
+        if line <= rope.LineCount(b.Rope)
+          content = rope.Line(line, b.Rope)
+          edits = list.Concat(edits, [{Path: p, Line: line, Column: x.Column, End: x.End, Old: str.Slice(x.Column + 1, x.End, content), Text: by} for x in Spans(words, content, fold)])
+        end
+      end
+    end
+  end
+  s = commands.ToBuffer(state.Current, s)
+  if value.Len(edits) == 0
+    return commands.Say("No place of $words is left in those lines.", s)
+  end
+  count = value.Len(list.Unique([e.Path for e in edits]))
+  commands.Confirm("Replace $(value.Len(edits)) places of $words in $count files with $by? (y or n)",
+    (answer, t) -> if answer == "y" names.Said("Replaced $words with $by", names.Apply(edits, t)) else commands.Say("Not replaced.", t) end, s)
+end
+
+(** Does the search need ticks: git hasn't answered yet? *)
+Moving(state) = not value.IsMissing(searching(state))
+
+defn Hooked(config)
+  (** A config with the hooks of the search over those it has: at each tick, its Idle then this one's; it moves while either needs. *)
+  c = config
+  idle = dict.GetOr("Idle", s -> s, config)
+  moving = dict.GetOr("Moving", s -> false, config)
+  c.Idle = s -> Finished(idle(s))
+  c.Saved = dict.GetOr("Saved", s -> s, config)
+  c.Moving = s -> moving(s) or Moving(s)
+  c
+end

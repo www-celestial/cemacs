@@ -1,0 +1,35 @@
+(** Tests of the search of a project, without git: what git answered, as a list or a message. tests/grep-check.ce runs the real git grep. *)
+use src/grep
+use src/rope
+use src/ui
+use core/lists
+use core/text
+use core/view
+use std/fiber
+use std/result
+use std/text as str
+use std/value
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+
+defn answered(given)
+  (** A state whose search of total under /p has ended with what git gave. *)
+  s = view.Start([text.Of("x", "/p/a.ce")], look, cell, 800, 600)
+  ch = fiber.Channel()
+  fiber.Send(given, ch)
+  s.Grepping = {Channel: ch, Root: "/p", Words: "total"}
+  grep.Finished(s)
+end
+
+zero = str.FromBytes([0])
+here(state) = state.Buffers[state.Current]
+
+defn isListed()
+  s = answered(result.Ok({Code: 0, Out: str.Join(zero, ["a.ce", "3", "5", "x = total\n"]), Err: ""}))
+  lists.IsList(here(s)) and rope.Text(here(s).Rope) == "a.ce:3:5  x = total" and not grep.Moving(s)
+end
+
+isNoLineSaid() = answered(result.Ok({Code: 1, Out: "", Err: ""})).Message == "No line of the project holds total."
+isFailureSaid() = answered(result.Ok({Code: 128, Out: "", Err: "fatal: bad\n"})).Message == "git grep failed: fatal: bad"
+isWrongLinesLeftOut() = value.Len(grep.Places("/p", "a.ce:3:5:x\n$(str.Join(zero, ["a.ce", "0", "1", "x"]))\n")) == 0

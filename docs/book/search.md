@@ -2,9 +2,9 @@
 
 Cemacs searches a buffer as Emacs does, incrementally: `C-s` opens the prompt line, and each letter you type moves the cursor
 to the next place of the words typed so far, which shows selected. This chapter tells that search, then what else Cemacs
-finds: rows in lists, keys, errors, and the places that the output of a program names. Search by regular expression, a
-pattern such as `[0-9]+` that matches many texts, replace, Emacs's `M-%`, and a search through the files of a project are
-not there yet.
+finds: the lines of a whole project, which it can replace, rows in lists, keys, errors, and the places that the output of a
+program names. Search by regular expression, a pattern such as `[0-9]+` that matches many texts, and Emacs's `M-%`, a
+replace in one buffer that asks at each place, are not there yet.
 
 ## Searching a buffer
 
@@ -152,6 +152,29 @@ use, which rewards the letters found at the start of a word or side by side, and
 [r.Item for r in lists.Ranked("cmt", rows)] --> [3]
 [r.Item for r in lists.Ranked("cmd", rows)] --> [2, 3]
 ```
+
+## Searching a project
+
+| Keys | Command | What it does |
+|---|---|---|
+| `C-x p g`, `C-c s p` | [grep.Search] | asks for words, the name at the cursor first, and lists each line of the project that holds them |
+| `C-c r`, in that list | | asks what replaces the words, then for a yes, and replaces them in the lines the list shows |
+
+`C-x p g` is the key of Emacs's `project-find-regexp`, and `C-c s p` the place of the search of a project in Doom Emacs,
+`SPC s p`. The project is the Git repository that holds the file of the current buffer, or else the folder where Cemacs
+started, as for `C-x p f`: see [Files and buffers](files.md#the-files-of-a-project). The search is an app of Cemacs,
+[src/grep]: it runs `git grep -n --column -I -z --no-color -F -e WORDS` from the root of the repository, in a fiber, so that
+the editor goes on while git reads, and lists each line found, at most 10,000, as `path:line:column  the line`, the column of
+the first place of the words in it. The words are fixed text, `-F`, never a pattern, and when they hold no capital, the
+case of letters is set aside, `-i`, as `C-s` does. The files are those git knows: the tracked ones, without the binary
+ones, `-I`. Typing filters the list, and Enter goes to the line, keeping the place left for `M-,`, as a list of
+[references](names.md#the-references) does.
+
+`C-c r` in the list asks `Replace WORDS with: `, then `Replace 3 places of WORDS in 1 files with NEW? (y or n)`: the places
+are those of the words in the lines the list shows now, so a filter typed first keeps the replace to the lines it keeps.
+After `y`, the edits are made as a [rename](names.md#a-rename) makes them: each file opened if it isn't, its edits one step
+of undo, saved again if it was saved before; a buffer with changes of its own stays unsaved, and a line that no longer holds
+the words is left. The case of the new words is the one typed.
 
 ## Keys
 

@@ -28,6 +28,7 @@ use src/buffers
 use src/check
 use src/emacs
 use src/folders
+use src/grep
 use src/help
 use src/names
 use src/notebook
@@ -42,8 +43,8 @@ use std/text as str
 use std/value
 
 (* The keys as src/cemacs.ce merges them: that file opens the window when it loads, so the page makes the same merge. *)
-all = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()),
-  project.Keys()), check.Keys()), output.Keys()), notebook.Keys()), names.Keys()), testing.Keys()))
+all = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()),
+  project.Keys()), check.Keys()), output.Keys()), notebook.Keys()), names.Keys()), testing.Keys()), grep.Keys()))
 
 defn about(f)
   (** The name of a command as the reference writes it, as a link, and the first sentence of its text. *)

@@ -82,14 +82,14 @@ References(state) = ask("references", state)   (** Lists every place of the proj
 defn Rename(state)
   (** Renames the name at the cursor everywhere the project reads it, after asking the new name and then for a yes. *)
   b = state.Buffers[state.Current]
-  name = wordHere(b)
+  name = WordHere(b)
   if not askable(b) or name == ""
     return commands.Say(if askable(b) "No name here." else "Names are those of a file of Cesia." end, state)
   end
   commands.Ask("Rename $name to: ", "", (to, s) -> if to == "" commands.Say("No name.", s) else ask("rename", s, to = to) end, state)
 end
 
-defn wordHere(b)
+defn WordHere(b)
   (** The name under the cursor, or just before it, or "". *)
   chars = str.Chars(rope.Line(b.Cursor.Line, b.Rope))
   isName(c) = str.Code(c) >= 128 or c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or (c >= "0" and c <= "9")
@@ -291,7 +291,7 @@ defn signable(state)
   end
   line = rope.Line(c.Line, b.Rope)
   before = if c.Column == 0 "" else str.Slice(1, list.Min(c.Column, value.Len(line)), line) end
-  value.Len([m for m in text.MarksOf(b) if m.Line == c.Line]) == 0 and (str.Contains("(", before) or wordHere(b) != "")
+  value.Len([m for m in text.MarksOf(b) if m.Line == c.Line]) == 0 and (str.Contains("(", before) or WordHere(b) != "")
 end
 
 defn Idle(delay, state)
@@ -330,11 +330,11 @@ defn renamed(q, a, state)
   count = value.Len(list.Unique([e.Path for e in edits]))
   spans = [{Path: e.Path, Line: e.Line, Column: e.Column, End: e.End, Old: a.Name, Text: q.To} for e in edits]
   commands.Confirm("Rename $(a.Name) to $(q.To) in $(value.Len(edits)) places of $count files? (y or n)",
-    (answer, s) -> if answer == "y" said("Renamed $(a.Name) to $(q.To)", Apply(spans, s)) else commands.Say("Not renamed.", s) end, state)
+    (answer, s) -> if answer == "y" Said("Renamed $(a.Name) to $(q.To)", Apply(spans, s)) else commands.Say("Not renamed.", s) end, state)
 end
 
 (** The state that Apply gave, with what it did said after the words. *)
-said(words, done) = commands.Say("$words: $(done.Words)", done.State)
+Said(words, done) = commands.Say("$words: $(done.Words)", done.State)
 
 defn Apply(edits, state)
   (** The state with edits made in the buffers of their files, each {Path, Line, Column, End, Old, Text}: a file not open opens; a buffer gets its edits as

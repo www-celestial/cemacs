@@ -1,0 +1,88 @@
+(** Checks of src/grep against the real git grep, in a Git repository made in a new folder under /tmp: C-x p g lists the lines that hold the words, the
+    case folded for words in lower case, Enter goes to one and M-, comes back, and C-c r replaces the words in the lines shown, the filter kept. It is a
+    script, not a test file: it needs permissions. tests/run.sh runs it with cesia run --allow read,write,exec=git,exec=rm,env=PWD. It prints ok at the end
+    and stops at the first failure. *)
+use src/emacs
+use src/grep
+use src/names
+use src/rope
+use src/ui
+use core/commands
+use core/lists
+use core/press
+use core/text
+use core/view
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn expect(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+grepConfig() = grep.Hooked(emacs.Config(() -> dict.Merge(dict.Merge(emacs.Keys(), names.Keys()), grep.Keys())))
+here(state) = state.Buffers[state.Current]
+rows(state) = str.Lines(rope.Text(here(state).Rope))
+
+defn found(state)
+  (** The state after ticks, until git has answered or 10 seconds have gone. *)
+  s = state
+  waited = 0.0
+  while grep.Moving(s) and waited < 10.0
+    sys.Sleep(0.02)
+    waited += 0.02
+    s = commands.Update({Kind: "tick", Seconds: 0.02}, s)
+  end
+  expect(not grep.Moving(s), "git answers within 10 seconds")
+  s
+end
+
+folder = "/tmp/cemacs-grep-check-$(value.Text(sys.Now()))"
+result.Unwrap(sys.Mkdir("$folder/src"))
+result.Unwrap(sys.Write("$folder/src/a.ce", "price = 1\nTotal = price + Price\n"))
+result.Unwrap(sys.Write("$folder/src/b.ce", "x = \"price\"\n"))
+result.Unwrap(sys.Write("$folder/c.md", "No word here.\n"))
+_ = sys.Run("git", ["-C", folder, "init", "-q"])
+_ = sys.Run("git", ["-C", folder, "add", "."])
+
+start = view.Start([text.Of("", missing)], look, cell, 800, 600)
+start.Config = grepConfig
+opened = commands.OpenFile("$folder/src/a.ce", start)
+
+(* C-x p g asks with the name at the cursor; lower case words fold the case, as C-s. *)
+asked = press.Press(["C-x", "p", "g"], opened)
+expect(asked.Prompt.Label == "Search project: " and asked.Prompt.Answer == "price", "the question: $(asked.Prompt)")
+listed = found(press.Press(["enter"], asked))
+expect(lists.IsList(here(listed)) and value.Equal(rows(listed), ["src/a.ce:1:1  price = 1", "src/a.ce:2:9  Total = price + Price", "src/b.ce:1:6  x = \"price\""]), "the lines: $(rows(listed)) $(listed.Message)")
+capital = found(press.Press(["C-c", "s", "p", "backspace", "backspace", "backspace", "backspace", "backspace", "Price", "enter"], opened))
+expect(value.Equal(rows(capital), ["src/a.ce:2:17  Total = price + Price"]), "a capital keeps the case: $(rows(capital)) $(capital.Message)")
+none = found(press.Press(["C-x", "p", "g", "nowhere", "enter"], opened))
+expect(none.Message == "No line of the project holds pricenowhere.", "no line: $(none.Message)")
+
+(* Enter goes to the place, M-, comes back. *)
+gone = press.Press(["down", "down", "enter"], listed)
+expect(str.EndsWith("src/b.ce", here(gone).Path) and here(gone).Cursor.Column == 5 and list.Count(lists.IsList, gone.Buffers) == 0, "Enter goes there: $(here(gone).Path) $(here(gone).Cursor)")
+expect(here(press.Press(["M-,"], gone)).Path == "$folder/src/a.ce", "M-, comes back")
+
+(* C-c r replaces in the lines shown: the filter keeps those of a.ce, so b.ce stays as it is. *)
+asking = press.Press(["a.ce", "C-c", "r"], listed)
+expect(asking.Prompt.Label == "Replace price with: ", "the question: $(asking.Prompt)")
+sure = press.Press(["cost", "enter"], asking)
+expect(sure.Prompt.Label == "Replace 3 places of price in 1 files with cost? (y or n)", "the yes: $(sure.Prompt.Label)")
+done = press.Press(["y"], sure)
+expect(str.StartsWith("Replaced price with cost: 1 files saved.", done.Message), "replaced: $(done.Message)")
+expect(result.Unwrap(sys.Read("$folder/src/a.ce")) == "cost = 1\nTotal = cost + cost\n", "a.ce on the disk: $(result.Unwrap(sys.Read("$folder/src/a.ce")))")
+expect(result.Unwrap(sys.Read("$folder/src/b.ce")) == "x = \"price\"\n", "b.ce is left")
+
+_ = sys.Run("rm", ["-rf", folder])
+io.Print("ok")
