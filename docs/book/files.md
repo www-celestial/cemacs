@@ -14,7 +14,11 @@ another, and the folder manager. The commands are in [core/commands], the folder
 The answer starts with the folder of the current file, so that a file beside it takes only its name. It is a path as the
 system reads it: from the folder where Cemacs started for a relative one; `~` is only a name there, not your home. The
 prompt line takes letters, Backspace, `C-y`, which pastes the first line of the clipboard, Enter and `C-g`, and you edit only
-at the end of the answer. It has no completion, the help that finishes a name from the files that exist.
+at the end of the answer. Tab completes the name, from the entries of its folder, as Emacs does: the names that start with
+the last part of the answer complete it as far as they agree, a folder with its `/`; when several are left, they show after
+the answer, as `{color/ | commands/ | complete/}`, ten at most. With none that starts so, the names that hold its letters in
+order match, as the filter of a list does: `nms` and Tab give `names/`. `M-p` and `M-n` go back and on through the files
+answered before, as [The prompt line](windows.md#the-prompt-line) tells.
 
 A file opens in a new buffer, which becomes the current one, the buffer you edit. A file that is open already isn't read
 again: Cemacs goes to its buffer. Two paths name the same file when they are the same once `.` and `..` and doubled slashes

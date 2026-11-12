@@ -42,6 +42,13 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `This list is read only.` | a command tried to change the text of a list, and was taken back |
 | `Nothing here.` | a key of a list with no row left, as Enter after a filter that matches nothing: Backspace takes the filter back |
 
+### The prompt line
+
+| Message | What happened |
+|---|---|
+| `No answer before this one.`, `No answer after this one.` | `M-p` or `M-n` at an end of the answers given to the question |
+| `{no match}`, after the answer | Tab in `Find file: ` found no entry of the folder that matches the last part of the answer |
+
 ### Files and buffers
 
 | Message | What happened, and what to do |

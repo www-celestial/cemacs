@@ -242,8 +242,8 @@ defn prompted(prompt, state)
   s
 end
 
-(** The state with a prompt that takes an answer: done gets the answer and the state, without the prompt. *)
-ask(label, answer, done, state) = prompted({Label: label, Answer: answer, Done: done, Choice: false}, state)
+(** The state with a prompt that takes an answer: done gets the answer and the state, without the prompt. With named, Tab completes the name of a file. *)
+ask(label, answer, done, state, named = false) = prompted({Label: label, Answer: answer, Done: done, Choice: false, Files: named, Back: 0, Typed: answer, Hint: ""}, state)
 
 (** The state with a prompt that takes y or n. *)
 confirm(label, done, state) = prompted({Label: label, Answer: "", Done: done, Choice: true}, state)
@@ -254,11 +254,122 @@ Ask(label, answer, done, state) = ask(label, answer, done, state)
 Confirm(label, done, state) = confirm(label, done, state)   (** A prompt for an app that takes y or n: done gets "y" or "n" and the state. *)
 
 defn accept(state)
-  (** The state after the answer of the prompt is accepted. *)
+  (** The state after the answer of the prompt is accepted, kept in the history of the answers to its question. *)
   p = state.Prompt
   s = state
   s.Prompt = missing
+  if not p.Choice and value.IsMissing(searchOf(state)) and p.Answer != ""
+    s.Answers = dict.Put(p.Label, list.TakeLast(HistoryLimit(), list.Append(p.Answer, [a for a in answersTo(p.Label, state) if a != p.Answer])), answersOf(state))
+  end
   p.Done(p.Answer, s)
+end
+
+(** The most answers kept for each question. *)
+HistoryLimit() = 100
+
+defn answersOf(state)
+  (** The answers given to each question, by its label, the last one last: a state from before this field has none. *)
+  match state
+    {Answers: all} -> all
+    else -> dict.Dict()
+  end
+end
+
+(** The answers given to a question, the last one last. *)
+answersTo(label, state) = dict.GetOr(label, [], answersOf(state))
+
+defn historyMoved(by, state)
+  (** The prompt with the answer by steps back in the history of its question, 1 for the one before, -1 for the one after; at 0, what was typed. *)
+  p = state.Prompt
+  if value.IsMissing(p) or p.Choice or not value.IsMissing(searchOf(state)) or not dict.Has("Back", p)
+    return state
+  end
+  past = answersTo(p.Label, state)
+  back = list.Max(0, list.Min(value.Len(past), p.Back + by))
+  if back == p.Back
+    return say(if by > 0 "No answer before this one." else "No answer after this one." end, state)
+  end
+  s = state
+  s.Prompt.Typed = if p.Back == 0 p.Answer else p.Typed end
+  s.Prompt.Back = back
+  s.Prompt.Answer = if back == 0 s.Prompt.Typed else past[value.Len(past) - back + 1] end
+  s.Prompt.Hint = ""
+  s
+end
+
+PromptHistoryBack(state) = historyMoved(1, state)   (** M-p in a prompt: the answer given before to the same question, as Emacs's history. *)
+PromptHistoryOn(state) = historyMoved(-1, state)   (** M-n in a prompt: the answer after, back to what was typed. *)
+
+defn Completions(answer, names)
+  (** What Tab makes of the answer of a prompt for a file, given the names of the entries of its folder, a folder ending with /: {Answer, Hint}. The
+      names that start with the last part of the answer complete it as far as they agree; with none, those that hold its letters in order, as a list's
+      filter matches. When more than one is left, the hint lists them.
+
+        Completions("src/no", ["notebook/", "names/", "note.ce"]) --> {Answer: "src/note", Hint: "{notebook/ | note.ce}"}
+        Completions("src/nms", ["notebook/", "names/"]) --> {Answer: "src/names/", Hint: ""}
+        Completions("src/z", ["a.ce"]) --> {Answer: "src/z", Hint: "{no match}"} *)
+  cut = str.Split("/", answer)
+  last = list.Last(cut)
+  dir = str.Join("", ["$(part)/" for part in list.DropLast(1, cut)])
+  starting = [n for n in names if str.StartsWith(last, n)]
+  found = if value.Len(starting) > 0 starting else [n for n in names if last != "" and lists.Matches(last, n)] end
+  if value.Len(found) == 0
+    return {Answer: answer, Hint: "{no match}"}
+  end
+  if value.Len(found) == 1
+    return {Answer: "$dir$(found[1])", Hint: ""}
+  end
+  common = if value.Len(starting) > 0 sharedStart(found) else last end
+  shown = list.Take(10, found)
+  more = if value.Len(found) > 10 " | ..." else "" end
+  {Answer: "$dir$common", Hint: "{$(str.Join(" | ", shown))$more}"}
+end
+
+defn sharedStart(words)
+  (** The longest start that all the words share. *)
+  first = str.Chars(words[1])
+  n = value.Len(first)
+  for w in list.Skip(1, words)
+    cs = str.Chars(w)
+    k = 0
+    while k < n and k < value.Len(cs) and cs[k + 1] == first[k + 1]
+      k += 1
+    end
+    n = k
+  end
+  str.Join("", list.Take(n, first))
+end
+
+defn entriesOf(dir)
+  (** The names of the entries of a folder, a folder with / after its name, or [] when it can't be read. The folder "" is the one Cemacs started in. *)
+  at = if dir == "" "." else dir end
+  got = sys.List(at)
+  if result.IsErr(got)
+    return []
+  end
+  [if isFolder("$at/$n") "$n/" else n end for n in got.Value]
+end
+
+defn isFolder(path)
+  (** Is the path a folder? *)
+  info = sys.Stat(path)
+  result.IsOk(info) and info.Value.IsDir
+end
+
+defn PromptComplete(state)
+  (** Tab in a prompt for a file: the name completed from the entries of its folder, those left listed after the answer. In another prompt, nothing. *)
+  p = state.Prompt
+  if value.IsMissing(p) or p.Choice or not dict.GetOr("Files", false, p)
+    return state
+  end
+  cut = str.Split("/", p.Answer)
+  dir = str.Join("/", list.DropLast(1, cut))
+  got = Completions(p.Answer, entriesOf(if str.StartsWith("/", p.Answer) and dir == "" "/" else dir end))
+  s = state
+  s.Prompt.Answer = got.Answer
+  s.Prompt.Hint = got.Hint
+  s.Prompt.Back = 0
+  s
 end
 
 defn closed(state)
@@ -280,9 +391,11 @@ PromptDeleteBefore(state) = inPrompt((p, s) -> if value.IsMissing(searchOf(s)) w
 withoutLastChar(words) = str.Join("", list.Take(list.Max(0, value.Len(words) - 1), str.Chars(words)))   (** A text without its last character. *)
 
 defn withAnswer(answer, state)
-  (** The state with this answer in the prompt. *)
+  (** The state with this answer in the prompt, typed: the names that Tab listed go, and the history starts again from it. *)
   s = state
   s.Prompt.Answer = answer
+  s.Prompt.Hint = ""
+  s.Prompt.Back = 0
   s
 end
 
@@ -613,7 +726,7 @@ end
 isPlaceholder(state) = value.Len(state.Buffers) == 1 and value.IsMissing(state.Buffers[1].Path) and not text.IsModified(state.Buffers[1]) and rope.Text(state.Buffers[1].Rope) == ""
 
 (** Asks for a file to open, with the folder of the current file as the start of the answer. *)
-FindFile(state) = ask("Find file: ", folder(current(state).Path), (answer, s) -> OpenFile(answer, s), state)
+FindFile(state) = ask("Find file: ", folder(current(state).Path), (answer, s) -> OpenFile(answer, s), state, named = true)
 
 defn NextBuffer(state)
   (** Goes to the next buffer, from the last to the first. *)
@@ -699,7 +812,7 @@ defn Save(state)
   if lists.IsList(b)
     say("A list has no file.", state)
   else if value.IsMissing(b.Path)
-    ask("Save as: ", "", (answer, s) -> saveAs(k, answer, s), state)
+    ask("Save as: ", "", (answer, s) -> saveAs(k, answer, s), state, named = true)
   else
     store(k, b.Path, false, b.Disk, state)
   end

@@ -846,3 +846,20 @@ isTabMidWordCompletesNothing() = value.IsMissing(complete.Of(press.Press(["M->",
 isOtherFileTabTypes() = wordsOf(press.Press(["M->", "Hel", "tab"], stateOf(words4))) == "$(words4)Hel  "
 isCompletedElseMoves() = wordsOf(press.Press(["C-e", "enter", "x", "enter", "els", "tab"], inFile("if a"))) == "if a\n  x\nelse"
 isListDrawn() = list.Any([c.Kind == "text" and c.Text == "Hello" and c.Y > 40 for c in view.View(opened())])
+
+(* ---- The history of the answers, and Tab in a prompt for a file. *)
+
+(** A state where Find file was answered twice, one then two: neither file is there, and both answers are kept. *)
+defn answeredTwice()
+  s = press.Press(["C-x", "C-f", "one", "enter"], stateOf(""))
+  press.Press(["C-x", "C-f", "two", "enter"], s)
+end
+isHistoryBack() = press.Press(["C-x", "C-f", "M-p"], answeredTwice()).Prompt.Answer == "two"
+isHistoryBackTwice() = press.Press(["C-x", "C-f", "M-p", "M-p"], answeredTwice()).Prompt.Answer == "one"
+isHistoryOnToTyped() = press.Press(["C-x", "C-f", "x", "M-p", "M-p", "M-n", "M-n"], answeredTwice()).Prompt.Answer == "x"
+isHistoryEnd() = press.Press(["C-x", "C-f", "M-p", "M-p", "M-p"], answeredTwice()).Message == "No answer before this one."
+isHistoryOneEach() = value.Len(dict.GetOr("Find file: ", [], press.Press(["C-x", "C-f", "two", "enter"], answeredTwice()).Answers)) == 2
+isTabCompletes() = press.Press(["C-x", "C-f", "core/comm", "tab"], stateOf("")).Prompt.Answer == "core/commands/"
+isTabListsThem() = press.Press(["C-x", "C-f", "core/co", "tab"], stateOf("")).Prompt.Hint == "{color/ | commands/ | complete/}"
+isTabHintGoesOnTyping() = press.Press(["C-x", "C-f", "core/co", "tab", "m"], stateOf("")).Prompt.Hint == ""
+isTabHintDrawn() = "{color/ | commands/ | complete/}" in list.Map(c -> c.Text, list.Filter(c -> c.Kind == "text", view.View(press.Press(["C-x", "C-f", "core/co", "tab"], stateOf("")))))
