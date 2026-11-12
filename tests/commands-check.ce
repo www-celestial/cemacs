@@ -164,10 +164,22 @@ check(value.Len(closed.Buffers) == 2 and here(closed).Path == bPath, "y closes i
 (** The title follows the current buffer. *)
 check(commands.Settled(commands.OpenFile(aPath, fresh())).Title == "a.ce", "the title is the name of the file")
 
-(* C-c f c opens the entry point of the apps, under the home: run from the root of Cemacs, the home is ".". *)
-config = press.Press(["C-c", "f", "c"], fresh())
-check(not value.IsMissing(here(config).Path) and str.EndsWith("src/cemacs.ce", here(config).Path), "C-c f c opens src/cemacs.ce: $(here(config).Path) $(config.Message)")
-check(str.StartsWith("(** Cemacs", wordsOf(config)), "C-c f c shows the text of src/cemacs.ce")
+(* C-c f c opens the config of the person, under the home: here a home of its own, whose user/ holds the template, since the user/ of this clone is the
+   person's. *)
+home = "$folder/home"
+for made in [home, "$home/user", "$home/user/config"]
+  check(result.IsOk(sys.Mkdir(made)), "the folder $made is made")
+end
+write("$home/user/config/config.ce", read("tools/user-template/config/config.ce"))
+atHome = fresh()
+atHome.Home = home
+config = press.Press(["C-c", "f", "c"], atHome)
+check(here(config).Path == "$home/user/config/config.ce", "C-c f c opens user/config/config.ce: $(here(config).Path) $(config.Message)")
+check(str.StartsWith("(** Your changes to Cemacs", wordsOf(config)), "C-c f c shows the text of user/config/config.ce")
+result.Unwrap(sys.Remove("$home/user/config/config.ce"))
+for made in ["$home/user/config", "$home/user", home]
+  result.Unwrap(sys.Remove(made))
+end
 
 (* Clean up: the folder and what the checks wrote in it. *)
 for name in result.Unwrap(sys.List(folder))

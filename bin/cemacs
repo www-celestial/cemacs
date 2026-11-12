@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
-# Starts Cemacs from anywhere, even through a symbolic link: Cemacs is in the folder above this one, and it starts with src/cemacs.ce.
+# Starts Cemacs from anywhere, even through a symbolic link: Cemacs is in the folder above this one, and it starts with src/cemacs.ce. The first time, it
+# makes user/, the folder of the person's own changes, from tools/user-template.
 home="$(dirname "$(dirname "$(readlink -f "$0")")")"
+[ -e "$home/user" ] || "$home/tools/user.sh"
 exec cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf "$home/src/cemacs.ce" "$home" "$@"

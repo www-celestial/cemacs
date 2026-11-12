@@ -6,6 +6,7 @@ use src/sdl
 use std/sys
 use src/ui
 use src/emacs
+use user/config
 use core/commands
 use core/text
 use core/view
@@ -86,8 +87,9 @@ defn opened()
   sdl.AddFont("code", "fonts/JetBrainsMono-Regular.ttf", emacs.FontSize(), second)
 end
 
-(** What the editor runs on: the Emacs keys and the settings, which tests/reload-check.sh changes in src/emacs/emacs.ce while this runs. *)
-Config() = emacs.Config(emacs.Keys)
+(** What the editor runs on: the Emacs keys and the settings, as the Changed of user/config changes them, which tests/reload-check.sh changes in
+    src/emacs/emacs.ce and in user/config/config.ce while this runs. *)
+Config() = config.Changed(emacs.Config(emacs.Keys))
 
 (** A state with what view.Start gave before the fields Wheel and Pressed, and the config the program gives. *)
 older(s) = {Buffers: s.Buffers, Current: s.Current, Pending: s.Pending, Prompt: s.Prompt, Message: s.Message, Run: s.Run, Window: s.Window, Width: s.Width,

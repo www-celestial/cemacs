@@ -44,6 +44,8 @@ jobs:
         if: env.NO_CESIA != '1'
         run: |
           cesia version
+          # cesia.toml names user/, the folder of the person, which a clone doesn't have: it gets the template, as at a first start.
+          tools/user.sh
           cesia doc --site _site
           echo "built=1" >> "$GITHUB_OUTPUT"
       # What the build keeps for itself: the programs of the book's pages and their folders, and what lets the next build

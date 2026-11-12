@@ -1,5 +1,6 @@
-(** Cemacs: the editor with its apps. bin/cemacs and cesia do dev run this file, and C-c f c opens it. An app lives in a folder of src/ and brings its keys:
-    add its use here and its keys to Keys. Loading this file opens the window, so no test uses it. *)
+(** Cemacs: the editor with its apps, and the changes of the person. bin/cemacs and cesia do dev run this file. An app of Cemacs lives in a folder of src/ and
+    brings its keys: its use is here, and its keys in Keys. The person changes Cemacs in user/config/config.ce, which C-c f c opens: its Changed gets the config
+    made here, and the editor runs on what it gives. Loading this file opens the window, so no test uses it. *)
 use src/buffers
 use src/check
 use src/emacs
@@ -8,15 +9,21 @@ use src/folders
 use src/help
 use src/output
 use src/project
+use user/config
 use std/dict
 use std/io
 
-(** Every key of the editor: the Emacs keys, then the keys of each app, and ? after the first key of every pair, which lists it. For a key in two, the later
-    one wins. *)
-Keys() = help.WithHelp(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()), check.Keys()),
-  output.Keys()))
+(** Every key of the editor: the Emacs keys, then the keys of each app. For a key in two, the later one wins. *)
+Keys() = dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()), check.Keys()), output.Keys())
 
-(** What the editor runs on: these keys, the other keys and the settings of src/emacs, and the hooks of the check. *)
-Config() = check.Hooked(emacs.Config(Keys))
+defn Config()
+  (** What the editor runs on: these keys, the other keys and the settings of src/emacs and the hooks of the check, as the Changed of user/config changes them,
+      then ? after the first keys of every pair or group, those of the person too, which lists what follows them. It runs at each key, so a change of
+      user/config under cesia do dev works at the next one. *)
+  c = config.Changed(check.Hooked(emacs.Config(Keys)))
+  keys = c.Keys
+  c.Keys = () -> help.WithHelp(keys())
+  c
+end
 
 io.Print(editor.Start(Config))

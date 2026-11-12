@@ -1,7 +1,7 @@
 [project]
 name = "cemacs"
 cesia = "1.1"
-src = ["core", "src"]
+src = ["core", "src", "user"]
 native = ["SDL3", "SDL3_ttf"]
 
 [site]
@@ -12,6 +12,4 @@ color = "#7048e8"
 run = ["tests/run.sh"]
 
 [tasks.dev]
-file = "src/cemacs.ce"
-watch = true
-allow = ["read", "write", "exec=cesia", "exec=git", "env=HOME", "env=PWD", "env=XDG_DATA_HOME"]
+run = ["tools/dev.sh"]

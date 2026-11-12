@@ -1,0 +1,21 @@
+(** Your changes to Cemacs: its settings, its keys and what it does at the start. Cemacs made this folder, user/, from tools/user-template the first time it
+    started, and never writes to it again; git ignores it, so git pull leaves it as it is. C-c f c opens this file.
+    src/cemacs.ce gives Changed the config that Cemacs makes, and runs on what it gives. Under cesia do dev, a change here works at the next key, but FontSize,
+    Theme and Window, which the window reads when it opens, wait for the next start. An app of your own is a folder beside this one, as user/notes/ for
+    use user/notes: use it here and merge its keys; a new package needs a restart. cesia test user runs the tests of this folder. *)
+use core/commands
+use src/ui
+use std/dict
+
+defn Changed(config)
+  (** Cemacs with your changes. Each field of config is a function: set only those you change, so that a field Cemacs adds later still comes through. To try
+      an example, take away the (* and *) around it, and save. *)
+  c = config
+  (* c.FontSize = () -> 17 *)
+  (* c.TabText = () -> "    " *)
+  (* c.Theme = () -> ui.Light *)
+  (* c.Window = () -> {Width: 1600, Height: 900} *)
+  (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)
+  (* c.Start = s -> commands.SplitRight(s) *)
+  c
+end

@@ -1,0 +1,43 @@
+(** Checks the template of user/ in a new folder of Cemacs, where tests/start-check.sh made user/ from it. As it comes, its Changed gives the config of Cemacs
+    back as it is; with its examples taken out of their comments, each field they name changes and the others stay. It is a script, not a test file: user/ is
+    the person's. Run it from the root of that folder as cesia run tests/user-check.ce template, or examples. It prints ok, or stops at the first failure. *)
+use src/check
+use src/emacs
+use src/ui
+use user/config
+use core/commands
+use core/panes
+use core/text
+use core/view
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/sys
+use std/value
+
+defn ensure(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+(** The config of Cemacs before the person's changes, as src/cemacs.ce makes it but for the keys of the apps. *)
+made = check.Hooked(emacs.Config(emacs.Keys))
+changed = config.Changed(made)
+names = list.Sort(dict.Keys(made))
+ensure(value.Equal(list.Sort(dict.Keys(changed)), names), "Changed gives every field of the config, and no other: $(list.Sort(dict.Keys(changed)))")
+if sys.Args[1] == "template"
+  ensure(value.Equal(changed, made), "the template changes nothing")
+else
+  look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+  first = view.Start([text.Of("", missing)], look, {Width: 8, Height: 19}, 800, 600)
+  ensure(changed.FontSize() == 17 and changed.TabText() == "    ", "the font size and the tab of the examples")
+  ensure(value.Equal(changed.Theme(), ui.Light) and value.Equal(changed.Window(), {Width: 1600, Height: 900}), "the theme and the window of the examples")
+  ensure(changed.Keys()["C-c t s"] == commands.Save and changed.Keys()["C-c t"] == "tools" and changed.Keys()["C-x C-s"] == commands.Save, "the keys of the examples, over those of Cemacs")
+  ensure(panes.Count(panes.Tree(changed.Start(first))) == 2, "the start of the examples splits the pane")
+  same = [name for name in names if not (name in ["FontSize", "TabText", "Theme", "Window", "Keys", "Start"])]
+  ensure(list.All([value.Equal(changed[name], made[name]) for name in same]), "the fields the examples don't name stay")
+end
+io.Print("ok")

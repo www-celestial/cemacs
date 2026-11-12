@@ -109,8 +109,8 @@ MouseKeys() = {"down": commands.Press, "move": commands.Drag, "up": commands.Rel
     outlive its button. *)
 PromptMouseKeys() = {"up": commands.Release, "wheel": commands.Wheel}
 
-(** Opens src/cemacs.ce, where the apps and their keys start: the place to change the editor. *)
-OpenConfig(state) = commands.OpenFile("$(commands.Home(state))/src/cemacs.ce", state)
+(** Opens user/config/config.ce, where the person changes the editor: git pull never touches it. *)
+OpenConfig(state) = commands.OpenFile("$(commands.Home(state))/user/config/config.ce", state)
 
 (** The keys of a list, over the keys above: Backspace and C-g take back its filter, and C-g with none closes it. Letters filter it. *)
 ListKeys() = {"backspace": commands.ListBack, "S-backspace": commands.ListBack, "C-g": commands.ListCancel}

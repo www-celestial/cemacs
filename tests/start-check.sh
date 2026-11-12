@@ -26,4 +26,56 @@ started() {
 started cesia do dev
 started bin/cemacs
 started bin/cemacs src/cemacs.ce core/text/text.ce
+
+# user/, in a new folder of Cemacs as a clone gives it: bin/cemacs and cesia do dev make it from the template when it is missing, and never touch one that is
+# there, even a link to nothing.
+fresh="$(mktemp -d)"
+trap 'rm -f "$output"; rm -rf "$fresh"' EXIT
+cp -r bin core fonts src tests tools cesia.toml "$fresh"
+cd "$fresh"
+fail() {
+  printf 'FAILED: %s\n' "$1"
+  exit 1
+}
+[ ! -e user ] || fail "a copy of Cemacs has no user/"
+started bin/cemacs
+diff -r tools/user-template user > /dev/null || fail "bin/cemacs makes user/ from the template"
+echo '(* mine *)' >> user/config/config.ce
+before="$(cat user/config/config.ce)"
+started bin/cemacs
+[ "$(cat user/config/config.ce)" = "$before" ] || fail "bin/cemacs leaves user/ as it is"
+rm -rf user
+started cesia do dev
+diff -r tools/user-template user > /dev/null || fail "cesia do dev makes user/ from the template"
+rm -rf user
+ln -s nowhere user
+tools/user.sh
+[ "$(readlink user)" = nowhere ] && [ ! -e nowhere ] || fail "a link named user is left as it is"
+rm user
+tools/user.sh
+[ -z "$(find . -maxdepth 1 -name '.user.*')" ] || fail "the copy leaves nothing beside user/"
+
+# The template loads and changes nothing; its examples, out of their comments, change what they name.
+cesia run tests/user-check.ce template > "$output" 2>&1 && [ "$(cat "$output")" = ok ] || { cat "$output"; fail "the template"; }
+sed -i 's/^  (\* \(c\..*\) \*)$/  \1/' user/config/config.ce
+cesia run tests/user-check.ce examples > "$output" 2>&1 && [ "$(cat "$output")" = ok ] || { cat "$output"; fail "the examples of the template"; }
+
+# Start runs once, after the files given opened.
+cat > user/config/config.ce <<'END'
+use std/io
+use std/value
+
+defn Changed(config)
+  c = config
+  c.Start = started
+  c
+end
+
+defn started(s)
+  io.Print("started on $(value.Len(s.Buffers)) buffers, in $(s.Buffers[s.Current].Path)")
+  s
+end
+END
+SDL_VIDEODRIVER=dummy timeout -s TERM -k 1 0.5 bin/cemacs src/cemacs.ce core/text/text.ce > "$output" 2>&1
+[ "$(cat "$output")" = "$(printf 'started on 2 buffers, in src/cemacs.ce\nOk(missing)')" ] || { cat "$output"; fail "Start runs once after the files open"; }
 echo ok

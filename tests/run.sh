@@ -3,8 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 
-cesia test .
-cesia test . --no-spec
+# cesia.toml names user/ among the folders of the code, and Cesia stops when one is missing: a clone where Cemacs never started gets it first, from the
+# template. The suite tests Cemacs only, core/ and src/; user/ is the person's, which cesia test user tests.
+tools/user.sh
+cesia test core
+cesia test src
+cesia test core --no-spec
+cesia test src --no-spec
 cesia run tests/color-std.ce
 # Tab and Enter give each line of Cemacs and of the std of Cesia the indent that cesia fmt gives it.
 tools/indent-corpus.sh --std .
