@@ -121,8 +121,7 @@ that src/ide knows:
 | `Open` | goes to a place, `{Path, Line, Column}`, keeping the place left for `M-,` |
 | `List` | opens a list of rows, each with its words, its colours and the item it stands for; a key of the list, as Enter, goes to the place of the item or asks the program again with it; in the state of Git, a letter asks it |
 | `Ask` | asks a question on the prompt line, then asks the program again with the answer |
-| `Confirm` | asks for a yes, then makes the edits that come with it |
-| `Edits` | makes edits in buffers, as a rename does |
+| `Confirm` | asks for a yes, then makes the edits that come with it in buffers, as a rename does: no answer edits a buffer without that yes |
 | `Signature` | shows the signature of a call, if the cursor is still where it was asked |
 | `Run` | runs `cesia test`, and sends its output to the program once it ends |
 | `Marks` | puts the marks of failures in the lines of their files |

@@ -99,3 +99,4 @@ defn isApplyLeavesAChangedText()
   done = ide.Apply([{Path: "/p/a.ce", Line: 1, Column: 0, End: 5, Old: "Total", Text: "Sum"}], s)
   rope.Text(done.State.Buffers[1].Rope) == "xTotals" and str.Contains("1 changed since", done.Words)
 end
+isEditsWithoutAYesRefused() = rope.Text(here(answered(lookup, "{\"Edits\": [{\"Path\": \"/p/a.ce\", \"Line\": 1, \"Column\": 0, \"End\": 1, \"Old\": \"x\", \"Text\": \"y\"}]}", stateOf("x", "/p/a.ce"))).Rope) == "x"

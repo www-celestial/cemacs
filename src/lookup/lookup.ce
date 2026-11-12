@@ -1,7 +1,7 @@
-(** Questions about the names of Cesia code, answered without running any of it: where a name is defined, what its documentation says, the signature of a
-    call, every place of a project that reads a name, and the edits that rename it. tools/lookup.ce asks them for Cemacs, in a process of its own that has
-    the read permission only, so that none of this code loads at the start of the editor: see src/ide, whose words Answered speaks. A line counts from 1 and a column from 0, in
-    characters, as a buffer counts them; given maps a path to its text, for the buffers not saved, and stands for the disk there. *)
+(** Questions about the names of Cesia code, answered without running any of it: where a name is defined, what its documentation says, the signature of a call,
+    every place of a project that reads a name, and the edits that rename it. tools/lookup.ce asks them for Cemacs, in a process of its own that has the read
+    permission only, so that none of this code loads at the start of the editor: see src/ide, whose words Answered speaks. A line counts from 1 and a column
+    from 0, in characters, as a buffer counts them; given maps a path to its text, for the buffers not saved, and stands for the disk there. *)
 use core/color
 use std/cesia
 use std/dict

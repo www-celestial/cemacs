@@ -1,10 +1,10 @@
 (** The keys that ask about code and about the project: M-. goes to a definition and M-, back, M-? lists the places that read a name, C-c c m renames it,
-    C-c c i shows its documentation and the prompt line the signature of a call; C-x p g searches the project; C-x g shows the state of Git; C-c t runs the
-    tests. Each key asks a program of Cemacs, which cesia runs at each question with the permissions that Programs gives it: tools/lookup.ce, tools/grep.ce,
+    C-c c i shows its documentation and the prompt line the signature of a call; C-x p g searches the project; C-x g shows the state of Git; C-c t runs the tests.
+    Each key asks a program of Cemacs, which cesia runs at each question with the permissions that Programs gives it: tools/lookup.ce, tools/grep.ce,
     tools/git.ce or tools/testing.ce, so that none of their code loads at the start of the editor and typing never waits. The question goes in JSON on its
-    input, with the place of the cursor; its answer, one line of JSON on its output, says what to do in the few words this file knows: Say, Open, List,
-    Ask, Confirm, Edits, Signature, Run and Marks. An answer is input from another program, and each part is checked before a file opens, a buffer changes
-    or a test runs. One question at a time: a new one takes the place of the one before. src/cemacs.ce adds the hooks of Hooked and these Keys. *)
+    input, with the place of the cursor; its answer, one line of JSON on its output, says what to do in the few words this file knows: Say, Open, List, Ask,
+    Confirm, with the edits made after a yes, Signature, Run and Marks. An answer is input from another program, and each part is checked before a file opens, a
+    buffer changes or a test runs. One question at a time: a new one takes the place of the one before. src/cemacs.ce adds the hooks of Hooked and these Keys. *)
 use core/commands
 use core/files
 use core/indent
@@ -153,8 +153,9 @@ areEdits(xs) = value.IsArray(xs) and value.Len(xs) <= 20000 and list.All([IsPlac
 isRequest(r) = value.IsDict(r) and value.IsText(dict.GetOr("Do", missing, r)) and dict.Has(value.Text(dict.GetOr("Program", "", r)), Programs())
 
 defn Heard(q, a, state)
-  (** The state after the answer a to the question q: its Say on the prompt line, then the one thing it asks, of Open, List, Ask, Confirm, Edits,
-      Signature, Run and Marks; an Error is said, but for a signature. Each part of the wrong shape is said and does nothing. *)
+  (** The state after the answer a to the question q: its Say on the prompt line, then the one thing it asks, of Open, List, Ask, Confirm, Signature,
+      Run and Marks; an Error is said, but for a signature. Edits come only inside a Confirm, made after the yes of the person. Each part of the wrong
+      shape is said and does nothing. *)
   if dict.Has("Error", a)
     return if q.Request.Do == "signature" state else commands.Say(value.Text(a.Error), state) end
   end
@@ -174,13 +175,7 @@ defn Heard(q, a, state)
     if not value.IsText(dict.GetOr("Label", missing, a.Confirm)) or not value.IsDict(yes) or not areEdits(dict.GetOr("Edits", missing, yes))
       return commands.Say("The program asked nothing.", s)
     end
-    commands.Confirm(a.Confirm.Label, (answer, t) -> if answer == "y" Heard(q, yes, t) else commands.Say(value.Text(dict.GetOr("No", "Nothing done.", a.Confirm)), t) end, s)
-  else if dict.Has("Edits", a)
-    if not areEdits(a.Edits)
-      return commands.Say("The program gave no edits.", s)
-    end
-    done = Apply(a.Edits, s)
-    commands.Say("$(value.Text(dict.GetOr("Words", "Done", a))): $(done.Words)", done.State)
+    commands.Confirm(a.Confirm.Label, (answer, t) -> if answer == "y" edited(yes, t) else commands.Say(value.Text(dict.GetOr("No", "Nothing done.", a.Confirm)), t) end, s)
   else if dict.Has("Signature", a)
     signed(q, a.Signature, s)
   else if dict.Has("Run", a)
@@ -190,6 +185,12 @@ defn Heard(q, a, state)
   else
     s
   end
+end
+
+defn edited(yes, state)
+  (** After the yes of a Confirm: its edits made in the buffers, and what was done said after its Words. *)
+  done = Apply(yes.Edits, state)
+  commands.Say("$(value.Text(dict.GetOr("Words", "Done", yes))): $(done.Words)", done.State)
 end
 
 (* ---- Going there and back *)
