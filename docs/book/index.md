@@ -45,8 +45,8 @@ the keys of Cemacs are a value of its own code, which any Cesia program can read
 5. [Windows and panes](windows.md): the window, its panes, the mode line, the prompt line and the band of hints.
 6. [Search](search.md): the incremental search of a buffer, `C-s` and `C-r`, and what else Cemacs finds: rows, keys, errors, places.
 7. [Keys](keys.md): every key, generated from the code, and how a key becomes a command.
-8. [Running and debugging](running.md): running a file with its permissions, its output, breakpoints, stepping, fix and
-   continue.
+8. [Running and debugging](running.md): running a file with its permissions, its output, the tests and their failures in
+   the lines, breakpoints, stepping, fix and continue.
 9. [Errors in the lines](check.md): what the check shows, when it runs, and how to go from one error to the next.
 10. [Names](names.md): the definition of a name and back, its documentation, the signature of a call, every place that
     reads it, and its rename across the project.

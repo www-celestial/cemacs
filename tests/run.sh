@@ -31,6 +31,10 @@ root="$PWD"
 project=$(mktemp -d)
 (cd "$project" && timeout -s KILL 60 cesia run --allow read,write,exec=cesia,env=PWD "$root/tests/task-check.ce")
 rm -rf "$project"
+# C-c t in a project of its own, where cesia test runs and names the failures from the folder Cemacs started in.
+project=$(mktemp -d)
+(cd "$project" && timeout -s KILL 90 cesia run --allow read,write,exec=cesia,env=PWD "$root/tests/testing-check.ce")
+rm -rf "$project"
 trash=$(mktemp -d)
 XDG_DATA_HOME="$trash" timeout -s KILL 60 cesia run --allow read,write,env=HOME,env=PWD,env=XDG_DATA_HOME tests/folders-check.ce
 rm -rf "$trash"

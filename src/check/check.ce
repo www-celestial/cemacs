@@ -8,6 +8,7 @@ use core/commands
 use core/indent
 use core/text
 use src/rope
+use std/dict
 use std/fiber
 use std/json
 use std/list
@@ -106,8 +107,17 @@ defn Finished(state)
     s.Buffers[k] = b
     return commands.Say("cesia check can't run: $(if value.IsText(ran.Error) ran.Error else ran.Error.Message end)", s)
   end
-  s.Buffers[k] = text.WithMarks(Marks(ran.Value.Out, c.Path), b)
+  s.Buffers[k] = text.WithMarks(Kept(Marks(ran.Value.Out, c.Path), b), b)
   s
+end
+
+defn Kept(marks, b)
+  (** The marks of a check with those of the tests that the buffer holds, which a check keeps until the tests run again: see src/testing. In the order
+      of their places, as M-g n goes through them.
+
+        value.Len(Kept([], text.WithMarks([{Line: 1, Column: 0, End: 1, Severity: "error", Message: "m", Hint: missing, Source: "test"}], text.Of("x", "a.ce")))) --> 1 *)
+  tests = [m for m in text.MarksOf(b) if dict.GetOr("Source", "", m) == "test"]
+  if value.Len(tests) == 0 marks else list.SortBy(m -> m.Line * 1000000 + m.Column, list.Concat(marks, tests)) end
 end
 
 defn due(state)

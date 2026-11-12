@@ -138,6 +138,12 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `A breakpoint needs a file: save the buffer first.` | `C-c d b` in a buffer with no file |
 | `No program runs under the debugger: C-c d r runs the file under it.` | `C-c d e` without a program run by `C-c d r` |
 | `The program isn't stopped.` | `C-c d c`, `n`, `s` or `u` while the program runs: they go on from a stop only |
+| `Testing: cesia test TARGET` | `C-c t t`, `C-c t a` or `C-c t r` started the tests: [Running and debugging](running.md#tests) |
+| `N passed, M failed` | the tests ended; each failure is a mark in the lines of its file |
+| `The tests ended: ended, code N.` | the tests ended without the count of `cesia test`, as when `C-c c k` stopped them |
+| `Tests are those of a file of Cesia.` | `C-c t t` in a buffer that isn't a `.ce` file |
+| `No test ran yet: C-c t t runs those of the file.` | `C-c t r` before any test ran |
+| `cesia test doesn't run: REASON` | `cesia` couldn't start: is it on the `PATH`? |
 
 ### Questions
 

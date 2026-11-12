@@ -1,0 +1,89 @@
+(** Checks of src/testing against the real cesia test, in a project made in a new folder under /tmp, which the script runs from: C-c t t on a test
+    function runs it alone, on a file the tests of its folder; the failures are marks in the lines, M-g n goes to them and a check keeps them; C-c t r runs the
+    last tests again and C-c t a all of them. It is a script, not a test file: it needs permissions. tests/run.sh runs it from that folder, with cesia run
+    --allow read,write,exec=cesia,env=PWD. It prints ok at the end and stops at the first failure. *)
+use src/check
+use src/emacs
+use src/output
+use src/testing
+use src/ui
+use core/commands
+use core/lists
+use core/press
+use core/run
+use core/text
+use core/view
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn expect(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+keysOf() = dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), check.Keys()), output.Keys()), testing.Keys())
+testConfig() = testing.Hooked(emacs.Config(keysOf))
+here(state) = state.Buffers[state.Current]
+
+defn ran(state)
+  (** The state after ticks, until the run of tests has ended or 30 seconds have gone. *)
+  s = state
+  waited = 0.0
+  while not value.IsMissing(s.Run) and not s.Run.Ended and waited < 30.0
+    sys.Sleep(0.05)
+    waited += 0.05
+    s = commands.Update({Kind: "tick", Seconds: 0.05}, s)
+  end
+  expect(not value.IsMissing(s.Run) and s.Run.Ended, "the tests end within 30 seconds")
+  s
+end
+
+result.Unwrap(sys.Mkdir("src/a"))
+result.Unwrap(sys.Write("cesia.toml", "[project]\nname = \"tp\"\nsrc = [\"src\"]\n"))
+result.Unwrap(sys.Write("src/a/a.ce", "(** A. *)\n\n(** Twice.\n\n      Twice(2) --> 5 *)\nTwice(x) = x * 2\n"))
+result.Unwrap(sys.Write("src/a/a.test.ce", "isOne() = Twice(1) == 3\n\ndefn isGood()\n  Twice(2) == 4\nend\n"))
+
+start = view.Start([text.Of("", missing)], look, cell, 800, 600)
+start.Config = testConfig
+tests = commands.OpenFile("src/a/a.test.ce", start)
+tests.Buffers[tests.Current] = text.Place(4, 2, here(tests))
+
+(* C-c t t inside isGood runs it alone: it passes, and nothing is marked. *)
+one = ran(press.Press(["C-c", "t", "t"], tests))
+expect(run.Lines(one.Run)[1] == "> cesia test src/a/a.test.ce:isGood", "the command: $(run.Lines(one.Run))")
+expect(one.Message == "1 passed, 0 failed" and value.Len(text.MarksOf(here(one))) == 0, "one test passes: $(one.Message)")
+
+(* C-c t t on the code runs the tests of its folder: two failures, one in each file, marked where they are. *)
+code = commands.OpenFile("src/a/a.ce", one)
+done = ran(press.Press(["C-c", "t", "t"], code))
+expect(run.Lines(done.Run)[1] == "> cesia test src/a" and done.Message == "1 passed, 2 failed", "the folder: $(run.Lines(done.Run)) $(done.Message)")
+marks = text.MarksOf(here(done))
+expect(value.Len(marks) == 1 and marks[1].Line == 5 and str.StartsWith("Twice(2) --> 5, got 4", marks[1].Message), "the example is marked: $marks")
+other = done.Buffers[2]
+expect(value.Len(text.MarksOf(other)) == 1 and text.MarksOf(other)[1].Line == 1, "the test is marked in its buffer: $(text.MarksOf(other))")
+went = press.Press(["M-g", "n"], done)
+expect(here(went).Cursor.Line == 5 and str.StartsWith("Twice(2) --> 5", went.Message), "M-g n goes to the failure: $(went.Message)")
+
+(* C-c c o lists the output on the last failure, Enter goes there. *)
+listed = press.Press(["C-c", "c", "o"], done)
+expect(lists.IsList(here(listed)), "the output lists")
+visited = press.Press(["enter"], listed)
+expect(here(visited).Path == "src/a/a.test.ce" and here(visited).Cursor.Line == 1, "Enter goes to the failure: $(here(visited).Path):$(here(visited).Cursor.Line)")
+
+(* C-c t r runs the last ones again from any buffer, C-c t a all of them. *)
+again = ran(press.Press(["C-c", "t", "r"], visited))
+expect(run.Lines(again.Run)[1] == "> cesia test src/a", "again: $(run.Lines(again.Run)[1])")
+all = ran(press.Press(["C-c", "t", "a"], again))
+expect(run.Lines(all.Run)[1] == "> cesia test" and all.Message == "1 passed, 2 failed", "all: $(run.Lines(all.Run)) $(all.Message)")
+expect(press.Press(["C-c", "t", "r"], start).Message == "No test ran yet: C-c t t runs those of the file.", "nothing to run again")
+io.Print("ok")

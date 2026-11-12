@@ -1,0 +1,32 @@
+(** Tests of the tests app, without cesia test: the failures it reads, the marks it makes, and what it says once a run of tests ended. tests/testing-check.ce
+    runs the real cesia test. *)
+use src/testing
+use src/ui
+use core/run
+use core/text
+use core/view
+use std/dict
+use std/list
+use std/value
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+stateOf() = view.Start([text.Of("isA() = f(1) == 2\nx", "src/a/a.test.ce"), text.Of("y", "src/a/a.ce")], look, cell, 800, 600)
+failures = [{Path: "src/a/a.test.ce", Line: 1, Message: "isA failed"}, {Path: "/p/src/a/a.ce", Line: 9, Message: "past the end"}]
+
+defn isMarkedInItsBuffer()
+  s = testing.Marked(failures, "/p", stateOf())
+  m = text.MarksOf(s.Buffers[1])
+  value.Len(m) == 1 and m[1].Line == 1 and m[1].End == 17 and m[1].Source == "test" and value.Len(text.MarksOf(s.Buffers[2])) == 0
+end
+
+defn ended(lines, tagged)
+  (** A state whose run has ended with these lines of output, a run of tests or not. *)
+  s = stateOf()
+  r = run.Ended(1, list.Reduce((acc, l) -> run.Read("$l\n", acc), run.Empty(), lines))
+  s.Run = dict.Merge(r, {Tag: if tagged "tests" else missing end})
+  s
+end
+
+isNoMarkWhileOutOfTests() = value.Len(text.MarksOf(testing.Idle(ended(["src/a/a.test.ce:1: isA failed"], false)).Buffers[1])) == 0
+isNotMarkedTwice() = testing.Idle(dict.Merge(ended([], true), {Run: dict.Merge(ended([], true).Run, {Marked: true})})).Message == ""

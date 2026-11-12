@@ -735,6 +735,25 @@ defn withRun(r, state)
   s
 end
 
+defn finished(state)
+  (** The state once the program that runs has ended, asked to end and given two seconds, so that a server gives back its port; still running if it
+      didn't end in them. *)
+  if running(state) withRun(run.Finish(2.0, state.Run), state) else state end
+end
+
+defn Launch(args, words, state, tag = missing)
+  (** Runs cesia with args as a program of the editor, its output below the panes, once the program that runs, if one does, has ended; words say it, and
+      the run keeps tag in its Tag, for the app that started it. The tests of src/testing run so. *)
+  s = finished(state)
+  if running(s)
+    return say("The program that runs doesn't end: C-c c k asks it again.", s)
+  end
+  match run.Begin(args, false)
+    result.Ok(r) -> say(words, withRun(dict.Merge(r, {Tag: tag}), s))
+    result.Err(e) -> say("cesia $(args[1]) doesn't run: $e", s)
+  end
+end
+
 defn started(debug, state)
   (** The state with the file of the current buffer run, as saved, with the debugger of Cemacs or without it. A program that runs is stopped first, and the
       new one starts once it has ended, so that a server gives back its port: it has two seconds. *)
@@ -742,12 +761,9 @@ defn started(debug, state)
   if value.IsMissing(b.Path)
     return say("This buffer has no file to run: save it first.", state)
   end
-  s = state
-  if running(state)
-    s = withRun(run.Finish(2.0, state.Run), state)
-    if not s.Run.Ended
-      return say("The program that runs doesn't end: C-c c k asks it again.", s)
-    end
+  s = finished(state)
+  if running(s)
+    return say("The program that runs doesn't end: C-c c k asks it again.", s)
   end
   task = if debug missing else taskOf(b.Path) end
   how = if value.IsMissing(task) "" else " as the task $task" end

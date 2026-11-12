@@ -55,9 +55,19 @@ defn Start(home, path, breaks, debug, task = missing)
       with its permissions, if one is, through cesia do, which writes its command first. The command of any other run is
       the first line of its output, so that the permissions it has show. *)
   args = if debug ["run", "--debugger", "$home/tools/debugger.ce", path] else if value.IsMissing(task) ["run", path] else ["do", task] end
+  r = Begin(args, debug, shown = value.IsMissing(task) or debug)?
+  for b in breaks
+    r = Send({Do: "break", File: b.Path, Line: b.Line}, r)
+  end
+  result.Ok(Send({Do: "continue"}, r))
+end
+
+defn Begin(args, debug, shown = true)
+  (** Starts cesia with args, as Start does and the tests of src/testing do: an Ok of its run, its output read by a fiber, or an Err. With shown, the
+      command is the first line of the output; cesia do writes its own. *)
   p = sys.Start("cesia", args)?
   r = Empty()
-  if value.IsMissing(task) or debug
+  if shown
     r = printed("> cesia $(str.Join(" ", args))", r)
   end
   r.Process = p
@@ -65,10 +75,7 @@ defn Start(home, path, breaks, debug, task = missing)
   r.Inbox = fiber.Channel()
   inbox = r.Inbox
   _ = fiber.Spawn(() -> reading(p, inbox))
-  for b in breaks
-    r = Send({Do: "break", File: b.Path, Line: b.Line}, r)
-  end
-  result.Ok(Send({Do: "continue"}, r))
+  result.Ok(r)
 end
 
 (** A path from the root of the files, from the folder pwd for a relative one, or as it is without pwd. *)

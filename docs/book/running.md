@@ -86,6 +86,44 @@ goes there: see [Search](search.md#places-in-the-output). The output stays below
 need a second `C-c c k`. With no program running it says `No program is running.`, and `C-c c h` with no run yet says
 `There is no output yet: C-c c r runs the file.`
 
+## Tests
+
+Cesia's tests are the examples in the documentation of a function, a line with `-->` and the value it should give, and the
+test functions of the `.test.ce` files, whose names start with `is` and a capital: Cesia's book tells them in its chapter
+on [tests](https://www-celestial.github.io/cesia-lang/tests.html). The tests are an app of Cemacs, [src/testing], a group
+of `C-c`, `t` for test:
+
+| Keys | Command | What it does |
+|---|---|---|
+| `C-c t t` | [testing.TestHere] | in a `.test.ce` file, runs the test function the cursor is in; elsewhere, or outside one, the tests of the folder of the file |
+| `C-c t a` | [testing.TestAll] | runs every test of the project |
+| `C-c t r` | [testing.TestAgain] | runs the last tests again, from any buffer |
+
+Each runs `cesia test` as `C-c c r` runs a program, in the folder where Cemacs started: `C-c t t` inside `isTotal` of
+`src/shop/shop.test.ce` runs `cesia test src/shop/shop.test.ce:isTotal`, which runs that test alone; in `src/shop/shop.ce`,
+`cesia test src/shop`, the package with the examples of its documentation and its tests; `C-c t a` runs `cesia test`. A test
+function is found as the nearest definition at the top of the file above the cursor, `isTotal() = ...` or `defn isTotal()`,
+when its name is one of a test. The command is the first line of the output, below the panes, and a program that runs is
+stopped first, as for `C-c c r`. In a test, `--> 5` says what an example must give:
+
+```cesia norun
+(** Twice.
+
+      Twice(2) --> 5 *)
+Twice(x) = x * 2
+```
+
+Once the tests end, the prompt line says what `cesia test` said last, as `1 passed, 2 failed`, and each failure, a line of
+the output that starts with the path of a file of Cesia and a line, as `src/a/a.ce:5: Twice(2) --> 5, got 4`, becomes a red
+mark on that line, in the buffer of that file if one is open, with the words of the failure and the two lines under it that
+tell more, as `isOne failed  Twice(1) == 3  | Twice(1) = 2`. The marks are those of [Errors in the lines](check.md): the
+mode line counts them, `M-g n` and `M-g p` go to them, the prompt line tells the one under the cursor. A check of the file
+keeps them, a line you change loses its mark, as the check's do, and the next run of tests takes them all away. `C-c c o`
+lists the output on the last failure, and Enter goes to the place a line names, `(path:line)` under a failure included.
+
+`cesia test` gives each test the permissions it has by Cesia's rules, a test reading the files of its project and writing
+only in its own folder, and those that `allow` of `[test]` in the `cesia.toml` of the project adds; Cemacs adds none.
+
 ## Debugging
 
 | Keys | Command | What it does |
