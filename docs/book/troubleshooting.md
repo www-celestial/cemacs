@@ -102,6 +102,21 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `Replaced WORDS with NEW: N files saved.` | the replace is done, told as a rename tells it |
 | `Not replaced.` | `n` to the question of a replace |
 
+### Git
+
+| Message | What happened |
+|---|---|
+| `s stage  u unstage  c commit  d diff  l log  g refresh  Enter open` | a letter that is no command in the state of `C-x g` |
+| `Staged PATH.`, `Unstaged PATH.`, `Committed: MESSAGE` | `s`, `u` or `c` in the state |
+| `No file on this row.` | `s`, `u` or `d` on the first row of the state |
+| `No message: nothing committed.` | `c`, then Enter on an empty message |
+| `A new file has no diff yet: s stages it.` | `d` on a new file |
+| `No difference.` | the diff is empty |
+| `git COMMAND failed: REASON` | git ended with an error, as `git commit failed: nothing to commit` |
+| `This buffer has no file.`, `PATH is out of the repository.` | `C-c g b` or `C-c g d` on a buffer of no file, or of a file outside |
+| `These lines aren't committed yet.` | Enter in a blame on a line not committed |
+| `Not a commit.` | Enter on a row that holds no hash |
+
 ### Windows and panes
 
 | Message | What happened |
@@ -179,6 +194,7 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `Rename NAME to: ` | in the folder manager, the new name or path; in a file of Cesia, after `C-c c m`, the new name of a name of the code |
 | `Rename NAME to NEW in N places of M files? (y or n)` | `C-c c m`: `y` makes the edits, as [Names](names.md#a-rename) tells |
 | `Search project: ` | `C-x p g`: the words to look for in the project |
+| `Commit message: ` | `c` in the state of `C-x g`: the message of the commit, one line |
 | `Replace WORDS with: `, `Replace N places of WORDS in M files with NEW? (y or n)` | `C-c r` in the list of a search |
 | `Move NAME to the trash? (y or n)` | in the folder manager |
 | `I-search: `, `I-search backward: ` | a search is open: what you type is looked for, Enter stays, `C-g` goes back; see [Search](search.md#searching-a-buffer) |

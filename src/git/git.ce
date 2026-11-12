@@ -1,0 +1,317 @@
+(** Git from the editor, a small Magit: C-x g, or C-c g g, lists the state of the repository of the file, where a letter is a command, as in Magit: s
+    stages the file of the row, u unstages it, c commits, d shows its diff, l the log and g the state again; Enter opens the file. C-c g l lists the log,
+    C-c g b the commit of each line of the buffer, its text not saved too, and C-c g d the diff of its file. git runs with each word one argument, never
+    through a shell, the paths after --, and a message after -m, so that no name of a file and no word of a message can become an option or a command.
+    src/cemacs.ce adds these Keys. *)
+use core/commands
+use core/color
+use core/lists
+use core/text
+use src/folders
+use src/grep
+use src/rope
+use std/dict
+use std/list
+use std/regex
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The keys of git: C-x g as Magit, and the group g of C-c: g the state, l the log, b the commit of each line, d the diff of the file. *)
+Keys() = {"C-x g": Status, "C-c g": "git", "C-c g g": Status, "C-c g l": Log, "C-c g b": Blame, "C-c g d": Diff}
+
+(** The seconds git may take before it is ended. *)
+GitLimit() = 20
+
+(** The most rows of a list of git: a longer output is cut there, and its last row says so. *)
+RowLimit() = 20000
+
+defn git(root, args, input = "")
+  (** git with args in the repository at root, to its end: its output in an Ok, or an Err of the words to say, its errors when it fails. *)
+  ran = sys.Run("git", list.Concat(["-C", root], args), input = input, timeout = GitLimit())
+  if result.IsErr(ran)
+    return result.Err("git can't run: $(ran.Error.Message)")
+  end
+  if ran.Value.Code != 0
+    words = list.First([l for l in str.Lines("$(ran.Value.Err)$(ran.Value.Out)") if str.Trim(l) != ""])
+    return result.Err("git $(args[1]) failed: $(if value.IsMissing(words) "code $(ran.Value.Code)" else str.Trim(words) end)")
+  end
+  result.Ok(ran.Value.Out)
+end
+
+(* ---- The state *)
+
+defn Entries(out)
+  (** The entries of git status --porcelain=v1 -z --branch, {Branch, Files}: each file {Path, Staged, Changed, New}, a rename by its new path.
+
+        Entries(str.Join(str.FromBytes([0]), ["## main", "M  a.ce", " M b.ce", "?? c.ce", "R  d.ce", "e.ce", ""])).Files[4] --> {Path: "d.ce", Staged: true, Changed: false, New: false} *)
+  parts = str.Split(str.FromBytes([0]), out)
+  branch = ""
+  files = []
+  k = 1
+  while k <= value.Len(parts)
+    p = parts[k]
+    if str.StartsWith("## ", p)
+      branch = str.Slice(4, value.Len(p), p)
+    else if value.Len(p) > 3
+      x = str.Slice(1, 1, p)
+      y = str.Slice(2, 2, p)
+      files = list.Append({Path: str.Slice(4, value.Len(p), p), Staged: x != " " and x != "?", Changed: y != " " and y != "?", New: x == "?"}, files)
+      if x == "R" or x == "C"
+        k += 1
+      end
+    end
+    k += 1
+  end
+  {Branch: branch, Files: files}
+end
+
+(** The first row of the state, which says the letters. *)
+help() = "s stage  u unstage  c commit  d diff  l log  g refresh  Enter open"
+
+defn StatusRows(entries)
+  (** The rows of the state: the branch and the letters, then the staged files, the changed ones and the new ones, each {Path, Staged} as its item. *)
+  row(kind, f, staged) = {Words: "$(str.PadRight(9, " ", kind)) $(f.Path)", Item: {Path: f.Path, Staged: staged, New: f.New}, Parts: [[color.Keyword, str.PadRight(9, " ", kind)],
+    [color.Plain, " $(f.Path)"]]}
+  first = {Words: "On $(entries.Branch)    $(help())", Item: missing, Parts: [[color.Name, "On $(entries.Branch)"], [color.Comment, "    $(help())"]]}
+  staged = [row("staged", f, true) for f in entries.Files if f.Staged]
+  changed = [row("changed", f, false) for f in entries.Files if f.Changed]
+  fresh = [row("new", f, false) for f in entries.Files if f.New]
+  list.Concat(list.Concat(list.Prepend(first, staged), changed), fresh)
+end
+
+defn Status(state)
+  (** Lists the state of the repository of the file: its branch, then the files staged, changed and new. A letter is a command: see help. *)
+  top = grep.Root(state)
+  if result.IsErr(top)
+    return commands.Say(top.Error, state)
+  end
+  shown(top.Value, state)
+end
+
+defn shown(root, state)
+  (** The state of the repository at root, as a list. *)
+  match git(root, ["status", "--porcelain=v1", "-z", "--branch", "-uall"])
+    result.Ok(out) -> commands.ShowList("Git: $(folders.BaseName(root))", StatusRows(Entries(out)), () -> {"enter": (item, s) -> opened(root, item.Path, s)}, state,
+      typed = (words, s) -> lettered(root, words, s))
+    result.Err(words) -> commands.Say(words, state)
+  end
+end
+
+(** Enter on a row of a file: the list closes and the file opens. *)
+opened(root, p, state) = commands.OpenFile("$root/$p", commands.ToBuffer(lists.Of(state.Buffers[state.Current]).Back, state))
+
+defn lettered(root, words, state)
+  (** A letter typed in the state: the command it names, on the file of the row under the cursor. *)
+  item = lists.ItemAt(state.Buffers[state.Current])
+  if words == "g"
+    return shown(root, state)
+  else if words == "c"
+    return commands.Ask("Commit message: ", "", (m, s) -> committed(root, m, s), state)
+  else if words == "l"
+    return logged(root, state)
+  end
+  if not (words in ["s", "u", "d"])
+    return commands.Say(help(), state)
+  end
+  if value.IsMissing(item)
+    return commands.Say("No file on this row.", state)
+  end
+  if words == "d"
+    return diffed(root, item, state)
+  end
+  args = if words == "s" ["add", "--", item.Path] else ["restore", "--staged", "--", item.Path] end
+  match git(root, args)
+    result.Ok(out) -> commands.Say("$(if words == "s" "Staged" else "Unstaged" end) $(item.Path).", placed(state.Buffers[state.Current].Cursor.Line, shown(root, state)))
+    result.Err(e) -> commands.Say(e, state)
+  end
+end
+
+defn committed(root, message, state)
+  (** The commit of what is staged, with a message, then the state again. *)
+  if str.Trim(message) == ""
+    return commands.Say("No message: nothing committed.", state)
+  end
+  match git(root, ["commit", "-q", "-m", message])
+    result.Ok(out) -> commands.Say("Committed: $message", shown(root, state))
+    result.Err(e) -> commands.Say(e, state)
+  end
+end
+
+(* ---- Diffs, the log, a commit *)
+
+defn DiffRows(out, root)
+  (** The rows of a diff, at most RowLimit(): + lines in the colour of texts, - lines in that of keywords, the others plain; each row of a file of the new
+      side stands for its place there, {Path, Line}, which Enter opens.
+
+        [r.Item.Line for r in DiffRows("+++ b/a.ce\n@@ -1,2 +1,2 @@\n x\n-y\n+z\n", "/p") if not value.IsMissing(r.Item)] --> [1, 2] *)
+  rows = []
+  p = missing
+  line = 0
+  for l in list.Take(RowLimit(), str.Lines(out))
+    if str.StartsWith("+++ b/", l)
+      p = str.Slice(7, value.Len(l), l)
+    end
+    hunk = if str.StartsWith("@@ ", l) str.Split(",", str.Split(" ", l)[3])[1] else missing end
+    if not value.IsMissing(hunk)
+      line = str.Number(str.Slice(2, value.Len(hunk), hunk))
+    end
+    role = if str.StartsWith("+", l) and not str.StartsWith("+++", l) color.String else if str.StartsWith("-", l) and not str.StartsWith("---", l) color.Keyword else if not value.IsMissing(hunk) color.Comment else color.Plain end
+    inside = not value.IsMissing(p) and value.IsMissing(hunk) and line > 0 and not str.StartsWith("-", l) and not str.StartsWith("\\", l)
+    rows = list.Append({Words: l, Parts: [[role, l]], Item: if inside {Path: "$root/$p", Line: line} else missing end}, rows)
+    if inside
+      line += 1
+    end
+  end
+  rows
+end
+
+defn listedDiff(name, root, out, state)
+  (** Opens a diff, or a commit, as a list: Enter on a line of the new side opens its file there. *)
+  if str.Trim(out) == ""
+    return commands.Say("No difference.", state)
+  end
+  keys = () -> {"enter": (item, s) -> if value.IsMissing(item) s else at(item, commands.ToBuffer(lists.Of(s.Buffers[s.Current]).Back, s)) end}
+  commands.ShowList(name, DiffRows(out, root), keys, state)
+end
+
+defn at(item, state)
+  (** The file of a row opened at its line. *)
+  s = commands.OpenFile(item.Path, state)
+  b = s.Buffers[s.Current]
+  if not value.IsMissing(b.Path) and b.Path == item.Path
+    s.Buffers[s.Current] = text.Place(item.Line, 0, b)
+  end
+  s
+end
+
+defn diffed(root, item, state)
+  (** The diff of the file of a row of the state: what is staged of it, or what changed since. *)
+  if item.New
+    return commands.Say("A new file has no diff yet: s stages it.", state)
+  end
+  args = if item.Staged ["diff", "--no-color", "--cached", "--", item.Path] else ["diff", "--no-color", "--", item.Path] end
+  match git(root, args)
+    result.Ok(out) -> listedDiff("Diff of $(item.Path)", root, out, state)
+    result.Err(e) -> commands.Say(e, state)
+  end
+end
+
+defn fileOf(state)
+  (** The root of the repository and the path in it of the file of the current buffer, {Root, Path}, or an Err of the words to say. *)
+  b = state.Buffers[state.Current]
+  if lists.IsList(b) or value.IsMissing(b.Path)
+    return result.Err("This buffer has no file.")
+  end
+  top = grep.Root(state)?
+  whole = folders.Absolute(b.Path, sys.Env("PWD"))
+  if not str.StartsWith("$top/", whole)
+    return result.Err("$(b.Path) is out of the repository.")
+  end
+  result.Ok({Root: top, Path: str.Slice(value.Len(top) + 2, value.Len(whole), whole)})
+end
+
+defn Diff(state)
+  (** Shows the diff of the file of the current buffer, as saved, against what is staged of it. *)
+  match fileOf(state)
+    result.Ok(f) -> match git(f.Root, ["diff", "--no-color", "--", f.Path])
+      result.Ok(out) -> listedDiff("Diff of $(f.Path)", f.Root, out, state)
+      result.Err(e) -> commands.Say(e, state)
+    end
+    result.Err(e) -> commands.Say(e, state)
+  end
+end
+
+defn Log(state)
+  (** Lists the last 500 commits of the repository, the last first; Enter shows one. *)
+  top = grep.Root(state)
+  if result.IsErr(top) commands.Say(top.Error, state) else logged(top.Value, state) end
+end
+
+defn LogRows(out)
+  (** The rows of git log --format=%h%x09%ad%x09%an%x09%s, each standing for its commit.
+
+        LogRows("1a2b\t2026-11-12\tAna\tfix: a\n")[1].Words --> "1a2b  2026-11-12  Ana  fix: a" *)
+  rows = []
+  for l in str.Lines(out)
+    f = str.Split("\t", l)
+    if value.Len(f) >= 4
+      rows = list.Append({Words: "$(f[1])  $(f[2])  $(f[3])  $(str.Join("\t", list.Skip(3, f)))", Item: f[1],
+        Parts: [[color.Number, f[1]], [color.Comment, "  $(f[2])  $(f[3])"], [color.Plain, "  $(str.Join("\t", list.Skip(3, f)))"]]}, rows)
+    end
+  end
+  rows
+end
+
+defn logged(root, state)
+  (** The log of the repository at root, as a list. *)
+  match git(root, ["log", "--no-color", "-n", "500", "--date=short", "--format=%h%x09%ad%x09%an%x09%s"])
+    result.Ok(out) -> commands.ShowList("Log: $(folders.BaseName(root))", LogRows(out), () -> {"enter": (hash, s) -> commit(root, hash, s)}, state)
+    result.Err(e) -> commands.Say(e, state)
+  end
+end
+
+defn commit(root, hash, state)
+  (** A commit, its words and its diff, as a list. The hash comes from git, and is checked to be one before it is given back to it. *)
+  if not value.IsText(hash) or value.Len(hash) < 4 or value.Len([c for c in str.Chars(hash) if not (c in str.Chars("0123456789abcdef"))]) > 0
+    return commands.Say("Not a commit.", state)
+  end
+  if hash == str.Repeat(value.Len(hash), "0")
+    return commands.Say("These lines aren't committed yet.", state)
+  end
+  match git(root, ["show", "--no-color", "--stat", "--patch", hash, "--"])
+    result.Ok(out) -> listedDiff("Commit $hash", root, out, commands.ToBuffer(lists.Of(state.Buffers[state.Current]).Back, state))
+    result.Err(e) -> commands.Say(e, state)
+  end
+end
+
+(* ---- Blame *)
+
+defn BlameRows(out)
+  (** The rows of git blame --porcelain: each line of the file with the short hash of its commit and its author, standing for the commit.
+
+        BlameRows("$(str.Repeat(40, "a")) 1 1 1\nauthor Ana\nsummary s\n\tx = 1\n$(str.Repeat(40, "a")) 2 2\n\ty = 2\n")[2].Words --> "aaaaaaaa Ana         | y = 2" *)
+  authors = {}
+  rows = []
+  hash = ""
+  for l in str.Lines(out)
+    if str.StartsWith("\t", l)
+      who = str.PadRight(12, " ", dict.GetOr(hash, "", authors))
+      line = str.Slice(2, value.Len(l), l)
+      rows = list.Append({Words: "$(str.Slice(1, 8, hash)) $who| $line", Item: str.Slice(1, 8, hash), Parts: [[color.Number, str.Slice(1, 8, hash)], [color.Comment, " $who| "], [color.Plain, line]]}, rows)
+    else if str.StartsWith("author ", l)
+      authors[hash] = str.Slice(8, value.Len(l), l)
+    else if regex.Test("^[0-9a-f]{40} ", l)
+      hash = str.Slice(1, 40, l)
+      if not dict.Has(hash, authors)
+        authors[hash] = ""
+      end
+    end
+  end
+  rows
+end
+
+defn Blame(state)
+  (** Lists the lines of the buffer, its text not saved too, each with the commit that last changed it and its author; Enter shows the commit. *)
+  match fileOf(state)
+    result.Ok(f) -> blamed(f, rope.Text(state.Buffers[state.Current].Rope), state)
+    result.Err(e) -> commands.Say(e, state)
+  end
+end
+
+defn blamed(f, words, state)
+  (** The blame of a file, with the words of its buffer for its text, as a list on the line of the cursor. *)
+  line = state.Buffers[state.Current].Cursor.Line
+  match git(f.Root, ["blame", "--porcelain", "--contents", "-", "--", f.Path], input = words)
+    result.Ok(out) -> placed(line, commands.ShowList("Blame of $(f.Path)", BlameRows(out), () -> {"enter": (hash, s) -> commit(f.Root, hash, s)}, state))
+    result.Err(e) -> commands.Say(e, state)
+  end
+end
+
+defn placed(line, state)
+  (** The state with the cursor of its current buffer on a line. *)
+  s = state
+  s.Buffers[s.Current] = text.Place(line, 0, s.Buffers[s.Current])
+  s
+end

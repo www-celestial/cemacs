@@ -139,7 +139,7 @@ A Cesia program has no permission until it is given one: the `--allow` list name
 |---|---|
 | `read`, `write` | to open and save any file you choose, and to list folders |
 | `exec=cesia` | to run `cesia check` on your code, `cesia run --allow read tools/lookup.ce` for the [names](names.md), and `cesia run` or `cesia do` on your programs |
-| `exec=git` | to list the files of a project, `git ls-files`, for `C-x p f`, and to search them, `git grep`, for `C-x p g`: no other program |
+| `exec=git` | to list the files of a project, `git ls-files`, for `C-x p f`, to search them, `git grep`, for `C-x p g`, and for [Git](git.md), `C-x g`: no other program |
 | `exec=` the real path of `cesia` | to start the session of a file of [cells](cells.md) with the same `cesia` that runs Cemacs |
 | `env=HOME` | `~/` in the folder manager, and the trash |
 | `env=PWD` | the folder you started in: a relative path, and the `cesia.toml` whose task runs a file |

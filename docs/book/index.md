@@ -50,21 +50,23 @@ the keys of Cemacs are a value of its own code, which any Cesia program can read
 9. [Errors in the lines](check.md): what the check shows, when it runs, and how to go from one error to the next.
 10. [Names](names.md): the definition of a name and back, its documentation, the signature of a call, every place that
     reads it, and its rename across the project.
-11. [Cells and results](cells.md): a file of Cesia as a notebook, its results under its cells, `*variables*`, `*repl*`
+11. [Git](git.md): the state of a repository, where a letter stages, unstages or commits, the log, a commit, a diff and
+    the commit of each line.
+12. [Cells and results](cells.md): a file of Cesia as a notebook, its results under its cells, `*variables*`, `*repl*`
     and the page of a file.
-12. [Changing Cemacs](customising.md): your folder `user/`, settings, your own keys and commands, an app of your own, and
+13. [Changing Cemacs](customising.md): your folder `user/`, settings, your own keys and commands, an app of your own, and
     the reload while it runs.
-13. [Recipes](recipes.md): small tasks done in `user/`, each with its code, its key and what it shows: your settings, files
+14. [Recipes](recipes.md): small tasks done in `user/`, each with its code, its key and what it shows: your settings, files
     at the start, a new buffer, a group of keys, a question, a list, a hook, an app.
-14. [Inside Cemacs](internals.md): the state and its update, the rope, the history, the colours, the indent, the frame, the loop of
+15. [Inside Cemacs](internals.md): the state and its update, the rope, the history, the colours, the indent, the frame, the loop of
     events, saving.
-15. [Speed](performance.md): what was measured, how, and the numbers.
-16. [Cemacs and other editors](comparison.md): beside GNU Emacs, Neovim, Vim and VS Code, in numbers and in features.
-17. [A case: finding a file from a few letters](finding.md): one real problem, from its statement to the proof that it is
+16. [Speed](performance.md): what was measured, how, and the numbers.
+17. [Cemacs and other editors](comparison.md): beside GNU Emacs, Neovim, Vim and VS Code, in numbers and in features.
+18. [A case: finding a file from a few letters](finding.md): one real problem, from its statement to the proof that it is
     solved, by the methods of research: a baseline, a hypothesis, the papers, the smallest change, tests and measures.
-18. [Troubleshooting](troubleshooting.md): every message of Cemacs, what it means and what to do.
-19. [Glossary](glossary.md): the words of editors, as Cemacs uses them.
-20. [References](references.md): the works and standards that Cemacs follows.
+19. [Troubleshooting](troubleshooting.md): every message of Cemacs, what it means and what to do.
+20. [Glossary](glossary.md): the words of editors, as Cemacs uses them.
+21. [References](references.md): the works and standards that Cemacs follows.
 
 The reference, under [Reference](ref/index.html), lists every package of Cemacs and every public name, from its code.
 

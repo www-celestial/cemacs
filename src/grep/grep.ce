@@ -49,6 +49,16 @@ defn folderOf(state)
   if value.IsMissing(b.Path) or lists.IsList(b) folders.Absolute(".", pwd) else folders.Parent(folders.Absolute(b.Path, pwd)) end
 end
 
+defn Root(state)
+  (** The root of the Git repository that holds the file of the current buffer, or the folder Cemacs started in, in an Ok; or an Err of the words to
+      say. src/git asks it too. *)
+  top = sys.Run("git", ["-C", folderOf(state), "rev-parse", "--show-toplevel"], timeout = SearchLimit())
+  if result.IsErr(top)
+    return result.Err("git can't run: $(top.Error.Message)")
+  end
+  if top.Value.Code != 0 result.Err("$(folders.Slashed(folderOf(state))) is in no Git repository.") else result.Ok(str.Trim(top.Value.Out)) end
+end
+
 (** The arguments of git grep for words, from the root: line, column, no binary file, the paths ended by a 0 byte, fixed text, the case folded when the
     words hold no capital, as C-s folds it.
 
@@ -60,11 +70,11 @@ defn searched(words, state)
   if words == ""
     return commands.Say("No words to search.", state)
   end
-  top = sys.Run("git", ["-C", folderOf(state), "rev-parse", "--show-toplevel"], timeout = SearchLimit())
-  if result.IsErr(top) or top.Value.Code != 0
-    return commands.Say(if result.IsErr(top) "git can't run: $(top.Error.Message)" else "$(folders.Slashed(folderOf(state))) is in no Git repository." end, state)
+  top = Root(state)
+  if result.IsErr(top)
+    return commands.Say(top.Error, state)
   end
-  root = str.Trim(top.Value.Out)
+  root = top.Value
   ch = fiber.Channel()
   args = Args(root, words)
   _ = fiber.Spawn(() -> fiber.Send(sys.Run("git", args, timeout = SearchLimit()), ch))
