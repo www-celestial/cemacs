@@ -98,6 +98,31 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `PATH isn't there.` | Enter in the output on a place of a file that doesn't exist from the folder where Cemacs started |
 | `There is no output yet: C-c c r runs the file.` | `C-c c h` or `C-c c o` before any run |
 
+### Names
+
+| Message | What happened |
+|---|---|
+| `Names are those of a file of Cesia.` | `M-.`, `M-?`, `C-c c i` or `C-c c m` in a buffer that isn't a saved `.ce` file, or in a list |
+| `No name here.` | the cursor is on no name, nor just after one |
+| `No definition of NAME found.` | `M-.` on a name that no file of its package, nor of the packages it uses, defines at its top, as a local or a parameter |
+| `No documentation of NAME found.` | `C-c c i` on such a name |
+| `No definition of NAME found in the project.` | `M-?` on a name that isn't defined in the project, nor documented by Cesia |
+| `No place to go back to.` | `M-,` with no place left on the stack |
+| `N places.`, `N places (by name: a method).` | the list of `M-?`; a method is found by name, every `.NAME` of the project: [Names](names.md#the-references) |
+| `..., N files don't read.` | some files of the project don't read, so their places aren't listed: open them, the check shows why |
+| `Nothing reads NAME.` | the name is defined, and nothing reads it |
+| `The lookup failed: WORDS` | `tools/lookup.ce` didn't answer in JSON, or ended with an error: WORDS is the first line it wrote |
+| `cesia can't run the lookup: REASON` | `cesia` couldn't start: is it on the `PATH`? |
+| `The lookup gave no places.`, `... no documentation.`, `... no edits.` | the answer of the lookup wasn't of the shape Cemacs reads, which it checks before it opens a file |
+| `NAME is a method: its calls ... can't be told from those of other methods of the name.` | a method or a field can't be renamed |
+| `NEW is not a name: a letter, then letters and digits.` | the new name of a rename has another character, or is a word of Cesia |
+| `NEW would be public: ...`, `NEW would be private: ...` | a rename keeps the case of the first letter, which says in Cesia whether a name is public |
+| `NEW is defined already, at PATH:LINE.` | the package has that name already |
+| `NEW would be another name at PATH:LINE: choose another one.` | at that line, a local or a parameter of the new name would take the place of the renamed one |
+| `PATH doesn't read: fix it first, so that its places of NAME are known.` | a file of the project that reads the package doesn't parse: a rename would leave its places |
+| `Renamed NAME to NEW: N files saved.` | the rename is done; `, N left unsaved, with changes of their own` and `, N changed since, left as they are` tell the files it didn't save or didn't change |
+| `Not renamed.` | `n` to the question of a rename |
+
 ### Running and debugging
 
 | Message | What happened |
@@ -124,7 +149,8 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `Text not saved. Quit anyway? (y or n)` | quitting with a buffer not saved: `y` loses every unsaved change |
 | `File changed on disk. Overwrite? (y or n)` | the file changed since Cemacs read it, or a file is there already: `y` writes over it |
 | `New file, or folder/: ` | in the folder manager, the name to make |
-| `Rename NAME to: ` | in the folder manager, the new name or path |
+| `Rename NAME to: ` | in the folder manager, the new name or path; in a file of Cesia, after `C-c c m`, the new name of a name of the code |
+| `Rename NAME to NEW in N places of M files? (y or n)` | `C-c c m`: `y` makes the edits, as [Names](names.md#a-rename) tells |
 | `Move NAME to the trash? (y or n)` | in the folder manager |
 | `I-search: `, `I-search backward: ` | a search is open: what you type is looked for, Enter stays, `C-g` goes back; see [Search](search.md#searching-a-buffer) |
 | `Failing I-search: ` | no place of the words is left that way: `C-s` or `C-r` again goes round the end, `C-g` takes back what matched nothing |

@@ -605,6 +605,23 @@ defn ReplaceRegion(f, b)
   if done.Version == gone.Version done else joinSteps(done) end
 end
 
+defn Replaced(spans, b)
+  (** The buffer with spans of its lines replaced at once, each {Line, Column, End, Text}, its columns from 0 on one line, as one step of undo, as a rename
+      makes them; the spans don't overlap. The cursor stays where it was.
+
+        rope.Text(Replaced([{Line: 1, Column: 0, End: 1, Text: "xy"}, {Line: 1, Column: 2, End: 3, Text: "z"}], Of("abc", missing)).Rope) --> "xybz" *)
+  if value.Len(spans) == 0
+    return b
+  end
+  placed = [{From: ByteOf({Line: s.Line, Column: s.Column}, b), To: ByteOf({Line: s.Line, Column: s.End}, b), Text: s.Text} for s in spans]
+  r = b.Rope
+  for k in list.Reverse(list.Order([p.From for p in placed]))
+    p = placed[k]
+    r = rope.Insert(p.From, p.Text, rope.Delete(p.From, p.To, r))
+  end
+  edit(r, b.Cursor, list.Min([s.Line for s in spans]), false, false, b)
+end
+
 defn CutLine(b)
   (** Cuts from the cursor to the end of its line, or the line end itself if the cursor is already there: {Buffer, Cut}, cut being the removed
       text. At the end of the file there is nothing to cut.

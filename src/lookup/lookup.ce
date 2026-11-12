@@ -1,0 +1,766 @@
+(** Questions about the names of Cesia code, answered without running any of it: where a name is defined, what its documentation says, the signature of a
+    call, every place of a project that reads a name, and the edits that rename it. tools/lookup.ce asks them for Cemacs, in a process of its own that has
+    the read permission only, so that none of this code loads at the start of the editor: see src/names. A line counts from 1 and a column from 0, in
+    characters, as a buffer counts them; given maps a path to its text, for the buffers not saved, and stands for the disk there. *)
+use std/cesia
+use std/dict
+use std/list
+use std/math
+use std/path
+use std/regex
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The largest file read, in bytes, as the check reads no larger one: cesia check of a 16 MB file took 320 MB. *)
+FileLimit() = 1000000
+
+(** The most places an answer gives: past them the list is cut, and the answer says so. *)
+PlaceLimit() = 10000
+
+(** The most files of a project read for one question. *)
+FileCount() = 20000
+
+(* ---- Files *)
+
+defn textOf(p, given)
+  (** The text of a file: the one given for its path, else the one on the disk, if it is a file of at most FileLimit() bytes; else missing. *)
+  if dict.Has(p, given)
+    return given[p]
+  end
+  info = sys.Stat(p)
+  if result.IsErr(info) or not info.Value.IsFile or info.Value.Size > FileLimit()
+    return missing
+  end
+  read = sys.Read(p)
+  if result.IsOk(read) read.Value else missing end
+end
+
+(** The lines of a text, a last line end opening an empty one, as a buffer counts them, each without the \r of a Windows line end. *)
+LinesOf(t) = [if str.EndsWith("\r", l) Cut(1, value.Len(l) - 1, l) else l end for l in str.Split("\n", t)]
+
+defn RootOf(p)
+  (** The folder of the project of a file: the nearest one above it that holds a cesia.toml, or missing when none does. *)
+  at = path.Dir(p)
+  while at != "" and at != "." and at != "/"
+    if sys.Exists("$at/cesia.toml")
+      return at
+    end
+    up = path.Dir(at)
+    if up == at
+      return missing
+    end
+    at = up
+  end
+  missing
+end
+
+defn sourceFolders(root)
+  (** The source folders of a project, [project] src of its cesia.toml, or src. *)
+  read = sys.Read("$root/cesia.toml")
+  tables = if result.IsOk(read) cesia.Toml(read.Value) else result.Err("none") end
+  if result.IsOk(tables)
+    for table in tables.Value
+      if value.Equal(table.Path, ["project"])
+        for entry in table.Entries
+          if entry.Key == "src" and value.IsArray(entry.Value)
+            return entry.Value
+          end
+        end
+      end
+    end
+  end
+  ["src"]
+end
+
+defn PackageOf(p, root)
+  (** The folder of the package of a file, when it is in a source folder of its project, or missing for a file that stands alone, a program. *)
+  if value.IsMissing(root)
+    return missing
+  end
+  dir = path.Dir(p)
+  inside = list.Any([dir == "$root/$s" or str.StartsWith("$root/$s/", dir) for s in sourceFolders(root)])
+  if inside dir else missing end
+end
+
+defn folderFiles(dir, tests)
+  (** The files of Cesia in a folder, in order, with its tests or without; none if it can't be read. *)
+  names = sys.List(dir)
+  if result.IsErr(names)
+    return []
+  end
+  ["$dir/$n" for n in names.Value if str.EndsWith(".ce", n) and (tests or not str.EndsWith(".test.ce", n))]
+end
+
+(** Is a path, from the root of a project, in a folder that a search of the project leaves out: one that starts with a dot, std/, deps/, site/ or _build/? *)
+isLeftOut(relative) = list.Any([str.StartsWith(".", part) or part in ["std", "deps", "site", "_build"] for part in list.DropLast(1, str.Split("/", relative))])
+
+defn ProjectFiles(root, from)
+  (** The files of Cesia of the project at root, at most FileCount(), but those of the folders isLeftOut names. With no project, the files of the folder of
+      from alone. *)
+  if value.IsMissing(root)
+    return folderFiles(path.Dir(from), true)
+  end
+  walked = sys.Walk(root)
+  if result.IsErr(walked)
+    return []
+  end
+  n = value.Len(root) + 2
+  list.Take(FileCount(), [p for p in walked.Value if str.EndsWith(".ce", p) and not isLeftOut(str.Slice(n, value.Len(p), p))])
+end
+
+(* ---- Names *)
+
+nameChar(c) = str.Code(c) >= 128 or regex.Test("^[A-Za-z0-9_]$", c)   (** Can the character be part of a name? *)
+
+defn WordAt(line, column)
+  (** The dotted name under a column of a line, up to the end of the part under it, as {Word, First, Stop, Dotted}: in list.Map(f), Map gives list.Map and
+      list gives list. First is its first column, Stop the one after it, and Dotted says a name after the dot of a value, as Area in Rect(2).Area(). A
+      column just after a name takes that name. Missing off a name.
+
+        WordAt("x = list.Map(f)", 9).Word --> "list.Map"
+        WordAt("x = list.Map(f)", 5).Word --> "list"
+        WordAt("Rect(2).Area()", 9).Dotted --> true
+        WordAt("total", 5).Word --> "total"
+        WordAt("x = 1 + y", 2) --> missing *)
+  chars = str.Chars(line)
+  n = value.Len(chars)
+  at = column + 1
+  if at > n or not nameChar(chars[at])
+    at -= 1
+  end
+  if at < 1 or at > n or not nameChar(chars[at])
+    return missing
+  end
+  first = at
+  while first > 1 and (nameChar(chars[first - 1]) or chars[first - 1] == ".")
+    first -= 1
+  end
+  stop = at
+  while stop < n and nameChar(chars[stop + 1])
+    stop += 1
+  end
+  dotted = chars[first] == "."
+  while chars[first] == "."
+    first += 1
+  end
+  {Word: str.Join("", chars[first..stop]), First: first - 1, Stop: stop, Dotted: dotted}
+end
+
+defn definitionsOf(t)
+  (** What a text defines at its top, as cesia.Definitions reads it, or missing for a text that doesn't read. *)
+  if value.IsMissing(t)
+    return missing
+  end
+  got = cesia.Definitions(t)
+  if result.IsOk(got) got.Value else missing end
+end
+
+defn defsOf(f, given)
+  (** What a file defines at its top: its text given, or else, when that one doesn't read, as a line being typed, the text on the disk; missing when neither
+      reads. *)
+  got = definitionsOf(textOf(f, given))
+  if value.IsMissing(got) and dict.Has(f, given) definitionsOf(textOf(f, {})) else got end
+end
+
+defn UsesOf(defs)
+  (** The packages a file uses, under the names its code gives them, from its definitions: {list: "std/list", str: "std/text"}. *)
+  found = {}
+  for d in defs
+    if d.Kind == "use"
+      found[d.Name] = d.Signature
+    end
+  end
+  found
+end
+
+(** Does a definition fit an owner: missing for one that no struct owns, "" for one of any struct, or the name of its struct? *)
+fits(owner, d) = if value.IsMissing(owner) value.IsMissing(d.Owner) else not value.IsMissing(d.Owner) and (owner == "" or d.Owner == owner) end
+
+defn findIn(files, name, owner, given)
+  (** The first definition of a name in files, {File, Def}, that fits the owner; for an owner that none fits, the first of the name that any struct owns;
+      missing when none. *)
+  other = missing
+  for f in files
+    defs = defsOf(f, given)
+    for d in if value.IsMissing(defs) [] else defs end
+      if d.Name == name and d.Kind != "use"
+        if fits(owner, d)
+          return {File: f, Def: d}
+        else if not value.IsMissing(owner) and not value.IsMissing(d.Owner) and value.IsMissing(other)
+          other = {File: f, Def: d}
+        end
+      end
+    end
+  end
+  other
+end
+
+defn homeFiles(p, root, tests)
+  (** The files whose names a file sees without a use, itself first: the others of its package, their tests with tests true, or itself alone. *)
+  dir = PackageOf(p, root)
+  if value.IsMissing(dir) [p] else list.Prepend(p, [f for f in folderFiles(dir, tests) if f != p]) end
+end
+
+(** The name cesia doc gives a package of std/: text for std/text. *)
+docModule(used) = path.Base(used)
+
+defn Resolve(p, lineNo, column, given)
+  (** What the name at a place of a file stands for, with its Word and the Root of the project: {Kind: "module", Module} for the name of a package,
+      {Kind: "doc", Entry} for a name cesia doc knows, of std/ or a keyword, {Kind: "code", File, Def} for a definition of the project, or {Kind: "none"};
+      missing off a name, or for a file that can't be read. *)
+  t = textOf(p, given)
+  if value.IsMissing(t)
+    return missing
+  end
+  lines = LinesOf(t)
+  if lineNo < 1 or lineNo > value.Len(lines)
+    return missing
+  end
+  w = WordAt(lines[lineNo], column)
+  if value.IsMissing(w)
+    return missing
+  end
+  root = RootOf(p)
+  defs = defsOf(p, given)
+  uses = UsesOf(if value.IsMissing(defs) [] else defs end)
+  parts = str.Split(".", w.Word)
+  n = value.Len(parts)
+  out = {Word: w.Word, Root: root, Kind: "none"}
+  if not w.Dotted and dict.Has(parts[1], uses)
+    used = uses[parts[1]]
+    if n == 1
+      out.Kind = "module"
+      out.Module = used
+      return out
+    end
+    copy = if value.IsMissing(root) missing else "$root/$used" end
+    if str.StartsWith("std/", used) and (value.IsMissing(copy) or not sys.Exists(copy))
+      entry = cesia.DocEntry("$(docModule(used)).$(str.Join(".", list.Skip(1, parts)))")
+      if not value.IsMissing(entry)
+        out.Kind = "doc"
+        out.Entry = entry
+      end
+      return out
+    end
+    found = if value.IsMissing(copy) missing else findIn(folderFiles(copy, false), parts[n], if n > 2 parts[n - 1] else missing end, given) end
+    return code(found, out)
+  end
+  if not w.Dotted and n == 1 and w.Word in cesia.Keywords()
+    entry = cesia.DocEntry(w.Word)
+    if not value.IsMissing(entry)
+      out.Kind = "doc"
+      out.Entry = entry
+    end
+    return out
+  end
+  owner = if n > 1 parts[n - 1] else if w.Dotted "" else missing end
+  files = homeFiles(p, root, false)
+  if not value.IsMissing(owner) and not value.IsMissing(root)
+    for used in dict.Values(uses)
+      if not str.StartsWith("std/", used)
+        files = list.Concat(files, folderFiles("$root/$used", false))
+      end
+    end
+  end
+  code(findIn(files, parts[n], owner, given), out)
+end
+
+defn code(found, out)
+  (** The answer of Resolve for a definition found in the project, or out as it is when none was. *)
+  if value.IsMissing(found)
+    return out
+  end
+  r = out
+  r.Kind = "code"
+  r.File = found.File
+  r.Def = found.Def
+  r
+end
+
+(* ---- Answers. Each gives a map that tools/lookup.ce writes as JSON: places, a doc, or an Error to say. *)
+
+defn Definition(p, lineNo, column, given)
+  (** Where the name at a place is defined, {Places: [{Path, Line, Column}]}; for a name of std/ that has no file in the project, its documentation,
+      {Doc}; or {Error}. *)
+  r = Resolve(p, lineNo, column, given)
+  if value.IsMissing(r)
+    return {Error: "No name here."}
+  end
+  if r.Kind == "code"
+    return {Places: [{Path: r.File, Line: r.Def.Line, Column: r.Def.Column - 1}]}
+  end
+  if r.Kind == "module" and not value.IsMissing(r.Root)
+    files = folderFiles("$(r.Root)/$(r.Module)", false)
+    if value.Len(files) > 0
+      return {Places: [{Path: files[1], Line: 1, Column: 0}]}
+    end
+  end
+  d = docOf(r)
+  if value.IsMissing(d) {Error: "No definition of $(r.Word) found."} else {Doc: d} end
+end
+
+defn docOf(r)
+  (** The documentation of what Resolve found, {Name, Signature, Text, Examples, Place}, or missing. *)
+  if r.Kind == "doc"
+    e = r.Entry
+    {Name: e.Name, Signature: e.Signature, Text: e.Text, Examples: e.Examples, Place: missing}
+  else if r.Kind == "code"
+    d = r.Def
+    {Name: d.Name, Signature: d.Signature, Text: d.Text, Examples: [], Place: {Path: r.File, Line: d.Line, Column: d.Column - 1}}
+  else if r.Kind == "module"
+    words = cesia.Doc(r.Module)
+    {Name: r.Module, Signature: "use $(r.Module)", Text: if value.IsMissing(words) "" else words end, Examples: [], Place: missing}
+  else
+    missing
+  end
+end
+
+defn Doc(p, lineNo, column, given)
+  (** The documentation of the name at a place, {Doc: {Name, Signature, Text, Examples, Place}}, or {Error}. *)
+  r = Resolve(p, lineNo, column, given)
+  d = if value.IsMissing(r) missing else docOf(r) end
+  if not value.IsMissing(d)
+    {Doc: d}
+  else if value.IsMissing(r)
+    {Error: "No name here."}
+  else
+    {Error: "No documentation of $(r.Word) found."}
+  end
+end
+
+defn FirstSentence(words)
+  (** The first sentence of a text, on one line.
+
+        FirstSentence("The total. Then more.") --> "The total."
+        FirstSentence("Two\nlines") --> "Two lines" *)
+  one = str.Trim(str.Replace("\n", " ", words))
+  cut = str.Find(". ", one)
+  if value.IsMissing(cut) one else str.Slice(1, cut, one) end
+end
+
+defn CallAt(line, column)
+  (** The column of the name of the call that a column of a line is inside, as list.Map in list.Map(f, |, or missing outside any call. Texts are skipped,
+      and a list or a map inside the call is gone through.
+
+        CallAt("x = list.Map(f, ", 16) --> 11
+        CallAt("f(a) + g(", 9) --> 7
+        CallAt("f([1, ", 6) --> 0
+        CallAt("f(a)", 4) --> missing *)
+  chars = list.Take(column, str.Chars(line))
+  depth = 0
+  k = value.Len(chars)
+  quoted = math.Mod(value.Len([c for c in chars if c == "\""]), 2) == 1
+  while k >= 1
+    c = chars[k]
+    if c == "\""
+      quoted = not quoted
+    else if not quoted and (c == ")" or c == "]" or c == "}")
+      depth += 1
+    else if not quoted and (c == "(" or c == "[" or c == "{")
+      if depth > 0
+        depth -= 1
+      else if c == "(" and k > 1 and nameChar(chars[k - 1])
+        return k - 2
+      end
+    end
+    k -= 1
+  end
+  missing
+end
+
+defn Signature(p, lineNo, column, given)
+  (** The signature and the first sentence of the call a place is inside, or of the name there, {Signature, Text}; {} when there is none. *)
+  t = textOf(p, given)
+  lines = if value.IsMissing(t) [] else LinesOf(t) end
+  if lineNo < 1 or lineNo > value.Len(lines)
+    return {}
+  end
+  at = CallAt(lines[lineNo], column)
+  r = Resolve(p, lineNo, if value.IsMissing(at) column else at end, given)
+  d = if value.IsMissing(r) missing else docOf(r) end
+  if value.IsMissing(d) or d.Signature == "" or (value.IsMissing(at) and not str.Contains("(", d.Signature))
+    return {}
+  end
+  {Signature: d.Signature, Text: FirstSentence(d.Text)}
+end
+
+(* ---- Reads. A place where code reads a name is found by the compiler's own resolver, cesia.Reads, which gives the first read of each name that a source
+   doesn't define: that read is replaced by a placeholder of the same length, and the source read again, until none is left. So a parameter or a local
+   of the name, a comment and a text are never taken, and "$(name)" is. *)
+
+(** Does a text hold a word, alone, with no character of a name beside it? *)
+hasWord(word, t) = regex.Test("(^|[^A-Za-z0-9_])$(word)([^A-Za-z0-9_]|$)", t)
+
+defn placeholder(name, t)
+  (** A name of the length of name that the text doesn't hold as a word. *)
+  for c in ["q", "z", "x", "w", "k", "j", "v"]
+    p = str.Repeat(value.Len(name), c)
+    if not hasWord(p, t) and not (p in cesia.Keywords())
+      return p
+    end
+  end
+  "Q$(str.Repeat(value.Len(name) - 1, "q"))"
+end
+
+(** The characters of a text from position first to last, from 1, both included, or "" when last comes before first: a slice that may be empty.
+
+      Cut(2, 3, "abcd") --> "bc"
+      Cut(1, 0, "abcd") --> "" *)
+Cut(first, last, s) = if last < first or first > value.Len(s) "" else str.Slice(list.Max(1, first), list.Min(last, value.Len(s)), s) end
+
+(** A line with the characters from column first, from 1, replaced by words of the same length. *)
+replacedAt(line, first, words) = "$(Cut(1, first - 1, line))$words$(Cut(first + value.Len(words), value.Len(line), line))"
+
+defn ReadsOf(name, source)
+  (** Every place where a source reads a name that it doesn't define, {Line, Column} from 1, as the compiler resolves it, in order; missing for a source
+      that doesn't read.
+
+        ReadsOf("price", "defn f(n)\n  price * n + price\nend") --> [{Line: 2, Column: 3}, {Line: 2, Column: 15}]
+        ReadsOf("price", "defn f(price)\n  price\nend") --> []
+        ReadsOf("rate", "defn f()\n  g = rate -> rate\n  rate\nend") --> [{Line: 3, Column: 3}] *)
+  lines = str.Split("\n", source)
+  p = placeholder(name, source)
+  found = []
+  while value.Len(found) < PlaceLimit()
+    got = cesia.Reads(str.Join("\n", lines))
+    if result.IsErr(got)
+      return if value.Len(found) == 0 missing else found end
+    end
+    at = list.FindFirst(r -> r.Name == name, got.Value)
+    if value.IsMissing(at)
+      return found
+    end
+    found = list.Append({Line: at.Line, Column: at.Column}, found)
+    lines[at.Line] = replacedAt(lines[at.Line], at.Column, p)
+  end
+  found
+end
+
+defn chunksOf(lines, defs)
+  (** The top-level parts of a file, each [first, last] lines: from each definition to the line before the next one, the lines before the first one too. *)
+  starts = list.Unique(list.Sort(list.Prepend(1, [d.Line for d in defs if d.Kind != "use"])))
+  [[starts[k], if k < value.Len(starts) starts[k + 1] - 1 else value.Len(lines) end] for k in 1..value.Len(starts)]
+end
+
+(** The lines of a part of a file with its use lines left empty, so that the names of its packages are read as names. *)
+partOf(lines, chunk) = str.Join("\n", [if str.StartsWith("use ", lines[k]) "" else lines[k] end for k in chunk[1]..chunk[2]])
+
+defn place(p, lines, lineNo, column, width)
+  (** A place to list: a path, a line, the columns of a name, from 0, and the words of the line. *)
+  {Path: p, Line: lineNo, Column: column, End: column + width, Words: str.Trim(lines[lineNo])}
+end
+
+defn barePlaces(name, p, t, def)
+  (** The places where a file reads a name of its own package, written alone: with def, the definition of the name in this file, its place first. Missing
+      for a file that doesn't read. *)
+  defs = definitionsOf(t)
+  if value.IsMissing(defs)
+    return missing
+  end
+  lines = LinesOf(t)
+  out = []
+  for chunk in chunksOf(lines, defs)
+    part = partOf(lines, chunk)
+    if hasWord(name, part)
+      if not value.IsMissing(def) and def.Line >= chunk[1] and def.Line <= chunk[2]
+        out = list.Append(place(p, lines, def.Line, def.Column - 1, value.Len(name)), out)
+        cut = str.Split("\n", part)
+        cut[def.Line - chunk[1] + 1] = replacedAt(cut[def.Line - chunk[1] + 1], def.Column, placeholder(name, part))
+        part = str.Join("\n", cut)
+      end
+      reads = ReadsOf(name, part)
+      for r in if value.IsMissing(reads) [] else reads end
+        out = list.Append(place(p, lines, chunk[1] + r.Line - 1, r.Column - 1, value.Len(name)), out)
+      end
+    end
+  end
+  out
+end
+
+defn aliasPlaces(alias, name, p, t)
+  (** The places where a file reads a name of a package through the name it gives the package, as Total in shop.Total; missing for a file that doesn't
+      read. *)
+  defs = definitionsOf(t)
+  if value.IsMissing(defs)
+    return missing
+  end
+  lines = LinesOf(t)
+  out = []
+  for chunk in chunksOf(lines, defs)
+    part = partOf(lines, chunk)
+    if str.Contains("$alias.$name", part)
+      reads = ReadsOf(alias, part)
+      for r in if value.IsMissing(reads) [] else reads end
+        line = lines[chunk[1] + r.Line - 1]
+        after = r.Column + value.Len(alias)
+        stop = after + value.Len(name)
+        if Cut(after, stop, line) == ".$name" and (stop >= value.Len(line) or not nameChar(Cut(stop + 1, stop + 1, line)))
+          out = list.Append(place(p, lines, chunk[1] + r.Line - 1, after, value.Len(name)), out)
+        end
+      end
+    end
+  end
+  out
+end
+
+defn usersOf(module, files, given, skip)
+  (** The files among files that use a package, but those of skip, each {File, Text, Aliases}: the names that file gives the package. *)
+  out = []
+  for f in files
+    if not (f in skip)
+      t = textOf(f, given)
+      if not value.IsMissing(t) and str.Contains(module, t)
+        defs = definitionsOf(t)
+        aliases = [d.Name for d in if value.IsMissing(defs) [] else defs end if d.Kind == "use" and d.Signature == module]
+        if value.Len(aliases) > 0
+          out = list.Append({File: f, Text: t, Aliases: aliases}, out)
+        end
+      end
+    end
+  end
+  out
+end
+
+defn ReferencesOf(r, given)
+  (** The places that read what Resolve found, {Name, Places, Unread}: the definition first, then each read; Unread names the files that don't read, whose
+      places can't be told. A method or a field is read after the dot of any value, so it is found by name: see byName. *)
+  if r.Kind == "doc" and r.Entry.Module != ""
+    name = str.Join(".", list.Skip(1, str.Split(".", r.Entry.Name)))
+    return throughUses(r.Entry.Module, name, ProjectFiles(r.Root, missing), given, [], {Name: r.Entry.Name, Places: [], Unread: []})
+  end
+  if r.Kind != "code"
+    return missing
+  end
+  d = r.Def
+  if not value.IsMissing(d.Owner)
+    return byName(d.Name, ProjectFiles(r.Root, r.File), given)
+  end
+  home = homeFiles(r.File, r.Root, true)
+  out = {Name: d.Name, Places: [], Unread: []}
+  for f in home
+    t = textOf(f, given)
+    if not value.IsMissing(t) and hasWord(d.Name, t)
+      got = barePlaces(d.Name, f, t, if f == r.File d else missing end)
+      out = withPlaces(f, got, out)
+    end
+  end
+  dir = PackageOf(r.File, r.Root)
+  if value.IsMissing(dir) or not isPublic(d.Name)
+    return out
+  end
+  throughUses(str.Slice(value.Len(r.Root) + 2, value.Len(dir), dir), d.Name, ProjectFiles(r.Root, r.File), given, home, out)
+end
+
+defn throughUses(module, name, files, given, skip, out)
+  (** The answer out with the places where files read a name of a package through a use of it. *)
+  found = out
+  for u in usersOf(module, files, given, skip)
+    for alias in u.Aliases
+      found = withPlaces(u.File, aliasPlaces(alias, name, u.File, u.Text), found)
+    end
+  end
+  found
+end
+
+defn withPlaces(f, got, out)
+  (** The answer out with the places of a file, or with the file among those that don't read. *)
+  r = out
+  if value.IsMissing(got)
+    r.Unread = list.Append(f, out.Unread)
+  else
+    r.Places = list.Take(PlaceLimit(), list.Concat(out.Places, got))
+  end
+  r
+end
+
+(** Is a name public: does it start with a capital? *)
+isPublic(name) = regex.Test("^[A-Z]", name)
+
+defn byName(name, files, given)
+  (** The places of a method or a field, found by name: each word of the name after a dot, and each definition of a method of the name. ByName says so. *)
+  out = {Name: name, Places: [], Unread: [], ByName: true}
+  for f in files
+    t = textOf(f, given)
+    if not value.IsMissing(t) and str.Contains(name, t)
+      lines = LinesOf(t)
+      defs = definitionsOf(t)
+      for d in if value.IsMissing(defs) [] else defs end
+        if d.Name == name and not value.IsMissing(d.Owner)
+          out.Places = list.Append(place(f, lines, d.Line, d.Column - 1, value.Len(name)), out.Places)
+        end
+      end
+      for k in 1..value.Len(lines)
+        for m in dotted(name, lines[k])
+          out.Places = list.Append(place(f, lines, k, m, value.Len(name)), out.Places)
+        end
+      end
+    end
+  end
+  out.Places = list.Take(PlaceLimit(), out.Places)
+  out
+end
+
+defn dotted(name, line)
+  (** The columns, from 0, of the name after a dot in a line, with no character of a name after it, outside its comments and texts as far as one line tells.
+
+        dotted("Area", "r.Area() + s.Areas + \"a.Area\"") --> [2] *)
+  out = []
+  quoted = false
+  chars = str.Chars(line)
+  n = value.Len(chars)
+  w = value.Len(name)
+  for k in 1..n
+    c = chars[k]
+    if c == "\""
+      quoted = not quoted
+    else if not quoted and c == "(" and k < n and chars[k + 1] == "*"
+      return out
+    else if not quoted and c == "." and k + w <= n and str.Join("", chars[(k + 1)..(k + w)]) == name and (k + w == n or not nameChar(chars[k + w + 1]))
+      out = list.Append(k, out)
+    end
+  end
+  out
+end
+
+defn References(p, lineNo, column, given)
+  (** Every place of the project that reads the name at a place, {Name, Places, Unread, ByName}, or {Error}. *)
+  r = Resolve(p, lineNo, column, given)
+  if value.IsMissing(r)
+    return {Error: "No name here."}
+  end
+  got = ReferencesOf(r, given)
+  if value.IsMissing(got) {Error: "No definition of $(r.Word) found in the project."} else got end
+end
+
+(* ---- Rename *)
+
+defn Rename(p, lineNo, column, to, given)
+  (** The edits that rename the name at a place to the name to, everywhere the project reads it, {Name, To, Edits: [{Path, Line, Column, End}], Files}, or
+      {Error} with why it can't be. A method, a field, a name of std/ and a public name made private, or the other way, are refused, and so is a name that
+      would read something else after it. *)
+  r = Resolve(p, lineNo, column, given)
+  if value.IsMissing(r) or r.Kind != "code"
+    return {Error: if value.IsMissing(r) "No name here." else "$(r.Word) is not defined in the project." end}
+  end
+  d = r.Def
+  wrong = renameFault(d, to, r, given)
+  if not value.IsMissing(wrong)
+    return {Error: wrong}
+  end
+  got = ReferencesOf(r, given)
+  if value.Len(got.Unread) > 0
+    return {Error: "$(got.Unread[1]) doesn't read: fix it first, so that its places of $(d.Name) are known."}
+  end
+  edits = [{Path: x.Path, Line: x.Line, Column: x.Column, End: x.End} for x in got.Places]
+  caught = captured(d.Name, to, edits, given)
+  if not value.IsMissing(caught)
+    return {Error: "$to would be another name at $(caught.Path):$(caught.Line): choose another one."}
+  end
+  {Name: d.Name, To: to, Edits: edits, Files: value.Len(list.Unique([e.Path for e in edits]))}
+end
+
+defn renameFault(d, to, r, given)
+  (** Why a definition can't take the name to, or missing when it can. *)
+  if not value.IsMissing(d.Owner)
+    "$(d.Name) is a method: its calls, after the dot of any value, can't be told from those of other methods of the name."
+  else if not regex.Test("^[A-Za-z][A-Za-z0-9]*$", to) or to in cesia.Keywords()
+    "$to is not a name: a letter, then letters and digits."
+  else if to == d.Name
+    "It is named $to already."
+  else if isPublic(to) != isPublic(d.Name)
+    "$to would be $(if isPublic(to) "public" else "private" end): a capital first letter says public, and a rename keeps it."
+  else
+    there = findIn(homeFiles(r.File, r.Root, true), to, missing, given)
+    if value.IsMissing(there) missing else "$to is defined already, at $(there.File):$(there.Def.Line)." end
+  end
+end
+
+defn captured(name, to, edits, given)
+  (** The first edit after which to would be read as another thing than the renamed name, as a local of that name around it, or missing. Each part of a
+      file that an edit touches is read again with the new name, and its reads of to must be the edits written alone. *)
+  grow = value.Len(to) - value.Len(name)
+  for f in list.Unique([e.Path for e in edits])
+    t = textOf(f, given)
+    before = LinesOf(t)
+    lines = LinesOf(t)
+    mine = [e for e in edits if e.Path == f]
+    for e in list.Reverse(mine)
+      lines[e.Line] = "$(Cut(1, e.Column, lines[e.Line]))$to$(Cut(e.End + 1, value.Len(lines[e.Line]), lines[e.Line]))"
+    end
+    (* Where each edit is in the new text: the edits before it on its line moved it by grow each. *)
+    moved = [{Line: e.Line, Column: e.Column + grow * value.Len([x for x in mine if x.Line == e.Line and x.Column < e.Column]), Bare: Cut(e.Column, e.Column, before[e.Line]) != "."} for e in mine]
+    defs = definitionsOf(str.Join("\n", lines))
+    for chunk in chunksOf(lines, if value.IsMissing(defs) [] else defs end)
+      bare = [e for e in moved if e.Bare and e.Line >= chunk[1] and e.Line <= chunk[2]]
+      if value.Len(bare) > 0
+        reads = ReadsOf(to, partOf(lines, chunk))
+        shown = [{Line: chunk[1] + x.Line - 1, Column: x.Column - 1} for x in if value.IsMissing(reads) [] else reads end]
+        for e in bare
+          read = list.Any([x.Line == e.Line and x.Column == e.Column for x in shown])
+          defined = list.Any([x.Kind != "use" and x.Name == to and x.Line == e.Line and x.Column - 1 == e.Column for x in if value.IsMissing(defs) [] else defs end])
+          if not read and not defined
+            return {Path: f, Line: e.Line}
+          end
+        end
+      end
+    end
+  end
+  missing
+end
+
+(* ---- Questions *)
+
+defn Answer(q)
+  (** The answer to a question of Cemacs, as tools/lookup.ce reads it: Do, one of definition, doc, signature, references and rename; Path, Line and Column,
+      the place of the name; Texts, the texts of the buffers not saved, by path; and To, the new name of a rename. A question that isn't one of these is
+      an Error. *)
+  fault = questionFault(q)
+  if not value.IsMissing(fault)
+    return {Error: fault}
+  end
+  given = q.Texts
+  a = match q.Do
+    "definition" -> Definition(q.Path, q.Line, q.Column, given)
+    "doc" -> Doc(q.Path, q.Line, q.Column, given)
+    "signature" -> Signature(q.Path, q.Line, q.Column, given)
+    "references" -> References(q.Path, q.Line, q.Column, given)
+    "rename" -> if value.IsText(dict.GetOr("To", missing, q)) Rename(q.Path, q.Line, q.Column, q.To, given) else {Error: "A rename needs To, the new name."} end
+    else -> {Error: "Unknown question: $(q.Do)."}
+  end
+  if dict.Has("Places", a) or dict.Has("Doc", a) shown(RootOf(q.Path), a) else a end
+end
+
+(** A path as a list shows it: from the root of the project when it is inside it.
+
+      ShownPath("/p", "/p/src/a.ce") --> "src/a.ce"
+      ShownPath(missing, "/p/a.ce") --> "/p/a.ce" *)
+ShownPath(root, p) = if not value.IsMissing(root) and str.StartsWith("$root/", p) str.Slice(value.Len(root) + 2, value.Len(p), p) else p end
+
+defn shown(root, a)
+  (** An answer with the Shown path of each of its places, from the root of the project. *)
+  out = a
+  if value.IsArray(dict.GetOr("Places", missing, a))
+    out.Places = [dict.Merge(p, {Shown: ShownPath(root, p.Path)}) for p in a.Places]
+  end
+  if value.IsDict(dict.GetOr("Doc", missing, a)) and not value.IsMissing(a.Doc.Place)
+    out.Doc.Place.Shown = ShownPath(root, a.Doc.Place.Path)
+  end
+  out
+end
+
+defn questionFault(q)
+  (** What is wrong with a question, or missing: each field of the type it must have. *)
+  if not value.IsDict(q)
+    "A question is a map."
+  else if not value.IsText(dict.GetOr("Do", missing, q)) or not value.IsText(dict.GetOr("Path", missing, q)) or not path.IsAbsolute(q.Path)
+    "A question needs Do and an absolute Path."
+  else if not value.IsInt(dict.GetOr("Line", missing, q)) or not value.IsInt(dict.GetOr("Column", missing, q)) or q.Line < 1 or q.Column < 0
+    "A question needs a Line from 1 and a Column from 0."
+  else if not value.IsDict(dict.GetOr("Texts", missing, q)) or not list.All([value.IsText(k) and value.IsText(q.Texts[k]) for k in dict.Keys(q.Texts)])
+    "A question needs Texts, a map of paths to texts."
+  else
+    missing
+  end
+end

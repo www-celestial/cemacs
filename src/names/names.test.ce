@@ -1,0 +1,99 @@
+(** Tests of the names app, without the lookup's process: the answers it reads, the lists it shows and the edits it makes. tests/names-check.ce runs the
+    real lookup. *)
+use src/names
+use src/emacs
+use src/rope
+use src/ui
+use core/commands
+use core/lists
+use core/text
+use core/view
+use std/dict
+use std/fiber
+use std/list
+use std/result
+use std/text as str
+use std/value
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+
+defn stateOf(words, path)
+  (** A state with one buffer of words at path, the names hooked. *)
+  s = view.Start([text.Of(words, path)], look, cell, 800, 600)
+  s.Config = () -> names.Hooked(emacs.Config(() -> dict.Merge(emacs.Keys(), names.Keys())))
+  s
+end
+
+defn answered(q, out, state)
+  (** A state whose question q has ended with what the process gave. *)
+  s = state
+  ch = fiber.Channel()
+  fiber.Send(result.Ok({Code: 0, Out: out, Err: ""}), ch)
+  b = s.Buffers[s.Current]
+  s.Naming = {Do: q, Channel: ch, Path: b.Path, Version: b.Version, Line: b.Cursor.Line, Column: b.Cursor.Column, To: "Sum"}
+  names.Finished(s)
+end
+
+here(state) = state.Buffers[state.Current]
+rows(state) = str.Lines(rope.Text(here(state).Rope))
+
+isAnErrorSaid() = answered("definition", "{\"Error\": \"No name here.\"}", stateOf("x", "/p/a.ce")).Message == "No name here."
+isNotJsonSaid() = answered("definition", "boom\n", stateOf("x", "/p/a.ce")).Message == "The lookup failed: boom"
+isAnswerEndsTheQuestion() = not names.Moving(answered("definition", "{}", stateOf("x", "/p/a.ce")))
+isSignatureErrorQuiet() = answered("signature", "{\"Error\": \"x\"}", stateOf("x", "/p/a.ce")).Message == ""
+
+defn isSignatureSaid()
+  s = answered("signature", "{\"Signature\": \"Total(prices)\", \"Text\": \"The total.\"}", stateOf("x", "/p/a.ce"))
+  s.Message == "Total(prices): The total."
+end
+
+defn isSignatureOfAnotherPlaceDropped()
+  s = stateOf("xy", "/p/a.ce")
+  ch = fiber.Channel()
+  fiber.Send(result.Ok({Code: 0, Out: "{\"Signature\": \"f()\", \"Text\": \"\"}", Err: ""}), ch)
+  s.Naming = {Do: "signature", Channel: ch, Path: "/p/a.ce", Version: here(s).Version, Line: 1, Column: 1, To: missing}
+  names.Finished(s).Message == ""
+end
+
+defn isBadPlacesRefused()
+  bad = ["{\"Places\": [{\"Path\": \"a.ce\", \"Line\": 1, \"Column\": 0, \"End\": 1}]}", "{\"Places\": [{\"Path\": \"/a.ce\", \"Line\": 0, \"Column\": 0, \"End\": 1}]}",
+    "{\"Places\": [{\"Path\": \"/a.ce\", \"Line\": 1, \"Column\": 2, \"End\": 1}]}", "{\"Places\": 3}"]
+  list.All([answered("references", b, stateOf("x", "/p/a.ce")).Message == "The lookup gave no places." for b in bad])
+end
+
+defn isReferencesListed()
+  out = "{\"Name\": \"Total\", \"Places\": [{\"Path\": \"/p/a.ce\", \"Line\": 1, \"Column\": 0, \"End\": 5, \"Words\": \"Total = 1\"}], \"Unread\": []}"
+  s = answered("references", out, stateOf("x", "/p/a.ce"))
+  lists.IsList(here(s)) and value.Equal(rows(s), ["/p/a.ce:1:1  Total = 1"]) and s.Message == "1 places."
+end
+
+defn isDocListed()
+  out = "{\"Doc\": {\"Name\": \"list.Map\", \"Signature\": \"list.Map(f, xs)\", \"Text\": \"Applies f.\", \"Examples\": [\"list.Map(f, [])\"], \"Place\": null}}"
+  value.Equal(rows(answered("doc", out, stateOf("x", "/p/a.ce"))), ["list.Map(f, xs)", "Applies f.", "  list.Map(f, [])"])
+end
+
+defn isRenameAsks()
+  out = "{\"Name\": \"Total\", \"To\": \"Sum\", \"Edits\": [{\"Path\": \"/p/a.ce\", \"Line\": 1, \"Column\": 0, \"End\": 5}], \"Files\": 1}"
+  s = answered("rename", out, stateOf("Total", "/p/a.ce"))
+  s.Prompt.Label == "Rename Total to Sum in 1 places of 1 files? (y or n)"
+end
+
+isNoPlaceBack() = names.Back(stateOf("x", "/p/a.ce")).Message == "No place to go back to."
+isNamesOfCesiaOnly() = names.Definition(stateOf("x", "/p/a.txt")).Message == "Names are those of a file of Cesia."
+
+defn isApplyInABuffer()
+  (** A buffer with changes of its own gets the edits, as one step of undo, and stays unsaved. *)
+  s = stateOf("Total = Total + 1", "/p/a.ce")
+  s.Buffers[1] = text.InsertWords(" ", text.Place(1, 17, here(s)))
+  done = names.Apply([{Path: "/p/a.ce", Line: 1, Column: 0, End: 5, Old: "Total", Text: "Sum"}, {Path: "/p/a.ce", Line: 1, Column: 8, End: 13, Old: "Total", Text: "Sum"}], s)
+  b = done.State.Buffers[1]
+  rope.Text(b.Rope) == "Sum = Sum + 1 " and rope.Text(text.Undo(b).Rope) == "Total = Total + 1 " and done.Words == "0 files saved, 1 left unsaved, with changes of their own."
+end
+
+defn isApplyLeavesAChangedText()
+  s = stateOf("Totals", "/p/a.ce")
+  s.Buffers[1] = text.InsertWords("x", here(s))
+  done = names.Apply([{Path: "/p/a.ce", Line: 1, Column: 0, End: 5, Old: "Total", Text: "Sum"}], s)
+  rope.Text(done.State.Buffers[1].Rope) == "xTotals" and str.Contains("1 changed since", done.Words)
+end

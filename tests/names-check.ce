@@ -1,0 +1,113 @@
+(** Checks of src/names against the real lookup, tools/lookup.ce run by cesia, in a project made in a new folder under /tmp: go to a definition and back,
+    the references, the documentation, the signature on the prompt line, a text not saved, and a rename on the disk. It is a script, not a test file: it
+    needs permissions. tests/run.sh runs it with cesia run --allow read,write,exec=cesia,env=PWD. It prints ok at the end and stops at the first failure. *)
+use src/emacs
+use src/names
+use src/rope
+use src/ui
+use core/commands
+use core/lists
+use core/press
+use core/text
+use core/view
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn expect(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+namesConfig() = names.Hooked(emacs.Config(() -> dict.Merge(emacs.Keys(), names.Keys())))
+here(state) = state.Buffers[state.Current]
+rows(state) = str.Lines(rope.Text(here(state).Rope))
+
+defn answered(state)
+  (** The state after ticks, until the question asked has its answer, or 10 seconds have gone. *)
+  s = state
+  waited = 0.0
+  while names.Moving(s) and waited < 10.0
+    sys.Sleep(0.02)
+    waited += 0.02
+    s = commands.Update({Kind: "tick", Seconds: 0.02}, s)
+  end
+  expect(not names.Moving(s), "an answer within 10 seconds")
+  s
+end
+
+folder = "/tmp/cemacs-names-check-$(value.Text(sys.Now()))"
+result.Unwrap(sys.Mkdir("$folder/src/shop"))
+result.Unwrap(sys.Mkdir("$folder/src/app"))
+result.Unwrap(sys.Write("$folder/cesia.toml", "[project]\nname = \"p\"\nsrc = [\"src\"]\n"))
+result.Unwrap(sys.Write("$folder/src/shop/shop.ce", "(** A shop. *)\nuse std/list\n\nRate = 20   (** The tax, in percent. *)\n\ndefn Total(prices)\n  (** The total of prices, with the tax. *)\n  sum = list.Reduce((a, b) -> a + b, 0, prices)\n  sum + sum * Rate / 100\nend\n"))
+result.Unwrap(sys.Write("$folder/src/shop/shop.test.ce", "isTotal() = Total([100]) == 120   (** The tax is added. *)\n"))
+result.Unwrap(sys.Write("$folder/src/app/app.ce", "use src/shop\nuse std/io\n\ndefn Main()\n  (** Prints the total. *)\n  io.Print(shop.Total([1, 2]))\nend\n"))
+app = "$folder/src/app/app.ce"
+shop = "$folder/src/shop/shop.ce"
+
+start = view.Start([text.Of("", missing)], look, cell, 800, 600)
+start.Config = namesConfig
+opened = commands.OpenFile(app, start)
+opened.Buffers[opened.Current] = text.Place(6, 17, here(opened))
+
+(* M-. goes to the definition of shop.Total, in the file of its package; M-, comes back. *)
+there = answered(press.Press(["M-."], opened))
+expect(here(there).Path == shop and here(there).Cursor.Line == 6 and here(there).Cursor.Column == 5, "M-. goes to Total: $(here(there).Path) $(here(there).Cursor) $(there.Message)")
+back = press.Press(["M-,"], there)
+expect(here(back).Path == app and here(back).Cursor.Line == 6 and here(back).Cursor.Column == 17, "M-, comes back: $(here(back).Cursor)")
+expect(press.Press(["M-,"], back).Message == "No place to go back to.", "the stack ends")
+expect(here(answered(press.Press(["C-c", "c", "d"], opened))).Path == shop, "C-c c d is M-.")
+
+(* M-? lists the places that read Total, the definition first; Enter goes to one. *)
+listed = answered(press.Press(["M-?"], opened))
+expect(lists.IsList(here(listed)) and value.Len(rows(listed)) == 3, "three places read Total: $(rows(listed)) $(listed.Message)")
+expect(str.Contains("shop.ce:6:6  defn Total(prices)", rows(listed)[1]), "the definition first: $(rows(listed)[1])")
+gone = press.Press(["down", "down", "enter"], listed)
+expect(here(gone).Path == app and here(gone).Cursor.Line == 6 and here(gone).Cursor.Column == 16 and list.Count(lists.IsList, gone.Buffers) == 0, "Enter goes to a place: $(here(gone).Cursor)")
+
+(* C-c c i shows the documentation, here of io.Print. *)
+doc = opened
+doc.Buffers[doc.Current] = text.Place(6, 5, here(doc))
+shown = answered(press.Press(["C-c", "c", "i"], doc))
+expect(lists.IsList(here(shown)) and rows(shown)[1] == "io.Print(...)", "the doc of io.Print: $(rows(shown)) $(shown.Message)")
+
+(* Once the cursor stays still in a call, the prompt line shows its signature. *)
+typing = press.Press(["M->", "x = shop.Total("], opened)
+asked = commands.Update({Kind: "tick", Seconds: 0.6}, typing)
+expect(names.Moving(asked), "the signature is asked once the cursor stays still")
+signed = answered(asked)
+expect(signed.Message == "Total(prices): The total of prices, with the tax.", "the signature: $(signed.Message)")
+expect(not names.Moving(commands.Update({Kind: "tick", Seconds: 0.6}, signed)), "asked once for a place")
+
+(* A buffer not saved counts: Total two lines lower in it is found there. *)
+moved = commands.OpenFile(shop, opened)
+moved.Buffers[moved.Current] = text.InsertWords("\n\n", text.Place(1, 0, here(moved)))
+moved.Current = 2
+found = answered(press.Press(["M-."], moved))
+expect(here(found).Path == shop and here(found).Cursor.Line == 8, "the text not saved: $(here(found).Cursor)")
+
+(* C-c c m renames Total to Sum in the three files, after a yes, and saves them. *)
+renamed = answered(press.Press(["C-c", "c", "m", "Sum", "enter"], opened))
+expect(str.StartsWith("Rename Total to Sum in 3 places of 3 files?", renamed.Prompt.Label), "the question: $(renamed.Prompt) $(renamed.Message)")
+done = press.Press(["y"], renamed)
+expect(str.StartsWith("Renamed Total to Sum: 3 files saved.", done.Message), "renamed: $(done.Message)")
+for p in [app, shop, "$folder/src/shop/shop.test.ce"]
+  words = result.Unwrap(sys.Read(p))
+  expect(str.Contains("Sum", words) and not str.Contains("Total([", words) and not str.Contains("defn Total", words), "$p renamed on the disk: $words")
+end
+expect(here(done).Path == app, "the buffer stays the one of the rename")
+refused = answered(press.Press(["C-c", "c", "m", "sum", "enter"], done))
+expect(str.Contains("private", refused.Message), "a public name stays public: $(refused.Message)")
+
+_ = sys.Run("rm", ["-rf", folder])
+io.Print("ok")

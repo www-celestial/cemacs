@@ -1,0 +1,136 @@
+(** Tests of the questions about names, on a small project made in the folder of each test: a package src/shop, its test, and src/app, which uses it. *)
+use src/lookup
+use std/dict
+use std/list
+use std/result
+use std/sys
+use std/test
+use std/text as str
+use std/value
+
+d = str.Char(36)   (** A dollar, which shop writes in a text without reading a name. *)
+
+shop = "(** A shop. *)
+use std/list
+
+Rate = 20   (** The tax, in percent. *)
+
+defn Total(prices)
+  (** The total of prices, with the tax. *)
+  sum = list.Reduce((a, b) -> a + b, 0, prices)
+  sum + sum * Rate / 100 + extra(0)
+end
+
+defn extra(rate)
+  (** A private one, which a parameter of its own name can't hide. *)
+  rate + Total([])
+end
+
+Note() = \"Total: $d(Total([1]))\"   (** Total read in a text. *)
+
+defn other(Rate)
+  (** A parameter that hides Rate. *)
+  Rate * 2
+end
+"
+
+app = "use src/shop
+use std/io
+
+defn Main()
+  (** Prints the total. *)
+  io.Print(shop.Total([1, 2]))
+  shop.Rate
+end
+"
+
+defn project()
+  (** A new project, its root. *)
+  root = test.Temp()
+  result.Unwrap(sys.Mkdir("$root/src/shop"))
+  result.Unwrap(sys.Mkdir("$root/src/app"))
+  result.Unwrap(sys.Write("$root/cesia.toml", "[project]\nname = \"p\"\nsrc = [\"src\"]\n"))
+  result.Unwrap(sys.Write("$root/src/shop/shop.ce", shop))
+  result.Unwrap(sys.Write("$root/src/shop/shop.test.ce", "isTotal() = Total([100]) == 120   (** The tax is added. *)\n"))
+  result.Unwrap(sys.Write("$root/src/app/app.ce", app))
+  root
+end
+
+(** The places of an answer as path:line:column, the path from the root. *)
+places(root, answer) = ["$(str.Slice(value.Len(root) + 2, value.Len(p.Path), p.Path)):$(p.Line):$(p.Column)" for p in answer.Places]
+
+defn isDefinitionThroughUse()
+  root = project()
+  got = lookup.Definition("$root/src/app/app.ce", 6, 17, {})
+  value.Equal(places(root, got), ["src/shop/shop.ce:6:5"])
+end
+
+defn isDefinitionInPackage()
+  root = project()
+  value.Equal(places(root, lookup.Definition("$root/src/shop/shop.ce", 9, 15, {})), ["src/shop/shop.ce:4:0"])
+end
+
+defn isDefinitionOfStdIsItsDoc()
+  root = project()
+  got = lookup.Definition("$root/src/shop/shop.ce", 8, 14, {})
+  got.Doc.Signature == "list.Reduce(f, init, xs)"
+end
+
+defn isDefinitionOfTheGivenText()
+  root = project()
+  moved = "\n\n$shop"
+  value.Equal(places(root, lookup.Definition("$root/src/app/app.ce", 6, 17, {"$root/src/shop/shop.ce": moved})), ["src/shop/shop.ce:8:5"])
+end
+
+isNoNameIsAnError() = dict.Has("Error", lookup.Definition("$(project())/src/shop/shop.ce", 3, 0, {}))
+
+defn isReferencesOfAPublicName()
+  root = project()
+  got = lookup.References("$root/src/shop/shop.ce", 6, 7, {})
+  value.Equal(places(root, got), ["src/shop/shop.ce:6:5", "src/shop/shop.ce:14:9", "src/shop/shop.ce:17:19", "src/shop/shop.test.ce:1:12", "src/app/app.ce:6:16"])
+end
+
+defn isReferencesLeaveAParameterOut()
+  root = project()
+  value.Equal(places(root, lookup.References("$root/src/shop/shop.ce", 4, 0, {})), ["src/shop/shop.ce:4:0", "src/shop/shop.ce:9:14", "src/app/app.ce:7:7"])
+end
+
+defn isReferencesOfStd()
+  root = project()
+  value.Equal(places(root, lookup.References("$root/src/app/app.ce", 6, 5, {})), ["src/app/app.ce:6:5"])
+end
+
+defn isRename()
+  root = project()
+  got = lookup.Rename("$root/src/shop/shop.ce", 6, 7, "Sum", {})
+  got.Files == 3 and value.Len(got.Edits) == 5 and got.To == "Sum"
+end
+
+isRenameKeepsPublic() = dict.Has("Error", lookup.Rename("$(project())/src/shop/shop.ce", 6, 7, "sum", {}))
+isRenameToATakenName() = dict.Has("Error", lookup.Rename("$(project())/src/shop/shop.ce", 6, 7, "Rate", {}))
+isRenameToANonName() = dict.Has("Error", lookup.Rename("$(project())/src/shop/shop.ce", 6, 7, "a b", {}))
+isRenameOfStdRefused() = dict.Has("Error", lookup.Rename("$(project())/src/app/app.ce", 6, 5, "Say", {}))
+
+defn isRenameCaught()
+  (** extra called inside Total, where sum is a local: renamed sum, the call would read the local. *)
+  got = lookup.Rename("$(project())/src/shop/shop.ce", 12, 6, "sum", {})
+  dict.Has("Error", got) and str.StartsWith("sum would be", got.Error)
+end
+
+defn isSignatureOfTheCall()
+  root = project()
+  got = lookup.Signature("$root/src/app/app.ce", 6, 23, {})
+  got.Signature == "Total(prices)" and got.Text == "The total of prices, with the tax."
+end
+
+isSignatureOfStd() = lookup.Signature("$(project())/src/app/app.ce", 6, 11, {}).Signature == "io.Print(...)"
+isNoSignatureOutsideACall() = value.Equal(lookup.Signature("$(project())/src/app/app.ce", 7, 1, {}), {})
+
+isAnswerChecksTheQuestion() = list.All([dict.Has("Error", lookup.Answer(q)) for q in [1, {Do: "doc"}, {Do: "doc", Path: "a.ce", Line: 1, Column: 0, Texts: {}},
+  {Do: "doc", Path: "/a.ce", Line: 0, Column: 0, Texts: {}}, {Do: "doc", Path: "/a.ce", Line: 1, Column: 0, Texts: {"/a.ce": 3}}, {Do: "nothing", Path: "/a.ce", Line: 1, Column: 0, Texts: {}}]])
+
+defn isAnswerOfARename()
+  root = project()
+  got = lookup.Answer({Do: "rename", Path: "$root/src/shop/shop.ce", Line: 6, Column: 7, Texts: {}, To: "Sum"})
+  got.Files == 3
+end

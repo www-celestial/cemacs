@@ -1,0 +1,381 @@
+(** The names of Cesia code: M-. goes to the definition of the name at the cursor and M-, back, C-c c i shows its documentation, M-? lists every place of
+    the project that reads it, C-c c m renames it there, and the prompt line shows the signature of the call being typed once the cursor stays still. The
+    work is src/lookup's, in a process of its own, cesia run --allow read tools/lookup.ce, asked from a fiber: none of it loads at the start, and typing never
+    waits. One question at a time; a new one takes the place of the one before, whose answer is dropped. src/cemacs.ce adds the hooks of Hooked to the config
+    and these Keys. *)
+use core/commands
+use core/files
+use core/indent
+use core/lists
+use core/color
+use core/text
+use src/folders
+use src/rope
+use std/dict
+use std/fiber
+use std/json
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The keys of the names: M-., M-, and M-? as in Emacs, and the same in the group of the code of C-c, with the documentation and the rename. *)
+Keys() = {"M-.": Definition, "C-c c d": Definition, "M-,": Back, "C-c c b": Back, "M-?": References, "M-S-/": References, "C-c c f": References,
+  "C-c c i": Documentation, "C-c c m": Rename}
+
+(** The most places kept to go back to. *)
+BackLimit() = 100
+
+(** The seconds a question may take before it is given up. *)
+QuestionLimit() = 10
+
+(* ---- Questions *)
+
+defn asking(state)
+  (** The question that waits for its answer, {Do, Channel, Path, Version, Line, Column, To}, or missing: a state from before this field has none. *)
+  match state
+    {Naming: q} -> q
+    else -> missing
+  end
+end
+
+(** Is a buffer a file of Cesia, with a path, to ask about? *)
+askable(b) = not lists.IsList(b) and not value.IsMissing(b.Path) and indent.IsCesia(b)
+
+(** A path from the root, as the lookup wants it: one from the folder Cemacs started in is read from there. *)
+absolute(p) = if str.StartsWith("/", p) files.Normal(p) else folders.Absolute(p, sys.Env("PWD")) end
+
+defn texts(state)
+  (** The texts of the Cesia buffers not saved, by the absolute paths of their files, which stand for the disk in the lookup. *)
+  out = {}
+  for b in state.Buffers
+    if askable(b) and text.IsModified(b)
+      out[absolute(b.Path)] = rope.Text(b.Rope)
+    end
+  end
+  out
+end
+
+defn ask(what, state, to = missing)
+  (** The state with a question about the name at the cursor sent to the lookup: definition, doc, signature, references or rename, with to the new name.
+      A buffer that isn't a file of Cesia is a message. *)
+  b = state.Buffers[state.Current]
+  if not askable(b)
+    return commands.Say("Names are those of a file of Cesia.", state)
+  end
+  c = b.Cursor
+  question = {Do: what, Path: absolute(b.Path), Line: c.Line, Column: c.Column, Texts: texts(state), To: to}
+  program = "$(commands.Home(state))/tools/lookup.ce"
+  ch = fiber.Channel()
+  words = json.Text(question)
+  _ = fiber.Spawn(() -> fiber.Send(sys.Run("cesia", ["run", "--allow", "read", program], input = words, timeout = QuestionLimit()), ch))
+  s = state
+  s.Naming = {Do: what, Channel: ch, Path: b.Path, Version: b.Version, Line: c.Line, Column: c.Column, To: to}
+  s
+end
+
+Definition(state) = ask("definition", state)   (** Goes to the definition of the name at the cursor; M-, comes back. A name of std/ shows its documentation. *)
+Documentation(state) = ask("doc", state)   (** Shows the documentation of the name at the cursor: its signature, its text and its examples. *)
+References(state) = ask("references", state)   (** Lists every place of the project that reads the name at the cursor; Enter goes to one. *)
+
+defn Rename(state)
+  (** Renames the name at the cursor everywhere the project reads it, after asking the new name and then for a yes. *)
+  b = state.Buffers[state.Current]
+  name = wordHere(b)
+  if not askable(b) or name == ""
+    return commands.Say(if askable(b) "No name here." else "Names are those of a file of Cesia." end, state)
+  end
+  commands.Ask("Rename $name to: ", "", (to, s) -> if to == "" commands.Say("No name.", s) else ask("rename", s, to = to) end, state)
+end
+
+defn wordHere(b)
+  (** The name under the cursor, or just before it, or "". *)
+  chars = str.Chars(rope.Line(b.Cursor.Line, b.Rope))
+  isName(c) = str.Code(c) >= 128 or c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or (c >= "0" and c <= "9")
+  at = b.Cursor.Column + 1
+  if at > value.Len(chars) or not isName(chars[at])
+    at -= 1
+  end
+  if at < 1 or not isName(chars[at])
+    return ""
+  end
+  first = at
+  while first > 1 and isName(chars[first - 1])
+    first -= 1
+  end
+  stop = at
+  while stop < value.Len(chars) and isName(chars[stop + 1])
+    stop += 1
+  end
+  str.Join("", chars[first..stop])
+end
+
+(* ---- Answers. The answer is the lookup's output: data, checked before anything is opened or edited. *)
+
+defn answerOf(got)
+  (** The answer in what the process gave, a map, or an Err of the words to say. *)
+  if result.IsErr(got)
+    return result.Err("cesia can't run the lookup: $(if value.IsText(got.Error) got.Error else got.Error.Message end)")
+  end
+  ran = got.Value
+  parsed = json.Parse(str.Trim(ran.Out))
+  if ran.Code != 0 or result.IsErr(parsed) or not value.IsDict(parsed.Value)
+    words = list.First(str.Lines(ran.Out))
+    return result.Err("The lookup failed: $(if value.IsMissing(words) "code $(ran.Code)" else words end)")
+  end
+  result.Ok(parsed.Value)
+end
+
+(** Is a value a place of a file, {Path, Line, Column}, a path from the root, a line from 1 and a column from 0? *)
+isPlace(p) = value.IsDict(p) and value.IsText(dict.GetOr("Path", missing, p)) and str.StartsWith("/", p.Path) and value.IsInt(dict.GetOr("Line", missing, p)) and p.Line >= 1 and
+  value.IsInt(dict.GetOr("Column", missing, p)) and p.Column >= 0
+
+(** Is a value a list of at most 10,000 places, each with End past its Column when ends is true? *)
+arePlaces(xs, ends) = value.IsArray(xs) and value.Len(xs) <= 10000 and list.All([isPlace(p) and (not ends or (value.IsInt(dict.GetOr("End", missing, p)) and p.End >= p.Column)) for p in xs])
+
+defn heard(q, a, state)
+  (** The state after the answer a to the question q. *)
+  if dict.Has("Error", a)
+    return if q.Do == "signature" state else commands.Say(value.Text(a.Error), state) end
+  end
+  match q.Do
+    "definition" -> if arePlaces(dict.GetOr("Places", missing, a), false) and value.Len(a.Places) > 0 Visit(a.Places[1], state) else docShown(a, state) end
+    "doc" -> docShown(a, state)
+    "signature" -> signed(q, a, state)
+    "references" -> if arePlaces(dict.GetOr("Places", missing, a), true) placesShown(a, state) else commands.Say("The lookup gave no places.", state) end
+    "rename" -> renamed(q, a, state)
+    else -> state
+  end
+end
+
+defn Finished(state)
+  (** The state once the question asked has its answer, if it has: what the answer shows, or says. *)
+  q = asking(state)
+  if value.IsMissing(q)
+    return state
+  end
+  got = fiber.Receive(q.Channel, timeout = 0)
+  if result.IsErr(got)
+    return state
+  end
+  s = state
+  s.Naming = missing
+  match answerOf(got.Value)
+    result.Ok(a) -> heard(q, a, s)
+    result.Err(words) -> if q.Do == "signature" s else commands.Say(words, s) end
+  end
+end
+
+(* ---- Going there and back *)
+
+defn backOf(state)
+  (** The places to go back to, the last one last: a state from before this field has none. *)
+  match state
+    {Back: places} -> places
+    else -> []
+  end
+end
+
+defn PathFor(p, state)
+  (** The path to open a file at, given from the root: that of the buffer open on it, if one is, so that no file gets two buffers, else that one. *)
+  for b in state.Buffers
+    if not value.IsMissing(b.Path) and not lists.IsList(b) and absolute(b.Path) == p
+      return b.Path
+    end
+  end
+  p
+end
+
+defn Visit(place, state)
+  (** Goes to a place {Path, Line, Column}, keeping the place of the cursor to come back to with M-,. A file that can't be opened is a message. *)
+  b = state.Buffers[state.Current]
+  here = if value.IsMissing(b.Path) or lists.IsList(b) missing else {Path: b.Path, Line: b.Cursor.Line, Column: b.Cursor.Column} end
+  s = commands.OpenFile(PathFor(place.Path, state), state)
+  opened = s.Buffers[s.Current]
+  if value.IsMissing(opened.Path) or absolute(opened.Path) != absolute(place.Path)
+    return s
+  end
+  s.Buffers[s.Current] = text.Place(place.Line, place.Column, opened)
+  if not value.IsMissing(here)
+    s.Back = list.TakeLast(BackLimit(), list.Append(here, backOf(state)))
+  end
+  s
+end
+
+defn Back(state)
+  (** Goes back to the place the last M-. or visit of a place left. *)
+  places = backOf(state)
+  if value.Len(places) == 0
+    return commands.Say("No place to go back to.", state)
+  end
+  p = list.Last(places)
+  s = commands.OpenFile(PathFor(absolute(p.Path), state), state)
+  s.Back = list.DropLast(1, places)
+  b = s.Buffers[s.Current]
+  if not value.IsMissing(b.Path) and absolute(b.Path) == absolute(p.Path)
+    s.Buffers[s.Current] = text.Place(p.Line, p.Column, b)
+  end
+  s
+end
+
+(* ---- Lists *)
+
+(** The path of a place as a list shows it: the one the lookup gave, from the root of the project. *)
+shownPath(p) = if value.IsText(dict.GetOr("Shown", missing, p)) p.Shown else p.Path end
+
+(** Enter in a list of places: the list closes and the place opens, kept to come back to. *)
+visitKeys() = {"enter": (item, s) -> if value.IsMissing(item) s else Visit(item, commands.ToBuffer(lists.Of(s.Buffers[s.Current]).Back, s)) end}
+
+defn placesShown(a, state)
+  (** Opens the list of the places that read a name: path:line:column and the words of the line, the definition first. *)
+  if value.Len(a.Places) == 0
+    return commands.Say("Nothing reads $(a.Name).", state)
+  end
+  rows = [{Words: "$(shownPath(p)):$(p.Line):$(p.Column + 1)  $(value.Text(dict.GetOr("Words", "", p)))", Item: {Path: p.Path, Line: p.Line, Column: p.Column},
+    Parts: [[color.Comment, "$(shownPath(p)):$(p.Line):$(p.Column + 1)  "], [color.Plain, value.Text(dict.GetOr("Words", "", p))]]} for p in a.Places]
+  how = if dict.GetOr("ByName", false, a) == true " (by name: a method)" else "" end
+  s = commands.ShowList("References of $(a.Name)", rows, visitKeys, state)
+  unread = dict.GetOr("Unread", [], a)
+  commands.Say("$(value.Len(rows)) places$how$(if value.IsArray(unread) and value.Len(unread) > 0 ", $(value.Len(unread)) files don't read" else "" end).", s)
+end
+
+defn docShown(a, state)
+  (** Opens the documentation of a name: its signature, its text, its examples and where it is defined, Enter going there. *)
+  d = dict.GetOr("Doc", missing, a)
+  if not value.IsDict(d) or not value.IsText(dict.GetOr("Signature", missing, d)) or not value.IsText(dict.GetOr("Text", missing, d))
+    return commands.Say("The lookup gave no documentation.", state)
+  end
+  at = dict.GetOr("Place", missing, d)
+  item = if isPlace(at) at else missing end
+  examples = [value.Text(x) for x in if value.IsArray(dict.GetOr("Examples", missing, d)) d.Examples else [] end]
+  words = list.Concat(list.Concat([[color.Name, d.Signature]], [[color.Plain, line] for line in str.Lines(d.Text)]), [[color.Comment, "  $x"] for x in examples])
+  where = if value.IsMissing(item) [] else [[color.Comment, "$(shownPath(item)):$(item.Line)"]] end
+  rows = [{Words: p[2], Parts: [p], Item: item} for p in list.Concat(words, where)]
+  commands.ShowList("Doc of $(value.Text(dict.GetOr("Name", "", d)))", rows, visitKeys, state)
+end
+
+(* ---- The signature *)
+
+defn signed(q, a, state)
+  (** The state with the signature on the prompt line, if the buffer and the cursor are still where it was asked and nothing else is said there. *)
+  b = state.Buffers[state.Current]
+  if not value.IsText(dict.GetOr("Signature", missing, a)) or not value.IsText(dict.GetOr("Text", missing, a)) or b.Path != q.Path or b.Version != q.Version
+    return state
+  end
+  if b.Cursor.Line != q.Line or b.Cursor.Column != q.Column or state.Message != "" or not value.IsMissing(state.Prompt)
+    return state
+  end
+  commands.Say(if a.Text == "" a.Signature else "$(a.Signature): $(a.Text)" end, state)
+end
+
+defn signedAt(state)
+  (** Where the last signature was asked, or missing: a state from before this field has none. *)
+  match state
+    {Signed: at} -> at
+    else -> missing
+  end
+end
+
+defn signable(state)
+  (** Is the cursor where a signature can be asked: a file of Cesia, nothing on the prompt line, no mark on the line, and in a call or on a name, at a place
+      not asked yet? *)
+  b = state.Buffers[state.Current]
+  if not askable(b) or state.Message != "" or not value.IsMissing(state.Prompt) or state.Pending != ""
+    return false
+  end
+  c = b.Cursor
+  at = signedAt(state)
+  if not value.IsMissing(at) and at.Path == b.Path and at.Version == b.Version and at.Line == c.Line and at.Column == c.Column
+    return false
+  end
+  line = rope.Line(c.Line, b.Rope)
+  before = if c.Column == 0 "" else str.Slice(1, list.Min(c.Column, value.Len(line)), line) end
+  value.Len([m for m in text.MarksOf(b) if m.Line == c.Line]) == 0 and (str.Contains("(", before) or wordHere(b) != "")
+end
+
+defn Idle(delay, state)
+  (** The state at a tick: the answer of the question asked, if it came, or else, once the cursor stayed still for delay seconds, the signature asked. *)
+  s = Finished(state)
+  if not value.IsMissing(asking(s)) or commands.Still(s) < delay or not signable(s)
+    return s
+  end
+  b = s.Buffers[s.Current]
+  s.Signed = {Path: b.Path, Version: b.Version, Line: b.Cursor.Line, Column: b.Cursor.Column}
+  ask("signature", s)
+end
+
+(** Do the names need ticks: a question waits for its answer? *)
+Moving(state) = not value.IsMissing(asking(state))
+
+defn Hooked(config)
+  (** A config with the hooks of the names over those it has: at each tick, its Idle then this one's, after its CheckDelay; it moves while either needs. *)
+  c = config
+  idle = dict.GetOr("Idle", s -> s, config)
+  moving = dict.GetOr("Moving", s -> false, config)
+  c.Idle = s -> Idle(config.CheckDelay(), idle(s))
+  c.Saved = dict.GetOr("Saved", s -> s, config)
+  c.Moving = s -> moving(s) or Moving(s)
+  c
+end
+
+(* ---- Rename *)
+
+defn renamed(q, a, state)
+  (** After the lookup gave the edits of a rename: asks for a yes, then makes them. *)
+  edits = dict.GetOr("Edits", missing, a)
+  if not arePlaces(edits, true) or not value.IsText(dict.GetOr("Name", missing, a)) or value.Len(edits) == 0
+    return commands.Say("The lookup gave no edits.", state)
+  end
+  count = value.Len(list.Unique([e.Path for e in edits]))
+  spans = [{Path: e.Path, Line: e.Line, Column: e.Column, End: e.End, Old: a.Name, Text: q.To} for e in edits]
+  commands.Confirm("Rename $(a.Name) to $(q.To) in $(value.Len(edits)) places of $count files? (y or n)",
+    (answer, s) -> if answer == "y" said("Renamed $(a.Name) to $(q.To)", Apply(spans, s)) else commands.Say("Not renamed.", s) end, state)
+end
+
+(** The state that Apply gave, with what it did said after the words. *)
+said(words, done) = commands.Say("$words: $(done.Words)", done.State)
+
+defn Apply(edits, state)
+  (** The state with edits made in the buffers of their files, each {Path, Line, Column, End, Old, Text}: a file not open opens; a buffer gets its edits as
+      one step of undo, and is saved after them if it was saved before, so that the disk holds the project as it reads now; one with changes of its own
+      stays unsaved. A file whose text no longer holds Old where an edit says is left as it is. {State, Words}: the state, and what was done. *)
+  back = state.Current
+  s = state
+  saved = 0
+  unsaved = 0
+  left = []
+  for p in list.Unique([e.Path for e in edits])
+    s = commands.OpenFile(PathFor(p, s), s)
+    b = s.Buffers[s.Current]
+    if value.IsMissing(b.Path) or absolute(b.Path) != absolute(p)
+      left = list.Append(p, left)
+    else
+      mine = [e for e in edits if e.Path == p]
+      if list.All([holds(e, b) for e in mine])
+        was = not text.IsModified(b)
+        s.Buffers[s.Current] = text.Replaced([{Line: e.Line, Column: e.Column, End: e.End, Text: e.Text} for e in mine], b)
+        if was and value.IsMissing(s.Prompt)
+          s = commands.Save(s)
+          saved += 1
+        else
+          unsaved += 1
+        end
+      else
+        left = list.Append(p, left)
+      end
+    end
+  end
+  s.Current = list.Min(back, value.Len(s.Buffers))
+  done = "$(saved) files saved$(if unsaved > 0 ", $unsaved left unsaved, with changes of their own" else "" end)$(if value.Len(left) > 0 ", $(value.Len(left)) changed since, left as they are" else "" end)"
+  {State: s, Words: "$done."}
+end
+
+defn holds(e, b)
+  (** Does a buffer hold the old words of an edit where it says? *)
+  if e.Line > rope.LineCount(b.Rope)
+    return false
+  end
+  line = rope.Line(e.Line, b.Rope)
+  e.End <= value.Len(line) and e.End - e.Column == value.Len(e.Old) and (e.Old == "" or str.Slice(e.Column + 1, e.End, line) == e.Old)
+end
