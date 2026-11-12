@@ -25,17 +25,15 @@ timeout -s KILL 60 cesia run --allow read,write,exec=cesia tests/check-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm,env=PWD tests/run-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/cells-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=git,env=PWD tests/project-check.ce
-timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=rm,env=PWD tests/names-check.ce
-timeout -s KILL 60 cesia run --allow read,write,exec=git,exec=rm,env=PWD tests/grep-check.ce
-timeout -s KILL 60 cesia run --allow read,write,exec=git,exec=rm,env=PWD tests/git-check.ce
 # C-c c r in a project of its own, made in a new folder, where cesia do finds its cesia.toml.
 root="$PWD"
 project=$(mktemp -d)
 (cd "$project" && timeout -s KILL 60 cesia run --allow read,write,exec=cesia,env=PWD "$root/tests/task-check.ce")
 rm -rf "$project"
-# C-c t in a project of its own, where cesia test runs and names the failures from the folder Cemacs started in.
+# The keys of src/ide in a project and a Git repository of their own, made in a new folder, where its programs run and cesia test names the failures from
+# the folder Cemacs started in.
 project=$(mktemp -d)
-(cd "$project" && timeout -s KILL 90 cesia run --allow read,write,exec=cesia,env=PWD "$root/tests/testing-check.ce")
+(cd "$project" && timeout -s KILL 180 cesia run --allow read,write,exec=cesia,exec=git,env=PWD "$root/tests/ide-check.ce" "$root")
 rm -rf "$project"
 trash=$(mktemp -d)
 XDG_DATA_HOME="$trash" timeout -s KILL 60 cesia run --allow read,write,env=HOME,env=PWD,env=XDG_DATA_HOME tests/folders-check.ce

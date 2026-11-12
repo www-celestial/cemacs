@@ -1,26 +1,12 @@
-(** Tests from the editor: C-c t t runs the test function the cursor is in, or else the tests of the folder of the file, C-c t a every test of the project,
-    and C-c t r the last ones again, from any buffer. They run through cesia test as a program runs, their output below the panes, which C-c c o lists and
-    goes from; once they end, each failure is a red mark on its line in the buffers of its file, which M-g n goes to and the next check keeps, until the tests
-    run again. cesia test gives the tests the permissions of [test] in cesia.toml, and no more. src/cemacs.ce adds the hooks of Hooked to the config and
-    these Keys. *)
-use core/commands
-use core/lists
-use core/run
-use core/text
-use src/folders
-use src/rope
+(** The tests for src/ide: what C-c t t tests, the test function the cursor is in, in a .test.ce file, or else the folder of the file, its package; and
+    the failures that cesia test wrote, as marks for the lines of their files. tools/testing.ce runs it for each question, with the read permission, so that
+    none of it loads at the start of the editor; the tests themselves run through cesia test, as a program of the editor runs, with the permissions that
+    [test] of cesia.toml gives them and no more. *)
 use std/dict
 use std/list
 use std/regex
-use std/sys
 use std/text as str
 use std/value
-
-(** The keys of the tests, a group of C-c: t for the test here, a for all of them, r for the last ones again. *)
-Keys() = {"C-c t": "test", "C-c t t": TestHere, "C-c t a": TestAll, "C-c t r": TestAgain}
-
-(** The tag of a run of tests, which tells it from a run of a program. *)
-tag() = "tests"
 
 defn TestAt(lines, line)
   (** The test function of a file that a line is in: the name of the nearest definition at the top of the file, at the line or above it, when it is a test,
@@ -39,105 +25,67 @@ defn TestAt(lines, line)
   missing
 end
 
-defn TargetOf(b)
-  (** What C-c t t tests for a buffer: path:isName for the test function the cursor is in, in a .test.ce file, or else the folder of the file, the package
-      with its tests; missing for a buffer that isn't a file of Cesia.
+defn Relative(p, pwd)
+  (** A path from the folder Cemacs started in, where cesia test runs, when it is inside it.
 
-        TargetOf(text.Of("isA() = true", "src/a/a.test.ce")) --> "src/a/a.test.ce:isA"
-        TargetOf(text.Of("x = 1", "src/a/a.ce")) --> "src/a"
-        TargetOf(text.Of("x = 1", "a.ce")) --> "." *)
-  if lists.IsList(b) or value.IsMissing(b.Path) or not str.EndsWith(".ce", b.Path)
+        Relative("/p/src/a.ce", "/p") --> "src/a.ce"
+        Relative("/q/a.ce", "/p") --> "/q/a.ce" *)
+  if str.StartsWith("$pwd/", p) str.Slice(value.Len(pwd) + 2, value.Len(p), p) else p end
+end
+
+defn TargetOf(p, words, line, pwd)
+  (** What C-c t t tests for a file at the path p, of these words, the cursor on a line: path:isName for the test function the cursor is in, in a .test.ce
+      file, or else the folder of the file, the package with its tests, from the folder pwd; missing for a file that isn't one of Cesia.
+
+        TargetOf("/p/src/a/a.test.ce", "isA() = true", 1, "/p") --> "src/a/a.test.ce:isA"
+        TargetOf("/p/src/a/a.ce", "x = 1", 1, "/p") --> "src/a"
+        TargetOf("/p/a.ce", "x = 1", 1, "/p") --> "." *)
+  if not str.EndsWith(".ce", p)
     return missing
   end
-  name = if str.EndsWith(".test.ce", b.Path) TestAt(str.Split("\n", rope.Slice(0, rope.LineEnd(b.Cursor.Line, b.Rope), b.Rope)), b.Cursor.Line) else missing end
+  name = if str.EndsWith(".test.ce", p) TestAt(str.Split("\n", words), line) else missing end
   if not value.IsMissing(name)
-    return "$(b.Path):$name"
+    return "$(Relative(p, pwd)):$name"
   end
-  cut = str.Split("/", b.Path)
-  if value.Len(cut) == 1 "." else str.Join("/", list.DropLast(1, cut)) end
+  dir = str.Join("/", list.DropLast(1, str.Split("/", p)))
+  if dir == pwd "." else Relative(dir, pwd) end
 end
 
-defn TestHere(state)
-  (** Runs the test function the cursor is in, in a .test.ce file, or else the tests of the folder of the file: its package, the examples of its
-      documentation and its tests. *)
-  target = TargetOf(state.Buffers[state.Current])
-  if value.IsMissing(target) commands.Say("Tests are those of a file of Cesia.", state) else tested(["test", target], state) end
-end
+defn Failures(lines, pwd)
+  (** The failures in the output of cesia test, run from the folder pwd, each {Path, Line, Message}: a line that starts with the path of a file of Cesia and
+      a line, and its words, with the first two lines under it that tell more.
 
-TestAll(state) = tested(["test"], state)   (** Runs every test of the project, as cesia test does. *)
-
-defn TestAgain(state)
-  (** Runs the last tests again, from any buffer. *)
-  match state
-    {LastTest: args} -> tested(args, state)
-    else -> commands.Say("No test ran yet: C-c t t runs those of the file.", state)
-  end
-end
-
-(** A buffer without the marks of the tests, those of the check kept. *)
-unmarked(b) = text.WithMarks([m for m in text.MarksOf(b) if dict.GetOr("Source", "", m) != "test"], b, note = text.MarksNoteOf(b))
-
-defn tested(args, state)
-  (** The state with cesia and args run as a run of tests, the marks of the last tests taken away. *)
-  s = state
-  s.Buffers = [unmarked(b) for b in state.Buffers]
-  s = commands.Launch(args, "Testing: cesia $(str.Join(" ", args))", s, tag = tag())
-  s.LastTest = args
-  s
-end
-
-defn Failures(lines)
-  (** The failures in the output of cesia test, each {Path, Line, Message}: a line that starts with the path of a file of Cesia and a line, and its words,
-      with the first two lines under it that tell more.
-
-        Failures(["src/a.test.ce:4: isA failed", "  f(1) == 2", "  | f(1) = 3", "  more", "1 passed, 1 failed"]) --> [{Path: "src/a.test.ce", Line: 4, Message: "isA failed  f(1) == 2  | f(1) = 3"}] *)
+        Failures(["src/a.test.ce:4: isA failed", "  f(1) == 2", "  | f(1) = 3", "  more", "1 passed, 1 failed"], "/p") --> [{Path: "/p/src/a.test.ce", Line: 4, Message: "isA failed  f(1) == 2  | f(1) = 3"}] *)
   out = []
   for k in 1..value.Len(lines)
     m = regex.Find("^([^ :][^:]*[.]ce):([0-9]+): (.*)$", lines[k])
     if not value.IsMissing(m)
       more = list.TakeWhile(l -> str.StartsWith("  ", l), list.Take(2, list.Skip(k, lines)))
-      out = list.Append({Path: m.Groups[1], Line: str.Number(m.Groups[2]), Message: str.Join("  ", list.Prepend(m.Groups[3], [str.Trim(l) for l in more]))}, out)
+      p = if str.StartsWith("/", m.Groups[1]) m.Groups[1] else "$pwd/$(m.Groups[1])" end
+      out = list.Append({Path: p, Line: str.Number(m.Groups[2]), Message: str.Join("  ", list.Prepend(m.Groups[3], [str.Trim(l) for l in more]))}, out)
     end
   end
   out
 end
 
-defn Marked(failures, pwd, state)
-  (** The state with each failure a red mark on its line, in the buffers of its file, the paths read from the folder pwd, where cesia test ran. *)
-  s = state
-  for k in 1..value.Len(s.Buffers)
-    b = s.Buffers[k]
-    if not value.IsMissing(b.Path) and not lists.IsList(b)
-      here = folders.Absolute(b.Path, pwd)
-      mine = [f for f in failures if folders.Absolute(f.Path, pwd) == here and f.Line <= rope.LineCount(b.Rope)]
-      if value.Len(mine) > 0
-        marks = [{Line: f.Line, Column: 0, End: list.Max(1, text.LineWidth(f.Line, b)), Severity: "error", Message: f.Message, Hint: missing, Source: "test"} for f in mine]
-        s.Buffers[k] = text.WithMarks(list.SortBy(m -> m.Line * 1000000 + m.Column, list.Concat(text.MarksOf(b), marks)), b, note = text.MarksNoteOf(b))
-      end
-    end
-  end
-  s
-end
+(* ---- Questions, in the words of src/ide *)
 
-defn Idle(state)
-  (** The state at a tick: once a run of tests has ended, its failures marked, and its count said, as cesia test ends: 3 passed, 1 failed. *)
-  r = state.Run
-  if value.IsMissing(r) or dict.GetOr("Tag", missing, r) != tag() or not r.Ended or dict.GetOr("Marked", false, r)
-    return state
+defn Answered(q)
+  (** The answer to a question of src/ide: Do here and all ask src/ide to run cesia test, on the target of the cursor or on the whole project, and to send
+      its output, once it ends, with Do ended, whose answer marks each failure and says the count. *)
+  if not value.IsDict(q) or not value.IsText(dict.GetOr("Do", missing, q)) or not value.IsText(dict.GetOr("Pwd", missing, q))
+    return {Error: "A question needs Do and a Pwd."}
   end
-  lines = run.Lines(r)
-  s = Marked(Failures(lines), sys.Env("PWD"), state)
-  s.Run.Marked = true
-  counted = list.Last([l for l in lines if regex.Test("^[0-9]+ passed, [0-9]+ failed", l)])
-  commands.Say(if value.IsMissing(counted) "The tests ended: $(r.Status)." else counted end, s)
-end
-
-defn Hooked(config)
-  (** A config with the hook of the tests over those it has: at each tick, its Idle then this one's. *)
-  c = config
-  idle = dict.GetOr("Idle", s -> s, config)
-  c.Idle = s -> Idle(idle(s))
-  c.Saved = dict.GetOr("Saved", s -> s, config)
-  c.Moving = dict.GetOr("Moving", s -> false, config)
-  c
+  ended = {Program: "testing", Do: "ended"}
+  if q.Do == "here"
+    target = if value.IsText(dict.GetOr("Path", missing, q)) TargetOf(q.Path, value.Text(dict.GetOr("Text", "", q)), dict.GetOr("Line", 1, q), q.Pwd) else missing end
+    return if value.IsMissing(target) {Say: "Tests are those of a file of Cesia."} else {Run: {Args: ["test", target], Words: "Testing: cesia test $target", Then: ended}} end
+  else if q.Do == "all"
+    return {Run: {Args: ["test"], Words: "Testing: cesia test", Then: ended}}
+  else if q.Do == "ended"
+    lines = [value.Text(l) for l in if value.IsArray(dict.GetOr("Lines", missing, q)) q.Lines else [] end]
+    counted = list.Last([l for l in lines if regex.Test("^[0-9]+ passed, [0-9]+ failed", l)])
+    return {Marks: Failures(lines, q.Pwd), Say: if value.IsMissing(counted) "The tests ended without their count." else counted end}
+  end
+  {Error: "Unknown question: $(q.Do)."}
 end

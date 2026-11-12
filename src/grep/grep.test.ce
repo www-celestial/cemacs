@@ -1,35 +1,21 @@
-(** Tests of the search of a project, without git: what git answered, as a list or a message. tests/grep-check.ce runs the real git grep. *)
+(** Tests of the search of a project, without git: the questions it asks and the edits of a replace. tests/ide-check.ce runs the real git grep. *)
 use src/grep
-use src/rope
-use src/ui
-use core/lists
-use core/text
-use core/view
-use std/fiber
-use std/result
+use std/dict
 use std/text as str
 use std/value
 
-look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
-cell = {Width: 8, Height: 19}
-
-defn answered(given)
-  (** A state whose search of total under /p has ended with what git gave. *)
-  s = view.Start([text.Of("x", "/p/a.ce")], look, cell, 800, 600)
-  ch = fiber.Channel()
-  fiber.Send(given, ch)
-  s.Grepping = {Channel: ch, Root: "/p", Words: "total"}
-  grep.Finished(s)
-end
-
 zero = str.FromBytes([0])
-here(state) = state.Buffers[state.Current]
 
-defn isListed()
-  s = answered(result.Ok({Code: 0, Out: str.Join(zero, ["a.ce", "3", "5", "x = total\n"]), Err: ""}))
-  lists.IsList(here(s)) and rope.Text(here(s).Rope) == "a.ce:3:5  x = total" and not grep.Moving(s)
+isAskedWithTheName() = value.Equal(grep.Answered({Do: "search", Folder: "/p", Text: "x = price + 1", Line: 1, Column: 6}).Ask, {Label: "Search project: ", Answer: "price",
+  Then: {Program: "grep", Do: "search"}})
+isNoWordsSaid() = grep.Answered({Do: "search", Folder: "/p", Answer: ""}).Say == "No words to search."
+isWrongLinesLeftOut() = value.Len(grep.Places("/p", "a.ce:3:5:x\n$(str.Join(zero, ["a.ce", "0", "1", "x"]))\n")) == 0
+items = [{Path: "/p/a.ce", Line: 1, Column: 0}, {Path: "/p/a.ce", Line: 2, Column: 4}]
+isReplaceAsks() = grep.Answered({Do: "replace", Folder: "/p", Words: "price", Items: items}).Ask.Label == "Replace price with: "
+
+defn isReplaceConfirms()
+  a = grep.Answered({Do: "replace", Folder: "/p", Words: "price", Items: items, Answer: "cost", Texts: {"/p/a.ce": "price = 1\nx = Price + price\nprice"}})
+  a.Confirm.Label == "Replace 3 places of price in 1 files with cost? (y or n)" and value.Len(a.Confirm.Yes.Edits) == 3 and a.Confirm.Yes.Edits[2].Old == "Price"
 end
 
-isNoLineSaid() = answered(result.Ok({Code: 1, Out: "", Err: ""})).Message == "No line of the project holds total."
-isFailureSaid() = answered(result.Ok({Code: 128, Out: "", Err: "fatal: bad\n"})).Message == "git grep failed: fatal: bad"
-isWrongLinesLeftOut() = value.Len(grep.Places("/p", "a.ce:3:5:x\n$(str.Join(zero, ["a.ce", "0", "1", "x"]))\n")) == 0
+isReplaceOfNothingSaid() = dict.Has("Say", grep.Answered({Do: "replace", Folder: "/p", Words: "zz", Items: items, Answer: "y", Texts: {"/p/a.ce": "a\nb"}}))

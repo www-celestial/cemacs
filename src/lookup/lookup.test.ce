@@ -126,11 +126,25 @@ end
 isSignatureOfStd() = lookup.Signature("$(project())/src/app/app.ce", 6, 11, {}).Signature == "io.Print(...)"
 isNoSignatureOutsideACall() = value.Equal(lookup.Signature("$(project())/src/app/app.ce", 7, 1, {}), {})
 
-isAnswerChecksTheQuestion() = list.All([dict.Has("Error", lookup.Answer(q)) for q in [1, {Do: "doc"}, {Do: "doc", Path: "a.ce", Line: 1, Column: 0, Texts: {}},
-  {Do: "doc", Path: "/a.ce", Line: 0, Column: 0, Texts: {}}, {Do: "doc", Path: "/a.ce", Line: 1, Column: 0, Texts: {"/a.ce": 3}}, {Do: "nothing", Path: "/a.ce", Line: 1, Column: 0, Texts: {}}]])
+isAnswerChecksTheQuestion() = list.All([dict.Has("Error", lookup.Answered(q)) for q in [1, {Do: "doc"}, {Do: "doc", Path: "a.ce", Line: 1, Column: 0, Texts: {}},
+  {Do: "doc", Path: "/a.txt", Line: 1, Column: 0, Texts: {}}, {Do: "doc", Path: "/a.ce", Line: 0, Column: 0, Texts: {}}, {Do: "doc", Path: "/a.ce", Line: 1, Column: 0, Texts: {"/a.ce": 3}},
+  {Do: "nothing", Path: "/a.ce", Line: 1, Column: 0, Texts: {}}]])
 
-defn isAnswerOfARename()
+defn isRenameAsksThenConfirms()
   root = project()
-  got = lookup.Answer({Do: "rename", Path: "$root/src/shop/shop.ce", Line: 6, Column: 7, Texts: {}, To: "Sum"})
-  got.Files == 3
+  q = {Do: "rename", Path: "$root/src/shop/shop.ce", Line: 6, Column: 7, Texts: {}}
+  first = lookup.Answered(q)
+  second = lookup.Answered(dict.Merge(q, {Answer: "Sum"}))
+  first.Ask.Label == "Rename Total to: " and second.Confirm.Label == "Rename Total to Sum in 5 places of 3 files? (y or n)" and value.Len(second.Confirm.Yes.Edits) == 5
+end
+
+defn isDefinitionOpens()
+  root = project()
+  value.Equal(lookup.Answered({Do: "definition", Path: "$root/src/app/app.ce", Line: 6, Column: 17, Texts: {}}).Open, {Path: "$root/src/shop/shop.ce", Line: 6, Column: 5})
+end
+
+defn isReferencesListed()
+  root = project()
+  a = lookup.Answered({Do: "references", Path: "$root/src/shop/shop.ce", Line: 4, Column: 0, Texts: {}})
+  a.List.Rows[1].Words == "src/shop/shop.ce:4:1  Rate = 20   (** The tax, in percent. *)" and a.Say == "3 places." and a.List.Keys["enter"] == "open"
 end

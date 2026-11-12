@@ -1,4 +1,4 @@
-(** The program that answers a question of Cemacs about names: src/names runs it as cesia run --allow read tools/lookup.ce, from a fiber, writes the
+(** The program that answers a question of Cemacs about names: src/ide runs it as cesia run --allow read tools/lookup.ce, from a fiber, writes the
     question in JSON on its input and reads the answer in JSON on its output, one line, after which it ends. It reads files and nothing else: src/lookup
     does the work, which none of the editor loads at its start. *)
 use src/lookup
@@ -17,7 +17,7 @@ defn main()
   if result.IsErr(q)
     return {Error: "The question isn't JSON."}
   end
-  lookup.Answer(q.Value)
+  lookup.Answered(q.Value)
 end
 
 io.Print(json.Text(main()))

@@ -3,7 +3,8 @@
 A name of Cesia code, as `shop.Total`, `Rate` or `list.Map`, leads somewhere: to its *definition*, the line that gives it
 its value, and from there to its *references*, every place that reads it. Cemacs goes to both, shows the documentation of a
 name, tells the *signature* of the call you are typing, its name and its parameters, and renames a name in every file that
-reads it. The names are an app of Cemacs, [src/names]; the work is done by [src/lookup], in a program of its own.
+reads it. These keys are those of [src/ide], which asks a program of Cemacs at each key, as [How the IDE asks](#how-the-ide-asks) tells: here
+[src/lookup], through `tools/lookup.ce`.
 
 ```cesia norun
 (** A shop. *)
@@ -28,11 +29,11 @@ code of `C-c` has them too, with the documentation and the rename:
 
 | Keys | Command | What it does |
 |---|---|---|
-| `M-.`, `C-c c d` | [names.Definition] | goes to the definition of the name at the cursor; a name of Cesia's own `std/` shows its documentation |
-| `M-,`, `C-c c b` | [names.Back] | goes back to the place the last `M-.`, or a place opened from a list of places, left |
-| `M-?`, `C-c c f` | [names.References] | lists every place of the project that reads the name at the cursor |
-| `C-c c i` | [names.Documentation] | shows the signature, the text and the examples of the name at the cursor |
-| `C-c c m` | [names.Rename] | renames the name at the cursor everywhere the project reads it (m as in move, the word of `cesia pkg move`) |
+| `M-.`, `C-c c d` | [ide.Definition] | goes to the definition of the name at the cursor; a name of Cesia's own `std/` shows its documentation |
+| `M-,`, `C-c c b` | [ide.Back] | goes back to the place the last `M-.`, or a place opened from a list of places, left |
+| `M-?`, `C-c c f` | [ide.References] | lists every place of the project that reads the name at the cursor |
+| `C-c c i` | [ide.Documentation] | shows the signature, the text and the examples of the name at the cursor |
+| `C-c c m` | [ide.Rename] | renames the name at the cursor everywhere the project reads it (m as in move, the word of `cesia pkg move`) |
 
 On a keyboard where `?` is Shift and `/`, `M-?` arrives as `M-S-/`, which is bound to the same command. The places to go
 back to are kept as a stack, the last 100 of them: `M-,` again goes further back.
@@ -105,21 +106,49 @@ A method or a field can't be renamed, since its calls can't be told from those o
 name of `std/`, nor one in a file that doesn't read, which would leave its places as they were. A file whose text changed
 between the question and the yes, where an edit no longer finds the old name, is left as it is, and the prompt line says so.
 
-## The lookup, a program of its own
+## How the IDE asks
 
-Each question runs `cesia run --allow read tools/lookup.ce`, with the question in JSON on its input: what to find, the path
-and the place of the name, and the texts of the buffers not saved. [src/lookup] answers on the output, one line of JSON,
-and the program ends. The question waits in a fiber, as the check does, and each tick of the editor takes the answer when it
-has come, so that typing never waits; a new question takes the place of one not answered yet. So none of this code loads when
-Cemacs starts: every line of Cesia that loads at the start costs about 5 µs, and src/lookup has 800.
+The keys of this chapter, those of [the search of a project](search.md#searching-a-project), of [Git](git.md) and of
+[the tests](running.md#tests) are all those of one app, [src/ide], which does none of their work itself: each key asks a
+program of Cemacs, run by `cesia run` at that moment, and does what its answer says. The question goes in JSON on the
+program's input: what to do, the file of the current buffer, its text and the place of the cursor, the folder Cemacs started
+in, and the texts of the Cesia buffers not saved. The answer comes back as one line of JSON on its output, in a few words
+that src/ide knows:
+
+| Word | What src/ide does |
+|---|---|
+| `Say` | says the words on the prompt line |
+| `Open` | goes to a place, `{Path, Line, Column}`, keeping the place left for `M-,` |
+| `List` | opens a list of rows, each with its words, its colours and the item it stands for; a key of the list, as Enter, goes to the place of the item or asks the program again with it; in the state of Git, a letter asks it |
+| `Ask` | asks a question on the prompt line, then asks the program again with the answer |
+| `Confirm` | asks for a yes, then makes the edits that come with it |
+| `Edits` | makes edits in buffers, as a rename does |
+| `Signature` | shows the signature of a call, if the cursor is still where it was asked |
+| `Run` | runs `cesia test`, and sends its output to the program once it ends |
+| `Marks` | puts the marks of failures in the lines of their files |
+
+| Program | Its work | Its permissions |
+|---|---|---|
+| `tools/lookup.ce` | [src/lookup]: the names of this chapter | `read` |
+| `tools/grep.ce` | [src/grep]: the search of a project | `read`, `exec=git` |
+| `tools/git.ce` | [src/git]: Git | `read`, `exec=git` |
+| `tools/testing.ce` | [src/testing]: what a key tests, the failures | `read` |
+
+The question waits in a fiber, as the check does, and each tick of the editor takes the answer once it has come, so that
+typing never waits; a new question takes the place of one not answered yet. So none of this work loads when Cemacs starts:
+every line of Cesia that loads at the start costs about 5 µs, more as the code grows, and the four programs and their
+packages hold about 2,000 lines, which would add over 8 ms to each start. A question costs a process instead, about 15 ms to
+start and load, then its work.
 
 ## Security
 
 - The lookup runs no code: it reads files, and asks `cesia.Definitions`, `cesia.Reads` and `cesia.DocEntry`, which parse and
   resolve without running anything. Its only permission is `read`: it can't write, connect, or start a program.
-- Its answer is read as input from another program: every place is checked, a path from the root, a line from 1, a column
-  from 0 and an end after it, 10,000 places at most, before a file is opened or a buffer changed; a wrong answer is a
-  message.
+- Each program runs with the permissions of the table above, which src/ide gives it; an answer can't ask for others, nor
+  name a program that isn't in the table: a request of an answer that does is refused.
+- An answer is read as input from another program: every place is checked, a path from the root, a line from 1, a column
+  from 0 and an end after it, every list, row and edit is checked for its shape, 20,000 at most, before a file is opened or a
+  buffer changed; a wrong answer is a message. Only the program of the tests may ask for a run, and only of `cesia test`.
 - A rename edits buffers, never files behind them: each edit is checked against the text of its buffer, a buffer with
   changes of its own is never saved by it, and a file that changed on disk asks before it is written, as `C-x C-s` does.
 - The lookup reads no file over 1 MB, at most 20,000 files of a project, and the files of the folders that a project keeps

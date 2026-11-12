@@ -92,7 +92,6 @@ These are the messages of the commands, in the order of the chapters. A message 
 
 | Message | What happened |
 |---|---|
-| `Searching NAME for WORDS...` | `C-x p g` started git grep in the repository NAME |
 | `N lines. C-c r replaces in those shown.` | the list of the search; `, the first 10000 only` when it was cut there |
 | `No line of the project holds WORDS.` | git grep found nothing |
 | `No words to search.` | Enter on an empty answer |
@@ -147,9 +146,12 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `N places.`, `N places (by name: a method).` | the list of `M-?`; a method is found by name, every `.NAME` of the project: [Names](names.md#the-references) |
 | `..., N files don't read.` | some files of the project don't read, so their places aren't listed: open them, the check shows why |
 | `Nothing reads NAME.` | the name is defined, and nothing reads it |
-| `The lookup failed: WORDS` | `tools/lookup.ce` didn't answer in JSON, or ended with an error: WORDS is the first line it wrote |
-| `cesia can't run the lookup: REASON` | `cesia` couldn't start: is it on the `PATH`? |
-| `The lookup gave no places.`, `... no documentation.`, `... no edits.` | the answer of the lookup wasn't of the shape Cemacs reads, which it checks before it opens a file |
+| `The program failed: WORDS` | a program of [src/ide](names.md#how-the-ide-asks) didn't answer in JSON, or ended with an error: WORDS is the first line it wrote |
+| `cesia can't run: REASON` | `cesia` couldn't start: is it on the `PATH`? |
+| `The program gave no place.`, `... no list.`, `... no edits.`, `... no marks.`, `The program asked nothing.` | the answer wasn't of the shape src/ide reads, which it checks before it opens a file or changes a buffer |
+| `The program asked a run that isn't one of tests.` | an answer asked to run something else than `cesia test`, or came from another program than the one of the tests: refused |
+| `No program answers NAME.` | a question named a program that src/ide doesn't run |
+| `No name.` | Enter on an empty answer to `Rename NAME to: ` |
 | `NAME is a method: its calls ... can't be told from those of other methods of the name.` | a method or a field can't be renamed |
 | `NEW is not a name: a letter, then letters and digits.` | the new name of a rename has another character, or is a word of Cesia |
 | `NEW would be public: ...`, `NEW would be private: ...` | a rename keeps the case of the first letter, which says in Cesia whether a name is public |
@@ -176,7 +178,7 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `The program isn't stopped.` | `C-c d c`, `n`, `s` or `u` while the program runs: they go on from a stop only |
 | `Testing: cesia test TARGET` | `C-c t t`, `C-c t a` or `C-c t r` started the tests: [Running and debugging](running.md#tests) |
 | `N passed, M failed` | the tests ended; each failure is a mark in the lines of its file |
-| `The tests ended: ended, code N.` | the tests ended without the count of `cesia test`, as when `C-c c k` stopped them |
+| `The tests ended without their count.` | the tests ended without the count of `cesia test`, as when `C-c c k` stopped them |
 | `Tests are those of a file of Cesia.` | `C-c t t` in a buffer that isn't a `.ce` file |
 | `No test ran yet: C-c t t runs those of the file.` | `C-c t r` before any test ran |
 | `cesia test doesn't run: REASON` | `cesia` couldn't start: is it on the `PATH`? |

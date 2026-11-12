@@ -3,16 +3,17 @@
 Git keeps the history of a project: each *commit* is a state of its files with a message, and the *index*, which Git also
 calls the staging area, holds what the next commit will take. Cemacs has a small part of what Magit, the Git client of
 Emacs, does: the state of the repository, where one letter stages a file, unstages it or commits, the log, a commit, the
-diff of a file and the commit of each line. Git is an app of Cemacs, [src/git].
+diff of a file and the commit of each line. These keys are those of [src/ide], which asks `tools/git.ce`, with [src/git],
+at each key: [Names](names.md#how-the-ide-asks) tells how.
 
 ## Keys
 
 | Keys | Command | What it does |
 |---|---|---|
-| `C-x g`, `C-c g g` | [git.Status] | lists the state of the repository of the file: its branch, then the files staged, changed and new |
-| `C-c g l` | [git.Log] | lists the last 500 commits, the last first; Enter shows one |
-| `C-c g b` | [git.Blame] | lists the lines of the buffer, each with the commit that last changed it and its author |
-| `C-c g d` | [git.Diff] | shows what changed in the file of the buffer, as saved, since what is staged of it |
+| `C-x g`, `C-c g g` | [ide.Status] | lists the state of the repository of the file: its branch, then the files staged, changed and new |
+| `C-c g l` | [ide.Log] | lists the last 500 commits, the last first; Enter shows one |
+| `C-c g b` | [ide.Blame] | lists the lines of the buffer, each with the commit that last changed it and its author |
+| `C-c g d` | [ide.Diff] | shows what changed in the file of the buffer, as saved, since what is staged of it |
 
 `C-x g` is the key of Magit, and `C-c g g` the place of Git in Doom Emacs, `SPC g g`. The repository is the one that holds
 the file of the current buffer, or the folder where Cemacs started.

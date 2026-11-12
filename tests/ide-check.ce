@@ -1,0 +1,211 @@
+(** Checks of src/ide against its real programs, tools/lookup.ce, tools/grep.ce, tools/git.ce and tools/testing.ce, run by cesia, in a project and a Git
+    repository made in the folder the script runs from, a new one: names, the search of the project, Git, and tests. It is a script, not a test file: it
+    needs permissions. tests/run.sh runs it from a new folder, with cesia run --allow read,write,exec=cesia,exec=git,env=PWD and the folder of Cemacs as its
+    argument. It prints ok at the end and stops at the first failure. *)
+use src/check
+use src/emacs
+use src/ide
+use src/output
+use src/rope
+use src/ui
+use core/commands
+use core/lists
+use core/press
+use core/run
+use core/text
+use core/view
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn expect(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+keysOf() = dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), check.Keys()), output.Keys()), ide.Keys())
+ideConfig() = ide.Hooked(emacs.Config(keysOf))
+here(state) = state.Buffers[state.Current]
+rows(state) = str.Lines(rope.Text(here(state).Rope))
+pwd = sys.Env("PWD")
+
+defn answered(state)
+  (** The state after ticks, until the question asked has its answer, or 20 seconds have gone. *)
+  s = state
+  waited = 0.0
+  while ide.Moving(s) and waited < 20.0
+    sys.Sleep(0.02)
+    waited += 0.02
+    s = commands.Update({Kind: "tick", Seconds: 0.02}, s)
+  end
+  expect(not ide.Moving(s), "an answer within 20 seconds: $(s.Message)")
+  s
+end
+
+defn tested(state)
+  (** The state after ticks, until the run of tests has ended and its failures are marked, or 60 seconds have gone. *)
+  s = answered(state)
+  waited = 0.0
+  while not value.IsMissing(s.Run) and not s.Run.Ended and waited < 60.0
+    sys.Sleep(0.05)
+    waited += 0.05
+    s = commands.Update({Kind: "tick", Seconds: 0.05}, s)
+  end
+  expect(not value.IsMissing(s.Run) and s.Run.Ended, "the tests end within 60 seconds")
+  answered(s)
+end
+
+defn git(args)
+  (** git here, which must work: its output. *)
+  ran = result.Unwrap(sys.Run("git", args))
+  expect(ran.Code == 0, "git $(str.Join(" ", args)): $(ran.Err)")
+  ran.Out
+end
+
+result.Unwrap(sys.Mkdir("src/shop"))
+result.Unwrap(sys.Mkdir("src/app"))
+result.Unwrap(sys.Write("cesia.toml", "[project]\nname = \"p\"\nsrc = [\"src\"]\n"))
+result.Unwrap(sys.Write("src/shop/shop.ce", "(** A shop. *)\nuse std/list\n\nRate = 20   (** The tax, in percent. *)\n\ndefn Total(prices)\n  (** The total of prices, with the tax. *)\n  sum = list.Reduce((a, b) -> a + b, 0, prices)\n  sum + sum * Rate / 100\nend\n"))
+result.Unwrap(sys.Write("src/shop/shop.test.ce", "isTotal() = Total([100]) == 120   (** The tax is added. *)\n\ndefn isWrong()\n  Total([1]) == 5\nend\n"))
+result.Unwrap(sys.Write("src/app/app.ce", "use src/shop\nuse std/io\n\ndefn Main()\n  (** Prints the total. *)\n  io.Print(shop.Total([1, 2]))\nend\n"))
+_ = git(["init", "-q", "-b", "main"])
+_ = git(["config", "user.email", "t@example.com"])
+_ = git(["config", "user.name", "Tester"])
+_ = git(["add", "."])
+_ = git(["commit", "-q", "-m", "first"])
+
+start = view.Start([text.Of("", missing)], look, cell, 800, 600)
+start.Config = ideConfig
+start.Home = sys.Args[1]
+opened = commands.OpenFile("src/app/app.ce", start)
+opened.Buffers[opened.Current] = text.Place(6, 17, here(opened))
+
+(* ---- Names: M-. and M-, *)
+there = answered(press.Press(["M-."], opened))
+expect(here(there).Path == "src/shop/shop.ce" and here(there).Cursor.Line == 6 and here(there).Cursor.Column == 5, "M-. goes to Total: $(here(there).Path) $(here(there).Cursor) $(there.Message)")
+back = press.Press(["M-,"], there)
+expect(here(back).Path == "src/app/app.ce" and here(back).Cursor.Line == 6 and here(back).Cursor.Column == 17, "M-, comes back: $(here(back).Cursor)")
+expect(press.Press(["M-,"], back).Message == "No place to go back to.", "the stack ends")
+expect(here(answered(press.Press(["C-c", "c", "d"], opened))).Path == "src/shop/shop.ce", "C-c c d is M-.")
+
+(* M-? lists the places that read Total, the definition first; Enter goes to one. *)
+listed = answered(press.Press(["M-?"], opened))
+expect(lists.IsList(here(listed)) and value.Len(rows(listed)) == 4 and listed.Message == "4 places.", "four places read Total: $(rows(listed)) $(listed.Message)")
+expect(rows(listed)[1] == "src/shop/shop.ce:6:6  defn Total(prices)", "the definition first: $(rows(listed)[1])")
+gone = press.Press(["M->", "enter"], listed)
+expect(here(gone).Path == "src/app/app.ce" and here(gone).Cursor.Line == 6 and here(gone).Cursor.Column == 16 and list.Count(lists.IsList, gone.Buffers) == 0, "Enter goes to a place: $(here(gone).Cursor)")
+
+(* C-c c i shows the documentation, here of io.Print. *)
+doc = opened
+doc.Buffers[doc.Current] = text.Place(6, 5, here(doc))
+shown = answered(press.Press(["C-c", "c", "i"], doc))
+expect(lists.IsList(here(shown)) and rows(shown)[1] == "io.Print(...)", "the doc of io.Print: $(rows(shown)) $(shown.Message)")
+
+(* Once the cursor stays still in a call, the prompt line shows its signature, asked once for a place. *)
+typing = press.Press(["M->", "x = shop.Total("], opened)
+asked = commands.Update({Kind: "tick", Seconds: 0.6}, typing)
+expect(ide.Moving(asked), "the signature is asked once the cursor stays still")
+signed = answered(asked)
+expect(signed.Message == "Total(prices): The total of prices, with the tax.", "the signature: $(signed.Message)")
+expect(not ide.Moving(commands.Update({Kind: "tick", Seconds: 0.6}, signed)), "asked once for a place")
+
+(* A buffer not saved counts: Total two lines lower in it is found there. *)
+moved = commands.OpenFile("src/shop/shop.ce", opened)
+moved.Buffers[moved.Current] = text.InsertWords("\n\n", text.Place(1, 0, here(moved)))
+moved.Current = 2
+found = answered(press.Press(["M-."], moved))
+expect(here(found).Path == "src/shop/shop.ce" and here(found).Cursor.Line == 8, "the text not saved: $(here(found).Cursor)")
+
+(* ---- The search of the project, before the rename changes the words. *)
+search = answered(press.Press(["C-x", "p", "g"], opened))
+expect(search.Prompt.Label == "Search project: " and search.Prompt.Answer == "Total", "the question, with the name at the cursor: $(search.Prompt)")
+lines = answered(press.Press(["enter"], search))
+expect(lists.IsList(here(lines)) and value.Len(rows(lines)) == 4 and str.StartsWith("src/app/app.ce:6:17  ", rows(lines)[1]) and rows(lines)[2] == "src/shop/shop.ce:6:6  defn Total(prices)",
+  "the lines: $(rows(lines)) $(lines.Message)")
+folded = answered(press.Press(["backspace", "backspace", "backspace", "backspace", "backspace", "rate", "enter"], answered(press.Press(["C-c", "s", "p"], opened))))
+expect(value.Len(rows(folded)) == 2, "lower case folds the case: $(rows(folded))")
+none = answered(press.Press(["nowhere", "enter"], answered(press.Press(["C-x", "p", "g"], opened))))
+expect(none.Message == "No line of the project holds Totalnowhere.", "no line: $(none.Message)")
+replace = answered(press.Press(["shop.test", "C-c", "r"], lines))
+expect(replace.Prompt.Label == "Replace Total with: ", "the question of the replace: $(replace.Prompt)")
+sure = answered(press.Press(["Whole", "enter"], replace))
+expect(sure.Prompt.Label == "Replace 3 places of Total in 1 files with Whole? (y or n)", "only the lines shown: $(sure.Prompt.Label)")
+expect(press.Press(["n"], sure).Message == "Not replaced.", "n replaces nothing")
+
+(* ---- C-c c m renames Total to Sum in the three files, after the new name and a yes, and saves them. *)
+named = answered(press.Press(["C-c", "c", "m"], opened))
+expect(named.Prompt.Label == "Rename Total to: ", "the question of the name: $(named.Prompt) $(named.Message)")
+renamed = answered(press.Press(["Sum", "enter"], named))
+expect(renamed.Prompt.Label == "Rename Total to Sum in 4 places of 3 files? (y or n)", "the yes: $(renamed.Prompt) $(renamed.Message)")
+done = press.Press(["y"], renamed)
+expect(str.StartsWith("Renamed Total to Sum: 3 files saved.", done.Message), "renamed: $(done.Message)")
+for p in ["src/app/app.ce", "src/shop/shop.ce", "src/shop/shop.test.ce"]
+  words = result.Unwrap(sys.Read(p))
+  expect(str.Contains("Sum", words) and not str.Contains("Total([", words) and not str.Contains("defn Total", words), "$p renamed on the disk: $words")
+end
+refused = answered(press.Press(["sum", "enter"], answered(press.Press(["C-c", "c", "m"], done))))
+expect(str.Contains("private", refused.Message), "a public name stays public: $(refused.Message)")
+
+(* ---- Git: the state, its letters, a commit, the log, a commit shown, a blame of a buffer not saved, the diff of a file. *)
+result.Unwrap(sys.Write("--oops.ce", "z = 1\n"))
+status = answered(press.Press(["C-x", "g"], done))
+expect(lists.IsList(here(status)) and value.Equal(list.Skip(1, rows(status)), ["changed   src/app/app.ce", "changed   src/shop/shop.ce", "changed   src/shop/shop.test.ce",
+  "new       --oops.ce"]), "the state: $(rows(status)) $(status.Message)")
+expect(str.StartsWith("On main    s stage", rows(status)[1]), "the first row: $(rows(status)[1])")
+expect(answered(press.Press(["x"], status)).Message == "s stage  u unstage  c commit  d diff  l log  g refresh  Enter open", "another letter says them")
+staged = answered(press.Press(["M->", "s"], status))
+expect(rows(staged)[2] == "staged    --oops.ce" and staged.Message == "Staged --oops.ce.", "a name that reads as an option is staged: $(rows(staged)) $(staged.Message)")
+unstaged = answered(press.Press(["u"], answered(press.Press(["M-<", "down"], staged))))
+expect(list.Last(rows(unstaged)) == "new       --oops.ce", "unstaged: $(rows(unstaged))")
+all = answered(press.Press(["down", "s"], answered(press.Press(["down", "s"], answered(press.Press(["down", "s"], answered(press.Press(["M-<", "down", "s"], unstaged))))))))
+expect(value.Len([r for r in rows(all) if str.StartsWith("staged", r)]) == 4, "all staged: $(rows(all))")
+diff = answered(press.Press(["M-<", "down", "down", "d"], all))
+expect(lists.IsList(here(diff)) and list.Any([str.StartsWith("+", r) and not str.StartsWith("+++", r) for r in rows(diff)]), "the diff: $(rows(diff)) $(diff.Message)")
+message = answered(press.Press(["c"], all))
+expect(message.Prompt.Label == "Commit message: ", "the question of the message: $(message.Prompt)")
+committed = answered(press.Press(["--amend", "enter"], message))
+expect(committed.Message == "Committed: --amend" and value.Len(rows(committed)) == 1, "committed, a message that reads as an option: $(committed.Message) $(rows(committed))")
+expect(git(["log", "--format=%s"]) == "--amend\nfirst\n", "two commits: $(git(["log", "--format=%s"]))")
+log = answered(press.Press(["l"], committed))
+expect(value.Len(rows(log)) == 2 and str.EndsWith("Tester  --amend", rows(log)[1]), "the log: $(rows(log))")
+commit = answered(press.Press(["enter"], log))
+expect(lists.IsList(here(commit)) and list.Any([str.Contains("--oops.ce", r) for r in rows(commit)]), "the commit: $(rows(commit))")
+edited = commands.OpenFile("src/app/app.ce", done)
+edited.Buffers[edited.Current] = text.InsertWords("w = 0\n", text.Place(1, 0, here(edited)))
+blame = answered(press.Press(["C-c", "g", "b"], edited))
+expect(lists.IsList(here(blame)) and value.Len(rows(blame)) == 8 and str.StartsWith("00000000", rows(blame)[1]), "the blame: $(rows(blame)) $(blame.Message)")
+expect(answered(press.Press(["M-<", "enter"], blame)).Message == "These lines aren't committed yet.", "a line not committed")
+result.Unwrap(sys.Write("src/app/app.ce", "x = 9\n"))
+fileDiff = answered(press.Press(["C-c", "g", "d"], opened))
+expect(lists.IsList(here(fileDiff)) and "+x = 9" in rows(fileDiff), "the diff of the file: $(rows(fileDiff)) $(fileDiff.Message)")
+
+(* ---- Tests: C-c t t in a test function runs it alone; on the code, the tests of its folder, each failure a mark; C-c t r again, C-c t a all. *)
+tests = commands.OpenFile("src/shop/shop.test.ce", start)
+tests.Buffers[tests.Current] = text.Place(1, 2, here(tests))
+one = tested(press.Press(["C-c", "t", "t"], tests))
+expect(run.Lines(one.Run)[1] == "> cesia test src/shop/shop.test.ce:isTotal" and one.Message == "1 passed, 0 failed", "one test: $(run.Lines(one.Run)) $(one.Message)")
+code = commands.OpenFile("src/shop/shop.ce", one)
+folder = tested(press.Press(["C-c", "t", "t"], code))
+expect(run.Lines(folder.Run)[1] == "> cesia test src/shop" and folder.Message == "1 passed, 1 failed", "the folder: $(run.Lines(folder.Run)) $(folder.Message)")
+marks = text.MarksOf(folder.Buffers[2])
+expect(value.Len(marks) == 1 and marks[1].Line == 3 and str.StartsWith("isWrong failed", marks[1].Message), "the failure is marked in its buffer: $marks")
+went = press.Press(["M-g", "n"], dict.Merge(folder, {Current: 2}))
+expect(here(went).Cursor.Line == 3 and str.StartsWith("isWrong failed", went.Message), "M-g n goes to the failure: $(went.Message)")
+outputList = press.Press(["C-c", "c", "o"], folder)
+visited = press.Press(["enter"], outputList)
+expect(str.EndsWith("shop.test.ce", here(visited).Path) and here(visited).Cursor.Line == 3, "C-c c o and Enter go to the failure: $(here(visited).Path):$(here(visited).Cursor.Line)")
+again = tested(press.Press(["C-c", "t", "r"], visited))
+expect(run.Lines(again.Run)[1] == "> cesia test src/shop", "again: $(run.Lines(again.Run)[1])")
+whole = tested(press.Press(["C-c", "t", "a"], again))
+expect(run.Lines(whole.Run)[1] == "> cesia test" and whole.Message == "1 passed, 1 failed", "all: $(run.Lines(whole.Run)) $(whole.Message)")
+expect(press.Press(["C-c", "t", "r"], start).Message == "No test ran yet: C-c t t runs those of the file.", "nothing to run again")
+io.Print("ok")

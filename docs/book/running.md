@@ -90,14 +90,14 @@ need a second `C-c c k`. With no program running it says `No program is running.
 
 Cesia's tests are the examples in the documentation of a function, a line with `-->` and the value it should give, and the
 test functions of the `.test.ce` files, whose names start with `is` and a capital: Cesia's book tells them in its chapter
-on [tests](https://www-celestial.github.io/cesia-lang/tests.html). The tests are an app of Cemacs, [src/testing], a group
-of `C-c`, `t` for test:
+on [tests](https://www-celestial.github.io/cesia-lang/tests.html). The keys are a group of `C-c`, `t` for test, of
+[src/ide], which asks [src/testing] what to run:
 
 | Keys | Command | What it does |
 |---|---|---|
-| `C-c t t` | [testing.TestHere] | in a `.test.ce` file, runs the test function the cursor is in; elsewhere, or outside one, the tests of the folder of the file |
-| `C-c t a` | [testing.TestAll] | runs every test of the project |
-| `C-c t r` | [testing.TestAgain] | runs the last tests again, from any buffer |
+| `C-c t t` | [ide.TestHere] | in a `.test.ce` file, runs the test function the cursor is in; elsewhere, or outside one, the tests of the folder of the file |
+| `C-c t a` | [ide.TestAll] | runs every test of the project |
+| `C-c t r` | [ide.TestAgain] | runs the last tests again, from any buffer |
 
 Each runs `cesia test` as `C-c c r` runs a program, in the folder where Cemacs started: `C-c t t` inside `isTotal` of
 `src/shop/shop.test.ce` runs `cesia test src/shop/shop.test.ce:isTotal`, which runs that test alone; in `src/shop/shop.ce`,

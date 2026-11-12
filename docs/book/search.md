@@ -157,13 +157,13 @@ use, which rewards the letters found at the start of a word or side by side, and
 
 | Keys | Command | What it does |
 |---|---|---|
-| `C-x p g`, `C-c s p` | [grep.Search] | asks for words, the name at the cursor first, and lists each line of the project that holds them |
+| `C-x p g`, `C-c s p` | [ide.Search] | asks for words, the name at the cursor first, and lists each line of the project that holds them |
 | `C-c r`, in that list | | asks what replaces the words, then for a yes, and replaces them in the lines the list shows |
 
 `C-x p g` is the key of Emacs's `project-find-regexp`, and `C-c s p` the place of the search of a project in Doom Emacs,
 `SPC s p`. The project is the Git repository that holds the file of the current buffer, or else the folder where Cemacs
-started, as for `C-x p f`: see [Files and buffers](files.md#the-files-of-a-project). The search is an app of Cemacs,
-[src/grep]: it runs `git grep -n --column -I -z --no-color -F -e WORDS` from the root of the repository, in a fiber, so that
+started, as for `C-x p f`: see [Files and buffers](files.md#the-files-of-a-project). The search is done by [src/grep],
+which [src/ide] asks through `tools/grep.ce`: it runs `git grep -n --column -I -z --no-color -F -e WORDS` from the root of the repository, in a fiber, so that
 the editor goes on while git reads, and lists each line found, at most 10,000, as `path:line:column  the line`, the column of
 the first place of the words in it. The words are fixed text, `-F`, never a pattern, and when they hold no capital, the
 case of letters is set aside, `-i`, as `C-s` does. The files are those git knows: the tracked ones, without the binary

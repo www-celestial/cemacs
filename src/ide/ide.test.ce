@@ -1,0 +1,101 @@
+(** Tests of src/ide without its programs: the answers it reads, checked, and what each one does. tests/ide-check.ce runs the real programs. *)
+use src/ide
+use src/emacs
+use src/rope
+use src/ui
+use core/commands
+use core/lists
+use core/text
+use core/view
+use std/dict
+use std/fiber
+use std/list
+use std/result
+use std/text as str
+use std/value
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+
+defn stateOf(words, path)
+  (** A state with one buffer of words at path, the questions hooked. *)
+  s = view.Start([text.Of(words, path)], look, cell, 800, 600)
+  s.Config = () -> ide.Hooked(emacs.Config(() -> dict.Merge(emacs.Keys(), ide.Keys())))
+  s
+end
+
+defn answered(request, out, state)
+  (** A state whose question has ended with what its program wrote. *)
+  s = state
+  ch = fiber.Channel()
+  fiber.Send(result.Ok({Code: 0, Out: out, Err: ""}), ch)
+  b = s.Buffers[s.Current]
+  s.Asking = {Request: request, Channel: ch, Path: b.Path, Version: b.Version, Line: b.Cursor.Line, Column: b.Cursor.Column}
+  ide.Finished(s)
+end
+
+here(state) = state.Buffers[state.Current]
+rows(state) = str.Lines(rope.Text(here(state).Rope))
+lookup = {Program: "lookup", Do: "definition"}
+
+isAnErrorSaid() = answered(lookup, "{\"Error\": \"No name here.\"}", stateOf("x", "/p/a.ce")).Message == "No name here."
+isNotJsonSaid() = answered(lookup, "boom\n", stateOf("x", "/p/a.ce")).Message == "The program failed: boom"
+isAnswerEndsTheQuestion() = not ide.Moving(answered(lookup, "{}", stateOf("x", "/p/a.ce")))
+isSignatureErrorQuiet() = answered({Program: "lookup", Do: "signature"}, "{\"Error\": \"x\"}", stateOf("x", "/p/a.ce")).Message == ""
+isSignatureSaid() = answered({Program: "lookup", Do: "signature"}, "{\"Signature\": \"Total(prices): The total.\"}", stateOf("x", "/p/a.ce")).Message == "Total(prices): The total."
+
+defn isSignatureOfAnotherPlaceDropped()
+  s = stateOf("xy", "/p/a.ce")
+  ch = fiber.Channel()
+  fiber.Send(result.Ok({Code: 0, Out: "{\"Signature\": \"f()\"}", Err: ""}), ch)
+  s.Asking = {Request: {Program: "lookup", Do: "signature"}, Channel: ch, Path: "/p/a.ce", Version: here(s).Version, Line: 1, Column: 1}
+  ide.Finished(s).Message == ""
+end
+
+isBadPlaceRefused() = list.All([answered(lookup, "{\"Open\": $p}", stateOf("x", "/p/a.ce")).Message == "The program gave no place." for p in ["{\"Path\": \"a.ce\", \"Line\": 1, \"Column\": 0}",
+  "{\"Path\": \"/a.ce\", \"Line\": 0, \"Column\": 0}", "{\"Path\": \"/a.ce\", \"Line\": 1, \"Column\": -1}", "3"]])
+
+defn isListShown()
+  out = "{\"List\": {\"Name\": \"References of Total\", \"Rows\": [{\"Words\": \"a.ce:1:1  Total = 1\", \"Item\": {\"Path\": \"/p/a.ce\", \"Line\": 1, \"Column\": 0}}], \"Keys\": {\"enter\": \"open\"}}, \"Say\": \"1 places.\"}"
+  s = answered(lookup, out, stateOf("x", "/p/a.ce"))
+  lists.IsList(here(s)) and value.Equal(rows(s), ["a.ce:1:1  Total = 1"]) and s.Message == "1 places."
+end
+
+isBadListRefused() = list.All([answered(lookup, "{\"List\": $l}", stateOf("x", "/p/a.ce")).Message == "The program gave no list." for l in ["3", "{\"Name\": \"n\", \"Rows\": [{\"Words\": 1}]}",
+  "{\"Name\": \"n\", \"Rows\": [], \"Keys\": {\"enter\": \"rm\"}}", "{\"Name\": \"n\", \"Rows\": [], \"Keys\": {\"enter\": {\"Program\": \"sh\", \"Do\": \"x\"}}}"]])
+
+defn isAskAsksThenSends()
+  s = answered(lookup, "{\"Ask\": {\"Label\": \"Rename x to: \", \"Then\": {\"Program\": \"lookup\", \"Do\": \"rename\"}}}", stateOf("x", "/p/a.ce"))
+  s.Prompt.Label == "Rename x to: "
+end
+
+isAskOfAnUnknownProgramRefused() = answered(lookup, "{\"Ask\": {\"Label\": \"x\", \"Then\": {\"Program\": \"sh\", \"Do\": \"x\"}}}", stateOf("x", "/p/a.ce")).Message == "The program asked nothing."
+
+defn isConfirmThenEdits()
+  out = "{\"Confirm\": {\"Label\": \"Rename?\", \"Yes\": {\"Edits\": [{\"Path\": \"/p/a.ce\", \"Line\": 1, \"Column\": 0, \"End\": 5, \"Old\": \"Total\", \"Text\": \"Sum\"}], \"Words\": \"Renamed\"}}}"
+  s = stateOf("Total = 1", "/p/a.ce")
+  s.Buffers[1] = text.InsertWords(" ", text.Place(1, 9, here(s)))
+  asked = answered(lookup, out, s)
+  done = commands.Update({Kind: "text", Text: "y"}, commands.Update({Kind: "key", Key: "y", Ctrl: false, Alt: false, Shift: false, Super: false}, asked))
+  asked.Prompt.Label == "Rename?" and rope.Text(here(done).Rope) == "Sum = 1 " and done.Message == "Renamed: 0 files saved, 1 left unsaved, with changes of their own."
+end
+
+isRunOfAnotherProgramRefused() = answered(lookup, "{\"Run\": {\"Args\": [\"test\"], \"Then\": {\"Program\": \"testing\", \"Do\": \"ended\"}}}", stateOf("x", "/p/a.ce")).Message ==
+  "The program asked a run that isn't one of tests."
+isRunOfAnotherCommandRefused() = answered({Program: "testing", Do: "here"}, "{\"Run\": {\"Args\": [\"run\", \"a.ce\"], \"Then\": {\"Program\": \"testing\", \"Do\": \"ended\"}}}",
+  stateOf("x", "/p/a.ce")).Message == "The program asked a run that isn't one of tests."
+
+defn isMarksPut()
+  s = answered({Program: "testing", Do: "ended"}, "{\"Marks\": [{\"Path\": \"/p/a.ce\", \"Line\": 1, \"Message\": \"isA failed\"}], \"Say\": \"0 passed, 1 failed\"}", stateOf("x = 1", "/p/a.ce"))
+  m = text.MarksOf(here(s))
+  value.Len(m) == 1 and m[1].Message == "isA failed" and m[1].Source == "test" and s.Message == "0 passed, 1 failed"
+end
+
+isNoPlaceBack() = ide.Back(stateOf("x", "/p/a.ce")).Message == "No place to go back to."
+
+defn isApplyLeavesAChangedText()
+  s = stateOf("Totals", "/p/a.ce")
+  s.Buffers[1] = text.InsertWords("x", here(s))
+  done = ide.Apply([{Path: "/p/a.ce", Line: 1, Column: 0, End: 5, Old: "Total", Text: "Sum"}], s)
+  rope.Text(done.State.Buffers[1].Rope) == "xTotals" and str.Contains("1 changed since", done.Words)
+end

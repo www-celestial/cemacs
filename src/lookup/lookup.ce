@@ -1,7 +1,8 @@
 (** Questions about the names of Cesia code, answered without running any of it: where a name is defined, what its documentation says, the signature of a
     call, every place of a project that reads a name, and the edits that rename it. tools/lookup.ce asks them for Cemacs, in a process of its own that has
-    the read permission only, so that none of this code loads at the start of the editor: see src/names. A line counts from 1 and a column from 0, in
+    the read permission only, so that none of this code loads at the start of the editor: see src/ide, whose words Answered speaks. A line counts from 1 and a column from 0, in
     characters, as a buffer counts them; given maps a path to its text, for the buffers not saved, and stands for the disk there. *)
+use core/color
 use std/cesia
 use std/dict
 use std/list
@@ -710,26 +711,41 @@ defn captured(name, to, edits, given)
   missing
 end
 
-(* ---- Questions *)
+(* ---- Questions, in the words of src/ide *)
 
-defn Answer(q)
-  (** The answer to a question of Cemacs, as tools/lookup.ce reads it: Do, one of definition, doc, signature, references and rename; Path, Line and Column,
-      the place of the name; Texts, the texts of the buffers not saved, by path; and To, the new name of a rename. A question that isn't one of these is
-      an Error. *)
+defn Answered(q)
+  (** The answer to a question of src/ide, in its words: Do, one of definition, doc, signature, references and rename; Path, Line and Column, the place of
+      the name; Texts, the texts of the buffers not saved, by path; and Answer, the new name of a rename once it is asked. A question that isn't one of
+      these is an Error. *)
   fault = questionFault(q)
   if not value.IsMissing(fault)
     return {Error: fault}
   end
   given = q.Texts
-  a = match q.Do
-    "definition" -> Definition(q.Path, q.Line, q.Column, given)
-    "doc" -> Doc(q.Path, q.Line, q.Column, given)
-    "signature" -> Signature(q.Path, q.Line, q.Column, given)
-    "references" -> References(q.Path, q.Line, q.Column, given)
-    "rename" -> if value.IsText(dict.GetOr("To", missing, q)) Rename(q.Path, q.Line, q.Column, q.To, given) else {Error: "A rename needs To, the new name."} end
+  root = RootOf(q.Path)
+  match q.Do
+    "definition" -> definitionShown(root, Definition(q.Path, q.Line, q.Column, given))
+    "doc" -> docShown(root, Doc(q.Path, q.Line, q.Column, given))
+    "signature" -> signatureShown(Signature(q.Path, q.Line, q.Column, given))
+    "references" -> referencesShown(root, References(q.Path, q.Line, q.Column, given))
+    "rename" -> renameShown(q, given)
     else -> {Error: "Unknown question: $(q.Do)."}
   end
-  if dict.Has("Places", a) or dict.Has("Doc", a) shown(RootOf(q.Path), a) else a end
+end
+
+defn questionFault(q)
+  (** What is wrong with a question, or missing: each field of the type it must have, and a file of Cesia. *)
+  if not value.IsDict(q) or not value.IsText(dict.GetOr("Do", missing, q))
+    "A question is a map with Do."
+  else if not value.IsText(dict.GetOr("Path", missing, q)) or not path.IsAbsolute(q.Path) or not str.EndsWith(".ce", q.Path)
+    "Names are those of a file of Cesia."
+  else if not value.IsInt(dict.GetOr("Line", missing, q)) or not value.IsInt(dict.GetOr("Column", missing, q)) or q.Line < 1 or q.Column < 0
+    "A question needs a Line from 1 and a Column from 0."
+  else if not value.IsDict(dict.GetOr("Texts", missing, q)) or not list.All([value.IsText(k) and value.IsText(q.Texts[k]) for k in dict.Keys(q.Texts)])
+    "A question needs Texts, a map of paths to texts."
+  else
+    missing
+  end
 end
 
 (** A path as a list shows it: from the root of the project when it is inside it.
@@ -738,29 +754,69 @@ end
       ShownPath(missing, "/p/a.ce") --> "/p/a.ce" *)
 ShownPath(root, p) = if not value.IsMissing(root) and str.StartsWith("$root/", p) str.Slice(value.Len(root) + 2, value.Len(p), p) else p end
 
-defn shown(root, a)
-  (** An answer with the Shown path of each of its places, from the root of the project. *)
-  out = a
-  if value.IsArray(dict.GetOr("Places", missing, a))
-    out.Places = [dict.Merge(p, {Shown: ShownPath(root, p.Path)}) for p in a.Places]
+defn definitionShown(root, a)
+  (** The answer of a definition: go to its place, or else show its documentation. *)
+  if dict.Has("Places", a)
+    p = a.Places[1]
+    {Open: {Path: p.Path, Line: p.Line, Column: p.Column}}
+  else if dict.Has("Doc", a)
+    docShown(root, a)
+  else
+    a
   end
-  if value.IsDict(dict.GetOr("Doc", missing, a)) and not value.IsMissing(a.Doc.Place)
-    out.Doc.Place.Shown = ShownPath(root, a.Doc.Place.Path)
-  end
-  out
 end
 
-defn questionFault(q)
-  (** What is wrong with a question, or missing: each field of the type it must have. *)
-  if not value.IsDict(q)
-    "A question is a map."
-  else if not value.IsText(dict.GetOr("Do", missing, q)) or not value.IsText(dict.GetOr("Path", missing, q)) or not path.IsAbsolute(q.Path)
-    "A question needs Do and an absolute Path."
-  else if not value.IsInt(dict.GetOr("Line", missing, q)) or not value.IsInt(dict.GetOr("Column", missing, q)) or q.Line < 1 or q.Column < 0
-    "A question needs a Line from 1 and a Column from 0."
-  else if not value.IsDict(dict.GetOr("Texts", missing, q)) or not list.All([value.IsText(k) and value.IsText(q.Texts[k]) for k in dict.Keys(q.Texts)])
-    "A question needs Texts, a map of paths to texts."
-  else
-    missing
+defn docShown(root, a)
+  (** The answer of a documentation: a list of its signature, its text, its examples and where it is, Enter going there. *)
+  if not dict.Has("Doc", a)
+    return a
   end
+  d = a.Doc
+  at = d.Place
+  words = list.Concat(list.Concat([[color.Name, d.Signature]], [[color.Plain, l] for l in str.Lines(d.Text)]), [[color.Comment, "  $x"] for x in d.Examples])
+  where = if value.IsMissing(at) [] else [[color.Comment, "$(ShownPath(root, at.Path)):$(at.Line)"]] end
+  {List: {Name: "Doc of $(d.Name)", Rows: [{Words: p[2], Parts: [p], Item: at} for p in list.Concat(words, where)], Keys: {"enter": "open"}}}
+end
+
+(** The answer of a signature: its words on the prompt line, the signature and the first sentence of its text, or nothing. *)
+signatureShown(a) = if dict.Has("Signature", a) {Signature: if a.Text == "" a.Signature else "$(a.Signature): $(a.Text)" end} else {} end
+
+defn referencesShown(root, a)
+  (** The answer of the references of a name: the list of its places, path:line:column and the line, Enter going to one. *)
+  if not dict.Has("Places", a)
+    return a
+  end
+  if value.Len(a.Places) == 0
+    return {Say: "Nothing reads $(a.Name)."}
+  end
+  rows = [{Words: "$(ShownPath(root, p.Path)):$(p.Line):$(p.Column + 1)  $(p.Words)", Item: {Path: p.Path, Line: p.Line, Column: p.Column},
+    Parts: [[color.Comment, "$(ShownPath(root, p.Path)):$(p.Line):$(p.Column + 1)  "], [color.Plain, p.Words]]} for p in a.Places]
+  how = if dict.GetOr("ByName", false, a) " (by name: a method)" else "" end
+  unread = if value.Len(a.Unread) > 0 ", $(value.Len(a.Unread)) files don't read" else "" end
+  {List: {Name: "References of $(a.Name)", Rows: rows, Keys: {"enter": "open"}}, Say: "$(value.Len(rows)) places$how$unread."}
+end
+
+defn renameShown(q, given)
+  (** The answers of a rename: first the question of the new name, then, with it, the question of a yes before the edits. *)
+  answer = dict.GetOr("Answer", missing, q)
+  if not value.IsText(answer)
+    t = textOf(q.Path, given)
+    lines = if value.IsMissing(t) [] else LinesOf(t) end
+    w = if q.Line <= value.Len(lines) WordAt(lines[q.Line], q.Column) else missing end
+    if value.IsMissing(w)
+      return {Error: "No name here."}
+    end
+    name = list.Last(str.Split(".", w.Word))
+    return {Ask: {Label: "Rename $name to: ", Answer: "", Then: {Program: "lookup", Do: "rename"}}}
+  end
+  if answer == ""
+    return {Say: "No name."}
+  end
+  got = Rename(q.Path, q.Line, q.Column, answer, given)
+  if dict.Has("Error", got)
+    return got
+  end
+  edits = [{Path: e.Path, Line: e.Line, Column: e.Column, End: e.End, Old: got.Name, Text: got.To} for e in got.Edits]
+  label = "Rename $(got.Name) to $(got.To) in $(value.Len(edits)) places of $(got.Files) files? (y or n)"
+  {Confirm: {Label: label, Yes: {Edits: edits, Words: "Renamed $(got.Name) to $(got.To)"}, No: "Not renamed."}}
 end
