@@ -24,8 +24,8 @@ end
 
 ## The window
 
-The window opens at 1280 by 720 pixels, and you can change its size. Its title is the name of the current buffer. It is
-cut, from the bottom up, into:
+The window opens at 1280 by 720 pixels, or at the size of the `Window` of your config, and you can change its size after.
+Its title is the name of the current buffer. It is cut, from the bottom up, into:
 
 | Part | Height | What it shows |
 |---|---|---|
@@ -41,8 +41,9 @@ lay = view.Layout(800, 600, {Width: 8, Height: 19}, true)
 [lay.Area.Height, lay.Output.Height, lay.Prompt.Height] --> [394, 184, 22]
 ```
 
-The theme is dark, from [ui.Dark] in `src/ui`; `core/editor/editor.ce` chooses it, and no setting changes it today. The text
-is drawn with three fonts at the size of [emacs.FontSize]: Adwaita Sans for the mode line, the prompt line and the names in
+The theme is dark, [ui.Dark] of `src/ui`, unless the `Theme` of your config gives another, as [ui.Light]; the window reads
+it once, when it opens, as it reads its size: [Changing Cemacs](customising.md#settings) tells both. The text is drawn with
+three fonts at the size of [emacs.FontSize]: Adwaita Sans for the mode line, the prompt line and the names in
 the band of hints, Noto Sans Medium for the title of the output, and JetBrains Mono for the code, the numbers of the lines,
 the keys in the band and the output itself.
 

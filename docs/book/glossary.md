@@ -83,7 +83,8 @@ there are several. Emacs does it with `completion-at-point` and `dabbrev-expand`
 
 ## Config
 
-The record of functions the editor runs on: its keymaps, its settings and its hooks, made by `emacs.Config`. See
+The record of functions the editor runs on: its keymaps, its settings, its start and its hooks, made by `emacs.Config`,
+given its hooks by `check.Hooked`, and changed by the `Changed` of your `user/config/config.ce`. See
 [Changing Cemacs](customising.md#the-config).
 
 ## Continuation line
@@ -191,12 +192,19 @@ the leader keys of Doom Emacs do. See [Keys](keys.md#the-global-keymap).
 ## Hook
 
 A function that an app gives the core, which calls it at a moment: Cemacs has `Idle`, `Saved` and `Moving`. Emacs has many,
-under the same name. See [Changing Cemacs](customising.md#hooks).
+under the same name. The `Start` of the config is close to one, run once, after the files given at the start opened, as
+Emacs runs its `emacs-startup-hook` after the init files and the command line. See [Changing Cemacs](customising.md#hooks).
 
 ## Hot reload
 
 New code loaded into a program while it runs, so that it keeps its state. `cesia do dev` reloads Cemacs so at each save of
 one of its files. See [Changing Cemacs](customising.md#reloading-cemacs-while-it-runs).
+
+## Ignored file
+
+A file or a folder that git leaves out, because a line of the file `.gitignore` names it: `git status` doesn't show it,
+`git add .` skips it, and `git pull` never changes it. Cemacs's `user/` is one, so that your changes and the new code of
+Cemacs never meet. See [Install](install.md#your-folder-user).
 
 ## Immediate mode
 
@@ -214,6 +222,13 @@ once none is left. See [Search](search.md#searching-a-buffer).
 The spaces at the start of a line, which show how deep in blocks its code is; to indent a line is to give it those spaces.
 In a file of Cesia, Cemacs gives each line the indent that `cesia fmt` gives it, two spaces a block. See
 [Editing](editing.md#indentation-in-a-file-of-cesia).
+
+## Init file
+
+The file of code that an editor runs at its start to apply the changes of the person: `~/.emacs.d/init.el` or
+`~/.config/emacs/init.el` for Emacs, `~/.config/nvim/init.lua` or `init.vim` for Neovim, `~/.vimrc` for Vim. Cemacs's is
+`user/config/config.ce`, in the folder of Cemacs, whose function `Changed` gets the config of Cemacs and gives it back
+changed, at each key; `C-c f c` opens it. See [Changing Cemacs](customising.md#your-folder-user).
 
 ## Just-in-time colouring
 
@@ -390,6 +405,12 @@ instruction, multiple data, is the name of the processor's own instructions for 
 
 A program of `cesia.toml` to run with its permissions, run by `cesia do NAME`. `C-c c r` runs the task that names the file
 of the buffer: see [Running and debugging](running.md#the-task-that-runs-a-file).
+
+## Theme
+
+The colours of the editor, for each part of the window and each kind of word of the code. In Cemacs, a record of colours:
+[ui.Dark], the one it starts with, or [ui.Light], or one of your own, which the `Theme` of the config gives and the window
+reads once, when it opens. Emacs loads its themes with `load-theme`. See [Recipes](recipes.md#your-font-tab-theme-and-window).
 
 ## Threat to validity
 

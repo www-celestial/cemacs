@@ -22,7 +22,7 @@ The `cesia` line of Cemacs's `cesia.toml` names the oldest Cesia it needs:
 [project]
 name = "cemacs"
 cesia = "1.1"
-src = ["core", "src"]
+src = ["core", "src", "user"]
 native = ["SDL3", "SDL3_ttf"]
 ```
 
@@ -83,6 +83,35 @@ cd cemacs
 `tools/release.sh` prepares: there is no binary to download, since Cesia runs the code of the tag as it is. No release is
 tagged yet.
 
+## Your folder, user/
+
+The first time Cemacs starts, through `bin/cemacs` or `cesia do dev`, it makes the folder `user/` from the template
+`tools/user-template/`: your config, `user/config/config.ce`, where your settings, your keys and your apps come in, as
+[Changing Cemacs](customising.md#your-folder-user) tells. It never writes to `user/` again, and copies nothing when it is
+there. `.gitignore` holds `/user/`, so git leaves the folder out: `git pull` brings the new code of Cemacs without touching
+your changes, and `git status` doesn't show them.
+
+To keep their history, or to have them on another machine, make `user/` a git repository of its own:
+
+```bash
+cd user
+git init
+git add .
+git commit -m "My changes to Cemacs"
+```
+
+On another machine, clone Cemacs, then your repository as `user/`, before Cemacs first starts:
+
+```bash
+git clone https://github.com/www-celestial/cemacs
+cd cemacs
+git clone YOUR-REPOSITORY user
+```
+
+Since a `user/` that is there is never touched, Cemacs starts on yours. `cesia.toml` names `user` among the folders of the
+code, and Cesia stops when one of them is missing: until the first start, or `tools/user.sh`, which makes it alone, `cesia
+test`, `cesia check` and `cesia doc` in the folder of Cemacs say `cesia.toml:4:1: The source folder "user" doesn't exist.`
+
 ## Starting it
 
 `bin/cemacs` opens the files it is given, or one empty buffer:
@@ -91,12 +120,17 @@ tagged yet.
 bin/cemacs notes.ce
 ```
 
-It is a small `bash` script. It finds the folder of Cemacs from its own place, even through a symbolic link, and runs:
+It is a small `bash` script. It finds the folder of Cemacs from its own place, even through a symbolic link, makes `user/`
+with `tools/user.sh` if it is missing, and runs:
 
 ```bash
 cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME,ffi=SDL3,ffi=SDL3_ttf \
   "$home/src/cemacs.ce" "$home" "$@"
 ```
+
+The test of `user/` is one of the shell itself, `[ -e "$home/user" ]`, which starts no process: only the first start runs
+`tools/user.sh`, which copies the template beside `user/` and then renames it, so that a copy cut short leaves no half
+folder.
 
 A Cesia program has no permission until it is given one: the `--allow` list names each, as Cesia's chapter on
 [permissions](https://www-celestial.github.io/cesia-lang/permissions.html) explains. Cemacs asks for these:
@@ -122,24 +156,30 @@ A relative path you give it is read from the folder you are in, not from the fol
 ### From its folder, with reload
 
 `cesia do dev`, from the folder of Cemacs, runs the task `dev` of its `cesia.toml`: the same program and permissions, under
-`--watch`, so that a change of Cemacs's code reloads in the window that runs. It opens one empty buffer, and reads its fonts
-from `./fonts`, so it must start from that folder. See [Changing Cemacs](customising.md#reloading-cemacs-while-it-runs).
+`--watch`, so that a change of Cemacs's code, or of `user/`, reloads in the window that runs. It opens one empty buffer, and
+reads its fonts from `./fonts`, so it must start from that folder. See
+[Changing Cemacs](customising.md#reloading-cemacs-while-it-runs).
 
 ```toml
 [tasks.dev]
-file = "src/cemacs.ce"
-watch = true
-allow = ["read", "write", "exec=cesia", "exec=git", "env=HOME", "env=PWD", "env=XDG_DATA_HOME"]
+run = ["tools/dev.sh"]
 ```
 
-`ffi=SDL3` and `ffi=SDL3_ttf` are not in that list: the `native` line of `[project]` gives them to every task that runs a
-file.
+`tools/dev.sh` makes `user/` if it is missing, as `bin/cemacs` does, then shows the command it runs, and runs it:
+
+```bash
+cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=XDG_DATA_HOME --watch src/cemacs.ce
+```
+
+The task is a script and not the program itself, since Cesia reads the folders of the code before it runs a program, and
+stops when `user/` is missing; `cesia do` runs a script without reading them.
 
 ## Checking the install
 
-`cesia do test` runs the whole suite of Cemacs, `tests/run.sh`: the tests of every package on both paths of Cesia, with
-and without its versions of a function by type, then the tests that open real files, run real programs and open real
-windows. With SDL's dummy driver no window shows:
+`cesia do test` runs the whole suite of Cemacs, `tests/run.sh`: the tests of every package of Cemacs, in `core/` and `src/`,
+on both paths of Cesia, with and without its versions of a function by type, then the tests that open real files, run real
+programs and open real windows. It makes `user/` first if it is missing, and never tests it: `cesia test user` runs the
+tests of your own apps. With SDL's dummy driver no window shows:
 
 ```bash
 SDL_VIDEODRIVER=dummy cesia do test
@@ -147,6 +187,8 @@ SDL_VIDEODRIVER=dummy cesia do test
 
 It stops at the first failure and names it. One of its tests, `tests/color-std.ce`, colours every package of Cesia's
 standard library, whose sources the binary of Cesia carries, so the suite needs nothing beside Cemacs and an installed Cesia.
-`tests/start-check.sh` alone checks only that Cemacs starts, both through `bin/cemacs` and through `cesia do dev`.
+`tests/start-check.sh` alone checks only that Cemacs starts, both through `bin/cemacs` and through `cesia do dev`, and, in a
+new copy of Cemacs, that both make `user/` from the template when it is missing and leave it as it is after, that the
+template changes nothing, and that `Start` runs once, after the files given opened.
 
 If Cemacs doesn't start, [Troubleshooting](troubleshooting.md#at-start) lists what it prints and what to do.

@@ -19,6 +19,10 @@ prints `Ok(missing)`.
 | `Err({Kind: "sdl", Message: "Couldn't open .../fonts/AdwaitaSans-Regular.ttf: No such file or directory"})` | the fonts aren't in the folder Cemacs took as its home | start Cemacs through `bin/cemacs`, which finds its folder, or run `cesia do dev` from the folder of Cemacs |
 | `Err({Kind: "sdl", Message: ...})` with another reason, such as `No available video device` | SDL found no display to open a window on | start Cemacs in a graphical session; `SDL_VIDEODRIVER=wayland` or `x11` chooses the display system |
 | `Permission "ffi" denied for SDL3.`, or another `Permission ... denied` | Cemacs was started with `cesia run` without its permissions | start it with `bin/cemacs`, or `cesia do dev` |
+| `cesia.toml:4:1: The source folder "user" doesn't exist.` | Cesia ran in the folder of Cemacs before `user/` was made, as `cesia test`, `cesia check`, `cesia doc` or `cesia run src/cemacs.ce` in a new clone: `cesia.toml` names `user` among the folders of the code | start Cemacs once through `bin/cemacs` or `cesia do dev`, or run `tools/user.sh`: each makes `user/` from the template. [Install](install.md#your-folder-user) |
+| `.../src/cemacs.ce:12:5: Module "user/config" doesn't exist.` | `user/` is there, but not its `config/`: Cemacs makes `user/` only when it is missing | put `user/config/config.ce` back, or move `user/` away and start again: a new one comes from the template |
+| `user/config/config.ce:LINE:COLUMN:` and a mistake, as `Name "nothere" doesn't exist.` | your config doesn't load: Cesia shows the line and the place | fix it with another editor; or move `user/` away, and the next start makes a new one from the template. [Changing Cemacs](customising.md#your-folder-user) |
+| a mistake followed by `in Config (.../src/cemacs.ce:...)` or `called from Start (core/editor/editor.ce:...)`, as `Changed needs the argument "more".` | your config loads, but `Changed`, or a function it set, fails when the window reads the config at its start: a `Start` that reads a field the state lacks, for instance | the same |
 
 ## On the prompt line
 

@@ -102,6 +102,7 @@ the Debug Adapter Protocol, DAP. An editor that speaks both gets every language 
 | Where it runs | its own window, through SDL3 | a terminal, or its own window | a terminal; other programs can draw it through its API | a terminal, or its own window (gVim) |
 | Keys | those of Emacs, with groups under `C-c` | its own | modal: one mode moves, another types | modal |
 | Written in, changed in | Cesia, both | C and Emacs Lisp; changed in Emacs Lisp | C and Lua; changed in Lua or Vimscript | C; changed in Vim9 script or Vimscript |
+| Your changes | `user/config/config.ce`, in the folder of Cemacs, which git ignores, made from a template at the first start | `~/.emacs.d/init.el`, or `~/.config/emacs/init.el` | `~/.config/nvim/init.lua`, or `init.vim` | `~/.vimrc`, `~/.vim/vimrc` or `~/.config/vim/vimrc` |
 | Change while it runs | its code reloads at each save under `cesia do dev`; a new package needs a restart | any Lisp, at any time, changes the running editor | `:source` and `:lua` run new code in the running editor | `:source` runs new code in the running editor |
 | Finding a key | the band of hints after half a second, and `?` after any prefix key | `which-key-mode`, built in, off until turned on; `C-h k`, `C-h b` | none built in: plugins | none built in: plugins |
 | A command by its name | none | `M-x` | `:` commands | `:` commands |

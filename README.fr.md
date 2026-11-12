@@ -4,7 +4,7 @@ Cemacs est un éditeur de texte pour [Cesia](https://github.com/www-celestial/ce
 d'Emacs et les couleurs du code de Cesia. Une bande montre à quoi une touche peut mener : vous n'avez donc pas besoin
 d'apprendre les touches avant de commencer. Les erreurs s'affichent dans les lignes pendant que vous tapez, et un programme
 tourne dans la fenêtre, où il s'arrête à ses breakpoints (les lignes où vous avez demandé qu'il s'arrête). Vous modifiez
-Cemacs en Cesia, et il se recharge pendant qu'il tourne.
+Cemacs en Cesia, dans un dossier à vous que `git pull` ne touche jamais, et il se recharge pendant qu'il tourne.
 
 **Documentation : https://www-celestial.github.io/cemacs/** (commencez par
 [First steps](https://www-celestial.github.io/cemacs/first-steps.html)). Les mêmes pages, en français, sont dans
@@ -27,8 +27,11 @@ Cemacs est essayé sous Linux. Il lui faut trois choses :
    bin/cemacs notes.ce
    ```
 
-Ses polices viennent avec lui, dans `fonts/`. Le [chapitre d'installation](https://www-celestial.github.io/cemacs/install.html)
-donne les détails : les versions, les autres systèmes, les permissions avec lesquelles Cemacs tourne.
+Ses polices viennent avec lui, dans `fonts/`. Le premier démarrage crée `user/`, le dossier de vos changements, que git
+ignore : [Changing Cemacs](https://www-celestial.github.io/cemacs/customising.html) dit ce qu'on y met, et
+[Recipes](https://www-celestial.github.io/cemacs/recipes.html) montre de petites tâches faites là. Le
+[chapitre d'installation](https://www-celestial.github.io/cemacs/install.html) donne les détails : les versions, les autres
+systèmes, les permissions avec lesquelles Cemacs tourne.
 
 ## Licence
 

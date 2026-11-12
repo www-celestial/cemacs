@@ -317,15 +317,20 @@ new one at every instant of the operation, never to neither: so no reader ever s
 
 ## The start
 
-`src/cemacs.ce` calls [editor.Start] with the config. It:
+`src/cemacs.ce` calls [editor.Start] with the config, the function that gives the config of Cemacs as the `Changed` of
+`user/config` changed it. It:
 
 1. takes the folder of Cemacs from its first argument, or `.` with none;
-2. opens the window, 1280 by 720, with the font of the body at the size of [emacs.FontSize], then adds the other two fonts,
-   `strong` and `code`;
-3. measures the code font: a character is as wide as `M`, and a line as high as `Ag` plus [view.LineGap], one pixel;
-4. makes the first state, with one empty buffer, then opens the files given after the folder, in order: an empty buffer that
-   nothing touched gives its place to the first one;
-5. runs the loop until the update gives `missing`, then closes the window and gives `Ok(missing)`, which `src/cemacs.ce`
+2. reads the config once, for what the window needs at its start: its `FontSize`, its `Theme` and its `Window`, the last two
+   through a `match` with a default, [ui.Dark] and 1280 by 720, for a config made without them, as the second rule of
+   [the reload](customising.md#reloading-cemacs-while-it-runs) asks;
+3. opens the window at the size of `Window`, with the font of the body at the size of `FontSize`, then adds the other two
+   fonts, `strong` and `code`;
+4. measures the code font: a character is as wide as `M`, and a line as high as `Ag` plus [view.LineGap], one pixel;
+5. makes the first state, with one empty buffer and the theme, then opens the files given after the folder, in order: an
+   empty buffer that nothing touched gives its place to the first one; then runs the `Start` of the config once on that
+   state, or nothing for a config without one, and settles it, as after a key;
+6. runs the loop until the update gives `missing`, then closes the window and gives `Ok(missing)`, which `src/cemacs.ce`
    prints.
 
 [Speed](performance.md) has the time all of this takes.

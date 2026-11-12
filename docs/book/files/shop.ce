@@ -1,0 +1,4 @@
+(** The prices of a shop. *)
+use std/list
+
+Total(prices) = list.Reduce((a, b) -> a + b, 0, prices)   (** The total of prices, in cents. *)

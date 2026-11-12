@@ -48,17 +48,19 @@ the keys of Cemacs are a value of its own code, which any Cesia program can read
 8. [Running and debugging](running.md): running a file with its permissions, its output, breakpoints, stepping, fix and
    continue.
 9. [Errors in the lines](check.md): what the check shows, when it runs, and how to go from one error to the next.
-10. [Changing Cemacs](customising.md): settings, your own keys and commands, an app of your own, and the reload while it
-    runs.
-11. [Inside Cemacs](internals.md): the state and its update, the rope, the history, the colours, the indent, the frame, the loop of
+10. [Changing Cemacs](customising.md): your folder `user/`, settings, your own keys and commands, an app of your own, and
+    the reload while it runs.
+11. [Recipes](recipes.md): small tasks done in `user/`, each with its code, its key and what it shows: your settings, files
+    at the start, a new buffer, a group of keys, a question, a list, a hook, an app.
+12. [Inside Cemacs](internals.md): the state and its update, the rope, the history, the colours, the indent, the frame, the loop of
     events, saving.
-12. [Speed](performance.md): what was measured, how, and the numbers.
-13. [Cemacs and other editors](comparison.md): beside GNU Emacs, Neovim, Vim and VS Code, in numbers and in features.
-14. [A case: finding a file from a few letters](finding.md): one real problem, from its statement to the proof that it is
+13. [Speed](performance.md): what was measured, how, and the numbers.
+14. [Cemacs and other editors](comparison.md): beside GNU Emacs, Neovim, Vim and VS Code, in numbers and in features.
+15. [A case: finding a file from a few letters](finding.md): one real problem, from its statement to the proof that it is
     solved, by the methods of research: a baseline, a hypothesis, the papers, the smallest change, tests and measures.
-15. [Troubleshooting](troubleshooting.md): every message of Cemacs, what it means and what to do.
-16. [Glossary](glossary.md): the words of editors, as Cemacs uses them.
-17. [References](references.md): the works and standards that Cemacs follows.
+16. [Troubleshooting](troubleshooting.md): every message of Cemacs, what it means and what to do.
+17. [Glossary](glossary.md): the words of editors, as Cemacs uses them.
+18. [References](references.md): the works and standards that Cemacs follows.
 
 The reference, under [Reference](ref/index.html), lists every package of Cemacs and every public name, from its code.
 

@@ -19,7 +19,9 @@ hand: the page reads the keymaps from the code of Cemacs each time the site is b
 ## The global keymap
 
 These keys work in every buffer of text. They come from `src/emacs/emacs.ce` and from the apps that `src/cemacs.ce` merges
-with them, with `?` after every prefix key: the code below makes the same merge, and the table from it.
+with them, with `?` after every prefix key: the code below makes the same merge, and the table from it. Your own keys, which
+the `Changed` of `user/config/config.ce` merges over these, are not in it: the table comes from the code of Cemacs, and
+`user/` is yours.
 
 ```cesia output=md fold=code
 use src/buffers
@@ -184,5 +186,6 @@ after `C-x` is `C-x ?`, which the key event alone would call `C-x /`. The lower 
 
 ## Changing a key
 
-The bindings are code, so changing a key is changing a line of `src/emacs/emacs.ce`, or of the app that binds it, and any
-function from a state to a state can be bound. [Changing Cemacs](customising.md) shows how, with your own keys and groups.
+The bindings are code, so changing a key is a line of your `Changed`, in `user/config/config.ce`, which `C-c f c` opens, and
+any function from a state to a state can be bound. [Changing Cemacs](customising.md#keys-of-your-own) shows how, with your
+own keys and groups, and [Recipes](recipes.md#a-key-group-of-your-own) makes a group of four commands.

@@ -57,19 +57,22 @@ peut lire.
    fix and continue.
 9. [Les erreurs dans les lignes](check.md) : ce que montre la vérification, quand elle tourne, et comment aller d'une erreur
    à la suivante.
-10. [Modifier Cemacs](customising.md) : les réglages, vos propres touches et commandes, une app à vous, et le rechargement
-    pendant qu'il tourne.
-11. [À l'intérieur de Cemacs](internals.md) : l'état et sa mise à jour, la rope, l'historique, les couleurs,
+10. [Modifier Cemacs](customising.md) : votre dossier `user/`, les réglages, vos propres touches et commandes, une app à
+    vous, et le rechargement pendant qu'il tourne.
+11. [Recettes](recipes.md) : de petites tâches faites dans `user/`, chacune avec son code, sa touche et ce qu'elle montre :
+    vos réglages, des fichiers au démarrage, un nouveau buffer, un groupe de touches, une question, une liste, un hook,
+    une app.
+12. [À l'intérieur de Cemacs](internals.md) : l'état et sa mise à jour, la rope, l'historique, les couleurs,
     l'indentation, la frame, la boucle des événements, l'enregistrement.
-12. [Vitesse](performance.md) : ce qui a été mesuré, comment, et les chiffres.
-13. [Cemacs et les autres éditeurs](comparison.md) : à côté de GNU Emacs, Neovim, Vim et VS Code, en chiffres et en
+13. [Vitesse](performance.md) : ce qui a été mesuré, comment, et les chiffres.
+14. [Cemacs et les autres éditeurs](comparison.md) : à côté de GNU Emacs, Neovim, Vim et VS Code, en chiffres et en
     fonctions.
-14. [Un cas : trouver un fichier à partir de quelques lettres](finding.md) : un vrai problème, de son énoncé jusqu'à la
+15. [Un cas : trouver un fichier à partir de quelques lettres](finding.md) : un vrai problème, de son énoncé jusqu'à la
     preuve qu'il est résolu, par les méthodes de la recherche scientifique : une base de comparaison, une hypothèse, les
     articles, le plus petit changement, des tests et des mesures.
-15. [Dépannage](troubleshooting.md) : chaque message de Cemacs, ce qu'il veut dire et que faire.
-16. [Glossaire](glossary.md) : les mots des éditeurs, tels que Cemacs les emploie.
-17. [Références](references.md) : les travaux et les normes que suit Cemacs.
+16. [Dépannage](troubleshooting.md) : chaque message de Cemacs, ce qu'il veut dire et que faire.
+17. [Glossaire](glossary.md) : les mots des éditeurs, tels que Cemacs les emploie.
+18. [Références](references.md) : les travaux et les normes que suit Cemacs.
 
 La référence, sous [Reference](ref/index.html), liste chaque package de Cemacs et chaque nom public, à partir de son code.
 

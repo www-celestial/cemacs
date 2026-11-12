@@ -172,9 +172,10 @@ While the program is stopped, you can change its code and save it: when it goes 
 
 ## Changing Cemacs
 
-Cemacs is a Cesia project, and its settings are Cesia code. `C-c f c` opens `src/cemacs.ce`, where the apps of Cemacs and
-their keys come together. `src/emacs/emacs.ce` holds the keys of Emacs and the settings, each a function. Here are two of
-them, as this page was built:
+Cemacs is a Cesia project, and its settings are Cesia code. Your changes go in a folder of your own, `user/`, which Cemacs
+made at its first start and which `git pull` never touches. `C-c f c` opens `user/config/config.ce`, whose function
+`Changed` gets the config of Cemacs, the record of its keys and its settings, and gives it back changed. The keys of Emacs
+and the settings of Cemacs are in `src/emacs/emacs.ce`, each a function. Here are two of them, as this page was built:
 
 ```cesia
 use src/emacs
@@ -182,26 +183,35 @@ emacs.FontSize() -->
 emacs.HintDelay() -->
 ```
 
-To change one, change its function and save:
+To change them, set them in `Changed`, each as a function, and save:
 
-```cesia norun
-(* in src/emacs/emacs.ce *)
-FontSize() = 17
-HintDelay() = 0.3
+```cesia
+defn Changed(config)
+  (** Cemacs with larger text and the band of hints sooner. *)
+  c = config
+  c.FontSize = () -> 17
+  c.HintDelay = () -> 0.3
+  c
+end
+
+Changed(emacs.Config(emacs.Keys)).HintDelay() --> 0.3
 ```
 
 A key runs any function from the state of the editor to a new state. Here is a group `t` of your own, with one key in it,
-in a new package `src/mine/`:
+in a new package `user/mine/`:
 
 ```cesia
-(* src/mine/mine.ce *)
+(* user/mine/mine.ce *)
 use core/commands
 Keys() = {"C-c t": "tools", "C-c t s": commands.Save}
 ```
 
-In `src/cemacs.ce`, add `use src/mine`, and `mine.Keys()` to the keys that `Keys` merges. Start Cemacs with `cesia do dev`
-from its folder: each save of one of its files then reloads it in the window, without closing it, so a changed key or
-setting works at the next key. A new package, as `src/mine/` here, needs one restart first, since a program that runs
-can't load a new package. [Changing Cemacs](customising.md) tells all of it, with an app of your own.
+In `user/config/config.ce`, add `use user/mine` at the top, and in `Changed`,
+`c.Keys = () -> dict.Merge(config.Keys(), mine.Keys())` before its last line, with `use std/dict`. Start Cemacs with
+`cesia do dev` from its folder: each save of one of its files, or of yours, then reloads it in the window, without closing
+it, so a changed key or setting works at the next key; the size of the text waits for the next start, since the window
+reads it once. A new package, as `user/mine/` here, needs one restart first, since a program that runs can't load a new
+package. [Changing Cemacs](customising.md) tells all of it, with an app of your own, and [Recipes](recipes.md) has small
+tasks done this way.
 
 `cesia do test` runs the suite of Cemacs, and `SDL_VIDEODRIVER=dummy cesia do test` runs it without showing a window.

@@ -72,6 +72,19 @@ against 57.4 ms [57.0, 58.0] with Cesia 1.1.0, and for `main` at 65ec91c 47.9 ms
 51.6]. With the next version of Cesia, the indent and the completion cost 3.4 ms at the start, and Cemacs starts in the same
 time as it did with Cesia 1.1.0 before them.
 
+The folder of the person, `user/`, adds to the start a package of 21 lines, the template's `user/config`, three reads of
+the config with a `match` each, and a test of the shell in `bin/cemacs`, `[ -e "$home/user" ]`, which starts no process.
+Measured beside `main` at 158205b, the program below with the code of each, the two taking turns, $n = 62$ in two series of
+31: 54.5 ms [53.5, 55.5] against 54.8 ms [53.8, 55.9], the same time. `main` itself took 54.8 ms that day against 51.3 in
+the table, on the same machine: two versions are compared only within one series. `src/cemacs.ce` now calls the `Changed`
+of `user/config` each time the editor reads its config, two or three times for a key: a pause of about 100 µs put in
+`Config()` made `C-f` 220 to 270 µs longer. `Config()` alone, 1,000 calls a pass, 300 passes, $n = 21$ runs taking
+turns: 1.26 µs [1.25, 1.27] against 0.83 µs [0.82, 0.85], the call of `Changed` and the copy of the record that puts `?`
+after the prefix keys. A key through [commands.Update], on a buffer of 1,000 lines, without drawing, the median of 3,000
+passes in each run, $n = 21$: `C-f` 815.2 µs [801.1, 831.1] against 810.9 µs [794.2, 834.0], a typed letter 816.8 µs
+[809.2, 828.0] against 818.0 µs [811.1, 827.1]. The 1 µs or so that a key spends in `Changed` is below what the runs can
+tell apart.
+
 Where the 51 ms went, with the dummy driver, before this version, each part timed from the one before by the program below with a mark after each part, $n = 20$,
 medians:
 

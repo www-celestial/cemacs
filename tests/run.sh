@@ -16,6 +16,8 @@ tools/indent-corpus.sh --std bench core src tests tools
 # src/ui needs no permission and no window: it uses only the packages of std/ that touch nothing outside.
 ! grep "^use " src/ui/ui.ce | grep -qvE "^use std/(list|math|value|text|dict)$"
 [ "$(cesia run tests/ui-pure.ce; echo "exit $?")" = "$(cat tests/ui-pure.expected)" ]
+# The template that Changing Cemacs shows is the one that user/ is made from.
+[ "$(sed -n '/^(\*\* Your changes to Cemacs/,/^```$/p' docs/book/customising.md | sed '$d')" = "$(cat tools/user-template/config/config.ce)" ]
 tests/sdl/run.sh
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/files-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/commands-check.ce
