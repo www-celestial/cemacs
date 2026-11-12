@@ -130,6 +130,7 @@ that src/ide knows:
 | `Confirm` | asks for a yes, then makes the edits that come with it in buffers, as a rename does: no answer edits a buffer without that yes |
 | `Run` | runs `cesia test`, and sends its output to the program once it ends |
 | `Marks` | puts the marks of failures in the lines of their files |
+| `Insert` | writes a form of Cesia under the cursor, from the program of the forms only: [Editing](editing.md#forms-of-cesia) |
 
 | Program | Its work | Its permissions |
 |---|---|---|
@@ -137,6 +138,8 @@ that src/ide knows:
 | `tools/grep.ce` | [src/grep]: the search of a project | `read`, `exec=git` |
 | `tools/git.ce` | [src/git]: Git | `read`, `exec=git` |
 | `tools/testing.ce` | [src/testing]: what a key tests, the failures | `read` |
+| `tools/snippets.ce` | [src/snippets]: the forms of `C-c i` | none |
+| `tools/shell.ce` | [the shell](shell.md): it starts your shell and passes it the commands of its buffer, for as long as the buffer is open | `exec=` your shell, alone |
 
 The question waits in a fiber, as the check does, and each tick of the editor takes the answer once it has come, so that
 typing never waits; a new question takes the place of one not answered yet. `cesia lsp` answers the same way, from a fiber:
