@@ -74,6 +74,12 @@ and keeps one text in it: it has no kill ring. See [Editing](editing.md#cutting-
 What a key runs. In Cemacs, any function from the state of the editor to a new state; Emacs asks a command to be marked as
 interactive. See [Keys](keys.md#words).
 
+## Commit and index
+
+In Git, a commit is a state of the files of a project kept with a message, its author and its date; the index, which Git
+also calls the staging area, holds what the next commit will take, file by file. To stage a file is to put it in the index.
+[Git](git.md).
+
 ## Completion
 
 Typing the start of a word and letting the editor write the rest, from the words it knows. In a file of Cesia, Tab

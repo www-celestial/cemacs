@@ -67,22 +67,27 @@ absolute(p) = if str.StartsWith("/", p) files.Normal(p) else folders.Absolute(p,
 
 defn context(state)
   (** What a question says of the editor: the folder Cemacs started in, Pwd; the file of the current buffer, Path, its text, Text, and the place of the
-      cursor; the folder of that file, Folder; and Texts, the texts of the Cesia buffers not saved, by path. *)
+      cursor; the folder of that file, Folder; and Texts, the texts of the Cesia buffers not saved, by path; a text over TextLimit() bytes stays out. *)
   b = state.Buffers[state.Current]
   pwd = sys.Env("PWD")
   out = {Pwd: pwd, Folder: absolute("."), Line: b.Cursor.Line, Column: b.Cursor.Column, Texts: {}}
   if isFile(b)
     out.Path = absolute(b.Path)
     out.Folder = folders.Parent(out.Path)
-    out.Text = rope.Text(b.Rope)
+    if rope.Size(b.Rope) <= TextLimit()
+      out.Text = rope.Text(b.Rope)
+    end
   end
   for other in state.Buffers
-    if isFile(other) and indent.IsCesia(other) and text.IsModified(other)
+    if isFile(other) and indent.IsCesia(other) and text.IsModified(other) and rope.Size(other.Rope) <= TextLimit()
       out.Texts[absolute(other.Path)] = rope.Text(other.Rope)
     end
   end
   out
 end
+
+(** The largest text of a buffer a question carries, in bytes, as the check reads no larger one. *)
+TextLimit() = 1000000
 
 defn ask(request, state)
   (** The state with a question sent to its program, from a fiber: the request, a map with Program and Do, and what context gives of the editor. *)

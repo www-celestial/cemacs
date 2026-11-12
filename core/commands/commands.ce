@@ -856,7 +856,7 @@ end
 
 defn Launch(args, words, state, tag = missing)
   (** Runs cesia with args as a program of the editor, its output below the panes, once the program that runs, if one does, has ended; words say it, and
-      the run keeps tag in its Tag, for the app that started it. The tests of src/testing run so. *)
+      the run keeps tag in its Tag, for the app that started it. The tests of src/ide run so. *)
   s = finished(state)
   if running(s)
     return say("The program that runs doesn't end: C-c c k asks it again.", s)

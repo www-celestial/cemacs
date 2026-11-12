@@ -63,7 +63,7 @@ defn Start(home, path, breaks, debug, task = missing)
 end
 
 defn Begin(args, debug, shown = true)
-  (** Starts cesia with args, as Start does and the tests of src/testing do: an Ok of its run, its output read by a fiber, or an Err. With shown, the
+  (** Starts cesia with args, as Start does and the tests of src/ide do: an Ok of its run, its output read by a fiber, or an Err. With shown, the
       command is the first line of the output; cesia do writes its own. *)
   p = sys.Start("cesia", args)?
   r = Empty()
