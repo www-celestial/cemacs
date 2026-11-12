@@ -1,9 +1,9 @@
 # Édition
 
-Ce chapitre dit comment le curseur se déplace, comment le texte se tape et s'efface, comment une sélection se fait, se
-coupe, se copie et se colle, comment marche l'annulation, et ce que fait la souris. Chaque touche ici est dans la table de
-`src/emacs/emacs.ce`, et lance une commande de [core/commands] : une fonction publique qui va de l'état de l'éditeur à un
-nouvel état.
+Ce chapitre dit comment le curseur se déplace, comment le texte se tape et s'efface, où va une ligne de code Cesia,
+comment un mot se complète, comment une sélection se fait, se coupe, se copie et se colle, comment marche l'annulation, et
+ce que fait la souris. Chaque touche ici est dans la table de `src/emacs/emacs.ce`, et lance une commande de
+[core/commands] : une fonction publique qui va de l'état de l'éditeur à un nouvel état.
 
 ## Les exemples de ce chapitre
 
@@ -20,9 +20,10 @@ use src/rope
 use src/ui
 use std/value
 
-defn editor(words)
-  (** The editor with one buffer holding words, the Emacs keys and no window: 800 by 600 pixels, characters 8 by 19. *)
-  s = view.Start([text.Of(words, missing)], ui.Look(ui.Dark, (w, f) -> 8 * value.Len(w), 19), {Width: 8, Height: 19}, 800, 600)
+defn editor(words, path = missing)
+  (** The editor with one buffer holding words, of the file path or of none, the Emacs keys and no window: 800 by 600 pixels,
+      characters 8 by 19. Nothing is read from the disk. *)
+  s = view.Start([text.Of(words, path)], ui.Look(ui.Dark, (w, f) -> 8 * value.Len(w), 19), {Width: 8, Height: 19}, 800, 600)
   s.Config = () -> emacs.Config(emacs.Keys)
   s
 end
@@ -105,18 +106,144 @@ Une touche avec Control ou Alt ne tape rien, et lance sa commande.
 
 | Touches | Commande | Insère |
 |---|---|---|
-| `enter`, `S-enter` | [commands.NewLine] | une fin de ligne, puis les espaces et les tabulations qui commencent la ligne courante, jusqu'au curseur |
-| `tab`, `S-tab` | [commands.Tab] | le texte de [emacs.TabText] : deux espaces |
+| `enter`, `S-enter` | [commands.NewLine] | une fin de ligne ; dans un fichier de Cesia, puis les espaces qui mettent la nouvelle ligne là où `cesia fmt` la met ; dans un autre fichier, les espaces et les tabulations qui commencent la ligne courante, jusqu'au curseur |
+| `tab`, `S-tab` | [commands.Tab] | dans un fichier de Cesia, rien : la ligne, ou les lignes sélectionnées, vont à leur place, ou le mot avant le curseur est complété ; dans un autre fichier, le texte de [emacs.TabText] : deux espaces |
 
-Enter garde donc l'indentation, les espaces au début d'une ligne qui montrent le code à l'intérieur d'un bloc :
+L'indentation d'une ligne, ce sont les espaces à son début, qui montrent le code à l'intérieur d'un bloc. Dans un fichier
+d'un autre langage, Enter garde l'indentation de la ligne :
 
 ```cesia
 textOf(press.Press(["  if x", "enter", "y"], editor(""))) --> "  if x\n  y"
 ```
 
-Tab insère des espaces, et jamais un caractère de tabulation, car le code Cesia est indenté avec des espaces : changez
-[emacs.TabText] pour avoir une autre largeur. Taper sur une sélection la remplace, comme dans la plupart des éditeurs ; dans
-Emacs, c'est `delete-selection-mode` qui le fait.
+Dans un autre fichier, Tab insère des espaces, et jamais un caractère de tabulation : changez [emacs.TabText] pour avoir une
+autre largeur. Dans un fichier de Cesia, Enter et Tab donnent à chaque ligne sa place, comme le dit la section suivante.
+Taper sur une sélection la remplace, comme dans la plupart des éditeurs ; dans Emacs, c'est `delete-selection-mode` qui le
+fait.
+
+## L'indentation dans un fichier de Cesia
+
+Un fichier de Cesia est un buffer dont le chemin finit par `.ce`, [indent.IsCesia]. Cemacs y met chaque ligne là où la
+mettrait `cesia fmt`, le formatter de Cesia (le programme qui remet le code dans le style de Cesia), selon la règle même de
+fmt, si bien que le code tapé dans Cemacs est déjà tel que fmt le laisse :
+
+- Une ligne qui commence un statement (une instruction, un pas du programme comme `x = 1` ou `if a`) reçoit deux espaces
+  pour chaque bloc où elle se trouve. Un bloc est ce qu'ouvre `defn`, `if`, `for`, `while`, `match`, `struct` ou
+  `interface` et que ferme `end` ; `else` ferme une partie d'un `if` ou d'un `match` et ouvre la suivante, aussi se
+  place-t-il un bloc plus à gauche.
+- Une ligne qui continue un statement, une continuation line (une ligne de suite), se déplace avec la ligne qui le commence.
+  Un statement continue entre parenthèses, crochets ou accolades, `(`, `[` et `{`, que la suite de ce chapitre appelle
+  toutes « parenthèses », après un token (un mot ou un signe du code) qui en demande plus, comme `,`, `+`, `and` ou `then`,
+  et à l'intérieur d'un commentaire.
+- Une ligne qui commence à l'intérieur d'un texte, de `"` à `"` sur plusieurs lignes, garde les espaces qu'elle contient,
+  puisqu'ils font partie du texte.
+
+Les exemples ci-dessous donnent au buffer un fichier, `a.ce` ; rien n'est lu sur le disque. `"end"` seul serait la touche
+de ce nom, aussi le mot se tape-t-il en deux parties, `"en"` et `"d"`.
+
+**Enter** commence la nouvelle ligne à sa place, un bloc plus loin après une ligne qui ouvre un bloc. **Les mots qui
+déplacent une ligne**, `end`, `else` et `then`, et les parenthèses fermantes `)`, `]` et `}`, tapés au début d'une ligne, la
+mettent aussi à sa place, dans la même étape d'annulation que la frappe :
+
+```cesia
+typed = press.Press(["if a", "enter", "b", "enter", "else", "enter", "c", "enter", "en", "d"], editor("", "a.ce"))
+textOf(typed) --> "if a\n  b\nelse\n  c\nend"
+```
+
+Les mêmes touches, dans un fichier d'un autre langage, gardent l'indentation de la ligne du dessus :
+
+```cesia
+textOf(press.Press(["if a", "enter", "b", "enter", "en", "d"], editor(""))) --> "if a\nb\nend"
+```
+
+Enter enlève aussi les espaces autour du curseur qui resteraient au bout de la ligne, puisque fmt ne laisse aucune ligne
+finir par des espaces. À l'intérieur d'un texte, il garde les espaces et les tabulations de la ligne, comme dans un autre
+fichier.
+
+Emacs appelle cela l'electric indentation (l'indentation refaite à certaines touches) : son `electric-indent-mode`, actif
+par défaut, indente à nouveau à chaque caractère de `electric-indent-chars`, une fin de ligne par défaut, à laquelle chaque
+mode d'un langage ajoute les siens ; Vim et Neovim font de même avec les `'indentkeys'` de chaque type de fichier, comme
+`0=end` pour Lua.
+
+**Tab** met la ligne du curseur à sa place, ou, avec une sélection, chaque statement qui y a une ligne. Un statement se
+déplace tout entier : sa première ligne va à sa place, et les lignes qui le continuent se déplacent d'autant, si bien que
+leur disposition est gardée. C'est une seule étape d'annulation, et cela met fin à la sélection :
+
+```cesia
+textOf(press.Press(["C-n", "tab"], editor("defn f()\nx = 1 +\n    2\nend", "a.ce"))) --> "defn f()\n  x = 1 +\n      2\nend"
+```
+
+Le curseur garde sa place dans les mots de sa ligne ; depuis l'intérieur de l'indentation, il va à sa fin. Sur une ligne
+vide, Tab met le curseur là où commencerait une ligne tapée là. C'est l'`indent-for-tab-command` d'Emacs avec
+`tab-always-indent` à `t`, sa valeur par défaut : Tab ne fait jamais qu'indenter. Dans un fichier de Cesia, Tab ne tape plus
+deux espaces ; la barre d'espace le fait.
+
+**Une ligne que fmt garde telle qu'elle est écrite.** fmt n'a pas de règle pour la place d'une continuation line : il la
+déplace avec son statement, et la garde là où elle est par rapport à lui. Tab ne choisit donc pas de place pour une telle
+ligne, mais une ligne que l'on tape en a besoin, et Enter et les mots qui déplacent une ligne la choisissent :
+
+- entre parenthèses, comme la ligne du dessus entre les mêmes parenthèses, sinon deux colonnes plus loin que la ligne qui
+  ouvre la parenthèse, et la parenthèse qui la ferme sous cette ligne ; un bloc écrit entre parenthèses, comme dans
+  `fiber.Spawn(defn ()`, se dispose à partir de la ligne qui l'ouvre ;
+- après un token qui en demande plus, ou avant un `then`, deux colonnes plus loin que le statement, ou comme la ligne du
+  dessus qui le continue ;
+- dans un commentaire, sous les mots qui suivent son ouverture, puis comme la ligne du dessus ; dans un commentaire de
+  documentation, `(**`, deux colonnes plus loin après une ligne vide, là où vont ses exemples ;
+- dans un texte, comme la ligne du dessus.
+
+```cesia
+textOf(press.Press(["ys = [f(x),", "enter", "g(x)", "enter", "]"], editor("", "a.ce"))) --> "ys = [f(x),\n  g(x)\n]"
+```
+
+Mesuré sur tous les fichiers de Cesia et de Cemacs, formatés par fmt, 768 fichiers de 36 038 lignes : Tab laisse chacune des
+36 038 lignes là où elle est, et une ligne tapée avec Enter et son premier mot arrive là où le code formaté la met pour
+36 000 d'entre elles, 99,89 %. Les 38 autres sont des dispositions que fmt garde et qu'aucune règle ne devine, comme un
+exemple juste sous les mots d'un commentaire, sans ligne vide avant lui. [À l'intérieur de Cemacs](internals.md#lindentation)
+dit comment une ligne se lit, et [Vitesse](performance.md#enter-et-tab-dans-un-fichier-de-cesia) ce que cela coûte.
+
+## La completion
+
+Compléter un mot, c'est en taper le début et laisser l'éditeur écrire le reste : la completion. Dans un fichier de Cesia,
+Tab complète quand la ligne est déjà à sa place et que le curseur finit un mot : les lettres, les chiffres et les tirets bas
+(`_`) juste avant lui, sans aucun juste après. Sinon, Tab met la ligne à sa place, comme plus haut. C'est ce que fait Emacs
+avec `tab-always-indent` à `complete`.
+
+Les mots viennent de trois endroits, dans cet ordre, chaque mot une fois, 100 au plus :
+
+1. le texte du buffer autour du curseur, 64 KB avant lui et 64 KB après, le mot le plus proche d'abord ;
+2. les autres buffers, de la même façon autour de leur curseur ;
+3. les noms de Cesia : ses mots-clés, et les noms publics de sa bibliothèque standard sans leur module, comme `Concat` pour
+   `list.Concat`, lus une fois, à la première completion.
+
+Un mot tapé sans majuscule trouve aussi les mots qui en ont, comme le fait une recherche : `byte` trouve `ByteFind`. Un mot
+avec une majuscule ne trouve que les mots qui commencent tels qu'il est écrit. Le `dabbrev-expand` d'Emacs, `M-/`, et le
+`Ctrl-N` de Vim prennent eux aussi leurs mots dans les buffers.
+
+Avec un seul mot trouvé, Tab le met en place tout de suite. Avec plusieurs, une liste s'ouvre sous le mot, le premier
+choisi :
+
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `C-n`, `down` | [commands.CompleteNext] | choisit le mot suivant, et le premier après le dernier |
+| `C-p`, `up` | [commands.CompletePrevious] | choisit le mot d'avant, et le dernier avant le premier |
+| `tab` | [commands.CompleteAccept] | met le mot choisi à la place du début tapé, et ferme la liste |
+
+Une lettre tapée pendant que la liste est ouverte va dans le mot, et la liste se refait pour le mot plus long ; toute autre
+touche, comme Enter, `C-g` ou un déplacement, ferme la liste et fait ce qu'elle fait. Sans mot trouvé, la prompt line dit
+`No completion for` (pas de completion pour) et le mot. Le mot mis en place est une seule étape d'annulation, et il déplace
+sa ligne quand sa place change, comme le ferait `else` tapé.
+
+```cesia
+words = "Hello = 1\nHelp = 2\n"
+listed = press.Press(["M->", "Hel", "tab"], editor(words, "a.ce"))
+listed.Completion.Words[1] --> "Help"
+listed.Completion.Words[2] --> "Hello"
+textOf(press.Press(["C-n", "tab"], listed)) --> "Hello = 1\nHelp = 2\nHello"
+textOf(press.Press(["M->", "Hell", "tab"], editor(words, "a.ce"))) --> "Hello = 1\nHelp = 2\nHello"
+```
+
+La liste montre huit mots à la fois, et défile avec le mot choisi. Dans un fichier d'un autre langage, Tab tape son texte
+comme avant, et ne complète pas. [Vitesse](performance.md#la-completion) donne ce que coûte une completion.
 
 ## Effacer
 

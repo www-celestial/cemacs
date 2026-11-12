@@ -2,7 +2,7 @@
 
 Ce chapitre met Cemacs à côté des éditeurs que connaissent la plupart des programmeurs : GNU Emacs 31.1, Neovim 0.12.6 et
 Vim 9.2, qui étaient installés sur la machine où Cemacs est mesuré, et Visual Studio Code, d'après sa documentation publiée
-seulement. Il dit simplement où ils gagnent, et pourquoi. Cemacs est jeune et petit, environ 6 200 lignes ; chacun des autres
+seulement. Il dit simplement où ils gagnent, et pourquoi. Cemacs est jeune et petit, environ 7 200 lignes ; chacun des autres
 est le travail de beaucoup de personnes pendant des années, des décennies pour Emacs et Vim.
 
 ## En chiffres
@@ -16,7 +16,8 @@ défilées dans une série pour Cemacs et une pour les autres, le même après-m
 
 | Mesure | n | Cemacs | GNU Emacs 31.1 | Neovim 0.12.6 | Vim 9.2 |
 |---|---|---|---|---|---|
-| du lancement à la première frame | 15 ; 20 pour les autres | 53,7 ms [53,4 ; 55,3] | 89,1 ms [88,3 ; 92,9] | 13,8 ms [13,6 ; 13,9] | 9,3 ms [9,2 ; 9,4] |
+| du lancement à la première frame, avec la prochaine version de Cesia | 62 ; 20 pour les autres | 51,3 ms [50,8 ; 51,9] | 89,1 ms [88,3 ; 92,9] | 13,8 ms [13,6 ; 13,9] | 9,3 ms [9,2 ; 9,4] |
+| la même chose avec Cesia 1.1.0 | 62 | 57,4 ms [57,0 ; 58,0] | | | |
 | du lancement à la première frame, dans une fenêtre Wayland, avant cette version | 10 | 236 ms [232 ; 241] | | | |
 | lancer et ouvrir 0,79 MB | 7 | 66,9 ms [66,2 ; 71,0] | 98,4 ms [97,7 ; 109] | 20,5 ms [20,4 ; 42,7] | 18,0 ms [17,4 ; 19,8] |
 | lancer et ouvrir 15,9 MB | 7 | 97,8 ms [97,1 ; 139] | 145 ms [142 ; 149] | 53,2 ms [52,8 ; 61,9] | 51,5 ms [50,4 ; 52,0] |
@@ -24,6 +25,10 @@ défilées dans une série pour Cemacs et une pour les autres, le même après-m
 | une touche tapée à la ligne 19 000, à l'intérieur, avec son redessin | 7 | 2,6 ms [2,6 ; 3,2], OpenGL | 1,06 ms [1,04 ; 1,08] | 0,045 ms [0,042 ; 0,063] | 0,059 ms [0,056 ; 0,068] |
 | une ligne défilée, à l'intérieur, avec son redessin | 7 | 2,6 ms [2,5 ; 3,1], OpenGL | 1,51 ms [1,49 ; 1,60] | 0,020 ms [0,018 ; 0,030] | 0,052 ms [0,051 ; 0,083] |
 | une touche tapée à la ligne 1 416 745 de 99,9 MB, à l'intérieur | 7 | 1,57 ms [1,41 ; 1,97], sans dessin | 1,05 ms [1,04 ; 1,10] | 0,042 ms [0,042 ; 0,053] | 0,057 ms [0,052 ; 0,060] |
+| Enter qui indente, dans une fonction au milieu d'un fichier de 52 KB, d'un fichier Python de 107 KB pour les autres, à l'intérieur | 30 | 0,734 ms [0,701 ; 0,819], sans dessin | 0,197 ms [0,191 ; 0,211] | 18,8 ms [18,2 ; 19,2] | |
+| la même chose au milieu de 100,5 MB, d'un fichier Python de 104,7 MB pour les autres | 30 | 0,832 ms [0,812 ; 0,859], sans dessin | 201 ms [200 ; 205] | 3,78 ms [3,70 ; 3,86] | |
+| les mots qui complètent `co`, au milieu de 52 KB, d'un fichier Python de 107 KB pour les autres, à l'intérieur | 30 | 0,81 ms [0,79 ; 0,83], Tab, sans dessin | 4,07 ms [4,00 ; 4,12], `dabbrev` | 1,51 ms [1,15 ; 1,85], `Ctrl-N` | |
+| la même chose dans 100,5 MB, d'un fichier Python de 104,7 MB pour les autres | 30 ; 3 et 7 pour les autres | 1,43 ms [1,39 ; 1,47], dans 128 KB | 23,2 s, tout le buffer | 948 ms [918 ; 995], tout le buffer | |
 | chercher dans 15,9 MB un mot de la dernière ligne, le trouver | 7 | 7,6 ms [7,4 ; 7,9] | 7,6 ms [7,4 ; 7,9] | 28,3 ms [27,7 ; 29,6] | 33,6 ms [32,4 ; 36,8] |
 | chercher dans 99,9 MB un mot de la dernière ligne, le trouver | 7 | 48,8 ms [48,4 ; 53,5] | 48,4 ms [47,8 ; 51,6] | 181 ms [179 ; 265] | 300 ms [290 ; 315] |
 | la même chose, jusqu'à l'endroit montré | 7 | 87,6 ms [86,7 ; 88,6] | | | |
@@ -49,8 +54,8 @@ Ce qu'ils disent :
 
 - **Vim et Neovim démarrent plusieurs fois plus vite que Cemacs.** Ce sont des programmes en C compilés en code machine, qui
   démarrent en quelques millisecondes et dessinent des caractères dans un terminal. Cemacs est un programme Cesia : Cesia lit
-  et prépare environ 7 000 lignes de code à chaque démarrage, celles de Cemacs et des packages de Cesia qu'il emploie,
-  environ 26 ms, puis SDL3 ouvre une fenêtre, et SDL3_ttf charge trois polices et dessine la première frame en pixels. Dans
+  et prépare environ 8 000 lignes de code à chaque démarrage, celles de Cemacs et des packages de Cesia qu'il emploie,
+  environ 24 ms avec la prochaine version de Cesia et 38 ms avec la 1.1.0, puis SDL3 ouvre une fenêtre, et SDL3_ttf charge trois polices et dessine la première frame en pixels. Dans
   une vraie fenêtre sur GNOME, le démarrage par SDL de sa barre de titre à travers GTK et d'OpenGL le porte à 236 ms. Emacs,
   qui charge son propre Lisp au démarrage, prend 89 ms dans un terminal.
 - **Cemacs ouvre un fichier plus vite qu'Emacs à chaque taille mesurée, 99,9 MB en 0,68 de son temps, mais Vim et Neovim
@@ -70,10 +75,19 @@ Ce qu'ils disent :
 - **Un enregistrement de 15,9 MB qui attend le disque**, `fsync`, prend à Cemacs moins qu'à Vim et Neovim, qui attendent
   aussi, quand le texte est celui qui a été lu : ses vues couvrent encore le texte du fichier, écrit tel quel. Emacs, qui
   n'attend pas, prend plus, 131 ms, et fait un backup du fichier à son premier enregistrement, `FILE~`.
+- **Enter qui indente une ligne de code** coûte à Cemacs moins d'une milliseconde à toutes les tailles de fichier, là où le
+  python-mode d'Emacs, deux à quatre fois plus rapide dans un petit fichier, prend 0,2 s dans un fichier de 100 MB, et
+  l'indentation de Python de Neovim de 3,8 à 19 ms : Cemacs lit une ligne depuis la ligne à la marge la plus proche au-dessus
+  d'elle, comme le dit [Vitesse](performance.md#enter-et-tab-dans-un-fichier-de-cesia). Les deux autres n'ont pas de mode pour
+  Cesia, aussi ont-ils été mesurés sur du Python.
+- **La completion** d'un début de deux ou trois lettres prend à Cemacs de 0,7 à 1,4 ms à toute taille de fichier ; le
+  `Ctrl-N` de Neovim est aussi rapide ou plus dans un petit fichier, et gagne sur un début d'une lettre, mais il lit tout le
+  buffer, de 0,4 à 1 s dans 100 MB ; le `dabbrev` d'Emacs prend de 3 à 15 ms, et de 13 à 23 s, tandis que son `M-/`, qui ne
+  cherche qu'un seul mot, prend de 0,04 à 0,2 ms.
 - **Une touche et une ligne défilée** prennent à Cemacs 2,6 ms à l'intérieur, avec OpenGL, contre 1,1 à 1,5 ms pour Emacs et
   0,02 à 0,06 ms pour Neovim et Vim, qui écrivent quelques cases d'un terminal en C et laissent le terminal les dessiner.
   Tous tombent dans une même frame de l'écran, 16,7 ms à 60 Hz. Dans un fichier de 99,9 MB, à sa ligne du milieu, une touche
-  coûte à Cemacs 1,6 ms sans dessin, à Emacs 1.05.
+  coûte à Cemacs 1,6 ms sans dessin, à Emacs 1,05.
 - **Au repos, Cemacs emploie une mémoire de l'ordre de celle d'Emacs vide, et quatre à cinq fois celle de Vim et de
   Neovim**, qui gardent les caractères d'un terminal là où Cemacs garde une fenêtre, ses polices et le runtime de Cesia. Avec
   un fichier de 99,9 MB ouvert, Cemacs garde 220 MB, 1,5 fois Emacs et 1,6 fois Vim et Neovim, qui gardent le fichier à peu
@@ -106,6 +120,8 @@ server et un adapter.
 | Les erreurs du code | celles de Cesia, d'après `cesia check`, une demi-seconde après une touche ; un fichier de plus de 1 MB n'est pas vérifié, et sa mode line le dit | Flymake, inclus, avec un vérificateur pour chaque langage | les diagnostics de son client LSP | par des plugins |
 | Language servers (LSP) | pas de client ; les erreurs de Cesia viennent de `cesia check` | Eglot, inclus | un client inclus, `vim.lsp` | des channels qui parlent l'encodage de LSP ; le client est un plugin |
 | Debugger | inclus, pour Cesia, avec breakpoints, steps, évaluations, fix and continue | GUD, inclus, pour gdb et d'autres debuggers | rien d'inclus : des plugins | Termdebug, inclus, pour gdb ; des channels qui parlent l'encodage de DAP |
+| Indentation | pour Cesia, selon la règle de `cesia fmt` : Enter, Tab, et `end`, `else`, `then` et les parenthèses, crochets et accolades fermants au début d'une ligne | pour chaque langage, selon son mode : `indent-for-tab-command`, et `electric-indent-mode` à une fin de ligne et aux caractères qu'ajoute chaque mode | pour chaque type de fichier, selon son `'indentexpr'`, aux touches de ses `'indentkeys'`, comme `0=end` | comme Neovim |
+| Completion | dans les fichiers de Cesia, Tab au bout d'un mot : les mots autour du curseur, ceux des autres buffers et les noms de Cesia, dans une liste sous le curseur | `completion-at-point` et `dabbrev-expand` (`M-/`), inclus ; `tab-always-indent` à `complete` | `Ctrl-N` et `Ctrl-P` en insert mode (le mode où l'on tape le texte) : les mots des buffers ; la completion du LSP | `Ctrl-N` et `Ctrl-P` |
 | Annulation | linéaire, avec rétablir, 1 000 états | une annulation est enregistrée comme une modification, si bien qu'une annulation peut être annulée ; `undo-redo` | un arbre de chaque état | un arbre de chaque état |
 | Encodages | UTF-8 seulement | beaucoup | beaucoup | beaucoup |
 | Grands fichiers | ouvre jusqu'à 1 GiB | demande au-dessus de 10 MB, puis ouvre | ouvre | ouvre |
@@ -139,9 +155,10 @@ Ce que Cemacs fait et qu'ils ne font pas d'emblée :
 
 Ce qu'ils font et que Cemacs ne fait pas, et pourquoi cela compte :
 
-- **La recherche par regular expression et le remplacement, la completion, une commande par son nom, d'autres langages et
-  d'autres encodages, un terminal à l'intérieur.** Cemacs n'en a encore aucun, à part son incremental search : c'est un
-  éditeur jeune pour un seul langage, et il grandit quand son usage le demande.
+- **La recherche par regular expression et le remplacement, la completion par un language server, une commande par son
+  nom, d'autres langages et d'autres encodages, un terminal à l'intérieur.** Cemacs n'en a encore aucun, à part son
+  incremental search et sa completion des mots : c'est un éditeur jeune pour un seul langage, et il grandit quand son usage
+  le demande.
 - **La vitesse au démarrage et sur les grands fichiers.** Du code natif qui lit et parcourt les octets d'un fichier à la
   vitesse de la mémoire.
 - **La sûreté du texte.** Emacs, Vim et Neovim gardent sur le disque une copie de ce que vous tapez, si bien qu'un crash perd

@@ -35,6 +35,7 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `Nothing is selected.` | `C-w` ou `M-w` sans sélection : posez la mark avec `C-space`, ou tenez Shift pendant que vous vous déplacez |
 | `The clipboard is empty.` | `C-y` sans rien dans le presse-papiers |
 | `Nothing to cut.` | `C-k` à la fin du fichier |
+| `No completion for WORD.`, comme `No completion for Hzq.` | Tab au bout d'un mot dans un fichier de Cesia n'a trouvé aucun mot qui commence ainsi, ni dans le texte autour du curseur, ni dans les autres buffers, ni dans les noms de Cesia : [Édition](editing.md#la-completion) |
 | `This list is read only.` | une commande a essayé de changer le texte d'une liste, et a été défaite |
 | `Nothing here.` | une touche d'une liste sans rangée restante, comme Enter après un filtre qui ne correspond à rien : Backspace défait le filtre |
 

@@ -111,6 +111,16 @@ puis celles qui n'ont pas besoin de rangée, puis [emacs.ListKeys], puis les tou
 hints montre aussi les touches de la liste, celles du gestionnaire de dossiers sous le nom `a function`, puisqu'elles sont
 écrites sur place dans son code ; les listes de `?` ne montrent que les touches globales.
 
+## La liste des completions
+
+Pendant que la liste des completions qu'ouvre Tab dans un fichier de Cesia est sous le curseur, ces touches passent devant
+les touches globales ; une lettre tapée refait la liste pour le mot plus long, et toute autre touche ferme la liste et fait
+ce qu'elle fait. [Édition](editing.md#la-completion) dit comment.
+
+```cesia output=md fold=code
+table(emacs.CompleteKeys())
+```
+
 ## La souris
 
 La souris a aussi ses keymaps, selon l'action de son événement : `down` (appui), `move` (déplacement), `up` (relâchement) et

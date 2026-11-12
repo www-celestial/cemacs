@@ -45,8 +45,8 @@ peut lire.
 1. [Installation](install.md) : Cesia, SDL3 et SDL3_ttf, le code, et la commande `bin/cemacs`.
 2. [Premiers pas](first-steps.md) : une visite, de l'ouverture d'un fichier jusqu'à son exécution, son débogage et la
    modification de Cemacs.
-3. [Édition](editing.md) : le curseur, la mark et la sélection, les déplacements, la frappe, couper et coller,
-   annuler, la souris.
+3. [Édition](editing.md) : le curseur, la mark et la sélection, les déplacements, la frappe, l'indentation du code Cesia,
+   la completion, couper et coller, annuler, la souris.
 4. [Fichiers et buffers](files.md) : ouvrir, enregistrer sans risque, quels fichiers s'ouvrent, les fins de ligne, la liste
    des buffers, le gestionnaire de dossiers.
 5. [Fenêtre et panes](windows.md) : la fenêtre, ses panes, la mode line, la prompt line et la bande des hints.
@@ -59,8 +59,8 @@ peut lire.
    à la suivante.
 10. [Modifier Cemacs](customising.md) : les réglages, vos propres touches et commandes, une app à vous, et le rechargement
     pendant qu'il tourne.
-11. [À l'intérieur de Cemacs](internals.md) : l'état et sa mise à jour, la rope, l'historique, les couleurs, la frame, la
-    boucle des événements, l'enregistrement.
+11. [À l'intérieur de Cemacs](internals.md) : l'état et sa mise à jour, la rope, l'historique, les couleurs,
+    l'indentation, la frame, la boucle des événements, l'enregistrement.
 12. [Vitesse](performance.md) : ce qui a été mesuré, comment, et les chiffres.
 13. [Cemacs et les autres éditeurs](comparison.md) : à côté de GNU Emacs, Neovim, Vim et VS Code, en chiffres et en
     fonctions.

@@ -1,9 +1,9 @@
 # À l'intérieur de Cemacs
 
 Ce chapitre dit comment Cemacs est construit : l'état et sa mise à jour, la rope qui contient le texte d'un buffer,
-l'historique d'annulation, les couleurs, la frame, la boucle des événements, et le démarrage. Il est pour le lecteur qui veut
-changer le core, ou savoir ce que coûte chaque opération. Le code fait 6 201 lignes de Cesia dans `core/` et `src/`, sans
-leurs tests, et chaque fichier peut se lire seul.
+l'historique d'annulation, les couleurs, l'indentation, la frame, la boucle des événements, et le démarrage. Il est pour le
+lecteur qui veut changer le core, ou savoir ce que coûte chaque opération. Le code fait 7 183 lignes de Cesia dans `core/`
+et `src/`, sans leurs tests, et chaque fichier peut se lire seul.
 
 ## L'état, la mise à jour et la vue
 
@@ -224,6 +224,44 @@ l'écran, qui est alors redessiné avec ses couleurs exactes. Un commentaire qui
 couleurs de l'écran pendant ces secondes ; rien d'autre n'est deviné. C'est ce que fait le jit-lock d'Emacs par ses propres
 moyens : il colore à la demande la partie du buffer que montre l'écran, et, avec `jit-lock-contextually`, la colore à
 nouveau après une pause d'après le vrai contexte des lignes du dessus.
+
+## L'indentation
+
+[core/indent] donne la place d'une ligne de code Cesia selon la règle de `cesia fmt`, que dit
+[Édition](editing.md#lindentation-dans-un-fichier-de-cesia) : son lexer (la partie qui découpe le texte en tokens, les mots du code)
+est celui de fmt, le scan et les formes de `src/tools/fmt.ce` de Cesia, lus ligne à ligne. fmt lit un fichier entier depuis
+sa première ligne ; un éditeur ne le peut pas, à chaque touche, dans un fichier d'un million de lignes. Une ligne se lit donc
+à partir de son anchor (sa ligne d'ancrage) : la ligne la plus proche au-dessus d'elle, à la marge gauche, d'où la lecture
+de fmt est sûre de partir hors de tout bloc et de toute parenthèse. Une ligne est un anchor quand :
+
+- elle est à la marge gauche, elle commence dans du code, d'après l'état des couleurs à son début, et elle commence par un
+  nom qui ne ferme ni ne continue rien, donc pas `end`, `else`, `then`, `and`, `or`, `not` ou `in`, ou par un commentaire ;
+- les lignes à la marge juste au-dessus d'elle, jusqu'à la première d'entre elles, sont aussi de telles lignes, et chaque
+  ligne au-dessus de l'une d'elles finit son statement, n'ouvre aucun bloc et ne ferme aucune parenthèse qu'elle n'a pas
+  ouverte : une ligne qui mène à la suivante ;
+- cette suite de lignes commence après une ligne vide, au début du fichier, après un `end` à la marge, ou après la fin d'un
+  commentaire.
+
+C'est le test sur la suite qui rend l'anchor sûr : une ligne à la marge à l'intérieur d'un bloc, comme un texte écrit là ou
+un statement laissé hors de sa place, est suivie ou précédée d'une ligne qui ne mène pas à la suivante. L'anchor se cherche
+dans les 64 lignes du dessus, puis dans 512, puis dans [indent.LookBack], 2 000 ; un fichier dont les lignes à la marge sont
+plus espacées que cela se lit depuis la ligne située 2 000 lignes plus haut, dans autant de blocs que le dit son indentation.
+Une ligne coûte donc les lignes de la définition où elle se trouve, jamais le fichier entier. La lecture depuis l'anchor
+donne l'état au début de la ligne, les blocs et les parenthèses ouverts et les lignes du statement qu'elle peut continuer ;
+de cet état, [indent.Wanted] tire la place d'une ligne que l'on tape, et [indent.Plan] les changements de Tab.
+
+Enter garde sa lecture : [text.NewLine] range, dans le `Layout` du buffer, l'état au début de la nouvelle ligne, et l'Enter
+suivant, ou le premier mot tapé sur cette ligne, repart de lui quand il est au plus 256 lignes plus haut, au lieu de chercher
+à nouveau l'anchor. Une modification l'oublie à partir de la ligne qu'elle change, comme elle oublie les états des couleurs
+après cette ligne, [indent.Forget]. La lecture gardée est celle de l'anchor : sur les 36 038 lignes des fichiers de Cesia et
+de Cemacs, Enter au bout de chaque ligne, en repartant de la lecture gardée, donne le même état qu'une lecture depuis
+l'anchor. GNU Emacs garde de la même façon les états de son parser à des endroits du buffer, dans le cache de
+`syntax-ppss`, oubliés à partir de l'endroit de chaque modification, pour que l'indentation d'une ligne ne lise pas le buffer
+depuis son début.
+
+Une ligne coûte, sur toutes les lignes de ces fichiers, mesuré une fois pendant que d'autres programmes tournaient, une
+médiane de 0,2 ms, et 4 ms au 99e percentile ; les plus lentes sont de longs statements lus ligne après ligne, comme une
+liste de longs textes, environ 15 ms, et une ligne de 220 KB, 78 ms.
 
 ## La frame
 

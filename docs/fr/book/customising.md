@@ -94,6 +94,7 @@ L'éditeur tourne sur une config, un record de fonctions (une map dont chaque ch
 | `PromptKeys`, `PromptMouseKeys` | les touches et la souris pendant qu'une question est ouverte |
 | `MouseKeys` | la souris, selon l'action de son événement |
 | `ListKeys` | les touches de chaque liste, devant les touches globales |
+| `CompleteKeys` | les touches de la liste des completions, devant les touches globales |
 | `TabText`, `WheelLines`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay` | les réglages |
 | `Idle`, `Saved`, `Moving` | les hooks, qu'ajoute [check.Hooked] : voir plus bas |
 

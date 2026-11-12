@@ -13,6 +13,13 @@ correspondance et en retire pour chaque gap, et le meilleur alignement a le meil
 pour l'ADN en 1981. Une requête de quelques lettres alignée avec le chemin d'un fichier, c'est ce que notent les fuzzy
 finders. Voir [Un cas](finding.md#4-la-recherche--comment-ce-genre-de-problème-se-résout).
 
+## Anchor
+
+La ligne d'ancrage d'où Cemacs lit le code au-dessus d'une ligne de Cesia pour lui donner sa place : la ligne la plus proche
+au-dessus d'elle à la marge gauche, dans du code, qui commence un statement, après une suite de lignes qui finissent chacune
+leur statement. De là, la lecture est sûre de partir hors de tout bloc et de toute parenthèse, comme le serait la lecture de
+`cesia fmt` depuis le début du fichier. Voir [À l'intérieur de Cemacs](internals.md#lindentation).
+
 ## Atomic rename
 
 En français : le renommage atomique. Un renommage que le système fait en un seul pas : à chaque instant, le nom mène à
@@ -76,10 +83,23 @@ bureau. Cemacs emploie celui du système, et y garde un seul texte : il n'a pas 
 En français : la commande. Ce qu'une touche lance. Dans Cemacs, n'importe quelle fonction qui va de l'état de l'éditeur à un
 nouvel état ; Emacs demande qu'une commande soit marquée interactive. Voir [Touches](keys.md#les-mots).
 
+## Completion
+
+Taper le début d'un mot et laisser l'éditeur écrire le reste, d'après les mots qu'il connaît. Dans un fichier de Cesia, Tab
+complète à partir des mots autour du curseur, des autres buffers et des noms de Cesia, et les liste sous le curseur quand il
+y en a plusieurs. Emacs le fait avec `completion-at-point` et `dabbrev-expand`, Vim avec `Ctrl-N`. Voir
+[Édition](editing.md#la-completion).
+
 ## Config
 
 Le record de fonctions sur lequel l'éditeur tourne : ses keymaps, ses réglages et ses hooks, fait par `emacs.Config`. Voir
 [Modifier Cemacs](customising.md#la-config).
+
+## Continuation line
+
+Une ligne de suite : une ligne qui continue un statement commencé sur une ligne au-dessus d'elle, entre parenthèses, crochets
+ou accolades, après un token qui en demande plus comme `,` ou `+`, ou dans un commentaire. `cesia fmt` la déplace avec la
+ligne qui commence le statement, et le Tab de Cemacs aussi. Voir [Édition](editing.md#lindentation-dans-un-fichier-de-cesia).
 
 ## Cursor
 
@@ -115,6 +135,13 @@ textes, case par case, chacune à partir des cases d'avant. Voir [Un cas](findin
 
 Le nom que donne Emacs à la ligne du bas de la frame où s'affichent les messages. La prompt line de Cemacs le fait. Voir
 [Fenêtre et panes](windows.md#la-prompt-line).
+
+## Electric indentation
+
+Indenter à nouveau une ligne quand un caractère ou un mot tapé change sa place, comme un `end` qui ferme un bloc. Emacs le
+fait avec `electric-indent-mode`, Vim et Neovim avec `'indentkeys'`. Dans un fichier de Cesia, Cemacs le fait à `end`,
+`else`, `then` et aux parenthèses, crochets et accolades fermants tapés au début d'une ligne. Voir
+[Édition](editing.md#lindentation-dans-un-fichier-de-cesia).
 
 ## Elm architecture
 
@@ -199,6 +226,12 @@ En français : la recherche incrémentale. Une recherche qui trouve la correspon
 d'attendre les mots entiers : `C-s` en avant et `C-r` en arrière, dans Emacs et dans Cemacs. La correspondance s'affiche
 sélectionnée, `C-s` à nouveau va à la suivante, et fait le tour par le bout du fichier quand il n'en reste plus. Voir
 [Recherche](search.md#chercher-dans-un-buffer).
+
+## Indent
+
+En français : l'indentation. Les espaces au début d'une ligne, qui montrent à quelle profondeur de blocs se trouve son code ;
+indenter une ligne, c'est lui donner ces espaces. Dans un fichier de Cesia, Cemacs donne à chaque ligne l'indentation que
+lui donne `cesia fmt`, deux espaces par bloc. Voir [Édition](editing.md#lindentation-dans-un-fichier-de-cesia).
 
 ## Just-in-time colouring
 
@@ -362,6 +395,12 @@ passé par le shaping rangé par ses mots, pour qu'une ligne qui bouge à l'écr
 
 Une sélection faite en tenant Shift pendant un déplacement, que le déplacement suivant sans Shift finit. Voir
 [Édition](editing.md#la-mark-et-la-sélection).
+
+## Statement
+
+Une instruction : un pas d'un programme, comme `x = 1`, `io.Print(x)` ou `if a`, qui peut s'étendre sur plusieurs lignes,
+ses continuation lines. `cesia fmt` place la première ligne de chaque statement, et déplace les autres avec elle. Voir
+[Édition](editing.md#lindentation-dans-un-fichier-de-cesia).
 
 ## Subsequence matching
 

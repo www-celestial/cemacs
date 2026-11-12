@@ -29,21 +29,26 @@ Chaque section met Cemacs à côté de GNU Emacs 31.1, Neovim 0.12.6 et Vim 9.2 
 
 ## Le démarrage
 
-De la commande à la première frame de la fenêtre, avec un seul buffer vide, $n = 20$ :
+De la commande à la première frame de la fenêtre, avec un seul buffer vide. Cemacs tel qu'il est maintenant et `main` à
+65ec91c, avant l'indentation et la completion, chacun avec la prochaine version de Cesia et avec Cesia 1.1.0, les quatre
+chacun à son tour, $n = 62$, en deux séries de 31 ; les autres dans une série à eux, $n = 20$ :
 
 | Éditeur, tel que lancé | Du lancement à la première frame |
 |---|---|
-| Cemacs, dans sa fenêtre, dummy driver de SDL | 51,1 ms [50,9 ; 51,9] |
-| Cemacs, la version d'avant celle-ci | 49,8 ms [49,5 ; 50,8] |
+| Cemacs, dans sa fenêtre, dummy driver de SDL, avec la prochaine version de Cesia | 51,3 ms [50,8 ; 51,9] |
+| le même avec Cesia 1.1.0 | 57,4 ms [57,0 ; 58,0] |
+| Cemacs avant l'indentation et la completion, `main` à 65ec91c, avec la prochaine version de Cesia | 47,9 ms [47,4 ; 48,3] |
+| le même avec Cesia 1.1.0 | 51,3 ms [50,8 ; 51,6] |
 | GNU Emacs 31.1, `emacs -Q -nw` | 89,1 ms [88,3 ; 92,9] |
 | Neovim 0.12.6, `nvim --clean -n` | 13,8 ms [13,6 ; 13,9] |
 | Vim 9.2, `vim --clean -n` | 9,3 ms [9,2 ; 9,4] |
 
 Chaque éditeur a démarré sans configuration de l'utilisateur, et on lui a dit de dessiner son écran et de quitter :
 `--eval '(progn (redisplay t) (kill-emacs))'` pour Emacs, `'+redraw!' '+qa!'` pour Neovim et Vim. Chaque exécution est le
-temps du processus, de son démarrage à sa fin, tel qu'un programme Python à l'intérieur du terminal l'a chronométré. Cette
-version charge 1,3 ms de plus que la précédente : la recherche, le lecteur des états des couleurs et la recherche dans la
-rope ajoutent environ 475 lignes de code, que Cesia lit à chaque démarrage. La vérification de l'UTF-8 de
+temps du processus, de son démarrage à sa fin, tel qu'un programme Python à l'intérieur du terminal l'a chronométré. La
+version qui a apporté la recherche chargeait 1,3 ms de plus que la précédente, 51,1 ms [50,9 ; 51,9] contre 49,8 ms [49,5 ;
+50,8], $n = 20$ : la recherche, le lecteur des états des couleurs et la recherche dans la rope ajoutent environ 475 lignes de
+code, que Cesia lit à chaque démarrage. La vérification de l'UTF-8 de
 [Ouvrir un fichier](#ouvrir-un-fichier), un seul appel de Cesia désormais, a retiré 94 lignes de ce que lit Cesia : mesurée plus
 tard à côté de la version d'avant elle, à 8ee42e7, chacune à son tour, $n = 11$, 53,2 ms [52,7 ; 54,7] contre 54,1 ms [53,7 ;
 55,4], pas plus lente.
@@ -53,6 +58,30 @@ Cette version contre la précédente, `main` à b2ab23f, chacune à son tour, $n
 56,6 ms [56,2 ; 57,4] ; les widgets de `src/ui` que rien dans Cemacs n'employait, une barre de menus, une barre d'outils, des
 curseurs de réglage, des listes et des nœuds de graphe d'un design plus ancien, environ 290 lignes, ont été retirés, et le
 démarrage est maintenant plus court de 1 ms qu'avant.
+
+L'indentation du code Cesia, [core/indent], ajoute environ 640 lignes de code, et 980 avec les changements qu'elle apporte
+aux autres packages, que Cesia lit à chaque démarrage. Mesurée à côté de `main` à 65ec91c, chacune à son tour, $n = 15$ :
+56,9 ms [56,5 ; 59,9] contre 52,3 ms [50,8 ; 53,2] ; à nouveau, $n = 21$ : 59,4 ms [57,5 ; 66,7] contre 53,6 ms [51,3 ;
+60,4]. Le seul chargement, les packages qu'emploie Cemacs et `io.Print(1)`, $n = 31$ : 38,0 ms [37,4 ; 41,7] contre 31,1 ms
+[29,6 ; 34,5]. Cela fait environ 5 ms pour 640 lignes, là où le reste de Cemacs coûte environ 3,7 µs par ligne : le
+chargement de Cesia grandit plus vite que le code qu'il lit, puisque les mêmes 1 000 lignes de petites fonctions prennent
+0,85 ms à charger seules et 1,8 ms à côté des packages de Cemacs. La completion ajoute environ 270 lignes de plus, et 2 ms :
+dans une série plus tardive, chacune à son tour, $n = 31$, 62,0 ms [59,8 ; 64,6] contre 59,9 ms [58,3 ; 62,4] avec
+l'indentation seule et 55,0 ms [53,0 ; 60,6] pour `main` à 65ec91c.
+
+La cause n'était pas la lecture du code par Cesia, qui coûte autant pour chaque ligne, mais le collector d'OCaml (son garbage
+collector, la partie qui libère la mémoire que plus rien n'utilise) : les arbres du code (le programme lu, sous forme
+d'arbre) vivent aussi longtemps que le programme, et la minor collection (le passage du collector sur le young heap, la
+petite partie de la mémoire où naissent les nouvelles valeurs) venue au milieu du chargement copiait vers le major heap (la
+grande partie, nettoyée par tranches) les 740 000 mots jeunes à ce moment, environ 11 ms, là où le young heap de 16 MB se
+remplissait. Du code ajouté n'importe où la provoquait. La prochaine version de Cesia produit moitié moins de garbage (de
+mémoire que plus rien n'emploie) pendant le chargement, 1,84 million de mots pour Cemacs au lieu de 3,38 millions, si bien
+que le chargement finit avant que le young heap soit plein et que rien n'est copié pendant le démarrage. Avec elle, chacune
+à son tour, $n = 21$ : le seul chargement 24,4 ms [24,2 ; 24,6] contre 38,2 ms [37,7 ; 38,3], et les 1 000 lignes de petites
+fonctions coûtent maintenant autant à côté de Cemacs que seules, 0,9 ms. Le démarrage jusqu'à la première frame, dans le
+tableau ci-dessus, $n = 62$ : 51,3 ms [50,8 ; 51,9] contre 57,4 ms [57,0 ; 58,0] avec Cesia 1.1.0, et pour `main` à 65ec91c
+47,9 ms [47,4 ; 48,3] contre 51,3 ms [50,8 ; 51,6]. Avec la prochaine version de Cesia, l'indentation et la completion
+coûtent 3,4 ms au démarrage, et Cemacs démarre dans le même temps qu'avec Cesia 1.1.0 avant elles.
 
 Où sont passées les 51 ms, avec le dummy driver, avant cette version, chaque partie chronométrée depuis la précédente par le
 programme ci-dessous, avec une marque après chaque partie, $n = 20$, médianes :
@@ -277,6 +306,93 @@ qu'elle coûte à la ligne 19 000 du gate sans son dessin, et les deux lignes de
 intervalles. La touche médiane d'Emacs fait environ les deux tiers de celle de Cemacs, et sa pire touche dix fois la pire de
 Cemacs ; Vim et Neovim, qui changent une ligne de leur memline et écrivent quelques cases du terminal, restent 30 fois plus
 rapides.
+
+### Enter et Tab dans un fichier de Cesia
+
+Une touche dans un fichier de Cesia, sans dessin : [commands.Update] de la touche, qui lance sa commande puis
+[view.FollowState], depuis le même état à chaque fois, les couleurs de l'écran exactes ; 15 touches par exécution, deux
+exécutions de cette version et deux de la version d'avant, `main` à 65ec91c, chacune à son tour, $n = 30$. La version
+d'avant indentait une nouvelle ligne comme la ligne du dessus et tapait deux espaces avec Tab. `small.ce` est
+`core/commands/commands.ce`, 52 KB ; `big100.ce`, les fichiers de Cesia mis bout à bout, 100,5 MB, 2,47 millions de lignes ;
+la ligne est un statement (une instruction) dans le corps d'une fonction.
+
+| Fichier, ligne | Enter, avant | Enter | Enter à nouveau sur la nouvelle ligne, avant et maintenant | Tab, avant : deux espaces | Tab | Une lettre tapée, avant et maintenant |
+|---|---|---|---|---|---|---|
+| `small.ce`, 692 | 0,712 ms [0,469 ; 0,876] | 0,734 ms [0,701 ; 0,819] | 0,291 et 0,323 ms | 0,616 ms [0,367 ; 0,692] | 0,677 ms [0,651 ; 0,695] | 0,585 et 0,451 ms |
+| `small.ce`, 1 375, près de sa fin | 0,299 ms [0,290 ; 0,313] | 0,596 ms [0,579 ; 0,605] | 0,193 et 0,228 ms | 0,265 ms [0,258 ; 0,275] | 0,553 ms [0,537 ; 0,568] | 0,265 et 0,292 ms |
+| `big100.ce`, 1 237 251 | 0,551 ms [0,536 ; 0,562] | 0,832 ms [0,812 ; 0,859] | 0,305 et 0,358 ms | 0,468 ms [0,452 ; 0,484] | 0,790 ms [0,779 ; 0,810] | 0,435 et 0,500 ms |
+| `big100.ce`, 2 474 497 | 0,449 ms [0,439 ; 0,471] | 0,660 ms [0,654 ; 0,694] | 0,352 et 0,415 ms | 0,407 ms [0,386 ; 0,425] | 0,499 ms [0,488 ; 0,522] | 0,393 et 0,447 ms |
+
+La place d'une ligne coûte de 0,1 à 0,3 ms de plus que la copie de l'indentation de la ligne du dessus : la lecture depuis
+l'anchor (la ligne à la marge, plus haut, d'où la lecture part à coup sûr), les lignes de la fonction au-dessus du curseur.
+Enter à nouveau sur la nouvelle ligne repart de la lecture que le premier Enter a gardée, et coûte de 0,03 à 0,06 ms de plus
+qu'avant. Une lettre tapée vérifie si elle forme un mot qui déplace la ligne : au début d'une ligne seulement, si bien qu'au
+milieu d'une ligne elle coûte de 0,03 à 0,06 ms de plus. La taille du fichier ne compte pas : une ligne se lit depuis son
+anchor, quelques lignes plus haut.
+
+À côté d'Emacs et de Neovim, qui n'ont pas de mode pour Cesia, sur des fichiers Python d'à peu près les mêmes tailles :
+`small.py`, le `argparse.py` de Python, 107 KB, et `big100.py`, la bibliothèque standard de Python mise bout à bout,
+104,7 MB ; un statement dans le corps d'une fonction, au milieu du fichier et à sa fin ; le python-mode d'Emacs 31.1,
+`newline-and-indent` et `indent-for-tab-command`, en batch (lancé par un script, sans écran), et le `A<CR>` et le `==` de
+Neovim 0.12.6, son indentation de Python, `python#GetIndent()`, en headless (sans écran), chacun depuis le même état encore
+et encore, un premier appel pour le chauffer, $n = 30$. Leurs nombres n'ont pas de redessin ; ceux de Cemacs comprennent le
+suivi de l'écran.
+
+| Fichier, endroit | Cemacs, Enter | Emacs, Enter | Emacs, Tab | Neovim, Enter | Neovim, `==` |
+|---|---|---|---|---|---|
+| petit, milieu | 0,734 ms [0,701 ; 0,819] | 0,197 ms [0,191 ; 0,211] | 0,148 ms | 18,8 ms [18,2 ; 19,2] | 18,3 ms |
+| petit, fin | 0,596 ms [0,579 ; 0,605] | 0,290 ms [0,283 ; 0,328] | 0,248 ms | 19,1 ms [18,9 ; 19,5] | 16,0 ms |
+| 100 MB, milieu | 0,832 ms [0,812 ; 0,859] | 201 ms [200 ; 205] | 218 ms | 3,78 ms [3,70 ; 3,86] | 3,49 ms |
+| 100 MB, fin | 0,660 ms [0,654 ; 0,694] | 409 ms [406 ; 411] | 441 ms | 15,8 ms [15,2 ; 16,6] | 15,5 ms |
+
+Emacs gagne sur le petit fichier, deux à quatre fois plus rapide que Cemacs, sans redessin dans son nombre. Dans le fichier
+de 100 MB, sa touche coûte de 0,2 à 0,4 s, d'autant plus que la ligne est loin dans le fichier, et sa première touche de 5 à
+10 s, le temps que les états de son parser (la partie qui lit la structure du code), `syntax-ppss`, soient lus depuis le
+début du fichier. L'indentation de Python de Neovim, une fonction en Vimscript qui remonte jusqu'à 50 lignes pour trouver la
+parenthèse où se trouve une ligne, et teste les couleurs de la syntaxe à chaque parenthèse qu'elle rencontre, coûte de 3,5 à
+19 ms par touche ; ses modifications simples coûtent 0,02 ms. La touche de Cemacs coûte moins d'une milliseconde à toutes
+les tailles : sa lecture part de l'anchor, la ligne à la marge au-dessus.
+
+### La completion
+
+Tab au bout d'un mot dans un fichier de Cesia, [Édition](editing.md#la-completion), mesuré comme les touches ci-dessus, depuis
+le même état à chaque fois : une nouvelle ligne ouverte dans une fonction et un début de mot tapé dessus, `s`, `co` ou
+`val` ; $n = 30$, deux exécutions de cette version et de la version d'avant, chacune à son tour. Avant, Tab tapait deux
+espaces.
+
+| Fichier, début | Mots | Tab qui ouvre la liste | Tab, avant | `C-n` | Tab qui met le mot | Une lettre, la liste ouverte | Le premier Tab |
+|---|---|---|---|---|---|---|---|
+| `small.ce`, `s` | 100 | 4,47 ms [2,98 ; 5,24] | 0,25 ms | 0,21 ms | 0,40 ms | 1,49 ms | 14,3 ms |
+| `small.ce`, `co` | 40 | 0,81 ms [0,79 ; 0,83] | 0,25 ms | 0,14 ms | 0,30 ms | 0,63 ms | 8,8 ms |
+| `small.ce`, `val` | 3 | 0,69 ms [0,64 ; 0,70] | 0,22 ms | 0,14 ms | 0,31 ms | 0,59 ms | 8,7 ms |
+| `big100.ce`, `s` | 100 | 3,66 ms [3,61 ; 3,75] | 0,26 ms | 0,16 ms | 0,47 ms | 1,11 ms | 10,4 ms |
+| `big100.ce`, `co` | 74 | 1,43 ms [1,39 ; 1,47] | 0,29 ms | 0,15 ms | 0,42 ms | 0,85 ms | 8,8 ms |
+| `big100.ce`, `val` | 6 | 1,16 ms [1,04 ; 1,23] | 0,27 ms | 0,18 ms | 0,49 ms | 0,83 ms | 8,5 ms |
+
+L'essentiel d'une completion est de trouver les mots : chaque endroit où le début tapé commence un mot, dans les 128 KB
+autour du curseur, trouvé par [text.ByteFind], et le mot lu après lui ; un début d'une seule lettre, trouvé à un millier
+d'endroits, coûte donc le plus. Une lettre tapée pendant que la liste est ouverte trouve à nouveau les mots pour le début
+plus long. Le premier Tab d'une session lit aussi les noms de Cesia, [complete.Names], de 8 à 10 ms, une seule fois. Une
+lettre tapée sans liste coûte ce qu'elle coûtait avant, à 0,03 ms près.
+
+À côté d'Emacs et de Neovim, sur les fichiers Python de l'indentation ci-dessus, à la ligne du milieu : le
+`dabbrev--find-all-expansions` d'Emacs 31.1, les mots de tout le buffer que liste `dabbrev-completion`, et `dabbrev-expand`,
+`M-/`, qui met le mot le plus proche en place sans liste ; le `o`, le début et `Ctrl-N` de Neovim 0.12.6, sa completion des
+mots de ses buffers, avec l'indentation de Python coupée, puisqu'elle coûte plus que la completion ; $n = 30$, et $n = 3$
+pour Emacs et 7 pour Neovim dans le fichier de 100 MB.
+
+| Fichier, début | Cemacs, Tab | Emacs, chaque mot | Emacs, `M-/` | Neovim, `Ctrl-N` |
+|---|---|---|---|---|
+| petit, `s` | 4,47 ms [2,98 ; 5,24] | 15,3 ms [15,0 ; 26,4] | 0,035 ms | 2,49 ms [2,46 ; 2,55] |
+| petit, `co` | 0,81 ms [0,79 ; 0,83] | 4,07 ms [4,00 ; 4,12] | 0,114 ms | 1,51 ms [1,15 ; 1,85] |
+| petit, `val` | 0,69 ms [0,64 ; 0,70] | 2,91 ms [2,76 ; 3,05] | 0,040 ms | 0,63 ms [0,62 ; 0,65] |
+| 100 MB, `co` | 1,43 ms [1,39 ; 1,47] | 23,2 s | 0,147 ms | 948 ms [918 ; 995] |
+| 100 MB, `val` | 1,16 ms [1,04 ; 1,23] | 13,2 s | 0,227 ms | 379 ms [348 ; 477] |
+
+Neovim gagne sur un début d'une lettre, 2,5 ms contre 4,5, et est aussi rapide sur trois ; le `M-/` d'Emacs, qui ne cherche
+qu'un seul mot, gagne partout. Dans le fichier de 100 MB, Emacs et Neovim lisent tout le buffer, et trouvent donc plus de
+mots, 686 pour `co` là où Cemacs offre ses 100 premiers pris dans 128 KB, mais ils prennent de 0,4 à 23 s ; le Tab de Cemacs
+reste sous 1,5 ms.
 
 ## Recherche
 

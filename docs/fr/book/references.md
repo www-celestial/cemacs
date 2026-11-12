@@ -35,6 +35,14 @@ comparé. Les titres des travaux restent dans leur langue.
   lignes du dessus, pour un endroit lointain ; et un cache des états du parser gardé clairsemé, ses entrées espacées d'au
   moins 20 000 caractères, que Cemacs suit avec ses états en chunks de 1 024 lignes. Voir
   [À l'intérieur de Cemacs](internals.md#les-couleurs).
+- GNU Emacs 31.1, la documentation de `tab-always-indent`, `indent-for-tab-command`, `electric-indent-mode` et
+  `electric-indent-chars`, lue dans l'Emacs installé.
+  Ce que Cemacs en a pris : dans un fichier de Cesia, un Tab qui ne fait qu'indenter, comme avec `tab-always-indent` à `t`,
+  sa valeur par défaut, et une ligne indentée à nouveau à Enter et aux mots qui changent sa place. Voir
+  [Édition](editing.md#lindentation-dans-un-fichier-de-cesia).
+- *Cesia's formatter*, `src/tools/fmt.ce` de Cesia, lancé par `cesia fmt`.
+  Ce que Cemacs en a pris : sa règle d'indentation et sa lecture d'une ligne, que Cemacs applique depuis un anchor (une ligne
+  d'ancrage) au lieu du début du fichier. Voir [À l'intérieur de Cemacs](internals.md#lindentation).
 - Henrik Lissner et ses contributeurs. *Doom Emacs*, un framework de configuration pour GNU Emacs.
   https://github.com/doomemacs/doomemacs.
   Ce que Cemacs en a pris : les touches réunies en groupes sous une seule leader key (une touche qui ouvre tous les groupes),
@@ -179,3 +187,5 @@ deux protocoles.
 - Visual Studio Code, *Debugger Extension*. https://code.visualstudio.com/api/extension-guides/debugger-extension. Comment
   VS Code débogue par des debug adapters, et comment ses extensions, écrites en TypeScript, en branchent un.
 - GNU Emacs 31.1, https://www.gnu.org/software/emacs/ ; Neovim 0.12.6, https://neovim.io/ ; Vim 9.2, https://www.vim.org/.
+- Le `lisp/progmodes/python.el` d'Emacs 31.1 et le `runtime/autoload/python.vim` de Neovim 0.12.6, leur indentation de
+  Python, que [Vitesse](performance.md#enter-et-tab-dans-un-fichier-de-cesia) mesure à côté de l'indentation de Cesia par Cemacs.
