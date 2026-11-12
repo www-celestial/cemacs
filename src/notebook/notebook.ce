@@ -228,6 +228,8 @@ defn next(k, state)
       r.Index = i
       r.Started = sys.Now()
       s = withBlock(k, i, running(0.0), withRun(k, r, s))
+    else
+      s = withBlock(k, i, [], withRun(k, r, s))
     end
   end
   withRun(k, r, s)
