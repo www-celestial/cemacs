@@ -239,7 +239,6 @@ defn isPositionOnCursorBar()
   view.PositionAt(bar.X + 1, bar.Y + 1, s).Column == 3
 end
 
-
 defn isInCode()
   s = stateOf([text.Of("a", "x.ce")], 800, 600)
   view.IsInCode(10, 100, s) and view.IsInCode(10, 10, s) and not view.IsInCode(10, 560, s) and not view.IsInCode(10, 590, s)
