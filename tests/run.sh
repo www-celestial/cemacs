@@ -11,8 +11,8 @@ cesia test src
 cesia test core --no-spec
 cesia test src --no-spec
 cesia run tests/color-std.ce
-# Tab and Enter give each line of Cemacs and of the std of Cesia the indent that cesia fmt gives it.
-tools/indent-corpus.sh --std .
+# Tab and Enter give each line of Cemacs and of the std of Cesia the indent that cesia fmt gives it: the folders of Cemacs, without user/.
+tools/indent-corpus.sh --std bench core src tests tools
 # src/ui needs no permission and no window: it uses only the packages of std/ that touch nothing outside.
 ! grep "^use " src/ui/ui.ce | grep -qvE "^use std/(list|math|value|text|dict)$"
 [ "$(cesia run tests/ui-pure.ce; echo "exit $?")" = "$(cat tests/ui-pure.expected)" ]

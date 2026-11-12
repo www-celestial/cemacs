@@ -9,7 +9,7 @@ use src/folders
 use src/help
 use src/output
 use src/project
-use user/config
+use user/config as user
 use std/dict
 use std/io
 
@@ -20,7 +20,7 @@ defn Config()
   (** What the editor runs on: these keys, the other keys and the settings of src/emacs and the hooks of the check, as the Changed of user/config changes them,
       then ? after the first keys of every pair or group, those of the person too, which lists what follows them. It runs at each key, so a change of
       user/config under cesia do dev works at the next one. *)
-  c = config.Changed(check.Hooked(emacs.Config(Keys)))
+  c = user.Changed(check.Hooked(emacs.Config(Keys)))
   keys = c.Keys
   c.Keys = () -> help.WithHelp(keys())
   c
