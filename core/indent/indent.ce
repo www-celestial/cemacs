@@ -30,16 +30,17 @@ nameByte(c) = (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c 
 (** The two-byte operators, read as one token: == != <= >= += -= *= /= -> and .. *)
 isPair(a, c) = (c == 61 and (a == 61 or a == 33 or a == 60 or a == 62 or a == 43 or a == 45 or a == 42 or a == 47)) or (a == 45 and c == 62) or (a == 46 and c == 46)
 
-(** The words that open a block that end closes, when they stand out of brackets. *)
-isOpener(t) = t == "defn" or t == "for" or t == "while" or t == "match" or t == "if" or t == "struct" or t == "interface"
+(** The words that open a block that end closes, when they stand out of brackets; do too, after the ) of a call. *)
+isOpener(t) = t == "defn" or t == "for" or t == "while" or t == "match" or t == "if" or t == "struct" or t == "interface" or t == "do"
 
 (** The last tokens of a line after which the statement goes on, on the next line. *)
 isGoing(t) = t == "," or t == "." or t == "+" or t == "-" or t == "*" or t == "/" or t == "^" or t == "==" or t == "!=" or t == "<" or t == ">" or
   t == "<=" or t == ">=" or t == "and" or t == "or" or t == "not" or t == "in" or t == ".." or t == "then"
 
-(** The state at the start of a file, and at the start of an anchor: in no comment, text or bracket, in no block, and no statement goes on. A
+(** The state at the start of a file, and at the start of an anchor: in no comment, text or bracket, in no block, and no statement goes on;
+    Shift is how far fmt moves the lines that go on with a statement, Shifts the shift of each then line whose do block is open. A
     function: a variable added under --watch is read before it has a value. *)
-startState() = {Comment: 0, Stack: [], Opens: [], Blocks: [], Continued: false}
+startState() = {Comment: 0, Stack: [], Opens: [], Blocks: [], Continued: false, Shift: 0, Shifts: []}
 
 (** The earlier of two byte positions, either of which may be missing. *)
 earliest(a, c) = if value.IsMissing(a) c else if value.IsMissing(c) a else list.Min(a, c) end
@@ -203,7 +204,7 @@ defn lexed(line, number, st, every = false)
     end
   end
   {Where: where, Out: placeOf(comment, stack), Open: value.Len(st.Opens), Inner: if value.Len(st.Opens) > 0 list.Last(st.Opens) else missing end,
-    Close: level, Unmatched: unmatched, Tokens: tokens, State: {Comment: comment, Stack: stack, Opens: opens, Blocks: st.Blocks, Continued: st.Continued}}
+    Close: level, Unmatched: unmatched, Tokens: tokens, State: {Comment: comment, Stack: stack, Opens: opens, Blocks: st.Blocks, Continued: st.Continued, Shift: st.Shift, Shifts: st.Shifts}}
 end
 
 defn indentOf(line)
@@ -230,36 +231,53 @@ defn hasFrom(t, from, tokens)
   false
 end
 
+(** Is a token a name, and not a number? *)
+startsName(t) = nameByte(str.Byte(1, t)) and not (str.Byte(1, t) >= 48 and str.Byte(1, t) <= 57)
+
 defn opening(t, k, tokens)
   (** Does the k-th token of a line open a block that end closes? An if after else or before the -> of a match arm opens none, nor a struct or
-      an interface written on one line. *)
+      an interface written on one line. do opens one right after the ) of a call, before a name or the line end: elsewhere it is a name. *)
   if t == "if"
     not ((k > 1 and tokens[k - 1] == "else") or hasFrom("->", k + 1, tokens))
   else if t == "struct" or t == "interface"
     not hasFrom("{", k + 1, tokens)
+  else if t == "do"
+    k > 1 and tokens[k - 1] == ")" and (k == value.Len(tokens) or startsName(tokens[k + 1]))
   else
     isOpener(t)
   end
 end
 
-defn blocksAfter(blocks, tokens)
+defn blocksAfter(blocks, tokens, indent)
   (** The blocks open after the tokens of a line, in their order: an opener adds one, an end closes the innermost one that end closes, with the
-      bodies above it. *)
+      bodies above it. A do block on a line that starts with then, at indent under its statement, has its body under that line: it is a "t",
+      after a "c" for each step of that indent, which its end closes too. *)
   out = blocks
   for k in 1..value.Len(tokens)
     t = tokens[k]
     if t == "end"
       j = value.Len(out)
-      while j > 0 and out[j] != "k"
+      while j > 0 and out[j] != "k" and out[j] != "t"
         j -= 1
       end
       out = if j == 0 [] else list.Take(j - 1, out) end
+      while value.Len(out) > 0 and list.Last(out) == "c"
+        out = list.DropLast(1, out)
+      end
+    else if isOpener(t) and opening(t, k, tokens) and t == "do" and tokens[1] == "then"
+      while 2 * value.Len(out) < indent
+        out = list.Append("c", out)
+      end
+      out = list.Append("t", out)
     else if isOpener(t) and opening(t, k, tokens)
       out = list.Append("k", out)
     end
   end
   out
 end
+
+(** How many do blocks of a then line are open. *)
+thens(blocks) = value.Len(list.Filter(it == "t", blocks))
 
 defn done(blocks)
   (** The blocks after a statement that ended: the bodies of -> and = it was the statement of are over. *)
@@ -278,7 +296,8 @@ defn stepped(line, number, st)
       starts a statement, whose indent is 2 * Level; "continued" for one that goes on with a statement, inside brackets, after a token that asks
       for more, or inside a comment; "text" for one that starts inside a text, which keeps all it holds; "blank" for one of spaces only. At is
       the indent the line has, or missing when a tab is in it; State the state after the line. The blocks are each "k" for one that end closes,
-      "v0" and "v1" for the body of a -> or = at the end of a line, before and after its first line. *)
+      "v0" and "v1" for the body of a -> or = at the end of a line, before and after its first line, "t" and "c" for a do block of a then
+      line, see blocksAfter. *)
   x = lexed(line, number, st)
   tokens = x.Tokens
   count = value.Len(tokens)
@@ -286,6 +305,9 @@ defn stepped(line, number, st)
   last = if count > 0 tokens[count] else missing end
   blank = isBlank(line)
   blocks = st.Blocks
+  shift = st.Shift
+  shifts = st.Shifts
+  at = indentOf(line)
   level = 0
   kind = "continued"
   if x.Where == "text"
@@ -299,10 +321,19 @@ defn stepped(line, number, st)
     end
     dedent = (first == "end" or first == "else") and not (count > 1 and tokens[2] == "->")
     level = list.Max([value.Len(blocks) - (if dedent 1 else 0 end), 0])
+    shift = if value.IsMissing(at) 0 else 2 * level - at end
   end
   continued = st.Continued
   if not blank
-    blocks = blocksAfter(blocks, tokens)
+    before = thens(blocks)
+    blocks = blocksAfter(blocks, tokens, if kind != "continued" or value.IsMissing(at) 0 else list.Max([0, at + shift]) end)
+    while value.Len(shifts) < thens(blocks)
+      shifts = list.Append(shift, shifts)
+    end
+    if thens(blocks) < before
+      shift = shifts[thens(blocks) + 1]
+      shifts = list.Take(thens(blocks), shifts)
+    end
     (* A statement ends at a line end out of brackets, texts and comments, after a token that doesn't ask for more. A line of comment only, with
        no token, ends none. *)
     ends = x.Close == 0 and x.Out == "code" and (count > 0 or x.Open > 0 or x.Where != "code")
@@ -316,7 +347,9 @@ defn stepped(line, number, st)
   out = x.State
   out.Blocks = blocks
   out.Continued = continued
-  {Kind: kind, Level: level, At: indentOf(line), Tokens: tokens, Lexed: x, State: out}
+  out.Shift = shift
+  out.Shifts = shifts
+  {Kind: kind, Level: level, At: at, Tokens: tokens, Lexed: x, State: out}
 end
 
 (* ---- Where a reading starts *)
@@ -355,7 +388,7 @@ defn leadsOn(line, n, b)
     return true
   end
   s = color.StateAt(n, b.Colors, color.GuessOf(b))
-  x = lexed(line, n, {Comment: s.Comment, Stack: if s.Text [0] else [] end, Opens: [], Blocks: [], Continued: false})
+  x = lexed(line, n, {Comment: s.Comment, Stack: if s.Text [0] else [] end, Opens: [], Blocks: [], Continued: false, Shift: 0, Shifts: []})
   count = value.Len(x.Tokens)
   last = if count > 0 x.Tokens[count] else missing end
   x.Close == 0 and x.Unmatched == 0 and x.Out == "code" and not (count > 0 and (isGoing(last) or last == "->" or last == "=")) and not opensBlock(x.Tokens)
@@ -447,9 +480,10 @@ end
 
 (* ---- The reading *)
 
-(** What a reading keeps of a line: its number, its text, the state at its start, how fmt reads it, and where it starts. *)
+(** What a reading keeps of a line: its number, its text, the state at its start, how fmt reads it, where it starts, and whether it closes the
+    do block of a then line. *)
 record(number, line, st, s) = {Line: number, Text: line, Start: st, Kind: s.Kind, Level: s.Level, At: s.At, Open: s.Lexed.Open,
-  Inner: s.Lexed.Inner, Where: s.Lexed.Where}
+  Inner: s.Lexed.Inner, Where: s.Lexed.Where, Ends: thens(s.State.Blocks) < thens(st.Blocks)}
 
 (** The reading that Enter kept in a buffer, {Line, State, Group}, or missing: a buffer from before this field has none. *)
 keptOf(b) = match b
@@ -698,7 +732,7 @@ defn guessed(r, line, number, b)
     return 0
   end
   (* After a token that asks for more, or before a then: two columns in from the statement, or as the line above that goes on with it out of
-     brackets. *)
+     brackets. After the end of the do block of a then line, under that end, as the then line was. *)
   k = value.Len(r.Group)
   while k > 1
     g = r.Group[k]
@@ -707,7 +741,7 @@ defn guessed(r, line, number, b)
     end
     k -= 1
   end
-  spacesOf(start.Text) + 2
+  if start.Ends spacesOf(start.Text) else spacesOf(start.Text) + 2 end
 end
 
 defn placeIn(r, line, number, b)
@@ -766,14 +800,13 @@ leading(line) = value.Len(list.TakeWhile(c -> c == 32 or c == 9, str.Bytes(line)
 
 defn changesOf(group, first, last)
   (** The changes of indent of a statement's lines, {Line, Indent, Old}: Old the bytes of spaces and tabs it starts with, Indent the spaces it
-      gets. The line that starts it goes to its level, and the lines that go on with it keep their place relative to it; a line in a text keeps
-      all it holds, and a blank line between first and last loses its spaces. *)
+      gets. The line that starts it goes to its level, and the lines that go on with it keep their place relative to it, by the shift of the
+      reading: after the end of the do block of a then line, relative to that line; a line in a text keeps all it holds, and a blank line
+      between first and last loses its spaces. *)
   out = []
   if value.Len(group) == 0 or list.Last(group).Line < first or group[1].Line > last
     return out
   end
-  head = group[1]
-  shift = if head.Kind != "statement" or value.IsMissing(head.At) 0 else 2 * head.Level - head.At end
   for g in group
     old = leading(g.Text)
     if g.Kind == "statement"
@@ -782,8 +815,8 @@ defn changesOf(group, first, last)
         out = list.Append({Line: g.Line, Indent: want, Old: old}, out)
       end
     else if g.Kind == "continued"
-      if shift != 0 and not value.IsMissing(g.At)
-        out = list.Append({Line: g.Line, Indent: list.Max([0, g.At + shift]), Old: old}, out)
+      if g.Start.Shift != 0 and not value.IsMissing(g.At)
+        out = list.Append({Line: g.Line, Indent: list.Max([0, g.At + g.Start.Shift]), Old: old}, out)
       end
     else if g.Kind == "blank"
       if old > 0 and g.Line >= first and g.Line <= last
