@@ -35,7 +35,7 @@ promptHeight = 22
     the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; title; waited, the seconds since
     the last pending key; hints, the keys that can follow the pending ones once shown; chords, the keys of the command that runs; completion, the
     list of words offered under the cursor, see commands.Complete; names, the names of Cesia that completion reads once; focus, a control of an app
-    that has the keys, {Keys, Hints}, its keys taken first and its hints shown, or missing, see commands.Focused; and holding, the block that took a
+    that has the keys, {Keys, Hints, Leave}, its keys taken first and its hints shown, or missing, see commands.FocusOf; and holding, the block that took a
     mouse press, {Mouse, Left, Top, Width}, until the button is released, or missing, see BlockAt. Config is the function
     that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Cemacs, "." until the program says. Panes is
     the tree of the panes, see panes.ce, and Pane the one being edited, which shows the current buffer.
@@ -722,7 +722,7 @@ end
 
 defn hints(state, lay, look)
   (** The band above the prompt line, while keys wait for the next one and their hints are there: each chord that can follow, and the command it runs or the
-      group it opens, in columns read from the top down. *)
+      group it opens, in columns read from the top down; or, while a control has the keys, its own, at once. *)
   shown = match state
     {Hints: rows} -> if state.Pending == "" focusHints(state) else rows end
     else -> []
