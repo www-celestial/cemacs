@@ -33,6 +33,7 @@ The keys of the cells are a group of `C-c`, `e` for *execute*, which the band of
 | `C-c e s` | [notebook.StopCell] | stops the cell that runs; the cells waiting after it don't run |
 | `C-c e h` | [notebook.WriteHtml] | writes the page of the file beside it, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | clears the results drawn; the names of the session stay |
+| `C-c e f` | [notebook.FocusControl] | gives the keys to the first slider of the cursor's cell: see Sliders |
 
 In `*repl*`, Enter runs what was typed, and `M-p` and `M-n` go back and on through what was typed before; anywhere else,
 Enter is a new line, as always.
@@ -59,6 +60,57 @@ without kerning, the adjustment of the space between two letters, and without hi
 std/plot gave it. The axes, the grid and the texts take the colours of the theme; the data keep their own. When the pane
 changes its width, the session draws the scene again at the new one; the graph keeps its shape until it comes. `*repl*`
 draws a graph under its answer in the same way, and the page of `C-c e h` holds each graph as SVG.
+
+## Sliders
+
+A *slider* is a bar with a knob that you drag to change a number. A cell of sliders holds only lines
+`name = cells.Slider(value, min, max)`, each with its numbers written there, as [std/cells](https://www-celestial.github.io/cesia-lang/cells.html)
+asks:
+
+```cesia norun
+use std/cells
+use std/ode
+use std/result
+
+(* %% Parameters *)
+rho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)
+
+(* %% Lorenz *)
+lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
+s = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
+```
+
+Under each such line, Cemacs draws its slider, from the text alone, before anything runs: the name, a track, a thumb, and
+the number as the file writes it. A move writes the new number in the buffer, in place of the old one: the file says what
+the window shows, and once it is saved, `cesia run` and the page of `C-c e h` read the same number. The number moves by
+steps, from the min to the max, and is written with the decimals of the min and the step, `0.3` and never
+`0.30000000000000004`.
+
+- **The mouse.** A press on the track puts the thumb there, so one press is enough; a drag follows the pointer. The wheel
+  scrolls the buffer, as anywhere, and never moves a slider.
+- **The keys.** `C-c e f` gives the keys to the first slider of the cell of the cursor, drawn with a ring, and the band of
+  hints lists its keys, as the slider pattern of WAI-ARIA has them: `right` and `up` move it a step, `left` and `down` a step
+  back, `pageup` and `pagedown` ten steps, `home` and `end` to its min and its max; `tab` and `S-tab` go to the next slider of
+  the cell and the previous one, round. `C-g`, a click in the text, a letter typed or any other key leaves it, and that key
+  does what it always does.
+- **Undo.** A drag, from the press to the release, is one step of undo, and so are the keys pressed in a row on one slider,
+  as typing is.
+
+A move runs again only the cells that read the slider's name, directly or through other cells: the session of the file
+gets the new number with [cells.Set](https://www-celestial.github.io/cesia-lang/cells.html), *in place*, so that a function
+of another cell that reads it sees it at once, and the slider's own cell, which holds nothing else, doesn't run. Without a
+session yet, one starts and every cell runs, from the top. The thumb and the number follow the pointer at once; the
+results follow as fast as the cells run, and keep showing until the new ones come, with `waiting` or `running…` above
+them. After the slider, the time of its last rerun shows, as `rerun 104 ms`, so that you see why a graph lags.
+
+**The latest number wins.** While the cells of a move run, the slider keeps only the last number it was moved to; once
+they end, that number is set and they run once more. Two reruns of a slider never wait in line, nothing is cancelled,
+and a result never comes from two numbers.
+
+**Stale results.** A result computed with another number than the one the file writes now says so, on a line above it:
+`stale: computed with rho = 28.0`. This happens after `C-c e s` stopped a rerun, which drops the number that waited,
+after an undo of a move, and after you type another number by hand; the line goes once the cell runs again. A number
+typed by hand runs nothing by itself, as any edit: `C-c e e` runs it.
 
 ## What runs again
 
@@ -101,6 +153,13 @@ code coloured as Cesia's docs colour it, what it printed and its value, as a tab
 no other file and no script, and shows what `cesia run` computes, not the state of the window.
 
 ## Security
+
+A slider writes only the number of its own value, on its own line: before the edit, Cemacs checks that this line still lies
+in the slider's cell and still holds the number it read there, and refuses the move otherwise; the text is read again at
+the next key. The number written is one of the slider's steps, between its min and its max, made by
+[cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html), and the session takes it only for a name that holds a
+number already. The file itself is written when you save it, as any buffer: through a new file beside it that a rename
+puts in its place, and never over a file that changed on disk since it was read.
 
 A scene comes from the session, another process, and Cemacs reads it as input: before anything is made of it, its size,
 the kind and the fields of each item, and the vertices all of them would make are checked against [notebook.SceneLimits],

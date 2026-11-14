@@ -34,7 +34,9 @@ promptHeight = 22
     or true for any text; chain, true while the last command was C-k; dragging, true while the mouse selects; pressed, the place of a mouse press until the mouse leaves
     the zone around it; wheel, the lines that the wheel moved and the screen hasn't yet; ending, true when the editor must stop; title; waited, the seconds since
     the last pending key; hints, the keys that can follow the pending ones once shown; chords, the keys of the command that runs; completion, the
-    list of words offered under the cursor, see commands.Complete; and names, the names of Cesia that completion reads once. Config is the function
+    list of words offered under the cursor, see commands.Complete; names, the names of Cesia that completion reads once; focus, a control of an app
+    that has the keys, {Keys, Hints}, its keys taken first and its hints shown, or missing, see commands.Focused; and holding, the block that took a
+    mouse press, {Mouse, Left, Top, Width}, until the button is released, or missing, see BlockAt. Config is the function
     that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Cemacs, "." until the program says. Panes is
     the tree of the panes, see panes.ce, and Pane the one being edited, which shows the current buffer.
     Under --watch the code changes and the state stays, so a session can hold a state from before a field was added here. A field added after that
@@ -43,7 +45,7 @@ promptHeight = 22
       Start([], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600).Current --> 1 *)
 Start(buffers, look, cell, width, height) = {Buffers: buffers, Current: 1, Pending: "", Prompt: missing, Message: "", Run: missing, Window: missing, Width: width, Height: height, Cell: cell, Look: look,
   Clip: "", Chorded: false, Chain: false, Dragging: false, Pressed: missing, Wheel: 0.0, Ending: false, Title: "", Config: missing, Home: ".", Second: false,
-  Panes: panes.One(1), Pane: 1, Waited: 0.0, Hints: [], Chords: "", Completion: missing, Names: missing}
+  Panes: panes.One(1), Pane: 1, Waited: 0.0, Hints: [], Chords: "", Completion: missing, Names: missing, Focus: missing, Holding: missing}
 
 (** Is the output of a program shown below the panes? Once a program ran, until C-c c h hides it. *)
 ShowsOutput(state) = not value.IsMissing(state.Run) and state.Run.Shown
@@ -489,6 +491,36 @@ defn ClickAt(x, y, state)
   text.Place(LineAtRow(list.Max(0, list.Min(at.Row, lay.Rows - 1)), b, Under(b)), b.Left + list.Max(0, list.Min(at.Column, lay.Columns - 1)), b).Cursor
 end
 
+defn BlockAt(x, y, state)
+  (** The block under a point of the code area of the pane being edited, or missing: {Block, Left, Top, Width}, Left and Top the place of its top
+      left on the screen and Width the width it is drawn at, as blocksIn draws it. A block with a Mouse takes the presses on it: see commands.Press.
+
+        BlockAt(10, 10, Start([text.Of("a", missing)], ui.Look(ui.Dark, (w, f) -> 8, 19), {Width: 8, Height: 19}, 800, 600)) --> missing *)
+  b = state.Buffers[state.Current]
+  under = Under(b)
+  if value.IsMissing(under) or not IsInCode(x, y, state)
+    return missing
+  end
+  lay = LayoutOf(state)
+  rect = lay.Code
+  row = cellAt(x, y, rect, state.Cell).Row
+  n = LineAtRow(row, b, under)
+  first = RowOf(n, b, under) + 1
+  if row < first
+    return missing
+  end
+  top = rowY(first, rect, state.Cell)
+  for k in text.BlocksOf(b)
+    if k.Line == n
+      if y < top + k.Rows * state.Cell.Height
+        return {Block: k, Left: rect.X + Gutter, Top: top, Width: rect.Width - Gutter - 8}
+      end
+      top = top + k.Rows * state.Cell.Height
+    end
+  end
+  missing
+end
+
 defn selection(b, first, last, lay, look, lineY)
   (** The selection of a buffer on the lines from first to last: one rectangle per line, from the mark to the cursor. A line that the selection
       crosses is filled one character past its end, to show that its line end is selected. *)
@@ -680,11 +712,19 @@ end
 (** The words of a mark on the prompt line: its message, then its hint. *)
 markText(m) = if value.IsMissing(m.Hint) m.Message else "$(m.Message)  $(m.Hint)" end
 
+defn focusHints(state)
+  (** The hints of the control that has the keys, shown in the band at once, or none: a state from before this field has none. *)
+  match state
+    {Focus: f} -> if value.IsMissing(f) [] else dict.GetOr("Hints", [], f) end
+    else -> []
+  end
+end
+
 defn hints(state, lay, look)
   (** The band above the prompt line, while keys wait for the next one and their hints are there: each chord that can follow, and the command it runs or the
       group it opens, in columns read from the top down. *)
   shown = match state
-    {Hints: rows} -> if state.Pending == "" [] else rows end
+    {Hints: rows} -> if state.Pending == "" focusHints(state) else rows end
     else -> []
   end
   if value.Len(shown) == 0

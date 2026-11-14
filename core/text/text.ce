@@ -581,8 +581,11 @@ defn CutRegion(b)
   end
 end
 
-defn joinSteps(b)
-  (** The buffer with the last two steps of its history made one, which undo takes back at once: the second one, from where the first one began. *)
+defn JoinSteps(b)
+  (** The buffer with the last two steps of its history made one, which undo takes back at once: the second one, from where the first one began. A
+      replace of a region joins its cut and what it puts there, and the moves of a slider of the cells, a drag or keys in a row, make one step.
+
+        rope.Text(Undo(JoinSteps(InsertWords("b", MoveChar(1, InsertWords("a ", Of("", missing)))))).Rope) --> "" *)
   second = b.History.Present
   h = history.Undo(b.History)
   first = h.Present
@@ -602,7 +605,7 @@ defn ReplaceRegion(f, b)
   end
   gone = CutRegion(b)
   done = f(gone)
-  if done.Version == gone.Version done else joinSteps(done) end
+  if done.Version == gone.Version done else JoinSteps(done) end
 end
 
 defn Replaced(spans, b)

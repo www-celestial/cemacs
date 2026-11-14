@@ -1386,7 +1386,8 @@ end
 secondOf(words) = if words == " " "space" else str.Lower(words) end
 
 defn routed(chord, state)
-  (** The state after a chord: in the prompt if one is open, in the list of the current buffer, or else in the buffer. *)
+  (** The state after a chord: in the prompt if one is open, in the list of the current buffer, or else in the buffer, where the control that has the
+      keys takes its own first, and any other leaves it. *)
   if not value.IsMissing(state.Prompt)
     promptChord(chord, config(state).PromptKeys(), state)
   else if lists.IsList(current(state))
@@ -1394,6 +1395,11 @@ defn routed(chord, state)
   else
     s = state
     s.Buffers[state.Current].Typing = false
+    f = FocusOf(state)
+    if value.IsSome(f) and state.Pending == "" and dict.Has(chord, f.Keys)
+      return ran(f.Keys[chord], withChords(chord, s))
+    end
+    s = Unfocused(s)
     c = complete.Of(s)
     s.Completion = missing
     own = if value.IsMissing(c) or state.Pending != "" dict.Dict() else completeKeys(s) end
@@ -1415,6 +1421,27 @@ defn chorded(chord, bindings, state)
     {Command: f} -> ran(f, withChords(if state.Pending == "" chord else "$(state.Pending) $chord" end, s))
     {Unknown: name} -> if state.Pending != "" and chord == "C-g" CancelPair(s) else unbound(name, s) end
   end
+end
+
+defn FocusOf(state)
+  (** The control of an app that has the keys, {Keys, Hints}, or missing. A command of an app gives it, as C-c e f of the cells does: its Keys, chords
+      and the commands they run, come before every other key, and any other chord, a text typed or a press of the mouse leaves it, see Unfocused;
+      C-g is the app's to bind, as WAI-ARIA's Escape. Hints are the rows of the band, {Key, Name, Group}, and Leave, if given, what leaving does
+      besides. A state from before this field has none.
+
+        FocusOf({Buffers: []}) --> missing *)
+  match state
+    {Focus: f} -> f
+    else -> missing
+  end
+end
+
+defn Unfocused(state)
+  (** The state without the control that had the keys, its Leave, if it has one, told: the app draws it again without its ring. *)
+  f = FocusOf(state)
+  s = state
+  s.Focus = missing
+  if value.IsSome(f) and dict.Has("Leave", f) f.Leave(s) else s end
 end
 
 defn withChords(chords, state)
@@ -1489,6 +1516,7 @@ defn onText(event, state)
     if value.IsMissing(lists.TypedOf(lists.Of(current(s)))) AddToFilter(event.Text, s) else lists.TypedOf(lists.Of(current(s)))(event.Text, s) end
   else
     s.Chain = false
+    s = Unfocused(s)
     s.Buffers[state.Current].Free = false
     open = not value.IsMissing(complete.Of(s))
     s.Completion = missing
@@ -1532,6 +1560,12 @@ defn down(event, state)
   (** The state after a mouse press: the pane under it is edited, and in its code the cursor goes under the point and a mark from the mouse starts there. *)
   j = view.PaneAt(event.X, event.Y, state)
   s = if j > 0 focused(j, state) else state end
+  hit = view.BlockAt(event.X, event.Y, s)
+  if value.IsSome(hit) and dict.Has("Mouse", hit.Block)
+    (* A block that takes the mouse, as a slider of the cells: it has the press, the moves and the release, and the cursor stays. *)
+    s.Holding = {Mouse: hit.Block.Mouse, Left: hit.Left, Top: hit.Top, Width: hit.Width}
+    return hit.Block.Mouse("down", {X: event.X - hit.Left, Y: event.Y - hit.Top, Width: hit.Width}, s)
+  end
   if view.IsInCode(event.X, event.Y, s)
     at = view.ClickAt(event.X, event.Y, s)
     b = text.Place(at.Line, at.Column, current(s))
@@ -1558,8 +1592,24 @@ end
 (** Is this event still in the zone around the press at this point? A hand that moves one pixel during a click means no drag. *)
 inZone(event, at, zone) = not value.IsMissing(at) and math.Abs(event.X - at.X) <= zone and math.Abs(event.Y - at.Y) <= zone
 
+defn holdingOf(state)
+  (** The block that took the press, {Mouse, Left, Top, Width}, until the release, or missing. A state from before this field has none. *)
+  match state
+    {Holding: h} -> h
+    else -> missing
+  end
+end
+
+(** A point of a mouse event inside the block that holds the mouse, from its top left, with the width it is drawn at. *)
+inBlock(event, h) = {X: event.X - h.Left, Y: event.Y - h.Top, Width: h.Width}
+
 defn Drag(event, state)
-  (** The mouse moved: with the button held, the cursor follows it once it has left the zone around the press, even if it comes back. *)
+  (** The mouse moved: with the button held, the cursor follows it once it has left the zone around the press, even if it comes back; a block that took
+      the press gets the move. *)
+  h = holdingOf(state)
+  if value.IsSome(h)
+    return h.Mouse("move", inBlock(event, h), state)
+  end
   if not state.Dragging or inZone(event, pressPoint(state), config(state).DragZone())
     state
   else
@@ -1571,7 +1621,13 @@ defn Drag(event, state)
 end
 
 defn Release(event, state)
-  (** The end of a drag: a click that selected nothing leaves no mark. *)
+  (** The end of a drag: a click that selected nothing leaves no mark, and a block that took the press gets the release. *)
+  h = holdingOf(state)
+  if value.IsSome(h)
+    s = state
+    s.Holding = missing
+    return h.Mouse("up", inBlock(event, h), s)
+  end
   b = current(state)
   s = state
   s.Dragging = false
@@ -1590,6 +1646,7 @@ defn Press(event, state)
   s.Chain = false
   s.Buffers[state.Current].Typing = false
   s.Completion = missing
+  s = Unfocused(s)
   if event.Button == 1 down(event, s) else s end
 end
 

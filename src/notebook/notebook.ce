@@ -1,7 +1,8 @@
 (** Cells: a file of Cesia cut by (* %% Title *) comments runs as a notebook, its results drawn under its cells, as blocks of the buffer: never typed,
     never saved. C-c e e runs the cell of the cursor and the cells that read what it defines, C-c e a every cell from the top; each cell file has a session
     of std/cells, a Cesia process that keeps the names its cells defined. `*variables*` lists them beside, `*repl*` below runs code in the same session, and
-    C-c e h writes the page of the file. The work is std/cells': runs wait in fibers, and each tick takes their results, so that typing never waits.
+    C-c e h writes the page of the file. A cell of sliders, name = cells.Slider(28.0, 0.0, 50.0), draws a slider under each line, which the mouse and C-c e f
+    move: the number is written in the buffer, and only the cells that read it run again. The work is std/cells': runs wait in fibers, and each tick takes their results, so that typing never waits.
     src/cemacs.ce adds the hooks of Hooked to the config and these Keys. *)
 use core/commands
 use core/files
@@ -24,7 +25,8 @@ use std/value
 
 (** The keys of the cells, in their group of C-c: e for execute. M-p and M-n go through the history in `*repl*`, and Enter there runs what was typed. *)
 Keys() = {"C-c e": "execute", "C-c e e": RunCell, "C-c e a": RunAll, "C-c e i": InsertCell, "C-c e v": ShowVariables, "C-c e r": OpenRepl,
-  "C-c e s": StopCell, "C-c e h": WriteHtml, "C-c e k": ClearResults, "enter": Enter, "S-enter": Enter, "M-p": HistoryBack, "M-n": HistoryOn}
+  "C-c e s": StopCell, "C-c e h": WriteHtml, "C-c e k": ClearResults, "C-c e f": FocusControl, "enter": Enter, "S-enter": Enter, "M-p": HistoryBack,
+  "M-n": HistoryOn}
 
 (** The most lines of a result drawn under a cell: its output, then its value, each cut there with a line that says how many more. *)
 MaxLines() = 40
@@ -80,8 +82,11 @@ defn session(k, state)
     return result.Ok(r)
   end
   s = nb.Session(b.Path, allow = allowOf(b.Path))?
-  result.Ok({Session: s, Cells: [], Analysis: [], Queue: [], Task: missing, Index: 0, Started: 0.0, Stopping: missing, Html: missing, Vars: [],
-    Version: -1})
+  (* A run without a session, as the sliders and a page make one, keeps its cells and its analysis. *)
+  out = if value.IsMissing(r) newRun() else r end
+  out.Session = s
+  out.Values = {}
+  result.Ok(out)
 end
 
 defn analysed(k, r, state)
@@ -345,15 +350,33 @@ GraphWidth(state) = list.Max(200, view.LayoutOf(state).Code.Width - view.Gutter 
 (** The block of cell i, under its last line, with its lines and its graph. *)
 blockOf(i, lines, r, b, cell, graph) = dict.Merge(Block(anchor(r.Cells[i], b), lines, cell, graph = graph), {Cell: i})
 
-defn withBlock(k, i, lines, state, graph = missing)
-  (** The state with the block of cell i of buffer k in place of the one it had, or none for a cell that printed nothing and shows no value. *)
+defn withBlock(k, i, lines, state, graph = missing, inputs = {}, status = missing)
+  (** The state with the block of cell i of buffer k in place of the one it had, or none for a cell that printed nothing and shows no value. Inputs are
+      the sliders its result was computed with, by name, and their numbers: while the file writes another number, a note says so. A status, a line
+      as waiting or running…, goes above the result, which stays. *)
   b = state.Buffers[k]
   r = runOf(b)
   kept = [x for x in text.BlocksOf(b) if dict.GetOr("Cell", 0, x) != i]
+  note = if value.Len(inputs) == 0 missing else staleNote(inputs, r) end
+  shown = list.Concat([x for x in [status, note] if value.IsSome(x)], lines)
+  made = dict.Merge(blockOf(i, shown, r, b, state.Cell, graph), {Base: lines, Inputs: inputs, Status: status})
   s = state
-  s.Buffers[k] = text.WithBlocks(if value.Len(lines) == 0 and value.IsMissing(graph) kept else list.SortBy(x -> x.Line, list.Append(blockOf(i, lines, r, b, state.Cell, graph), kept)) end, b)
+  s.Buffers[k] = text.WithBlocks(if value.Len(shown) == 0 and value.IsMissing(graph) kept else list.SortBy(x -> x.Line, list.Append(made, kept)) end, b)
   s
 end
+
+defn withStatus(k, i, status, state)
+  (** The state with the block of cell i of buffer k showing a status above its result, or none: in a slider's rerun, a cell waits and runs with its
+      last result and its graph in sight, which the new one replaces. *)
+  old = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i, text.BlocksOf(state.Buffers[k]))
+  if value.IsMissing(old)
+    return withBlock(k, i, [], state, status = status)
+  end
+  withBlock(k, i, dict.GetOr("Base", old.Lines, old), state, graph = dict.GetOr("Graph", missing, old), inputs = dict.GetOr("Inputs", {}, old), status = status)
+end
+
+(** Does cell i run again for a slider, its last result kept in sight? *)
+keeps(i, r) = i in dict.GetOr("Keeping", [], r)
 
 defn graphOf(ran, state)
   (** The graph that a run shows, ready for the screen, or missing. *)
@@ -377,34 +400,42 @@ defn next(k, state)
   (** The state with the next cell of the queue of buffer k started, if none runs: a cell with errors of the analysis shows them and the queue goes on. *)
   r = runOf(state.Buffers[k])
   s = state
-  while value.IsMissing(r.Task) and value.Len(r.Queue) > 0
+  (* While a slider's Set runs, no cell starts: those after it run with its number. *)
+  while value.IsMissing(r.Task) and value.Len(r.Queue) > 0 and value.IsMissing(dict.GetOr("Setting", missing, r))
     i = r.Queue[1]
     r.Queue = list.Skip(1, r.Queue)
     errors = r.Analysis[i].Errors
     if value.Len(errors) > 0
-      s = withBlock(k, i, resultLines({Errors: errors}), withRun(k, r, s))
+      s = answeredCell(k, i, withBlock(k, i, resultLines({Errors: errors}), withRun(k, r, s)))
     else if str.Trim(r.Cells[i].Source) != ""
       cell = r.Cells[i]
       one = r.Session
       width = GraphWidth(s)
+      r = heldBy(i, r)
+      r.Inputs = inputsOf(i, r)
       r.Task = fiber.Spawn(() -> nb.Run(one, cell, width = width))
       r.Index = i
       r.Started = sys.Now()
-      s = withBlock(k, i, running(0.0), withRun(k, r, s))
+      s = if keeps(i, r) withStatus(k, i, running(0.0)[1], withRun(k, r, s)) else withBlock(k, i, running(0.0), withRun(k, r, s)) end
     else
-      s = withBlock(k, i, [], withRun(k, r, s))
+      s = answeredCell(k, i, withBlock(k, i, [], withRun(k, r, s)))
     end
+    r = runOf(s.Buffers[k])
   end
   withRun(k, r, s)
 end
 
-defn queued(k, order, state)
-  (** The state with the cells of order queued after the one that runs, in buffer k, each shown as waiting. *)
+defn queued(k, order, state, again = false)
+  (** The state with the cells of order queued after the one that runs, in buffer k, each shown as waiting; with again, the one that runs too, as it
+      ran with a slider's number before the last one. *)
   r = runOf(state.Buffers[k])
-  r.Queue = list.Concat([i for i in r.Queue if not (i in order)], [i for i in order if i != r.Index or value.IsMissing(r.Task)])
+  r.Queue = list.Concat([i for i in r.Queue if not (i in order)], [i for i in order if again or i != r.Index or value.IsMissing(r.Task)])
+  if again
+    r.Keeping = list.Unique(list.Concat(dict.GetOr("Keeping", [], r), order))
+  end
   s = withRun(k, r, state)
   for i in r.Queue
-    s = withBlock(k, i, [{Role: "note", Words: "waiting"}], s)
+    s = if keeps(i, r) withStatus(k, i, {Role: "note", Words: "waiting"}, s) else withBlock(k, i, [{Role: "note", Words: "waiting"}], s) end
   end
   next(k, s)
 end
@@ -439,7 +470,10 @@ defn taken(k, state)
   got = fiber.Wait(r.Task, timeout = 0)
   if result.IsErr(got) and got.Error.Kind == "timeout"
     seconds = sys.Now() - r.Started
-    return if value.Len(text.BlocksOf(state.Buffers[k])) > 0 withBlock(k, r.Index, running(seconds), state) else state end
+    if value.Len(text.BlocksOf(state.Buffers[k])) == 0
+      return state
+    end
+    return if keeps(r.Index, r) withStatus(k, r.Index, running(seconds)[1], state) else withBlock(k, r.Index, running(seconds), state) end
   end
   i = r.Index
   r.Task = missing
@@ -451,13 +485,16 @@ defn taken(k, state)
     lines = list.Append({Role: "error", Words: graph.Fault}, lines)
     graph = missing
   end
-  s = withBlock(k, i, lines, withRun(k, r, state), graph = graph)
+  r.Keeping = [j for j in dict.GetOr("Keeping", [], r) if j != i]
+  s = withBlock(k, i, lines, withRun(k, r, state), graph = graph, inputs = dict.GetOr("Inputs", {}, r))
   if result.IsErr(ran)
+    r = dropped(r)
     r.Session = missing
     r.Queue = []
+    r.Values = {}
     return commands.Say("The session of $(state.Buffers[k].Path) has ended: C-c e a starts a new one.", withRun(k, r, s))
   end
-  s = next(k, s)
+  s = next(k, answeredCell(k, i, s))
   r = runOf(s.Buffers[k])
   if value.IsMissing(r.Task)
     vars = nb.Variables(r.Session)
@@ -485,6 +522,8 @@ defn stopped(k, state)
   end
   r.Session = answer.Value
   if answer.Value.Restarted
+    r = dropped(r)
+    r.Values = {}
     r.Task = missing
     r.Queue = []
     s = withRun(k, r, state)
@@ -501,15 +540,22 @@ defn StopCell(state)
     return commands.Say("No cell is running.", state)
   end
   one = r.Session
+  waited = [i for i in r.Queue if keeps(i, r)]
+  r = dropped(r)
   r.Queue = []
+  r.Keeping = [i for i in dict.GetOr("Keeping", [], r) if i == r.Index]
   r.Stopping = fiber.Spawn(() -> nb.Stop(one))
-  commands.Say("Stopping the cell.", withRun(k, r, state))
+  s = withRun(k, r, state)
+  for i in waited
+    s = withStatus(k, i, missing, s)
+  end
+  commands.Say("Stopping the cell.", s)
 end
 
 defn ClearResults(state)
   (** C-c e k: the results drawn under the cells cleared; the session keeps its names. *)
   s = state
-  s.Buffers[state.Current] = text.WithBlocks([], state.Buffers[state.Current])
+  s.Buffers[state.Current] = text.WithBlocks([x for x in text.BlocksOf(state.Buffers[state.Current]) if dict.Has("Slider", x)], state.Buffers[state.Current])
   commands.Say("Results cleared.", s)
 end
 
@@ -533,12 +579,14 @@ defn moved(k, state)
   r = analysed(k, r, state)
   out = []
   for x in blocks
-    i = CellAt(x.Line, r.Cells)
-    out = list.Append(dict.Merge(x, {Line: anchor(r.Cells[i], b), Cell: i}), out)
+    if not dict.Has("Slider", x)
+      i = CellAt(x.Line, r.Cells)
+      out = list.Append(dict.Merge(x, {Line: anchor(r.Cells[i], b), Cell: i}), out)
+    end
   end
   s = withRun(k, r, state)
   s.Buffers[k] = text.WithBlocks(list.SortBy(x -> x.Line, out), b)
-  s
+  restaled(k, laid(k, s))
 end
 
 (* ---- Graphs drawn again at the width of their pane. *)
@@ -578,9 +626,11 @@ defn widened(k, state)
     end
     if result.IsErr(scene) or value.IsSome(SceneFault(scene.Value))
       (* A graph the session no longer holds, or a scene that isn't sane, keeps its width. *)
-      return withBlock(k, pending.Cell, old.Lines, s, graph = dict.Put("Fixed", true, old.Graph))
+      return withBlock(k, pending.Cell, dict.GetOr("Base", old.Lines, old), s, graph = dict.Put("Fixed", true, old.Graph), inputs = dict.GetOr("Inputs", {}, old),
+        status = dict.GetOr("Status", missing, old))
     end
-    return withBlock(k, pending.Cell, old.Lines, s, graph = dict.Put("Key", old.Graph.Key, Prepared(scene.Value, commands.Home(s))))
+    return withBlock(k, pending.Cell, dict.GetOr("Base", old.Lines, old), s, graph = dict.Put("Key", old.Graph.Key, Prepared(scene.Value, commands.Home(s))),
+      inputs = dict.GetOr("Inputs", {}, old), status = dict.GetOr("Status", missing, old))
   end
   x = stale(b, state)
   if value.IsMissing(x)
@@ -605,7 +655,7 @@ defn WriteHtml(state)
   path = b.Path
   allow = allowOf(path)
   r = runOf(b)
-  r = if value.IsMissing(r) {Session: missing, Cells: [], Analysis: [], Queue: [], Task: missing, Index: 0, Started: 0.0, Stopping: missing, Html: missing, Vars: [], Version: -1} else r end
+  r = if value.IsMissing(r) newRun() else r end
   r.Html = fiber.Spawn(() -> nb.Html(path, allow = allow))
   how = if text.IsModified(b) " as saved, without the changes here" else "" end
   commands.Say("Running every cell of $path$how for its page.", withRun(k, r, state))
@@ -910,6 +960,499 @@ end
 HistoryBack(state) = historyMoved(1, state)   (** M-p: the code typed before. *)
 HistoryOn(state) = historyMoved(-1, state)   (** M-n: the code typed after. *)
 
+(* ---- Sliders: each line name = cells.Slider(...) of a cell of sliders draws a slider under it, from the analysis alone, before any run. The mouse
+   and the keys move it: the new number is written in the buffer, in place of the old one, the session gets it in place with cells.Set, and only the
+   cells that read the name run again. One Set and its cells run at a time for a slider; a move meanwhile waits as Pending, and the latest wins. *)
+
+(** The moves of the sliders of a run, by name: each {Busy, Pending, Left, Since, Took}, Busy while its Set or its cells run, Pending the last
+    position not yet set, Left the cells of its rerun not yet answered, Since when its Set started and Took the seconds of its last rerun. *)
+movesOf(r) = dict.GetOr("Moves", {}, r)
+
+(** The move of a slider in a run, or a still one. *)
+moveOf(name, r) = dict.GetOr(name, {Busy: false, Pending: missing, Left: [], Since: 0.0, Took: missing}, movesOf(r))
+
+defn withMove(name, m, r)
+  (** The run with the move of a slider. *)
+  out = r
+  out.Moves = dict.Put(name, m, movesOf(r))
+  out
+end
+
+defn sliderAt(name, r)
+  (** The slider of a name in the analysis of a run, with its cell and its place in that cell: {Slider, Cell, Index}, or missing. *)
+  for i in 1..value.Len(r.Analysis)
+    all = dict.GetOr("Sliders", [], r.Analysis[i])
+    for j in 1..value.Len(all)
+      if all[j].Name == name
+        return {Slider: all[j], Cell: i, Index: j}
+      end
+    end
+  end
+  missing
+end
+
+defn readersOf(analysis, cell, name)
+  (** The cells that read a slider's name, directly or through other cells, as cells.ToRun gives them for its cell defining that name alone. *)
+  a = analysis
+  a[cell].Defines = [name]
+  list.Skip(1, nb.ToRun(a, cell))
+end
+
+defn inputsOf(i, r)
+  (** The sliders that cell i reads, directly or not, with the number the session holds for each: what its result is computed with. *)
+  out = {}
+  held = dict.GetOr("Values", {}, r)
+  for c in 2..value.Len(r.Analysis)
+    for s in dict.GetOr("Sliders", [], r.Analysis[c])
+      if dict.Has(s.Name, held) and i in readersOf(r.Analysis, c, s.Name)
+        out[s.Name] = held[s.Name]
+      end
+    end
+  end
+  out
+end
+
+defn heldBy(i, r)
+  (** The run once cell i starts: the session will hold the numbers that the sliders of cell i write, if it has any. *)
+  out = r
+  held = dict.GetOr("Values", {}, r)
+  for s in dict.GetOr("Sliders", [], r.Analysis[i])
+    held = dict.Put(s.Name, s.Value, held)
+  end
+  out.Values = held
+  out
+end
+
+(** The number of a slider written in the buffer now, or missing. *)
+written(name, r) = if value.IsMissing(sliderAt(name, r)) missing else sliderAt(name, r).Slider.Value end
+
+defn staleNote(inputs, r)
+  (** The note of a result computed with other numbers than those the file writes now, or missing: stale: computed with rho = 28.0. *)
+  off = [n for n in list.Sort(dict.Keys(inputs)) if value.IsSome(written(n, r)) and written(n, r) != inputs[n]]
+  if value.Len(off) == 0 missing else {Role: "note", Words: "stale: computed with $(str.Join(", ", ["$n = $(inputs[n])" for n in off]))"} end
+end
+
+defn restaled(k, state)
+  (** The state with each result of buffer k that reads a slider drawn again with its note when the file now writes another number than the one it
+      was computed with, and without it once they agree again. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  if value.IsMissing(r)
+    return state
+  end
+  out = []
+  changed = false
+  for x in text.BlocksOf(b)
+    inputs = dict.GetOr("Inputs", {}, x)
+    if value.Len(inputs) == 0
+      out = list.Append(x, out)
+    else
+      note = staleNote(inputs, r)
+      lines = list.Concat([y for y in [dict.GetOr("Status", missing, x), note] if value.IsSome(y)], x.Base)
+      if value.Equal([l.Words for l in lines], [l.Words for l in x.Lines])
+        out = list.Append(x, out)
+      else
+        changed = true
+        out = list.Append(dict.Merge(Block(x.Line, lines, state.Cell, graph = x.Graph), {Cell: x.Cell, Base: x.Base, Inputs: inputs, Status: dict.GetOr("Status", missing, x)}), out)
+      end
+    end
+  end
+  if not changed
+    return state
+  end
+  s = state
+  s.Buffers[k] = text.WithBlocks(out, b)
+  s
+end
+
+(* -- Drawing a slider and taking the mouse. *)
+
+defn SliderPlaces(width, columns, cell)
+  (** The places of the parts of a slider in its block, in pixels from its left, for a block width pixels wide whose names take columns: {Name,
+      Track, Wide, Value}, the name, the track and its width, and the value after it, then the time of the last rerun.
+
+        SliderPlaces(1000, 3, {Width: 8, Height: 19}).Track --> 56 *)
+  name = 2 * cell.Width
+  track = name + (columns + 2) * cell.Width
+  wide = list.Max(80, list.Min(480, width - track - 28 * cell.Width))
+  {Name: name, Track: track, Wide: wide, Value: track + wide + 2 * cell.Width}
+end
+
+(** Where the thumb of a slider starts on its track, in pixels from the track's left: the thumb is 8 pixels wide. *)
+thumbAt(s, wide) = math.Div(math.Floor(list.Max(0.0, list.Min(1.0, (s.Value - s.Min) / (s.Max - s.Min))) * (wide - 8) + 0.5), 1)
+
+defn SliderItems(s, words, took, focused, width, columns, cell, th)
+  (** What draws a slider under its line: its name, its track in the color of lines, its thumb in ink, 8 pixels wide, its number as the file writes
+      it, the time its last rerun took in muted ink, and a ring of 2 pixels in the accent color around it while it has the keys.
+
+        value.Len(SliderItems({Name: "a", Value: 1.0, Min: 0.0, Max: 2.0}, "1.0", missing, false, 800, 1, {Width: 8, Height: 19}, {Ink: 1, Line: 2, Muted: 3, Accent: 4})) --> 4 *)
+  p = SliderPlaces(width, columns, cell)
+  mid = math.Div(cell.Height, 2)
+  x = p.Track + thumbAt(s, p.Wide)
+  out = [{Kind: "text", X: p.Name, Y: 0, Text: s.Name, Color: th.Ink, Font: "code"},
+    {Kind: "rect", X: p.Track, Y: mid - 1, Width: p.Wide, Height: 2, Color: th.Line},
+    {Kind: "rect", X: x, Y: 3, Width: 8, Height: cell.Height - 6, Color: th.Ink},
+    {Kind: "text", X: p.Value, Y: 0, Text: words, Color: th.Ink, Font: "code"}]
+  if value.IsSome(took)
+    out = list.Append({Kind: "text", X: p.Value + (value.Len(words) + 2) * cell.Width, Y: 0, Text: "rerun $(math.Div(math.Floor(took * 1000.0 + 0.5), 1)) ms", Color: th.Muted, Font: "code"}, out)
+  end
+  if focused
+    left = p.Track - 6
+    wide = p.Wide + 12
+    out = list.Concat(out, [{Kind: "rect", X: left, Y: 0, Width: wide, Height: 2, Color: th.Accent}, {Kind: "rect", X: left, Y: cell.Height - 2, Width: wide, Height: 2, Color: th.Accent},
+      {Kind: "rect", X: left, Y: 0, Width: 2, Height: cell.Height, Color: th.Accent}, {Kind: "rect", X: left + wide - 2, Y: 0, Width: 2, Height: cell.Height, Color: th.Accent}])
+  end
+  out
+end
+
+(** The columns that the names of the sliders of cell i take, so that their tracks line up. *)
+nameColumns(i, r) = list.Max(1, list.Reduce((w, s) -> list.Max(w, value.Len(s.Name)), 0, dict.GetOr("Sliders", [], r.Analysis[i])))
+
+(** The words of a slider's number as the buffer writes it: its span on its line. *)
+wordsOf(s, b) = str.Slice(s.Column, s.End, rope.Line(s.Line, b.Rope))
+
+defn sliderBlock(s, i, b, r, state)
+  (** The block of a slider under its line: drawn from the analysis, it takes the mouse. *)
+  words = wordsOf(s, b)
+  took = moveOf(s.Name, r).Took
+  focus = commands.FocusOf(state)
+  focused = value.IsSome(focus) and dict.GetOr("Slider", "", focus) == s.Name and dict.GetOr("Buffer", 0, focus) == state.Current
+  columns = nameColumns(i, r)
+  cell = state.Cell
+  name = s.Name
+  {Line: s.Line, Rows: 1, Cell: 0, Slider: name, Draw: (width, look) -> SliderItems(s, words, took, focused, width, columns, cell, look.Theme),
+    Mouse: (action, point, st) -> sliderMouse(name, action, point, st)}
+end
+
+defn laid(k, state)
+  (** The state with the sliders of buffer k drawn again from its analysis, each under its line. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  kept = [x for x in text.BlocksOf(b) if not dict.Has("Slider", x)]
+  if value.IsMissing(r)
+    return if value.Len(kept) == value.Len(text.BlocksOf(b)) state else withBlocksOf(k, kept, state) end
+  end
+  made = []
+  for i in 1..value.Len(r.Analysis)
+    for s in dict.GetOr("Sliders", [], r.Analysis[i])
+      if s.Line <= rope.LineCount(b.Rope) and s.End <= value.Len(rope.Line(s.Line, b.Rope))
+        made = list.Append(sliderBlock(s, i, b, r, state), made)
+      end
+    end
+  end
+  withBlocksOf(k, list.SortBy(x -> x.Line, list.Concat(kept, made)), state)
+end
+
+defn withBlocksOf(k, blocks, state)
+  (** The state with these blocks in buffer k. *)
+  s = state
+  s.Buffers[k] = text.WithBlocks(blocks, state.Buffers[k])
+  s
+end
+
+defn sliderMouse(name, action, point, state)
+  (** A press, a move or a release of the mouse on the block of a slider: a press gives it the keys and, on its track, sets the value under the point,
+      as a single pointer does (WCAG 2.5.7); a move with the button held drags it; a release ends the drag, one step of undo. *)
+  k = state.Current
+  r = runOf(state.Buffers[k])
+  found = if value.IsMissing(r) missing else sliderAt(name, r) end
+  if value.IsMissing(found)
+    return state
+  end
+  s = state
+  if action == "down"
+    s = focusedOn(k, name, state)
+    r = runOf(s.Buffers[k])
+    r.Drag = missing
+    s = withRun(k, r, s)
+  end
+  p = SliderPlaces(point.Width, nameColumns(found.Cell, r), s.Cell)
+  onTrack = point.X >= p.Track - 6 and point.X <= p.Track + p.Wide + 6
+  if action == "up"
+    r.Drag = missing
+    return withRun(k, r, s)
+  end
+  if action == "move" and dict.GetOr("Drag", missing, r) != name
+    return s
+  end
+  if action == "down" and not onTrack
+    return s
+  end
+  f = list.Max(0.0, list.Min(1.0, (point.X - p.Track - 4) / list.Max(1, p.Wide - 8)))
+  sl = found.Slider
+  at = nb.Snap(sl, sl.Min + f * (sl.Max - sl.Min))
+  s = Moved(k, name, at, if action == "down" "press" else "drag" end, s)
+  r = runOf(s.Buffers[k])
+  r.Drag = name
+  withRun(k, r, s)
+end
+
+(* -- Keys: C-c e f gives the keys to the first slider of the cursor's cell, as WAI-ARIA's slider pattern has them. *)
+
+defn stepped(by)
+  (** The command that moves the slider with the keys by some steps: whole ones, or to its min or its max for a huge number of them. *)
+  state -> keyed(by, state)
+end
+
+defn keyed(by, state)
+  (** The slider that has the keys moved by some steps. *)
+  f = commands.FocusOf(state)
+  k = f.Buffer
+  r = runOf(state.Buffers[k])
+  found = if value.IsMissing(r) missing else sliderAt(f.Slider, r) end
+  if value.IsMissing(found)
+    return commands.Unfocused(state)
+  end
+  s = found.Slider
+  Moved(k, s.Name, nb.Snap(s, s.Value, steps = by), "keys", state)
+end
+
+defn tabbed(by, state)
+  (** The keys to the next slider of the cell, or the previous one, round. *)
+  f = commands.FocusOf(state)
+  r = runOf(state.Buffers[f.Buffer])
+  found = if value.IsMissing(r) missing else sliderAt(f.Slider, r) end
+  if value.IsMissing(found)
+    return commands.Unfocused(state)
+  end
+  all = r.Analysis[found.Cell].Sliders
+  next = all[math.Mod(found.Index - 1 + by, value.Len(all)) + 1]
+  focusedOn(f.Buffer, next.Name, state)
+end
+
+(** The rows of the band while a slider has the keys. *)
+FocusHints() = [{Key: "← →", Name: "a step", Group: false}, {Key: "PgUp PgDn", Name: "ten steps", Group: false}, {Key: "Home End", Name: "its min, its max", Group: false},
+  {Key: "Tab S-Tab", Name: "the next slider, the previous one", Group: false}, {Key: "C-g", Name: "leave", Group: false}]
+
+(** The keys of a slider that has them: the arrows a step, the pages ten, Home and End its min and its max, Tab and S-Tab the next slider of the cell
+    and the previous one, C-g leaves. *)
+SliderKeys() = {"right": stepped(1), "up": stepped(1), "left": stepped(-1), "down": stepped(-1), "pageup": stepped(10), "pagedown": stepped(-10),
+  "home": stepped(-2000000), "end": stepped(2000000), "tab": st -> tabbed(1, st), "S-tab": st -> tabbed(-1, st), "C-g": commands.Unfocused}
+
+defn focusedOn(k, name, state)
+  (** The state with the keys on the slider of a name in buffer k, drawn with its ring, and the one that had them without. *)
+  s = commands.Unfocused(state)
+  s.Focus = {Keys: SliderKeys(), Hints: FocusHints(), Leave: st -> laid(k, unjoined(k, st)), Buffer: k, Slider: name}
+  laid(k, s)
+end
+
+defn unjoined(k, state)
+  (** The state where the next move of a slider of buffer k starts a new step of undo. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r)
+    return state
+  end
+  r.Joinable = missing
+  withRun(k, r, state)
+end
+
+defn FocusControl(state)
+  (** C-c e f: gives the keys to the first slider of the cell of the cursor: the arrows move it a step, the pages ten, Home and End to its min and its
+      max, Tab and S-Tab go to the next slider of the cell and the previous one, and C-g, a click in the text or any other key leaves it. *)
+  k = state.Current
+  b = state.Buffers[k]
+  if not IsCells(b)
+    return commands.Say("This buffer has no cell: C-c e f gives the keys to a slider of a cell.", state)
+  end
+  s = fresh(k, state)
+  r = runOf(s.Buffers[k])
+  i = CellAt(b.Cursor.Line, r.Cells)
+  all = dict.GetOr("Sliders", [], r.Analysis[i])
+  if value.Len(all) == 0
+    return commands.Say("This cell has no slider: name = cells.Slider(value, min, max) on a line of a cell of its own makes one.", s)
+  end
+  focusedOn(k, all[1].Name, s)
+end
+
+(* -- A move: the number written in the buffer, then the session told, the latest value winning. *)
+
+defn fresh(k, state)
+  (** The state with a run for buffer k whose cells and analysis are those of its text now, and its sliders drawn: made when there is none. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  r = if value.IsMissing(r) newRun() else r end
+  if r.Version == b.Version
+    return withRun(k, r, state)
+  end
+  laid(k, withRun(k, analysed(k, r, state), state))
+end
+
+(** A run of a buffer with no session yet. *)
+newRun() = {Session: missing, Cells: [], Analysis: [], Queue: [], Task: missing, Index: 0, Started: 0.0, Stopping: missing, Html: missing, Vars: [],
+  Version: -1}
+
+defn Moved(k, name, at, how, state)
+  (** The state after a move of the slider of a name in buffer k to a position of cells.Snap, {Value, Text}, by "press", "drag" or "keys": the number
+      written in the buffer as Edited writes it, then the session told, the latest number winning. *)
+  s = Edited(k, name, at, how, state)
+  if s.Buffers[k].Version == state.Buffers[k].Version s else pushed(k, name, at.Value, s) end
+end
+
+defn Edited(k, name, at, how, state)
+  (** The state after a move of the slider of a name in buffer k to a position of cells.Snap, {Value, Text}, by "press", "drag" or "keys", in the
+      buffer only: the number written in place of the old one, if that place lies on a line of the slider's cell and still holds the number the
+      analysis read; one step of undo for a drag, from its press, or for keys in a row; the slider drawn at once, and the results that the new number
+      makes stale noted. A position that writes the same text changes nothing. *)
+  s = fresh(k, state)
+  b = s.Buffers[k]
+  r = runOf(b)
+  found = sliderAt(name, r)
+  if value.IsMissing(found)
+    return s
+  end
+  sl = found.Slider
+  cell = r.Cells[found.Cell]
+  line = if sl.Line <= rope.LineCount(b.Rope) rope.Line(sl.Line, b.Rope) else "" end
+  (* The edit is checked first: the number's place must lie on a line of the slider's own cell and still hold the number the analysis read. *)
+  if sl.Line < cell.From or sl.Line > cell.To or sl.Column < 1 or sl.End > value.Len(line) or str.Number(str.Slice(sl.Column, sl.End, line)) != sl.Value
+    return commands.Say("The slider $name isn't where its number was: the cells are read again at the next key.", s)
+  end
+  if str.Slice(sl.Column, sl.End, line) == at.Text
+    return s
+  end
+  join = dict.GetOr("Joinable", missing, r)
+  edited = text.Replaced([{Line: sl.Line, Column: sl.Column - 1, End: sl.End, Text: at.Text}], b)
+  (* Keys join while the slider keeps the keys, as typing does until another command: leaving it ends the step. *)
+  holder = commands.FocusOf(state)
+  held = how != "keys" or (value.IsSome(holder) and dict.GetOr("Slider", "", holder) == name)
+  joins = value.IsSome(join) and join.Name == name and join.Version == b.Version and how != "press" and join.How == (if how == "keys" "keys" else "drag" end) and held
+  edited = if joins text.JoinSteps(edited) else edited end
+  moved = sl
+  moved.Value = at.Value
+  moved.End = sl.Column + value.Len(at.Text) - 1
+  r.Analysis[found.Cell].Sliders[found.Index] = moved
+  r.Cells[found.Cell].Source = str.Join("\n", [rope.Line(n, edited.Rope) for n in cell.From..cell.To])
+  r.Version = edited.Version
+  r.Joinable = {Name: name, Version: edited.Version, How: if how == "keys" "keys" else "drag" end}
+  s.Buffers[k] = edited
+  restaled(k, laid(k, withRun(k, r, s)))
+end
+
+defn pushed(k, name, number, state)
+  (** The state once a slider moved to a number: its Set started if none of its own runs, else the number kept as Pending, the latest winning. Without
+      a session, one starts and every cell runs, from the top, as C-c e a runs them. *)
+  r = runOf(state.Buffers[k])
+  m = moveOf(name, r)
+  if value.IsMissing(r.Session)
+    got = session(k, state)
+    if result.IsErr(got)
+      return commands.Say("No session for $(state.Buffers[k].Path): $(got.Error.Message)", state)
+    end
+    r = got.Value
+    order = [i for i in 1..value.Len(r.Cells)]
+    m.Busy = true
+    m.Left = order
+    m.Since = sys.Now()
+    m.Pending = missing
+    return queued(k, order, withRun(k, withMove(name, m, r), state))
+  end
+  if m.Busy or value.IsSome(dict.GetOr("Setting", missing, r))
+    m.Pending = number
+    return withRun(k, withMove(name, m, r), state)
+  end
+  setting(k, name, number, state)
+end
+
+defn setting(k, name, number, state)
+  (** The state with the Set of a slider's number running in a fiber: no cell starts until it answers, so that the cells run with the number set. *)
+  r = runOf(state.Buffers[k])
+  m = moveOf(name, r)
+  one = r.Session
+  analysis = r.Analysis
+  r.Setting = {Task: fiber.Spawn(() -> nb.Set(one, analysis, name, number)), Name: name, Number: number, Dropped: false}
+  m.Busy = true
+  m.Pending = missing
+  m.Since = sys.Now()
+  m.Left = []
+  withRun(k, withMove(name, m, r), state)
+end
+
+defn setAnswered(k, state)
+  (** The state at a tick once the Set that runs in buffer k answered: its cells queued, even one that runs now, which ran with the number before; or,
+      when the session has no value for the name yet, the slider's cell and its readers, the usual way. *)
+  r = runOf(state.Buffers[k])
+  set = dict.GetOr("Setting", missing, r)
+  if value.IsMissing(set)
+    return state
+  end
+  got = fiber.Wait(set.Task, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  answer = if result.IsOk(got) got.Value else got end
+  r.Setting = missing
+  m = moveOf(set.Name, r)
+  found = sliderAt(set.Name, r)
+  if set.Dropped or value.IsMissing(found)
+    m.Busy = false
+    m.Pending = missing
+    return withRun(k, withMove(set.Name, m, r), state)
+  end
+  order = if result.IsOk(answer) answer.Value.ToRun else nb.ToRun(r.Analysis, found.Cell) end
+  if result.IsOk(answer)
+    r.Values = dict.Put(set.Name, answer.Value.Value, dict.GetOr("Values", {}, r))
+  end
+  m.Left = order
+  s = withRun(k, withMove(set.Name, m, r), state)
+  s = if value.Len(order) == 0 finished(k, set.Name, s) else queued(k, order, s, again = true) end
+  pending(k, s)
+end
+
+defn finished(k, name, state)
+  (** The state once the rerun of a slider ended: its time kept and drawn, and its Pending number, if any, set. *)
+  r = runOf(state.Buffers[k])
+  m = moveOf(name, r)
+  m.Busy = false
+  m.Left = []
+  m.Took = sys.Now() - m.Since
+  s = laid(k, withRun(k, withMove(name, m, r), state))
+  pending(k, s)
+end
+
+defn pending(k, state)
+  (** The state with the Set of the first slider that waits with a Pending number started, when no Set runs. *)
+  r = runOf(state.Buffers[k])
+  if value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsMissing(r.Session)
+    return state
+  end
+  for name in dict.Keys(movesOf(r))
+    m = moveOf(name, r)
+    if not m.Busy and value.IsSome(m.Pending)
+      return setting(k, name, m.Pending, state)
+    end
+  end
+  state
+end
+
+defn answeredCell(k, i, state)
+  (** The state once cell i left the queue of buffer k, run or not: the slider reruns that waited for it, and those that end with it. *)
+  r = runOf(state.Buffers[k])
+  s = state
+  for name in dict.Keys(movesOf(r))
+    m = moveOf(name, r)
+    if m.Busy and i in m.Left
+      m.Left = [j for j in m.Left if j != i]
+      s = withRun(k, withMove(name, m, runOf(s.Buffers[k])), s)
+      if value.Len(m.Left) == 0
+        s = finished(k, name, s)
+      end
+    end
+  end
+  s
+end
+
+defn dropped(r)
+  (** A run whose slider reruns are dropped, by a stop or the end of its session: no Pending, nothing busy, and the Set that runs queues nothing. *)
+  out = r
+  out.Moves = dict.MapValues(m -> dict.Merge(m, {Busy: false, Pending: missing, Left: []}), movesOf(r))
+  set = dict.GetOr("Setting", missing, r)
+  if value.IsSome(set)
+    set.Dropped = true
+    out.Setting = set
+  end
+  out
+end
+
 (* ---- The hooks. *)
 
 defn tick(state)
@@ -918,7 +1461,7 @@ defn tick(state)
   s = state
   for k in 1..value.Len(s.Buffers)
     if value.IsSome(runOf(s.Buffers[k]))
-      s = exported(k, stopped(k, taken(k, s)))
+      s = exported(k, stopped(k, next(k, setAnswered(k, taken(k, s)))))
     end
     if value.IsSome(replOf(s.Buffers[k]))
       s = answered(k, s)
@@ -927,17 +1470,38 @@ defn tick(state)
   s = viewing(s)
   k = s.Current
   s = widened(k, s)
-  if commands.Still(s) >= 0.5 and k <= value.Len(s.Buffers) moved(k, s) else s end
+  if k <= value.Len(s.Buffers) and (commands.Still(s) >= 0.5 or not dict.Has("CellsSeen", s.Buffers[k])) rested(k, moved(k, s)) else s end
+end
+
+defn rested(k, state)
+  (** The state once buffer k rests: its cells read again if its text changed since, so that its sliders are drawn from its text, before any run, and
+      the results that a slider's number no longer matches say so. Once for each version of the text; a buffer that is no file of Cesia pays nothing. *)
+  b = state.Buffers[k]
+  if dict.GetOr("CellsSeen", -1, b) == b.Version or lists.IsList(b) or value.IsMissing(b.Path) or not str.EndsWith(".ce", b.Path)
+    return state
+  end
+  r = runOf(b)
+  if value.IsSome(r) and value.IsSome(r.Task)
+    return state
+  end
+  s = state
+  s.Buffers[k].CellsSeen = b.Version
+  if value.IsMissing(r) and not IsCells(b)
+    return s
+  end
+  restaled(k, fresh(k, s))
 end
 
 defn busy(b)
-  (** Does a buffer wait for its cells, its stop, its page or its prompt? *)
+  (** Does a buffer wait for its cells, a slider's Set, its stop, its page or its prompt? *)
   r = runOf(b)
   p = replOf(b)
-  (value.IsSome(r) and (value.IsSome(r.Task) or value.IsSome(r.Stopping) or value.IsSome(r.Html) or value.IsSome(dict.GetOr("Rescene", missing, r)))) or (value.IsSome(p) and value.IsSome(p.Task))
+  (value.IsSome(r) and (value.IsSome(r.Task) or value.IsSome(r.Stopping) or value.IsSome(r.Html) or value.IsSome(dict.GetOr("Rescene", missing, r))
+    or value.IsSome(dict.GetOr("Setting", missing, r)))) or (value.IsSome(p) and value.IsSome(p.Task))
 end
 
-(** Do the cells need ticks: a cell runs, a stop or a page is waited for, or a graph waits for the width of its pane? *)
+(** Do the cells need ticks: a cell runs, a slider's Set, a stop or a page is waited for, or a graph waits for the width of its pane? The sliders are
+    drawn again from the text at rest at the ticks the check of a file of Cesia asks for, as the results are put back under their cells. *)
 Moving(state) = list.Any([busy(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state))
 
 defn Hooked(config)
