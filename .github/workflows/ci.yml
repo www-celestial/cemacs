@@ -10,6 +10,9 @@ on:
     paths-ignore: ["docs/**", "**.md"]
   pull_request:
     paths-ignore: ["docs/**", "**.md"]
+  # Each day too: Cesia's nightly follows Cesia's main, so a change there shows here without a push to Cemacs.
+  schedule:
+    - cron: "17 5 * * *"
   workflow_dispatch:
 
 concurrency:

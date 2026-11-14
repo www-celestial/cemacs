@@ -1,6 +1,6 @@
 [project]
 name = "cemacs"
-cesia = "1.1"
+cesia = "1.2"
 src = ["core", "src", "user"]
 native = ["SDL3", "SDL3_ttf"]
 
