@@ -2,9 +2,10 @@
 
 Cemacs est un éditeur de texte pour [Cesia](https://github.com/www-celestial/cesia-lang), écrit en Cesia. Il a les touches
 d'Emacs et les couleurs du code de Cesia. Une bande montre à quoi une touche peut mener : vous n'avez donc pas besoin
-d'apprendre les touches avant de commencer. Les erreurs s'affichent dans les lignes pendant que vous tapez, et un programme
-tourne dans la fenêtre, où il s'arrête à ses breakpoints (les lignes où vous avez demandé qu'il s'arrête). Vous modifiez
-Cemacs en Cesia, dans un dossier à vous que `git pull` ne touche jamais, et il se recharge pendant qu'il tourne.
+d'apprendre les touches avant de commencer. Les erreurs s'affichent dans les lignes pendant que vous tapez, `M-.` va à la
+définition d'un nom et `M-?` à chaque endroit qui le lit, les tests et les programmes tournent dans la fenêtre, où ils s'arrêtent à
+leurs breakpoints (les lignes où vous avez demandé qu'ils s'arrêtent), et `C-x g` montre Git. Vous modifiez Cemacs en
+Cesia, dans un dossier à vous que `git pull` ne touche jamais, et il se recharge pendant qu'il tourne.
 
 **Documentation : https://www-celestial.github.io/cemacs/** (commencez par
 [First steps](https://www-celestial.github.io/cemacs/first-steps.html)). Les mêmes pages, en français, sont dans

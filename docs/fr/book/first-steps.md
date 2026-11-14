@@ -146,7 +146,7 @@ vérification tourne et ce qu'elle montre.
 | `C-c t t` | lance le test où est le curseur, ou les tests du dossier du fichier ; les échecs sont marqués dans leurs lignes |
 | `C-x g` | l'état de Git, où `s` stage un fichier et `c` fait un commit |
 
-La prompt line montre la signature de l'appel que vous tapez. [Names](names.md), [Recherche](search.md#chercher-dans-un-projet),
+La prompt line montre la signature de l'appel que vous tapez. [Noms](names.md), [Recherche](search.md#chercher-dans-un-projet),
 [Exécuter et déboguer](running.md#les-tests) et [Git](git.md) les décrivent en entier.
 
 ### Exécuter un fichier

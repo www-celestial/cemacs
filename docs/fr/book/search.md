@@ -175,7 +175,7 @@ Le projet est le dépôt Git qui contient le fichier du buffer courant, comme po
 [Fichiers et buffers](files.md#les-fichiers-dun-projet). La recherche est faite par [src/grep], que [src/ide] demande par
 `tools/grep.ce` : `git grep -F`, du texte fixe, jamais un motif, sans tenir compte de la casse quand les mots n'ont pas de
 capitale. Entrée va à la ligne et garde l'endroit quitté pour `M-,`, comme une liste de
-[références](names.md#the-references). `C-c r` remplace comme un [renommage](names.md#a-rename) : chaque fichier ouvert,
+[références](names.md#les-références). `C-c r` remplace comme un [renommage](names.md#un-renommage) : chaque fichier ouvert,
 ses modifications en une étape d'annulation, enregistré s'il l'était.
 
 ## Les touches

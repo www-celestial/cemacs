@@ -57,13 +57,14 @@ peut lire.
    les lignes, les breakpoints, le pas à pas, fix and continue.
 9. [Les erreurs dans les lignes](check.md) : ce que montre la vérification, quand elle tourne, et comment aller d'une erreur
    à la suivante.
-10. [Names](names.md) (en anglais) : la définition d'un nom et le retour, sa documentation, la signature d'un appel, chaque
-    endroit qui le lit, et son renommage dans tout le projet.
-11. [Git](git.md) (en anglais) : l'état d'un dépôt, où une lettre stage, unstage ou commit, le log, un commit, un diff et
-    le commit de chaque ligne.
-12. [The shell](shell.md) (en anglais) : un buffer où les commandes que vous tapez tournent dans votre shell.
-13. [Cellules et résultats](cells.md) : un fichier de Cesia comme un notebook (du code coupé en cellules, chacune avec
-    son résultat), ses résultats sous ses cellules, `*variables*`, `*repl*` et la page d'un fichier.
+10. [Noms](names.md) : la définition d'un nom et le retour, sa documentation, la signature d'un appel, chaque endroit
+    qui le lit, et son renommage dans tout le projet.
+11. [Git](git.md) : l'état d'un dépôt, où une lettre stage, unstage ou commit, le log, un commit, un diff et le commit de
+    chaque ligne.
+12. [Le shell](shell.md) : un buffer où les commandes que vous tapez tournent dans votre shell, et ce que ce shell a le
+    droit de faire.
+13. [Cells et résultats](cells.md) : un fichier de Cesia comme un notebook (du code coupé en cells, des cellules qui
+    tournent chacune avec son résultat), ses résultats sous ses cells, `*variables*`, `*repl*` et la page d'un fichier.
 14. [Modifier Cemacs](customising.md) : votre dossier `user/`, les réglages, vos propres touches et commandes, une app à
     vous, et le rechargement pendant qu'il tourne.
 15. [Recettes](recipes.md) : de petites tâches faites dans `user/`, chacune avec son code, sa touche et ce qu'elle montre :

@@ -527,10 +527,10 @@ Elle tourne dans son propre processus, depuis une fiber : l'éditeur ne l'attend
 
 ## Les questions de src/ide
 
-Les touches de [Names](names.md), de [la recherche dans un projet](search.md#chercher-dans-un-projet), de [Git](git.md) et
+Les touches de [Noms](names.md), de [la recherche dans un projet](search.md#chercher-dans-un-projet), de [Git](git.md) et
 des [tests](running.md#les-tests) demandent chacune un programme, que Cesia démarre, charge et lance : le coût d'une touche
 est ce processus, en arrière-plan, jamais une touche qui tape. Mesuré sur le code de Cemacs, $n = 21$, la médiane : une
-définition 0,80 ms et une documentation 0,70 ms, demandées à `cesia lsp` qui tourne depuis la première question, les [références](names.md#the-references) d'un nom lu dans 13 fichiers 154,6 ms,
+définition 0,80 ms et une documentation 0,70 ms, demandées à `cesia lsp` qui tourne depuis la première question, les [références](names.md#les-références) d'un nom lu dans 13 fichiers 154,6 ms,
 une recherche 11,2 ms, l'état de Git 11,6 ms. Le démarrage ne charge que [src/ide], 460 lignes, et 130 lignes de
 [core/commands] : 82,0 ms contre 79,1 ms pour le plus rapide de 21, la frappe 5,72 ms contre 5,86 ms par touche.
 

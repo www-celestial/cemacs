@@ -148,7 +148,7 @@ demande celles-ci :
 |---|---|
 | `read`, `write` | pour ouvrir et enregistrer tout fichier que vous choisissez, et pour lister les dossiers |
 | `exec=cesia` | pour lancer `cesia check` sur votre code, `cesia run --allow read tools/lookup.ce` pour les [noms](names.md), et `cesia run` ou `cesia do` sur vos programmes |
-| `exec=` le vrai chemin de `cesia` | pour démarrer la session d'un fichier de [cellules](cells.md) avec le même `cesia` que celui qui lance Cemacs |
+| `exec=` le vrai chemin de `cesia` | pour démarrer la session d'un fichier de [cells](cells.md) (un fichier coupé en cellules de code) avec le même `cesia` que celui qui lance Cemacs |
 | `exec=git` | pour lister les fichiers d'un projet, `git ls-files`, pour `C-x p f`, pour y chercher, `git grep`, pour `C-x p g`, et pour [Git](git.md), `C-x g` : aucun autre programme |
 | `env=HOME` | `~/` dans le gestionnaire de dossiers, et la corbeille |
 | `env=PWD` | le dossier où vous avez lancé Cemacs : un chemin relatif, et le `cesia.toml` dont la tâche exécute un fichier |
