@@ -485,7 +485,8 @@ defn taken(k, state)
     lines = list.Append({Role: "error", Words: graph.Fault}, lines)
     graph = missing
   end
-  r.Keeping = [j for j in dict.GetOr("Keeping", [], r) if j != i]
+  (* A cell queued again while it ran keeps its result in sight for its next run. *)
+  r.Keeping = [j for j in dict.GetOr("Keeping", [], r) if j != i or j in r.Queue]
   s = withBlock(k, i, lines, withRun(k, r, state), graph = graph, inputs = dict.GetOr("Inputs", {}, r))
   if result.IsErr(ran)
     r = dropped(r)
@@ -494,7 +495,7 @@ defn taken(k, state)
     r.Values = {}
     return commands.Say("The session of $(state.Buffers[k].Path) has ended: C-c e a starts a new one.", withRun(k, r, s))
   end
-  s = next(k, answeredCell(k, i, s))
+  s = next(k, answeredCell(k, i, s, started = r.Started))
   r = runOf(s.Buffers[k])
   if value.IsMissing(r.Task) and not asking(r)
     vars = nb.Variables(r.Session)
@@ -1308,8 +1309,8 @@ defn Edited(k, name, at, how, state)
     return commands.Say("The slider $name isn't where its number was: the cells are read again at the next key.", s)
   end
   (* The number written is one of the slider's: finite, from its min to its max, and the number of its own text. *)
-  n = str.Number(at.Text)
-  if value.IsMissing(n) or n != at.Value or n < sl.Min or n > sl.Max
+  wrote = str.Number(at.Text)
+  if value.IsMissing(wrote) or wrote != at.Value or wrote < sl.Min or wrote > sl.Max
     return commands.Say("The slider $name takes numbers from $(sl.Min) to $(sl.Max).", s)
   end
   if str.Slice(sl.Column, sl.End, line) == at.Text
@@ -1404,6 +1405,7 @@ defn setAnswered(k, state)
   end
   order = if result.IsOk(answer) answer.Value.ToRun else nb.ToRun(r.Analysis, found.Cell) end
   m.Left = order
+  m.Ready = sys.Now()
   s = withRun(k, withMove(set.Name, m, r), state)
   s = if value.Len(order) == 0 finished(k, set.Name, s) else queued(k, order, s, again = true) end
   pendingSet(k, s)
@@ -1435,13 +1437,14 @@ defn pendingSet(k, state)
   state
 end
 
-defn answeredCell(k, i, state)
-  (** The state once cell i left the queue of buffer k, run or not: the slider reruns that waited for it, and those that end with it. *)
+defn answeredCell(k, i, state, started = missing)
+  (** The state once cell i left the queue of buffer k, run or not: the slider reruns that waited for it, and those that end with it. A run that
+      started before a slider's Set answered ran with the number before: the rerun still waits for the cell. *)
   r = runOf(state.Buffers[k])
   s = state
   for name in dict.Keys(movesOf(r))
     m = moveOf(name, r)
-    if m.Busy and i in m.Left
+    if m.Busy and i in m.Left and (value.IsMissing(started) or started >= dict.GetOr("Ready", 0.0, m))
       m.Left = [j for j in m.Left if j != i]
       s = withRun(k, withMove(name, m, runOf(s.Buffers[k])), s)
       if value.Len(m.Left) == 0
