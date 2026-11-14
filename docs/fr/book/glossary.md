@@ -117,7 +117,9 @@ Cemacs. Emacs l'appelle le point. Voir [Édition](editing.md#le-curseur).
 
 Un language server est un programme qui connaît un langage et donne à n'importe quel éditeur les erreurs, les completions et
 les définitions de son code, par le Language Server Protocol ; un debug adapter fait de même pour un debugger, par le Debug
-Adapter Protocol. Cemacs n'emploie ni l'un ni l'autre : voir [Cemacs et les autres éditeurs](comparison.md#en-fonctions).
+Adapter Protocol. Cemacs est le client d'un seul language server, `cesia lsp`, pour les définitions et la documentation
+de Cesia (voir [Les noms](names.md)) ; son debugger est intégré, pour Cesia, et ne parle pas le Debug Adapter Protocol :
+voir [Cemacs et les autres éditeurs](comparison.md#en-fonctions).
 
 ## Definition and reference
 
