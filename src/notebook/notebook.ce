@@ -496,7 +496,7 @@ defn taken(k, state)
   end
   s = next(k, answeredCell(k, i, s))
   r = runOf(s.Buffers[k])
-  if value.IsMissing(r.Task)
+  if value.IsMissing(r.Task) and not asking(r)
     vars = nb.Variables(r.Session)
     r.Vars = if result.IsOk(vars) vars.Value else [] end
     s = withRun(k, r, s)
@@ -608,10 +608,10 @@ defn widened(k, state)
       once it came, the text above it as it was. One at a time, and never while a cell runs. *)
   b = state.Buffers[k]
   r = runOf(b)
-  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task)
+  pending = if value.IsMissing(r) missing else dict.GetOr("Rescene", missing, r) end
+  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task) or (value.IsMissing(pending) and asking(r))
     return state
   end
-  pending = dict.GetOr("Rescene", missing, r)
   if value.IsSome(pending)
     got = fiber.Wait(pending.Task, timeout = 0)
     if result.IsErr(got) and got.Error.Kind == "timeout"
@@ -747,7 +747,7 @@ defn fetched(k, upto, state)
   end
   owner = indexOf(l.Owner, state)
   r = if owner == 0 missing else runOf(state.Buffers[owner]) end
-  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task)
+  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task) or asking(r)
     return state
   end
   got = nb.Rows(r.Session, l.Value, have + 1, have + Chunk())
@@ -925,7 +925,7 @@ defn answered(k, state)
   s.Buffers[k] = after
   owner = indexOf(p.Owner, s)
   r = if owner == 0 missing else runOf(s.Buffers[owner]) end
-  if value.IsSome(r) and value.IsSome(r.Session)
+  if value.IsSome(r) and value.IsSome(r.Session) and not asking(r)
     vars = nb.Variables(r.Session)
     r.Vars = if result.IsOk(vars) vars.Value else r.Vars end
     s = withRun(owner, r, s)
@@ -1307,6 +1307,11 @@ defn Edited(k, name, at, how, state)
   if sl.Line < cell.From or sl.Line > cell.To or sl.Column < 1 or sl.End > value.Len(line) or str.Number(str.Slice(sl.Column, sl.End, line)) != sl.Value
     return commands.Say("The slider $name isn't where its number was: the cells are read again at the next key.", s)
   end
+  (* The number written is one of the slider's: finite, from its min to its max, and the number of its own text. *)
+  n = str.Number(at.Text)
+  if value.IsMissing(n) or n != at.Value or n < sl.Min or n > sl.Max
+    return commands.Say("The slider $name takes numbers from $(sl.Min) to $(sl.Max).", s)
+  end
   if str.Slice(sl.Column, sl.End, line) == at.Text
     return s
   end
@@ -1324,6 +1329,8 @@ defn Edited(k, name, at, how, state)
   r.Cells[found.Cell].Source = str.Join("\n", [rope.Line(n, edited.Rope) for n in cell.From..cell.To])
   r.Version = edited.Version
   r.Joinable = {Name: name, Version: edited.Version, How: if how == "keys" "keys" else "drag" end}
+  (* The analysis says what the text says: the cells are not read again at rest for this edit. *)
+  edited.CellsSeen = edited.Version
   s.Buffers[k] = edited
   restaled(k, laid(k, withRun(k, r, s)))
 end
@@ -1346,12 +1353,15 @@ defn pushed(k, name, number, state)
     m.Pending = missing
     return queued(k, order, withRun(k, withMove(name, m, r), state))
   end
-  if m.Busy or value.IsSome(dict.GetOr("Setting", missing, r))
+  if m.Busy or asking(r)
     m.Pending = number
     return withRun(k, withMove(name, m, r), state)
   end
   setting(k, name, number, state)
 end
+
+(** Does a question to the session other than a run wait for its answer, a Set or a scene: one at a time, so that each gets its own. *)
+asking(r) = value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsSome(dict.GetOr("Rescene", missing, r))
 
 defn setting(k, name, number, state)
   (** The state with the Set of a slider's number running in a fiber: no cell starts until it answers, so that the cells run with the number set. *)
@@ -1381,6 +1391,10 @@ defn setAnswered(k, state)
   end
   answer = if result.IsOk(got) got.Value else got end
   r.Setting = missing
+  if result.IsOk(answer)
+    (* The session holds the number now, even after a stop dropped the rerun. *)
+    r.Values = dict.Put(set.Name, answer.Value.Value, dict.GetOr("Values", {}, r))
+  end
   m = moveOf(set.Name, r)
   found = sliderAt(set.Name, r)
   if set.Dropped or value.IsMissing(found)
@@ -1389,13 +1403,10 @@ defn setAnswered(k, state)
     return withRun(k, withMove(set.Name, m, r), state)
   end
   order = if result.IsOk(answer) answer.Value.ToRun else nb.ToRun(r.Analysis, found.Cell) end
-  if result.IsOk(answer)
-    r.Values = dict.Put(set.Name, answer.Value.Value, dict.GetOr("Values", {}, r))
-  end
   m.Left = order
   s = withRun(k, withMove(set.Name, m, r), state)
   s = if value.Len(order) == 0 finished(k, set.Name, s) else queued(k, order, s, again = true) end
-  pending(k, s)
+  pendingSet(k, s)
 end
 
 defn finished(k, name, state)
@@ -1406,13 +1417,13 @@ defn finished(k, name, state)
   m.Left = []
   m.Took = sys.Now() - m.Since
   s = laid(k, withRun(k, withMove(name, m, r), state))
-  pending(k, s)
+  pendingSet(k, s)
 end
 
-defn pending(k, state)
+defn pendingSet(k, state)
   (** The state with the Set of the first slider that waits with a Pending number started, when no Set runs. *)
   r = runOf(state.Buffers[k])
-  if value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsMissing(r.Session)
+  if asking(r) or value.IsMissing(r.Session)
     return state
   end
   for name in dict.Keys(movesOf(r))
@@ -1461,7 +1472,7 @@ defn tick(state)
   s = state
   for k in 1..value.Len(s.Buffers)
     if value.IsSome(runOf(s.Buffers[k]))
-      s = exported(k, stopped(k, next(k, setAnswered(k, taken(k, s)))))
+      s = exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, s))))))
     end
     if value.IsSome(replOf(s.Buffers[k]))
       s = answered(k, s)
