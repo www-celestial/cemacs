@@ -90,11 +90,29 @@ defn spaceEnd(cs, from, n)
   i
 end
 
+defn solidBefore(cs, from)
+  (** The last character before from that is no space, or "" at the start of the line. *)
+  i = from - 1
+  while i > 1 and isSpace(cs[i])
+    i -= 1
+  end
+  cs[i]
+end
+
+defn solidAfter(cs, from, n)
+  (** The first character from from on that is no space, or "" at the end of the line. *)
+  i = from
+  while i <= n and isSpace(cs[i])
+    i += 1
+  end
+  if i <= n cs[i] else "" end
+end
+
 defn nameRole(word, before, after)
   (** The role of a name, from the character before it and the one after it. *)
   if before == "."
     Field
-  else if word in keywords
+  else if word in keywords or word == "_"
     Keyword
   else if after == "("
     Name
@@ -154,7 +172,10 @@ defn Tokens(line, state)
       else if isNameStart(c)
         i = nameEnd(cs, i, n)
         word = str.Join("", cs[start..i - 1])
-        out = add(nameRole(word, cs[start - 1], cs[i]), word, out)
+        (* do starts a block right after the ) of a call, before a name or the line end: elsewhere it is a name. *)
+        next = if word == "do" solidAfter(cs, i, n) else "" end
+        block = word == "do" and solidBefore(cs, start) == ")" and (next == "" or isNameStart(next))
+        out = add(if block Keyword else nameRole(word, cs[start - 1], cs[i]) end, word, out)
       else if isSpace(c)
         i = spaceEnd(cs, i, n)
         out = add(Plain, str.Join("", cs[start..i - 1]), out)

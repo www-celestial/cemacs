@@ -28,6 +28,10 @@ isNameBeforeParen() = value.Equal(color.Tokens("defn f(x)", color.FirstState).To
 isFieldAfterDot() = value.Equal(color.Tokens("p.x", color.FirstState).Tokens, [[color.Plain, "p."], [color.Field, "x"]])
 isFieldBeforeParen() = value.Equal(color.Tokens("a.f(1)", color.FirstState).Tokens[2], [color.Field, "f"])
 isPlainWord() = value.Equal(color.Tokens("count", color.FirstState).Tokens, [[color.Plain, "count"]])
+isDoAfterCall() = value.Equal(color.Tokens("f(xs) do x", color.FirstState).Tokens[3], [color.Keyword, "do"]) and
+  value.Equal(color.Tokens("f() do", color.FirstState).Tokens[3], [color.Keyword, "do"])
+isDoElsewherePlain() = not (color.Keyword in roles("do = 3")) and not (color.Keyword in roles("f(1) do = 4")) and not (color.Keyword in roles("x do y"))
+isHoleKeyword() = value.Equal(color.Tokens("g(\"/\", _) do r", color.FirstState).Tokens[5], [color.Keyword, "_"])
 isKeywordInsideAName() = value.Equal(color.Tokens("ending", color.FirstState).Tokens, [[color.Plain, "ending"]])
 isNumber() = value.Equal(color.Tokens("x = 0x1F + 2.5", color.FirstState).Tokens[2], [color.Number, "0x1F"])
 isFloat() = value.Equal(color.Tokens("x = 2.5", color.FirstState).Tokens[2], [color.Number, "2.5"])

@@ -117,8 +117,9 @@ A file of Cesia is a buffer whose path ends with `.ce`, [indent.IsCesia]. In it,
 formatter of Cesia, would put it, by fmt's own rule, so that code typed in Cemacs is already as fmt leaves it:
 
 - A line that starts a statement, a step of the program such as `x = 1` or `if a`, gets two spaces for each block it is in.
-  A block is what `defn`, `if`, `for`, `while`, `match`, `struct` or `interface` opens and `end` closes; `else` closes one
-  part of an `if` or a `match` and opens the next, so it stands one block out.
+  A block is what `defn`, `if`, `for`, `while`, `match`, `struct`, `interface` or a `do` right after the `)` of a call opens
+  and `end` closes; `else` closes one part of an `if` or a `match` and opens the next, so it stands one block out. The body
+  of a `do` block on a line that starts with `then` goes two spaces in from that line, and its `end` under it.
 - A line that goes on with a statement, a continuation line, moves with the line that starts it. A statement goes on inside
   brackets, `(`, `[` and `{`, after a token that asks for more, such as `,`, `+`, `and` or `then`, and inside a comment.
 - A line that starts inside a text, `"` to `"` over several lines, keeps the spaces it holds, since they are part of the
