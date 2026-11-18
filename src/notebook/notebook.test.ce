@@ -74,6 +74,13 @@ isRefusedOutOfItsCell() = refused(moved(corrupted(x -> dict.Put("Line", 8, x)), 
 isRefusedOtherNumber() = refused(moved(corrupted(x -> dict.Put("Value", 29.0, x)), 31.0, "keys"))
 isRefusedPastTheLine() = refused(moved(corrupted(x -> dict.Put("End", 200, x)), 31.0, "keys"))
 isRefusedBeforeTheLine() = refused(moved(corrupted(x -> dict.Put("Column", 0, x)), 31.0, "keys"))
+(* The number written is checked again, whatever gives it: a finite number, the one of its own text, within the slider. *)
+wrote(at) = notebook.Edited(1, "rho", at, "keys", opened())   (** rho moved to a position given as it is. *)
+refusedNumber(s) = s.Buffers[1].Version == 0 and line(s, 4) == before and str.Contains("takes numbers from 0.0 to 50.0", s.Message)   (** Was the number refused? *)
+isRefusedNoNumber() = refusedNumber(wrote({Value: 31.0, Text: "31.0\nx = 1"})) and refusedNumber(wrote({Value: 31.0, Text: "x"}))
+isRefusedOtherText() = refusedNumber(wrote({Value: 32.0, Text: "31.0"}))
+isRefusedOutOfRange() = refusedNumber(wrote({Value: 60.0, Text: "60.0"})) and refusedNumber(wrote({Value: -0.5, Text: "-0.5"}))
+isRefusedInfinite() = refusedNumber(wrote({Value: 1e400, Text: "1e400"}))
 
 defn focused()
   (** The window busy with each slider, the cursor in the cell of the sliders, after C-c e f. *)
