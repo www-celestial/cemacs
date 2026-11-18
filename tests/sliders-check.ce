@@ -1,0 +1,152 @@
+(** Checks of the sliders of the cells against a real session of std/cells, on a file in a new folder under /tmp: drawn before any run, a move that sets
+    the number in place and runs again only the cells that read it, the latest number winning over a hundred moves while a cell sleeps, the time of a
+    rerun, the stale notes after a stop and after an undo, and a move with no session yet. It is a script, not a test file: it needs permissions. Run it
+    from the root of cemacs with cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/sliders-check.ce, CESIA the real path
+    of the cesia that runs it. It prints ok at the end and stops at the first failure. *)
+use core/commands
+use core/text
+use core/view
+use src/notebook
+use src/rope
+use src/ui
+use std/bug
+use std/cells as nb
+use std/dict
+use std/io
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+(** The run of the buffer of cells. *)
+runIn(s) = s.Buffers[1].CellRun
+
+defn settled(state, watch = missing)
+  (** The state once the cells stop moving, ticked as the editor ticks it, watch called at each tick, or a failure after ten seconds. *)
+  s = state
+  waited = 0.0
+  while notebook.Moving(s)
+    check(waited < 10.0, "the cells never ended")
+    sys.Sleep(0.005)
+    waited = waited + 0.005
+    s = notebook.Hooked({}).Idle(s)
+    if value.IsSome(watch)
+      watch(s)
+    end
+  end
+  s
+end
+
+(** The words of the block of the cell whose title is given, or missing. *)
+defn shownIn(title, s)
+  r = runIn(s)
+  for x in text.BlocksOf(s.Buffers[1])
+    if dict.GetOr("Cell", 0, x) > 0 and r.Cells[x.Cell].Title == title
+      return [str.Trim(c.Text) for c in x.Draw(2000, look) if c.Kind == "text"]
+    end
+  end
+  missing
+end
+
+(** The words of the block of a slider. *)
+sliderWords(name, s) = [c.Text for c in list.FindFirst(x -> dict.GetOr("Slider", "", x) == name, text.BlocksOf(s.Buffers[1])).Draw(2000, look) if c.Kind == "text"]
+
+(** Line n of the file. *)
+line(s, n) = rope.Line(n, s.Buffers[1].Rope)
+
+look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/knobs.ce"
+source = "use std/cells\nuse std/io\nuse std/sys\n\n(* %% Parameters *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nn = cells.Slider(3, 0, 10)\n\n(* %% Rate *)\ndefn rate(x)\n  x * rho\nend\n\n(* %% Slower *)\nsys.Sleep(0.4)\nrate(3)\n\n(* %% Slow *)\nsys.Sleep(0.05)\nrate(2)\n\n(* %% Count *)\nio.Print(sys.Now())\nn * 10\n"
+_ = result.Unwrap(sys.Write(path, source))
+state = commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720))
+check(notebook.IsCells(state.Buffers[state.Current]), "a file with a marker is a file of cells")
+
+(* Drawn from the text before any run, without a session. *)
+first = notebook.Hooked({}).Idle(state)
+check(value.Equal(sliderWords("rho", first), ["rho", "28.0"]) and value.Equal(sliderWords("n", first), ["n", "3"]), "the sliders show before any run")
+check(value.IsMissing(runIn(first).Session), "no session starts to draw them")
+
+(* Every cell, then a move: only the cells that read rho run again, with the number set in place. *)
+all = settled(notebook.RunAll(first))
+check(shownIn("Slow", all)[1] == "56.0", "Slow computes rate(2) with rho = 28.0: $(shownIn("Slow", all))")
+count = shownIn("Count", all)
+moved = settled(notebook.Moved(1, "rho", {Value: 31.5, Text: "31.5"}, "keys", all))
+check(line(moved, 6) == "rho = cells.Slider(31.5, 0.0, 50.0, step = 0.5)", "the move writes the number in the buffer")
+check(shownIn("Slow", moved)[1] == "63.0" and shownIn("Slower", moved)[1] == "94.5", "the cells that read rho ran again with 31.5: $(shownIn("Slow", moved))")
+check(value.Equal(shownIn("Count", moved), count), "Count, which doesn't read rho, didn't run again")
+check(str.StartsWith("rerun ", sliderWords("rho", moved)[3]) and str.EndsWith(" ms", sliderWords("rho", moved)[3]), "the slider shows the time of its rerun: $(sliderWords("rho", moved))")
+check(runIn(moved).Values["rho"] == 31.5, "the session holds 31.5")
+
+(* A hundred moves while Slower and Slow sleep: one Set and its cells at a time, one Pending, and the last number wins. *)
+defn watched(s)
+  (** Checks the bounds at a tick: one Set at most, no cell queued twice, a Pending that is one number. *)
+  r = runIn(s)
+  check(value.Len(r.Queue) == value.Len(list.Unique(r.Queue)), "a cell is queued twice: $(r.Queue)")
+  check(value.Len(r.Queue) + (if value.IsSome(r.Task) 1 else 0 end) <= 3, "more than the three readers of rho wait or run: $(r.Queue)")
+  p = r.Moves["rho"].Pending
+  check(value.IsMissing(p) or value.IsNumber(p), "a Pending is one number")
+end
+last = missing
+s = moved
+start = sys.Now()
+for k in 1..100
+  x = 31.5 + math.Mod(k * 7, 37) * 0.5
+  at = nb.Snap(runIn(s).Analysis[2].Sliders[1], x)
+  s = notebook.Moved(1, "rho", at, "drag", s)
+  last = at
+  s = notebook.Hooked({}).Idle(s)
+  watched(s)
+  sys.Sleep(0.005)
+end
+s = settled(s, watch = watched)
+check(line(s, 6) == "rho = cells.Slider($(last.Text), 0.0, 50.0, step = 0.5)", "the file writes the last number")
+check(shownIn("Slow", s)[1] == "$(last.Value * 2.0)", "the results come from the last number, $(last.Text): $(shownIn("Slow", s))")
+check(sys.Now() - start < 6.0, "a hundred moves didn't each run the cells again: $(sys.Now() - start) s")
+check(not str.StartsWith("stale", shownIn("Slower", s)[1]), "no result is stale once the last number ran")
+
+(* A stop while Slower runs: Slow keeps its result, computed with the number before, and says so. *)
+before = shownIn("Slow", s)
+going = notebook.Moved(1, "rho", nb.Snap(runIn(s).Analysis[2].Sliders[1], 10.0), "keys", s)
+waited = 0.0
+while runIn(going).Index != 4
+  check(waited < 5.0, "Slower never started")
+  sys.Sleep(0.01)
+  waited = waited + 0.01
+  going = notebook.Hooked({}).Idle(going)
+end
+stopped = settled(notebook.StopCell(going))
+check(value.Equal(shownIn("Slower", stopped), ["Stopped."]), "C-c e s stops Slower: $(shownIn("Slower", stopped))")
+check(shownIn("Slow", stopped)[1] == "stale: computed with rho = $(last.Value)" and shownIn("Slow", stopped)[2] == before[1], "Slow is stale: $(shownIn("Slow", stopped))")
+check(value.IsMissing(runIn(stopped).Moves["rho"].Pending) and not runIn(stopped).Moves["rho"].Busy, "a stop drops the rerun and its Pending")
+
+(* An undo of a move: the file writes the number before, and the results computed with the new one say so once the text rests. *)
+again = settled(notebook.RunAll(stopped))
+once = settled(notebook.Moved(1, "rho", {Value: 20.0, Text: "20.0"}, "keys", again))
+check(shownIn("Slow", once)[1] == "40.0", "Slow runs with 20.0")
+undone = once
+undone.Buffers[1] = text.Undo(once.Buffers[1])
+undone.Still = 1.0
+undone = notebook.Hooked({}).Idle(undone)
+check(line(undone, 6) == "rho = cells.Slider(10.0, 0.0, 50.0, step = 0.5)", "undo writes the number before: $(line(undone, 6))")
+check(shownIn("Slow", undone)[1] == "stale: computed with rho = 20.0", "Slow says it was computed with 20.0: $(shownIn("Slow", undone))")
+check(value.Equal(sliderWords("rho", undone), ["rho", "10.0", sliderWords("rho", once)[3]]), "the slider follows the undo: $(sliderWords("rho", undone))")
+redone = settled(notebook.Moved(1, "rho", {Value: 20.0, Text: "20.0"}, "keys", undone))
+check(shownIn("Slow", redone)[1] == "40.0", "the note goes once the cell runs again")
+
+(* A move with no session yet: one starts, and every cell runs from the top, with the number of the file. *)
+fresh = commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720))
+fresh = notebook.Hooked({}).Idle(fresh)
+cold = settled(notebook.Moved(1, "n", {Value: 5, Text: "5"}, "keys", fresh))
+check(line(cold, 7) == "n = cells.Slider(5, 0, 10)" and shownIn("Count", cold)[2] == "50", "with no session, every cell runs with n = 5: $(shownIn("Count", cold))")
+_ = result.Unwrap(sys.Run("rm", ["-r", folder]))
+io.Print("ok")

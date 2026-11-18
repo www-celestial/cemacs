@@ -1,6 +1,15 @@
-(** Tests of the checks of a scene from the session, which is input: wrong shapes and sizes past the limits are refused before anything is made. *)
+(** Tests of the checks of a scene from the session, which is input: wrong shapes and sizes past the limits are refused before anything is made. And
+    of the sliders, without a session: drawn from the text, moved by an edit of their number that is checked first, by the keys and by the mouse. *)
+use core/commands
+use core/text
+use core/view
 use src/notebook
+use src/rope
+use src/ui
+use std/cells as nb
+use std/dict
 use std/list
+use std/math
 use std/text as str
 use std/value
 
@@ -13,3 +22,129 @@ isTextPointRefused() = value.IsSome(notebook.SceneFault(scene([{Kind: "area", Xs
 isCellsWithoutColorsRefused() = value.IsSome(notebook.SceneFault(scene([{Kind: "cells", Xs: [0.0, 1.0, 2.0], Ys: [0.0, 1.0], Colors: ["#000000"]}])))
 isUnknownKindRefused() = value.IsSome(notebook.SceneFault(scene([{Kind: "polygon"}])))
 isTooManyVerticesRefused() = str.Contains("vertices", notebook.SceneFault(scene(list.Fill({Kind: "line", Xs: list.Fill(1.0, 900000), Ys: list.Fill(1.0, 900000), Width: 1}, 2))))
+
+(* Sliders. A run whose session is busy with each slider keeps a move as its Pending, so that nothing starts a session here. *)
+look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
+cell = {Width: 8, Height: 19}
+source = "use std/cells\n\n(* %% Parameters *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nn = cells.Slider(3, 0, 10)\n\n(* %% Use *)\nrho * n\n"
+before = "rho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)"
+
+(** A window on the file of sliders after its first tick, which draws them from its text. *)
+opened() = notebook.Hooked({}).Idle(view.Start([text.Of(source, "nb.ce")], look, cell, 1280, 720))
+
+defn busy(state)
+  (** The state whose run has a session busy with each slider: a move only keeps its number as Pending. *)
+  s = state
+  r = s.Buffers[1].CellRun
+  r.Session = "a session"
+  r.Moves = {"rho": {Busy: true, Pending: missing, Left: [3], Since: 0.0, Took: missing}, "n": {Busy: true, Pending: missing, Left: [3], Since: 0.0, Took: missing}}
+  s.Buffers[1].CellRun = r
+  s
+end
+
+sliders(s) = [x for x in text.BlocksOf(s.Buffers[1]) if dict.Has("Slider", x)]   (** The blocks of the sliders. *)
+words(x) = [c.Text for c in x.Draw(1000, look) if c.Kind == "text"]   (** The words a block draws. *)
+line(s, n) = rope.Line(n, s.Buffers[1].Rope)   (** Line n of the file. *)
+undone(s) = rope.Line(4, text.Undo(s.Buffers[1]).Rope)   (** Line 4 once the last step is undone. *)
+rho(s) = list.FindFirst(x -> x.Slider == "rho", sliders(s))   (** The block of the slider rho. *)
+thumb(x) = [c.X for c in x.Draw(1000, look) if c.Kind == "rect" and c.Width == 8][1]   (** Where a slider's thumb is drawn. *)
+moved(s, x, how) = notebook.Edited(1, "rho", nb.Snap(s.Buffers[1].CellRun.Analysis[2].Sliders[1], x), how, s)   (** rho moved to a number. *)
+
+isDrawnBeforeRun() = value.Equal([words(x) for x in sliders(opened())], [["rho", "28.0"], ["n", "3"]])
+isUnderItsLine() = value.Equal([x.Line for x in sliders(opened())], [4, 5])
+isMoveWrites() = line(moved(opened(), 31.4, "keys"), 4) == "rho = cells.Slider(31.5, 0.0, 50.0, step = 0.5)"
+isThumbFollows() = thumb(rho(moved(opened(), 50.0, "keys"))) > thumb(rho(opened()))
+isNumberDrawn() = words(rho(moved(opened(), 31.4, "keys")))[2] == "31.5"
+isSameNumberNoEdit() = moved(opened(), 28.1, "keys").Buffers[1].Version == opened().Buffers[1].Version
+isDragOneUndo() = undone(moved(moved(moved(opened(), 30.0, "press"), 31.0, "drag"), 32.0, "drag")) == before
+isPressNewStep() = undone(moved(moved(opened(), 30.0, "press"), 31.0, "press")) == "rho = cells.Slider(30.0, 0.0, 50.0, step = 0.5)"
+isKeysAloneNewStep() = undone(moved(moved(opened(), 28.5, "keys"), 29.0, "keys")) == "rho = cells.Slider(28.5, 0.0, 50.0, step = 0.5)"
+isDragAfterKeysNewStep() = undone(moved(moved(opened(), 28.5, "keys"), 29.0, "drag")) == "rho = cells.Slider(28.5, 0.0, 50.0, step = 0.5)"
+
+defn corrupted(f)
+  (** The window with the slider rho of its analysis changed by f, as if the text had changed under it unseen. *)
+  s = opened()
+  r = s.Buffers[1].CellRun
+  r.Analysis[2].Sliders[1] = f(r.Analysis[2].Sliders[1])
+  s.Buffers[1].CellRun = r
+  s
+end
+refused(s) = s.Buffers[1].Version == 0 and line(s, 4) == before and str.Contains("isn't where its number was", s.Message)   (** Was the move refused? *)
+isRefusedOutOfItsCell() = refused(moved(corrupted(x -> dict.Put("Line", 8, x)), 31.0, "keys"))
+isRefusedOtherNumber() = refused(moved(corrupted(x -> dict.Put("Value", 29.0, x)), 31.0, "keys"))
+isRefusedPastTheLine() = refused(moved(corrupted(x -> dict.Put("End", 200, x)), 31.0, "keys"))
+isRefusedBeforeTheLine() = refused(moved(corrupted(x -> dict.Put("Column", 0, x)), 31.0, "keys"))
+(* The number written is checked again, whatever gives it: a finite number, the one of its own text, within the slider. *)
+wrote(at) = notebook.Edited(1, "rho", at, "keys", opened())   (** rho moved to a position given as it is. *)
+refusedNumber(s) = s.Buffers[1].Version == 0 and line(s, 4) == before and str.Contains("takes numbers from 0.0 to 50.0", s.Message)   (** Was the number refused? *)
+isRefusedNoNumber() = refusedNumber(wrote({Value: 31.0, Text: "31.0\nx = 1"})) and refusedNumber(wrote({Value: 31.0, Text: "x"}))
+isRefusedOtherText() = refusedNumber(wrote({Value: 32.0, Text: "31.0"}))
+isRefusedOutOfRange() = refusedNumber(wrote({Value: 60.0, Text: "60.0"})) and refusedNumber(wrote({Value: -0.5, Text: "-0.5"}))
+isRefusedInfinite() = refusedNumber(wrote({Value: 1e400, Text: "1e400"}))
+
+defn focused()
+  (** The window busy with each slider, the cursor in the cell of the sliders, after C-c e f. *)
+  s = busy(opened())
+  s.Buffers[1] = text.Place(5, 0, s.Buffers[1])
+  notebook.FocusControl(s)
+end
+press(chord, s) = commands.FocusOf(s).Keys[chord](s)   (** A key of the slider that has the keys. *)
+isFocusFirstSlider() = commands.FocusOf(focused()).Slider == "rho" and value.Len(commands.FocusOf(focused()).Hints) == 5
+isFocusRing() = value.Len(rho(focused()).Draw(1000, look)) == value.Len(rho(opened()).Draw(1000, look)) + 4
+isRightAStep() = line(press("right", focused()), 4) == "rho = cells.Slider(28.5, 0.0, 50.0, step = 0.5)"
+isDownAStep() = line(press("down", focused()), 4) == "rho = cells.Slider(27.5, 0.0, 50.0, step = 0.5)"
+isPageTenSteps() = line(press("pagedown", focused()), 4) == "rho = cells.Slider(23.0, 0.0, 50.0, step = 0.5)"
+isEnd() = line(press("end", focused()), 4) == "rho = cells.Slider(50.0, 0.0, 50.0, step = 0.5)"
+isHome() = line(press("home", focused()), 4) == "rho = cells.Slider(0.0, 0.0, 50.0, step = 0.5)"
+isKeysJoin() = undone(press("right", press("right", focused()))) == before
+isLeaveEndsStep() = undone(press("right", notebook.FocusControl(press("C-g", press("right", focused()))))) == "rho = cells.Slider(28.5, 0.0, 50.0, step = 0.5)"
+isLatestPending() = press("right", press("right", focused())).Buffers[1].CellRun.Moves["rho"].Pending == 29.0
+isTabRound() = commands.FocusOf(press("tab", focused())).Slider == "n" and commands.FocusOf(press("tab", press("tab", focused()))).Slider == "rho"
+isIntSlider() = line(press("up", press("tab", focused())), 5) == "n = cells.Slider(4, 0, 10)"
+isCgLeaves() = value.IsMissing(commands.FocusOf(press("C-g", focused()))) and value.Len(rho(press("C-g", focused())).Draw(1000, look)) == value.Len(rho(opened()).Draw(1000, look))
+isNoSliderHere() = notebook.FocusControl(opened()).Message == "This cell has no slider: name = cells.Slider(value, min, max) on a line of a cell of its own makes one."
+
+defn atSlider(name, s)
+  (** The block of a slider on the screen with a point inside it, as the mouse finds it. *)
+  for y in 0..719
+    hit = view.BlockAt(200, y, s)
+    if value.IsSome(hit) and dict.GetOr("Slider", "", hit.Block) == name
+      return dict.Put("Y", y + 5, hit)
+    end
+  end
+  missing
+end
+
+defn trackX(fraction, s)
+  (** The x of a point on the track of rho, at a fraction of its length. *)
+  hit = atSlider("rho", s)
+  p = notebook.SliderPlaces(hit.Width, 3, cell)
+  hit.Left + p.Track + 4 + math.Div(math.Floor(fraction * (p.Wide - 8)), 1)
+end
+
+(** A press on the track of rho at a fraction of its length. *)
+clicked(fraction, s) = commands.Press({Kind: "mouse", Action: "down", X: trackX(fraction, s), Y: atSlider("rho", s).Y, Button: 1}, s)
+isPressSetsValue() = line(clicked(0.5, busy(opened())), 4) == "rho = cells.Slider(25.0, 0.0, 50.0, step = 0.5)"
+isPressFocuses() = commands.FocusOf(clicked(0.5, busy(opened()))).Slider == "rho"
+isPressKeepsCursor() = clicked(0.5, busy(opened())).Buffers[1].Cursor.Line == 1
+
+defn isDragFollows()
+  s = clicked(0.5, busy(opened()))
+  x = trackX(1.0, s) + 30
+  s = commands.Drag({Kind: "mouse", Action: "move", X: x, Y: atSlider("rho", s).Y + 40, Button: 0}, s)
+  s = commands.Release({Kind: "mouse", Action: "up", X: x, Y: 0, Button: 1}, s)
+  line(s, 4) == "rho = cells.Slider(50.0, 0.0, 50.0, step = 0.5)" and undone(s) == before
+end
+
+isTextClickLeaves() = value.IsMissing(commands.FocusOf(commands.Press({Kind: "mouse", Action: "down", X: 200, Y: 10, Button: 1}, focused())))
+isWheelNoMove() = line(commands.Wheel({Kind: "mouse", Action: "wheel", X: 200, Y: atSlider("rho", opened()).Y, Button: 0, Amount: -1.0}, opened()), 4) == before
+isClearKeepsSliders() = value.Len(sliders(notebook.ClearResults(opened()))) == 2
+(* A file may hold numbers that a slider can't count: the window opens it and draws no slider for them. *)
+wide = "use std/cells\n\n(* %% Parameters *)\nrho = cells.Slider(0.0, -1e308, 1e308)\nn = cells.Slider(0, -4611686018427387903, 4611686018427387903)\nt = cells.Slider(0.0, 0.0, 1e-299)\n"
+isUncountableNoSlider() = value.Len(sliders(notebook.Hooked({}).Idle(view.Start([text.Of(wide, "nb.ce")], look, cell, 1280, 720)))) == 0
+(* A slider of Floats whose Int min lies far from its Float max: its thumb is placed in Floats, past what 63 bits hold. *)
+far = "use std/cells\n\n(* %% Parameters *)\na = cells.Slider(3, -4611686018427387903, 1e308)\n"
+defn isFarSliderDrawn()
+  shown = sliders(notebook.Hooked({}).Idle(view.Start([text.Of(far, "nb.ce")], look, cell, 1280, 720)))
+  value.Len(shown) == 1 and value.Len(shown[1].Draw(1000, look)) > 0
+end
