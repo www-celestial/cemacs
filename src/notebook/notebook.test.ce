@@ -190,6 +190,15 @@ defn sent(frame, s)
   out
 end
 ticked(s) = notebook.Hooked({}).Idle(s)   (** The window after a tick. *)
+
+defn sessioned(state)
+  (** The window as if its cells had a session: Moving asks for ticks only with one, as no frame would come without it. *)
+  s = state
+  r = s.Buffers[1].CellRun
+  r.Session = "a session"
+  s.Buffers[1].CellRun = r
+  s
+end
 title(s) = [i.Text for i in [c for c in anim(s).Draw(1000, look) if c.Kind == "graph"][1].Items if i.Kind == "text"][1]   (** The title the graph shows. *)
 
 isBarDrawn() = value.Equal(barWords(animated()), ["▶ 1 / 3", "30/s"]) and anim(animated()).Rows == 23
@@ -214,7 +223,7 @@ defn isDueFrameShows()
   early = anim(s).Graph.Frame
   sys.Sleep(0.05)
   s = ticked(s)
-  early == 1 and anim(s).Graph.Frame == 2 and anim(s).Graph.Playing and notebook.Moving(s) and title(s) == "frame 2"
+  early == 1 and anim(s).Graph.Frame == 2 and anim(s).Graph.Playing and notebook.Moving(sessioned(s)) and title(s) == "frame 2"
 end
 
 defn isLoops()
@@ -232,8 +241,9 @@ defn isOffScreenStill()
   (* Scrolled away, a playing animation takes no tick. *)
   s = press("space", onBar(animated()))
   s.Buffers[1].Top = 40
-  anim(s).Graph.Playing and not notebook.Moving(s)
+  anim(s).Graph.Playing and not notebook.Moving(sessioned(s)) and notebook.Moving(sessioned(press("space", onBar(animated())))) and not notebook.Moving(sessioned(press("space", press("space", onBar(animated())))))
 end
+isNoSessionStill() = not notebook.Moving(press("space", onBar(animated())))   (** Without a session, a playing animation takes no tick. *)
 
 defn isBadFrameStops()
   (* A frame that isn't sane pauses the animation, which says why. *)
@@ -273,6 +283,17 @@ defn isPressGraphNothing()
   b = atBar(animated())
   s = pressAt(b.Left + 24, b.Y - 100, animated())
   not anim(s).Graph.Playing and value.IsMissing(anim(s).Graph.Want)
+end
+
+defn isStillSceneStops()
+  (* A scene without a count of frames, for an animation, is no frame of it: the animation pauses. *)
+  s = press("space", onBar(animated()))
+  r = s.Buffers[1].CellRun
+  r.Framing = {Task: fiber.Spawn(() -> result.Ok(dict.Drop("Fps", dict.Drop("Frames", frameScene(2, notebook.GraphWidth(s)))))), Key: 7, Frame: 2, Width: notebook.GraphWidth(s)}
+  s.Buffers[1].CellRun = r
+  sys.Sleep(0.001)
+  s = ticked(s)
+  not anim(s).Graph.Playing and str.Contains("as it is no frame of an animation", s.Message)
 end
 
 isFrameSceneAccepted() = value.IsMissing(notebook.SceneFault(frameScene(1, 640)))

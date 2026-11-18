@@ -198,7 +198,7 @@ defn Block(line, lines, cell, graph = missing, focused = false)
 
         Block(3, [{Role: "value", Words: "42"}], {Width: 8, Height: 19}).Rows --> 1 *)
   high = if value.IsMissing(graph) 0 else math.Div(graph.Scene.Height + 8 + cell.Height - 1, cell.Height) end
-  bar = if IsAnimation(graph) 1 else 0 end
+  bar = if isAnimation(graph) 1 else 0 end
   rows = list.Max(1, value.Len(lines) + high + bar)
   top = value.Len(lines) * cell.Height + 4
   draw = (width, look) -> list.Concat(list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
@@ -209,7 +209,7 @@ defn Block(line, lines, cell, graph = missing, focused = false)
 end
 
 (** Is a graph of a block an animation, with its bar? *)
-IsAnimation(graph) = value.IsSome(graph) and dict.Has("Frames", graph)
+isAnimation(graph) = value.IsSome(graph) and dict.Has("Frames", graph)
 
 defn hexColor(color)
   (** A color of a scene, "#rrggbb", as 0xRRGGBB; "ink" and "grid", the colors of the theme, stay for the draw. *)
@@ -366,7 +366,7 @@ defn resultBlock(k, i, line, lines, graph, state)
   (** The block of the result of cell i of buffer k under a line: its lines and its graph; an animation's bar takes the mouse, and has a ring while
       it has the keys. *)
   made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state)), {Cell: i})
-  if not IsAnimation(graph)
+  if not isAnimation(graph)
     return made
   end
   key = graph.Key
@@ -944,7 +944,7 @@ defn answered(k, state)
     after = appended("$words$(graph.Fault)\n$Prompt", b)
     graph = missing
   end
-  if IsAnimation(graph)
+  if isAnimation(graph)
     (* *repl* shows the first frame of an animation: a cell plays it, with its bar. *)
     after = appended("$(words)an animation of $(graph.Frames) frames at $(rateText(graph.Fps)) a second: its first; a cell plays it\n$Prompt", b)
     graph = {Scene: graph.Scene, Font: graph.Font, Key: graph.Key}
@@ -1294,7 +1294,7 @@ defn FocusControl(state)
   if value.Len(all) > 0
     return focusedOn(k, all[1].Name, s)
   end
-  bar = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i and IsAnimation(dict.GetOr("Graph", missing, x)), text.BlocksOf(s.Buffers[k]))
+  bar = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i and isAnimation(dict.GetOr("Graph", missing, x)), text.BlocksOf(s.Buffers[k]))
   if value.IsSome(bar)
     return barFocusedOn(k, bar.Graph.Key, s)
   end
@@ -1520,8 +1520,8 @@ defn BarPlaces(width, frames, cell)
   {Label: label, Track: track, Wide: wide, Rate: track + wide + 2 * cell.Width}
 end
 
-(** A rate as the bar writes it: 30, or 7.5. *)
-rateText(fps) = if value.IsInt(fps) "$fps" else if fps == math.Floor(fps) "$(math.Div(fps, 1))" else str.Decimals(1, fps) end
+(** A rate as the bar writes it: 30, 30 for 30.0 too, or 7.25. *)
+rateText(fps) = if value.IsFloat(fps) and fps == math.Floor(fps) "$(math.Div(fps, 1))" else "$fps" end
 
 defn RateWords(graph)
   (** What the bar of an animation says of its rate: its own, 30/s, or, while it plays slower, the rate of the frames it showed in the last second,
@@ -1562,10 +1562,10 @@ defn BarItems(graph, focused, width, top, cell, th)
 end
 
 (** Does the bar of the animation of a graph in buffer k have the keys? *)
-barFocused(k, graph, state) = IsAnimation(graph) and value.IsSome(commands.FocusOf(state)) and dict.GetOr("Bar", missing, commands.FocusOf(state)) == graph.Key and dict.GetOr("Buffer", 0, commands.FocusOf(state)) == k
+barFocused(k, graph, state) = isAnimation(graph) and value.IsSome(commands.FocusOf(state)) and dict.GetOr("Bar", missing, commands.FocusOf(state)) == graph.Key and dict.GetOr("Buffer", 0, commands.FocusOf(state)) == k
 
 (** The block of buffer k that shows the animation of a key, or missing. *)
-animOf(k, key, state) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) > 0 and IsAnimation(dict.GetOr("Graph", missing, x)) and x.Graph.Key == key, text.BlocksOf(state.Buffers[k]))
+animOf(k, key, state) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) > 0 and isAnimation(dict.GetOr("Graph", missing, x)) and x.Graph.Key == key, text.BlocksOf(state.Buffers[k]))
 
 (** The state with the block x of buffer k showing a graph, its lines as they were. *)
 withGraph(k, x, graph, state) = withBlock(k, x.Cell, dict.GetOr("Base", x.Lines, x), state, graph = graph, inputs = dict.GetOr("Inputs", {}, x), status = dict.GetOr("Status", missing, x))
@@ -1591,12 +1591,14 @@ defn onScreen(k, x, state)
 end
 
 defn playing(k, state)
-  (** Does an animation of buffer k need ticks: one plays on the screen, or a frame asked for isn't shown yet? *)
-  if value.IsMissing(runOf(state.Buffers[k]))
+  (** Does an animation of buffer k need ticks: one plays on the screen, or a frame asked for isn't shown yet? Not without a session, which no frame
+      would come from. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Session)
     return false
   end
   for x in text.BlocksOf(state.Buffers[k])
-    if dict.GetOr("Cell", 0, x) > 0 and IsAnimation(dict.GetOr("Graph", missing, x)) and ((x.Graph.Playing and onScreen(k, x, state)) or value.IsSome(x.Graph.Want))
+    if dict.GetOr("Cell", 0, x) > 0 and isAnimation(dict.GetOr("Graph", missing, x)) and ((x.Graph.Playing and onScreen(k, x, state)) or value.IsSome(x.Graph.Want))
       return true
     end
   end
@@ -1608,7 +1610,7 @@ defn played(k, state)
       next frame is due, or to the frame asked for. *)
   s = landed(k, state)
   r = runOf(s.Buffers[k])
-  shown = [x.Graph.Key for x in text.BlocksOf(s.Buffers[k]) if dict.GetOr("Cell", 0, x) > 0 and IsAnimation(dict.GetOr("Graph", missing, x))]
+  shown = [x.Graph.Key for x in text.BlocksOf(s.Buffers[k]) if dict.GetOr("Cell", 0, x) > 0 and isAnimation(dict.GetOr("Graph", missing, x))]
   aheads = dict.GetOr("Ahead", {}, r)
   if value.Len(aheads) > 0
     (* The frames ahead of an animation that a run or a clear took away go. *)
@@ -1647,8 +1649,9 @@ defn landed(k, state)
     return s
   end
   why = if result.IsErr(scene) scene.Error.Message else SceneFault(scene.Value) end
-  if value.IsMissing(why) and scene.Value.Frames != x.Graph.Frames
-    why = "it has $(scene.Value.Frames) frames, not $(x.Graph.Frames)"
+  count = if value.IsMissing(why) dict.GetOr("Frames", missing, scene.Value) else missing end
+  if value.IsMissing(why) and count != x.Graph.Frames
+    why = if value.IsMissing(count) "it is no frame of an animation" else "it has $count frames, not $(x.Graph.Frames)" end
   end
   if value.IsSome(why)
     g = x.Graph
