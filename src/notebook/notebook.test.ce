@@ -142,3 +142,9 @@ isClearKeepsSliders() = value.Len(sliders(notebook.ClearResults(opened()))) == 2
 (* A file may hold numbers that a slider can't count: the window opens it and draws no slider for them. *)
 wide = "use std/cells\n\n(* %% Parameters *)\nrho = cells.Slider(0.0, -1e308, 1e308)\nn = cells.Slider(0, -4611686018427387903, 4611686018427387903)\nt = cells.Slider(0.0, 0.0, 1e-299)\n"
 isUncountableNoSlider() = value.Len(sliders(notebook.Hooked({}).Idle(view.Start([text.Of(wide, "nb.ce")], look, cell, 1280, 720)))) == 0
+(* A slider of Floats whose Int min lies far from its Float max: its thumb is placed in Floats, past what 63 bits hold. *)
+far = "use std/cells\n\n(* %% Parameters *)\na = cells.Slider(3, -4611686018427387903, 1e308)\n"
+defn isFarSliderDrawn()
+  shown = sliders(notebook.Hooked({}).Idle(view.Start([text.Of(far, "nb.ce")], look, cell, 1280, 720)))
+  value.Len(shown) == 1 and value.Len(shown[1].Draw(1000, look)) > 0
+end
