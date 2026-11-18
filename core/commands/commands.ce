@@ -1425,7 +1425,8 @@ end
 
 defn FocusOf(state)
   (** The control of an app that has the keys, {Keys, Hints}, or missing. A command of an app gives it, as C-c e f of the cells does: its Keys, chords
-      and the commands they run, come before every other key, and any other chord, a text typed or a press of the mouse leaves it, see Unfocused;
+      and the commands they run, come before every other key, a text typed too when its Keys name it, as space; any other chord, text or press of the
+      mouse leaves it, see Unfocused;
       C-g is the app's to bind, as WAI-ARIA's Escape. Hints are the rows of the band, {Key, Name, Group}, and Leave, if given, what leaving does
       besides. A state from before this field has none.
 
@@ -1514,6 +1515,9 @@ defn onText(event, state)
     promptText(event.Text, s)
   else if lists.IsList(current(s))
     if value.IsMissing(lists.TypedOf(lists.Of(current(s)))) AddToFilter(event.Text, s) else lists.TypedOf(lists.Of(current(s)))(event.Text, s) end
+  else if value.IsSome(FocusOf(state)) and dict.Has(secondOf(event.Text), FocusOf(state).Keys)
+    (* A key that types, as the space bar, is the control's when its Keys name it: Space plays an animation. *)
+    ran(FocusOf(state).Keys[secondOf(event.Text)], withChords(secondOf(event.Text), s))
   else
     s.Chain = false
     s = Unfocused(s)
