@@ -879,11 +879,13 @@ stillMoving(moving, state) = if value.IsMissing(moving) false else moving(state)
 
 defn moved(progress, update, view, window, last)
   (** One pass of a state that moves: a tick of the time since the last pass, at most 0.05 s so that nothing jumps after a pause,
-      then a frame. Gives {State, Stopped, Window, Last}. *)
+      then a frame. Gives {State, Stopped, Window, Last}. Then the other fibers run: a sleep of a microsecond, as in rest, so that
+      Cesia looks at what is ready to read, as the answers of a session; sys.Sleep(0) only lets those run that are ready already,
+      and an answer would wait for 256 of them. *)
   now = sys.Now()
   ticked = applied(update, progress, {Kind: "tick", Seconds: list.Min(now - last, 0.05)})
   drawn = if ticked.Stopped window else Frame(view(ticked.State), window) end
-  sys.Sleep(0)
+  sys.Sleep(0.000001)
   {State: ticked.State, Stopped: ticked.Stopped, Window: drawn, Last: now}
 end
 
