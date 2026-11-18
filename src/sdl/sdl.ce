@@ -706,12 +706,13 @@ defn freeCurves(block)
 end
 
 defn forgetShape(block)
-  (** A shape of a graph whose memory must be written again: an older copy of the window wrote it. *)
+  (** A shape of a graph whose memory must be written again, all of it: an older copy of the window wrote it. *)
   if value.IsMissing(block)
     return block
   end
   next = block
   next.Item = missing
+  next.Shape = missing
   next
 end
 

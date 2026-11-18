@@ -1,14 +1,17 @@
 (* The command that draws a graph of std/plot from its scene: {Kind: "graph", X, Y, Width, Height, Visible, Items, Font}. Its items are those of
-   plot.Scene in pixels from the top left of the graph, with their colors as 0xRRGGBB: lines, areas, rectangles, marks and cells become triangles,
-   which the Nth shape of a frame keeps in its memory and writes again only when it changes, so that a graph on the screen costs a call a shape.
+   plot.Scene in pixels from the top left of the graph, with their colors as 0xRRGGBB: lines, areas, rectangles, marks, cells and the quads of a
+   surface become triangles, which the Nth shape of a frame keeps in its memory and writes again only when it changes, so that a graph on the screen
+   costs a call a shape; a surface turned writes again only the places of its points.
    A shape is made as arrays of numbers, its positions, its colors and its indices, and each goes to C in one c.Write;
    texts are drawn with the font Font at their size, without kerning and without hinting, as std/plot measured them, and a text turned by -90
    degrees is drawn once into an image that turns. Visible is the height that the pane shows, from the top. *)
 use std/bug
 use std/c
+use std/columns as col
 use std/dict
 use std/list
 use std/math
+use std/matrix
 use std/value
 
 defn irect(x, y, width, height, window)
@@ -272,6 +275,91 @@ defn markPoint(shape, k, r)
   end
 end
 
+defn MeshParts(item)
+  (** What draws the quads of a surface, as plot.Scene's item "mesh" gives them, but for the places of its points: the quads that aren't holes in
+      the order the item gives, the rows then the columns, the far ones first; for each, its four corners as places in the points' x and y side by
+      side, x1 y1 x2 y2 and on, to pick from; and the colors of its four vertices. Made by whole arrays, kept while only the view changes: a value of
+      each quad times a row of ones and offsets is a matrix of a row a quad, which read row after row is the vertices one after the other.
+
+        MeshParts({Rows: 1, Columns: 1, Order: [1, 1], Colors: [0], Palette: [0xFF0000]}).NI --> 6 *)
+  r = item.Rows
+  n = item.Columns
+  rows = if item.Order[1] > 0 [k * 1.0 for k in 1..r] else [(r + 1 - k) * 1.0 for k in 1..r] end
+  cols = if item.Order[2] > 0 [k * 1.0 for k in 1..n] else [(n + 1 - k) * 1.0 for k in 1..n] end
+  is = matrix.Reshape([1, r * n], matrix.Transpose(matrix.Matmul(matrix.Reshape([r, 1], rows), matrix.Ones(1, n))))
+  js = matrix.Reshape([1, r * n], matrix.Transpose(matrix.Matmul(matrix.Ones(r, 1), matrix.Reshape([1, n], cols))))
+  drawn = col.Pick((js - 1.0) * r + is, item.Colors)
+  keep = col.Positions(drawn >= 0)
+  q = value.Len(keep)
+  if q == 0
+    return {Gather: [], Colors: [0.0], NV: 0, NI: 0}
+  end
+  ks = col.Pick(keep, drawn) + 1
+  (* The corners of quad (i, j) by the place of their x among the points', column by column, from at, its first: at, at + 1, at + r + 2 and
+     at + r + 1; x and y side by side are 2v - 1 and 2v. *)
+  at = matrix.Reshape([q, 1], (col.Pick(keep, js) - 1.0) * (r + 1) + col.Pick(keep, is))
+  steps = [-1.0, 0.0, 1.0, 2.0, 2.0 * r + 3.0, 2.0 * r + 4.0, 2.0 * r + 1.0, 2.0 * r + 2.0]
+  gather = matrix.Matmul(2.0 * at, matrix.Ones(1, 8)) + matrix.Matmul(matrix.Ones(q, 1), matrix.Reshape([1, 8], steps))
+  (* Red, green, blue and alpha a row a quad, then four times over: a product with four identities side by side. *)
+  unit = k -> matrix.Reshape([1, 4], [if j == k 1.0 else 0.0 end for j in 1..4])
+  channel = (f, k) -> matrix.Matmul(matrix.Reshape([q, 1], col.Pick(ks, [f(x) / 255.0 for x in item.Palette])), unit(k))
+  rgba = channel(Red, 1) + channel(Green, 2) + channel(Blue, 3) + matrix.Matmul(matrix.Ones(q, 1), unit(4))
+  four = matrix.Reshape([4, 16], [if math.Mod(math.Div(t, 4), 4) == math.Mod(t, 4) 1.0 else 0.0 end for t in 0..63])
+  {Gather: matrix.Reshape([1, 8 * q], matrix.Transpose(gather)), Colors: matrix.Reshape([1, 16 * q], matrix.Transpose(matrix.Matmul(rgba, four))), NV: 4 * q, NI: 6 * q}
+end
+
+(** The places of the vertices of the quads of a surface for SDL, x y x y, picked from its points' places by its parts: x over y in a matrix of two
+    rows, by two products, read column by column, is each point's x then its y. *)
+meshPlaces(item, parts) = if parts.NV == 0 [0.0] else col.Pick(parts.Gather, matrix.Reshape([1, 2 * value.Len(item.Xs)], matrix.Matmul(matrix.Reshape([2, 1], [1.0, 0.0]), matrix.Reshape([1, value.Len(item.Xs)], item.Xs)) + matrix.Matmul(matrix.Reshape([2, 1], [0.0, 1.0]), matrix.Reshape([1, value.Len(item.Ys)], item.Ys)))) end
+
+defn meshIndex(count, window)
+  (** The triangles of quads drawn one after the other, two a quad, 0 1 2 0 2 3 then 4 5 6 4 6 7 and on, for count indices: the same for every
+      surface, kept by the window as an array for the most it drew, of which a surface takes the first count. *)
+  kept = dict.GetOr("MeshIndex", [], window)
+  if value.Len(kept) < count
+    kept = [4 * math.Div(k, 6) + [0, 1, 2, 0, 2, 3][math.Mod(k, 6) + 1] for k in 0..count - 1]
+  end
+  next = window
+  next.MeshIndex = kept
+  {Index: list.Take(count, kept), Window: next}
+end
+
+defn meshShaped(item, window)
+  (** Draws the quads of a surface from the memory of the Nth shape of the frame: made again only when its quads, their colors or their order
+      changed, and else only the places of its points written, as when it turns. *)
+  next = window
+  next.GeoUsed = dict.GetOr("GeoUsed", 0, window) + 1
+  at = next.GeoUsed
+  blocks = dict.GetOr("GeoBlocks", [], window)
+  if at > value.Len(blocks)
+    blocks = list.Append(missing, blocks)
+  end
+  block = blocks[at]
+  if value.IsMissing(block) or not same(item, block.Item)
+    shape = [item.Rows, item.Columns, item.Order, item.Colors, item.Palette]
+    if value.IsSome(block) and value.Equal(dict.GetOr("Shape", missing, block), shape)
+      xy = grown(block.XY, block.XYCap, block.NV * 8)
+      block.XY = xy.Block
+      block.XYCap = xy.Cap
+      c.Write("f32", 0, meshPlaces(item, block.Parts), block.XY)
+    else
+      parts = MeshParts(item)
+      ix = meshIndex(list.Max(1, parts.NI), next)
+      next = ix.Window
+      block = memoryFor({XY: meshPlaces(item, parts), Colors: parts.Colors, Index: ix.Index, NV: parts.NV, NI: parts.NI}, block)
+      block.Parts = parts
+      block.Shape = shape
+    end
+    block.Item = stampOf(item)
+    blocks[at] = block
+  end
+  next.GeoBlocks = blocks
+  if block.NI > 0
+    checked(next.Sdl.GeometryRaw(next.Renderer, missing, block.XY, 8, block.Colors, block.Stride, block.XY, 8, block.NV, block.Index, block.NI, 4), next)
+  end
+  next
+end
+
 (** What tells that a shape changed: the Id that the scene's owner gives each item, with its color, or else the whole item. *)
 stampOf(item) = if dict.Has("Id", item) "$(item.Id)#$(item.Color)" else item end
 
@@ -383,6 +471,9 @@ defn shaped(item, window)
       color for each vertex or one for all, then indices, for SDL_RenderGeometryRaw. Cells of an even grid are an image. *)
   if item.Kind == "cells" and value.Len(item.Xs) > 1 and value.Len(item.Ys) > 1 and evenly(item.Xs)
     return cellsImage(item, window)
+  end
+  if item.Kind == "mesh"
+    return meshShaped(item, window)
   end
   next = window
   next.GeoUsed = dict.GetOr("GeoUsed", 0, window) + 1

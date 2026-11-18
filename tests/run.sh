@@ -26,6 +26,7 @@ timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm,e
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/cells-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/sliders-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/anim-check.ce
+timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/rotate-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=git,env=PWD tests/project-check.ce
 # C-c c r in a project of its own, made in a new folder, where cesia do finds its cesia.toml.
 root="$PWD"

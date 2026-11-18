@@ -1,0 +1,131 @@
+(** Checks of the 3D graphs of the cells against a real session of std/cells, on a file in a new folder under /tmp: a surface after a run, at the view
+    of its code, with the line of its view; the arrows after C-c e f and a drag on it turn it, each view drawn by the session, and Home goes back; a
+    rerun of its cell shows the view of the code again; *repl* turns its 3D graphs too. It is a script, not a test file: it needs permissions. Run it
+    from the root of cemacs with cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/rotate-check.ce, CESIA the real path
+    of the cesia that runs it. It prints ok at the end and stops at the first failure. *)
+use core/commands
+use core/text
+use core/view
+use src/notebook
+use src/rope
+use src/ui
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+(** One tick, as the editor gives one. *)
+ticked(s) = notebook.Hooked({}).Idle(s)
+
+defn settled(state)
+  (** The state once the cells stop moving, ticked as the editor ticks it, or a failure after ten seconds. *)
+  s = state
+  waited = 0.0
+  while notebook.Moving(s)
+    check(waited < 10.0, "the cells never ended")
+    sys.Sleep(0.005)
+    waited = waited + 0.005
+    s = ticked(s)
+  end
+  s
+end
+
+(** The block of the surface, the result of the cell Hill. *)
+hill(s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == 2, text.BlocksOf(s.Buffers[1]))
+
+(** The line of its view. *)
+viewLine(s) = [c.Text for c in hill(s).Draw(2000, look) if c.Kind == "text" and c.Font == "code"][1]
+
+(** The places of the points of its mesh. *)
+places(s) = list.FindFirst(x -> x.Kind == "mesh", hill(s).Graph.Scene.Items).Xs
+
+(** A key of the control that has the keys. *)
+press(chord, s) = commands.FocusOf(s).Keys[chord](s)
+
+defn graphAt(s, k, test)
+  (** The top left of the graph of a block of buffer k on the screen that passes a test, as the mouse finds it. *)
+  for y in 0..719
+    hit = view.BlockAt(200, y, s)
+    if value.IsSome(hit) and test(hit.Block)
+      return {X: hit.Left + 16, Y: hit.Top + 4 + value.Len(hit.Block.Lines) * 19}
+    end
+  end
+  missing
+end
+
+look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/hill.ce"
+source = "use std/plot\n\n(* %% Hill *)\nplot.Of([plot.Surface([1, 2, 3; 2, 4, 1; 0, 1, 2])], z = \"h\", view = [10, 20])\n"
+_ = result.Unwrap(sys.Write(path, source))
+state = notebook.Hooked({}).Idle(commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720)))
+
+(* A run shows the view of its code, and takes no tick at rest. *)
+ran = settled(notebook.RunAll(state))
+check(viewLine(ran) == "view 10°, 20°", "the line says the view of the code: $(viewLine(ran))")
+check(value.Equal(hill(ran).Graph.View, [10.0, 20.0]) and not notebook.Moving(ran), "the graph shows it, at rest")
+
+(* The arrows turn it: the session draws each view, which the line says. *)
+s = ran
+s.Buffers[1] = text.Place(4, 0, s.Buffers[1])
+s = notebook.FocusControl(s)
+check(commands.FocusOf(s).Turn == hill(s).Graph.Key, "C-c e f gives the keys to the graph")
+before = places(s)
+s = settled(press("up", press("right", s)))
+check(value.Equal(hill(s).Graph.View, [20.0, 30.0]), "right and up turn it to 20°, 30°: $(hill(s).Graph.View)")
+check(viewLine(s) == "view 20°, 30° (code 10°, 20°)", "the line says both views: $(viewLine(s))")
+check(not value.Equal(places(s), before), "the session drew the points again")
+s = settled(press("home", s))
+check(value.Equal(hill(s).Graph.View, [10.0, 20.0]) and value.Equal(places(s), before), "Home goes back to the view of the code")
+
+(* A drag turns it as if held: 40 pixels left, its front goes left, az +20. *)
+s = commands.Unfocused(s)
+at = graphAt(s, 1, x -> dict.GetOr("Cell", 0, x) == 2)
+s = commands.Press({Kind: "mouse", Action: "down", X: at.X + 100, Y: at.Y + 100, Button: 1}, s)
+s = commands.Drag({Kind: "mouse", Action: "move", X: at.X + 60, Y: at.Y + 100, Button: 0}, s)
+s = commands.Release({Kind: "mouse", Action: "up", X: at.X + 60, Y: at.Y + 100, Button: 1}, s)
+s = settled(s)
+check(value.Equal(hill(s).Graph.View, [30.0, 20.0]), "a drag turns it: $(hill(s).Graph.View)")
+
+(* A rerun of its cell shows the view of its code again. *)
+s = commands.Unfocused(s)
+s.Buffers[1] = text.Place(4, 0, s.Buffers[1])
+again = settled(notebook.RunCell(s))
+check(value.Equal(hill(again).Graph.View, [10.0, 20.0]) and viewLine(again) == "view 10°, 20°", "a rerun shows the view of the code")
+
+(* *repl* turns its 3D graphs too, with the session of the file. *)
+r = notebook.OpenRepl(again)
+k = r.Current
+b = r.Buffers[k]
+r.Buffers[k] = text.ToFileEnd(text.InsertWords("plot.Line3([1, 2, 3], [1, 4, 9], [0, 1, 0])", b))
+r = notebook.Enter(r)
+waited = 0.0
+while value.IsSome(r.Buffers[k].Repl.Task)
+  check(waited < 10.0, "*repl* never answered")
+  sys.Sleep(0.005)
+  waited = waited + 0.005
+  r = ticked(r)
+end
+line3 = x -> value.IsSome(dict.GetOr("Graph", missing, x)) and dict.Has("Code", x.Graph)
+check(list.Any([line3(x) for x in text.BlocksOf(r.Buffers[k])]), "*repl* draws a 3D graph that turns")
+at = graphAt(r, k, line3)
+r = commands.Press({Kind: "mouse", Action: "down", X: at.X + 100, Y: at.Y + 100, Button: 1}, r)
+r = commands.Drag({Kind: "mouse", Action: "move", X: at.X + 100, Y: at.Y + 120, Button: 0}, r)
+r = commands.Release({Kind: "mouse", Action: "up", X: at.X + 100, Y: at.Y + 120, Button: 1}, r)
+r = settled(r)
+turned = list.FindFirst(line3, text.BlocksOf(r.Buffers[k]))
+check(value.Equal(turned.Graph.View, [-37.5, 40.0]), "a drag turns the graph of *repl*: $(turned.Graph.View)")
+
+_ = result.Unwrap(sys.Run("rm", ["-r", folder]))
+io.Print("ok")

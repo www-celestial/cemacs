@@ -1,0 +1,8 @@
+[-37.5, 30.0]: true
+[52.5, 50.0]: true
+[142.5, 10.0]: true
+[-127.5, -30.0]: true
+kept: true true
+missing
+Ok("closed")
+exit 0

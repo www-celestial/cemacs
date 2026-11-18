@@ -36,7 +36,7 @@ Les touches des cells sont un groupe de `C-c`, `e` pour *execute* (exécuter), q
 | `C-c e s` | [notebook.StopCell] | arrête la cell qui tourne ; les cells qui attendent après elle ne tournent pas |
 | `C-c e h` | [notebook.WriteHtml] | écrit la page du fichier à côté de lui, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | efface les résultats dessinés ; les noms de la session restent |
-| `C-c e f` | [notebook.FocusControl] | donne les touches au premier slider de la cell du curseur, ou à la barre de son animation : voir Sliders et Animations |
+| `C-c e f` | [notebook.FocusControl] | donne les touches au premier slider de la cell du curseur, à la barre de son animation, ou à son graphe 3D : voir Sliders, Animations et Graphes 3D |
 
 Dans `*repl*`, Enter lance ce qui a été tapé, et `M-p` et `M-n` reculent et avancent dans ce qui a été tapé avant ;
 partout ailleurs, Enter est un saut de ligne, comme toujours.
@@ -157,6 +157,38 @@ aucun pane, elle attend là où elle est, et Cemacs ne prend aucun tick (aucun t
 une animation en pause n'en prend pas non plus. Une cell qui tourne, ou le nombre d'un slider qu'on donne à la session,
 passe avant l'image suivante, qui attend.
 
+## Graphes 3D
+
+Une cell dont la dernière expression est un graphe 3D, une surface de `plot.Surface` ou des courbes de `plot.Line3` de
+[std/plot](https://www-celestial.github.io/cesia-lang/graphs.html#3d), le montre à la vue que donne son code,
+`view = [az, el]` ou le `[-37.5, 30]` de MATLAB, avec une ligne en dessous qui dit la vue (*view*) :
+
+```
+  view −62.5°, 20° (code −37.5°, 30°)
+```
+
+Le premier angle est l'*azimut*, le tour autour de l'axe vertical, et le second l'*élévation*, l'angle de l'œil au-dessus
+du plan de x et y ; la ligne dit aussi la vue du code tant que le graphe en montre une autre.
+
+- **La souris.** Un glissé sur le graphe le tourne comme si vous le teniez, 0,5° par pixel : vers la droite, son avant
+  va à droite ; vers le bas, son dessus vient vers vous. Un clic sur le graphe lui donne aussi les touches.
+- **Les touches.** `C-c e f` dans sa cell lui donne les touches, dessiné avec un anneau autour, et la bande les liste :
+  les flèches déplacent votre œil de 10°, `right` et `left` autour du graphe, `up` et `down` plus haut et plus bas,
+  jusqu'à la verticale au plus ; `home` revient à la vue du code. `C-g`, un clic dans le texte ou toute autre touche le
+  quittent.
+
+**Chaque vue est dessinée par la session.** Cemacs la demande par
+[cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html), `view = [az, el]` : std/plot y projette la surface,
+comme il le fait pour la page, et seules les places de ses points à l'écran reviennent, avec l'ordre où dessiner ses
+quads (ses quadrilatères) ; les couleurs des quads restent dans Cemacs tant que seule la vue change. Une question à la
+fois : pendant qu'une est posée, un glissé ou une touche ne change que la vue voulue, que la ligne montre tout de suite,
+et une fois la réponse venue, c'est la dernière vue voulue qui est demandée, si bien que le graphe suit la souris sans file
+de vieilles vues. Rien n'est écrit dans le fichier : le code garde sa vue, la page la montre, et un lancement de la cell
+la remontre. Pour garder la vue trouvée, écrivez les deux nombres de la ligne comme `view` de la cell.
+
+Un graphe 3D de `*repl*` tourne de la même façon, avec la session de son fichier. Un graphe 3D dans une grille ou dans une
+animation ne tourne pas.
+
 ## Ce qui tourne à nouveau
 
 `C-c e e` lit les cells du buffer tel qu'il est, ses changements non enregistrés aussi, et lance la cell du curseur et
@@ -195,7 +227,7 @@ valeur s'affichent dessous, puis un nouveau prompt. Une ligne qui ne finit pas l
 sur la suivante. `*repl*` lit chaque nom que les cells ont défini, mais une définition d'un nom que définit une cell est
 refusée, avec le titre de cette cell : le fichier ne dirait plus ce que la session contient. Essayez une nouvelle valeur
 d'un tel nom dans sa cell, ou sous un autre nom. Une animation montre sa première image, sans barre, et dit qu'une cell la
-joue.
+joue. Un graphe 3D y tourne comme sous une cell.
 
 ## La page
 
@@ -203,7 +235,8 @@ joue.
 côté de lui : le titre de chaque cell, son code coloré comme les docs de Cesia le colorent, ce qu'elle a affiché et sa
 valeur, en table ou en texte, ou son erreur. La page n'a besoin d'aucun autre fichier ni d'aucun script, et montre ce que
 `cesia run` calcule, pas l'état de la fenêtre. Une animation démarre en pause sur sa première image sous une case *Play*,
-qui la joue par le CSS (les règles de style de la page) seul.
+qui la joue par le CSS (les règles de style de la page) seul. Un graphe 3D se montre à la vue de son code, pas à celle où
+on l'a tourné dans la fenêtre.
 
 ## Sécurité
 
@@ -220,8 +253,13 @@ fait, sa taille, la sorte et les champs de chaque élément, et les sommets (les
 vérifiés contre [notebook.SceneLimits], quatre millions de sommets et vingt mille éléments au plus ; une scene qui les
 dépasse, ou d'une forme que std/plot ne donne jamais, est refusée, et la cell dit pourquoi en rouge. Une image d'une
 animation dit son nombre d'images, de 1 à 300, et son rythme, de 1 à 60 par seconde, et elle est refusée sinon, ou quand
-son nombre diffère de celui de l'animation : l'animation se met en pause et dit pourquoi. Cemacs pose à la session une
-question à la fois, une image, le nombre d'un slider ou une scene, pour qu'aucune réponse n'aille à une autre question. La
+son nombre diffère de celui de l'animation : l'animation se met en pause et dit pourquoi. Les quads d'une surface viennent
+avec leurs nombres, de 1 à 200 par côté, les places d'exactement leurs points, chacune un nombre de -1 000 000 à
+1 000 000, une palette de 1 à 256 couleurs `#rrggbb`, une couleur de celle-ci ou -1 pour chaque quad, et un ordre de 1 ou
+-1 pour leurs lignes et leurs colonnes ; la vue d'un graphe 3D est faite de deux nombres, l'élévation de -90 à 90 : tout
+le reste est refusé, et une vue refusée laisse le graphe à celle qu'il montre, et dit pourquoi. Cemacs pose à la session
+une question à la fois, une image, le nombre d'un slider, une vue ou une scene, pour qu'aucune réponse n'aille à une autre
+question. La
 vérification lit chaque nombre une fois : 16 ms pour 100 000 marques, 25 ms pour une heatmap (une carte de chaleur, une grille de cases
 colorées selon leur valeur) d'un million de cases. La mémoire que prennent les formes est écrite par `c.Write`, qui vérifie
 sa longueur entière contre le bloc avant d'écrire.
@@ -251,3 +289,10 @@ seconde, de 115 à 119 images montrées en 4 secondes, sur 119 au plus. Une imag
 dans Cemacs, dessinée par la session pendant que Cemacs dessine l'image d'avant, et la frame qui la montre environ 20 ms,
 surtout pour faire les triangles d'une courbe de 5 000 points. Sous le pilote factice de SDL, qui dessine ses triangles
 en logiciel, une frame immobile de ce graphe prend 38 ms, et l'animation se joue à 6 images par seconde.
+
+Une surface de 100 par 100 quads tournée avec les touches, dans un pane de 1 834 pixels de large, dessinée par le
+renderer OpenGL de SDL dans une fenêtre hors écran : de la touche à la frame qui montre la nouvelle vue, il faut 30 ms,
+la médiane de 63 pas, sous les 33 ms de 30 images par seconde. Là-dedans, la session projette la surface et écrit sa
+scene en 6,3 ms, Cemacs lit ses 192 Ko de JSON en 3,5 ms et les vérifie en 1,3 ms, et la frame prend
+8,2 ms, surtout pour choisir les places des 40 000 sommets des quads parmi celles des 10 201 points. Quand l'ordre des
+quads change, quand l'œil passe un axe, Cemacs refait leurs couleurs et leur ordre, environ 10 ms de plus pour ce pas.

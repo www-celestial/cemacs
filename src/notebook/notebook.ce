@@ -3,8 +3,9 @@
     of std/cells, a Cesia process that keeps the names its cells defined. `*variables*` lists them beside, `*repl*` below runs code in the same session, and
     C-c e h writes the page of the file. A cell of sliders, name = cells.Slider(28.0, 0.0, 50.0), draws a slider under each line, which the mouse and C-c e f
     move: the number is written in the buffer, and only the cells that read it run again. An animation of plot.Frames shows its first frame over a bar,
-    ▶ 1 / 120, that Space plays after C-c e f, or the mouse; its frames come from the session one at a time. The work is std/cells': runs wait in
-    fibers, and each tick takes their results, so that typing never waits.
+    ▶ 1 / 120, that Space plays after C-c e f, or the mouse; its frames come from the session one at a time. A 3D graph of plot.Surface or plot.Line3
+    turns when dragged, or with the arrows after C-c e f: the session draws each view, and the code keeps its own. The work is std/cells': runs wait
+    in fibers, and each tick takes their results, so that typing never waits.
     src/cemacs.ce adds the hooks of Hooked to the config and these Keys. *)
 use core/commands
 use core/files
@@ -16,6 +17,7 @@ use core/view
 use src/rope
 use std/cells as nb
 use std/cesia
+use std/columns as col
 use std/debug
 use std/dict
 use std/fiber
@@ -194,47 +196,94 @@ end
 defn Block(line, lines, cell, graph = missing, focused = false)
   (** A block of lines under a line, each {Role, Words}, with a thin bar on its left: drawn at the width of the pane, cut to it. A graph, {Key,
       Scene, Font}, comes under the lines, its scene drawn by sdl at its own width, 400 pixels high; an animation's has its bar under it, see BarItems,
-      with a ring when focused.
+      and a 3D graph the line of its view, see ViewItems, each with a ring when focused.
 
         Block(3, [{Role: "value", Words: "42"}], {Width: 8, Height: 19}).Rows --> 1 *)
   high = if value.IsMissing(graph) 0 else math.Div(graph.Scene.Height + 8 + cell.Height - 1, cell.Height) end
-  bar = if isAnimation(graph) 1 else 0 end
+  bar = if isAnimation(graph) or isTurning(graph) 1 else 0 end
   rows = list.Max(1, value.Len(lines) + high + bar)
   top = value.Len(lines) * cell.Height + 4
+  under = (value.Len(lines) + high) * cell.Height
   draw = (width, look) -> list.Concat(list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
     [rowText(k - 1, "  $(fitted(lines[k].Words, width - 2 * cell.Width, cell))", colorOf(lines[k].Role, look.Theme), cell) for k in 1..value.Len(lines)]),
     if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font}] end),
-    if bar == 1 BarItems(graph, focused, width, (value.Len(lines) + high) * cell.Height, cell, look.Theme) else [] end)
+    if bar == 0 [] else if isAnimation(graph) BarItems(graph, focused, width, under, cell, look.Theme) else ViewItems(graph, focused, top, under, cell, look.Theme) end)
   {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Lines: lines}
 end
 
 (** Is a graph of a block an animation, with its bar? *)
 isAnimation(graph) = value.IsSome(graph) and dict.Has("Frames", graph)
 
+(** The value of a byte that is a hexadecimal digit, 0 to 15, in either case; -1 for any other. *)
+hexDigit(b) = if b >= 48 and b <= 57 b - 48 else if b >= 97 and b <= 102 b - 87 else if b >= 65 and b <= 70 b - 55 else -1 end
+
 defn hexColor(color)
-  (** A color of a scene, "#rrggbb", as 0xRRGGBB; "ink" and "grid", the colors of the theme, stay for the draw. *)
-  if not value.IsText(color) or value.Len(color) != 7 or not str.StartsWith("#", color)
+  (** A color of a scene, "#rrggbb", as 0xRRGGBB, read byte by byte, a byte that is no digit as 0; "ink" and "grid", the colors of the theme, stay
+      for the draw. *)
+  if not value.IsText(color) or str.ByteLength(color) != 7 or not str.StartsWith("#", color)
     return color
   end
-  digits = "0123456789abcdef"
   n = 0
-  for ch in str.Chars(str.Lower(str.Slice(2, 7, color)))
-    n = n * 16 + list.Max(0, str.Find(ch, digits) - 1)
+  for k in 2..7
+    n = n * 16 + list.Max(0, hexDigit(str.Byte(k, color)))
   end
   n
 end
 
 (* ---- A scene comes from the session, another process: it is input, checked before anything is made of it. *)
 
-(** The most vertices that the shapes of one scene may make, and the most items, cells and marks, and frames of an animation: past them a scene is
-    refused, not drawn. *)
-SceneLimits() = {Vertices: 4000000, Items: 20000, Cells: 4194304, Edges: 8193, Marks: 250000, Points: 1000000, Text: 1000, Frames: 300}
+(** The most vertices that the shapes of one scene may make, and the most items, cells and marks, frames of an animation and quads of a surface
+    each way: past them a scene is refused, not drawn. *)
+SceneLimits() = {Vertices: 4000000, Items: 20000, Cells: 4194304, Edges: 8193, Marks: 250000, Points: 1000000, Text: 1000, Frames: 300, Quads: 200}
 
 (** Is every element of an array a number, or missing where a gap is allowed? *)
 numbers(xs, gaps) = value.IsArray(xs) and list.All([value.IsNumber(x) or (gaps and value.IsMissing(x)) for x in xs])
 
 (** Is a value a number from low to high? *)
 within(x, low, high) = value.IsNumber(x) and x >= low and x <= high
+
+defn places(xs, n)
+  (** Is a value n places on the screen, each a number from -1,000,000 to 1,000,000: checked by whole arrays when JSON gave numbers alone, where
+      their sum, which can't grow past 10^12, is finite only when each is. *)
+  if not value.IsArray(xs) or value.Len(xs) != n or n == 0
+    return false
+  end
+  if not (col.Kind(xs) in ["float", "int"])
+    return numbers(xs, false) and list.All([x >= -1000000 and x <= 1000000 for x in xs])
+  end
+  total = list.Sum(xs)
+  total - total == 0 and list.Min(xs) >= -1000000 and list.Max(xs) <= 1000000
+end
+
+(** Is a value a color "#rrggbb"? *)
+isHex(x) = value.IsText(x) and str.ByteLength(x) == 7 and str.StartsWith("#", x) and list.All([hexDigit(str.Byte(k, x)) >= 0 for k in 2..7])
+
+defn meshFault(item, lim)
+  (** What is wrong with the quads of a surface, or missing: their counts, the places of their points, their palette, a color of it for each, or -1
+      for a hole, and their order; with the vertices they make when they are right. *)
+  rows = dict.GetOr("Rows", missing, item)
+  cols = dict.GetOr("Columns", missing, item)
+  if not (value.IsInt(rows) and within(rows, 1, lim.Quads) and value.IsInt(cols) and within(cols, 1, lim.Quads))
+    return {Fault: "a mesh has no count of quads from 1 to $(lim.Quads) each way"}
+  end
+  n = (rows + 1) * (cols + 1)
+  if not (places(dict.GetOr("Xs", missing, item), n) and places(dict.GetOr("Ys", missing, item), n))
+    return {Fault: "a mesh has not the $n places of its points, from -1000000 to 1000000"}
+  end
+  palette = dict.GetOr("Palette", missing, item)
+  if not (value.IsArray(palette) and within(value.Len(palette), 1, 256) and list.All([isHex(x) for x in palette]))
+    return {Fault: "a mesh has no palette of 1 to 256 colors"}
+  end
+  colors = dict.GetOr("Colors", missing, item)
+  if not (value.IsArray(colors) and value.Len(colors) == rows * cols and col.Kind(colors) == "int" and list.Min(colors) >= -1 and list.Max(colors) < value.Len(palette))
+    return {Fault: "a mesh has not a color of its palette, or -1, for each quad"}
+  end
+  order = dict.GetOr("Order", missing, item)
+  if not (value.IsArray(order) and value.Len(order) == 2 and list.All([value.IsInt(x) and (x == 1 or x == -1) for x in order]))
+    return {Fault: "a mesh has no order of 1 or -1 for its rows and its columns"}
+  end
+  {Vertices: rows * cols * 4}
+end
 
 defn itemFault(item, lim)
   (** What is wrong with an item of a scene, or missing; with the vertices it makes when it is right. *)
@@ -297,12 +346,15 @@ defn itemFault(item, lim)
     end
     return {Vertices: 0}
   end
+  if k == "mesh"
+    return meshFault(item, lim)
+  end
   {Fault: "an item of kind $(k) is unknown"}
 end
 
 defn SceneFault(scene)
-  (** What is wrong with a scene that the session sent, or missing: its size, a frame's count and rate, its items and, for all of them, the vertices
-      they would make, checked against SceneLimits() before any memory is taken for it.
+  (** What is wrong with a scene that the session sent, or missing: its size, a frame's count and rate, a 3D graph's view, its items and, for all of
+      them, the vertices they would make, checked against SceneLimits() before any memory is taken for it.
 
         SceneFault({Width: 100, Height: 80, Items: [{Kind: "rect", X: 0, Y: 0, W: 10, H: 10, Color: "#ff0000"}]}) --> missing
         SceneFault({Width: 100, Height: 80, Items: [{Kind: "line", Xs: [1, 2], Ys: [1], Width: 1}]}) --> "a line has no points, or more than 1000000, or not as many y as x" *)
@@ -314,6 +366,10 @@ defn SceneFault(scene)
   fps = dict.GetOr("Fps", missing, scene)
   if value.IsSome(frames) != value.IsSome(fps) or (value.IsSome(frames) and not (value.IsInt(frames) and within(frames, 1, lim.Frames) and within(fps, 1, 60)))
     return "it is no frame of 1 to $(lim.Frames), at 1 to 60 a second"
+  end
+  turn = dict.GetOr("View", missing, scene)
+  if value.IsSome(turn) and not (value.IsArray(turn) and value.Len(turn) == 2 and within(turn[1], -1000000, 1000000) and within(turn[2], -90, 90))
+    return "its view is no [az, el] in degrees, el from -90 to 90"
   end
   items = dict.GetOr("Items", missing, scene)
   if not value.IsArray(items) or value.Len(items) > lim.Items
@@ -347,6 +403,9 @@ defn Prepared(scene, home)
     if item.Kind == "cells"
       one.Colors = [if value.IsMissing(x) missing else hexColor(x) end for x in item.Colors]
     end
+    if item.Kind == "mesh"
+      one.Palette = [hexColor(x) for x in item.Palette]
+    end
     items = list.Append(one, items)
   end
   out = scene
@@ -363,14 +422,14 @@ end
 GraphWidth(state) = list.Max(200, view.LayoutOf(state).Code.Width - view.Gutter - 8 - 2 * state.Cell.Width)
 
 defn resultBlock(k, i, line, lines, graph, state)
-  (** The block of the result of cell i of buffer k under a line: its lines and its graph; an animation's bar takes the mouse, and has a ring while
-      it has the keys. *)
-  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state)), {Cell: i})
-  if not isAnimation(graph)
+  (** The block of the result of cell i of buffer k under a line: its lines and its graph; an animation's bar and a 3D graph take the mouse, and have
+      a ring while they have the keys. *)
+  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state)), {Cell: i})
+  if not (isAnimation(graph) or isTurning(graph))
     return made
   end
   key = graph.Key
-  dict.Put("Mouse", (action, point, st) -> barMouse(key, action, point, st), made)
+  dict.Put("Mouse", if isAnimation(graph) (action, point, st) -> barMouse(key, action, point, st) else (action, point, st) -> turnMouse(key, action, point, st) end, made)
 end
 
 defn withBlock(k, i, lines, state, graph = missing, inputs = {}, status = missing)
@@ -412,7 +471,11 @@ defn graphOf(ran, state)
     return {Fault: "This graph isn't drawn: $fault."}
   end
   g = dict.Put("Key", v.Key, Prepared(v.Scene, commands.Home(state)))
-  (* An animation starts paused on its first frame, as at each run of its cell. *)
+  (* An animation starts paused on its first frame, as at each run of its cell; a 3D graph at the view of its code. *)
+  if dict.Has("View", v.Scene)
+    seen = clampedView(v.Scene.View)
+    return dict.Merge(g, {View: seen, Code: seen, Aim: seen})
+  end
   if dict.Has("Frames", v.Scene) dict.Merge(g, {Frames: v.Scene.Frames, Fps: v.Scene.Fps, Frame: 1, Playing: false, Due: 0.0, Times: [], Want: missing}) else g end
 end
 
@@ -666,7 +729,8 @@ defn widened(k, state)
   key = x.Graph.Key
   width = GraphWidth(state)
   frame = dict.GetOr("Frame", 1, x.Graph)
-  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame)), Cell: x.Cell}
+  turn = if isTurning(x.Graph) x.Graph.View else missing end
+  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)), Cell: x.Cell}
   withRun(k, r, state)
 end
 
@@ -950,9 +1014,9 @@ defn answered(k, state)
     graph = {Scene: graph.Scene, Font: graph.Font, Key: graph.Key}
   end
   if value.IsSome(graph)
-    (* The graph under the last line of the answer, above the new prompt. *)
+    (* The graph under the last line of the answer, above the new prompt: a 3D graph turns there too. *)
     under = rope.LineCount(after.Rope) - 1
-    after = text.WithBlocks(list.Append(Block(under, [], state.Cell, graph = graph), text.BlocksOf(after)), after)
+    after = text.WithBlocks(list.Append(resultBlock(k, 0, under, [], graph, state), text.BlocksOf(after)), after)
   end
   s.Buffers[k] = after
   owner = indexOf(p.Owner, s)
@@ -1281,7 +1345,8 @@ end
 defn FocusControl(state)
   (** C-c e f: gives the keys to the first control of the cell of the cursor. A slider: the arrows move it a step, the pages ten, Home and End to its
       min and its max, Tab and S-Tab go to the next slider of the cell and the previous one. The bar of an animation: Space plays it or pauses it, the
-      arrows go a frame back or on, the pages ten, Home and End to the first frame and the last. C-g, a click in the text or any other key leaves it. *)
+      arrows go a frame back or on, the pages ten, Home and End to the first frame and the last. A 3D graph: the arrows move the eye 10°, Right and
+      Left round it, Up and Down higher and lower, and Home back to the view of the code. C-g, a click in the text or any other key leaves it. *)
   k = state.Current
   b = state.Buffers[k]
   if not IsCells(b)
@@ -1298,7 +1363,11 @@ defn FocusControl(state)
   if value.IsSome(bar)
     return barFocusedOn(k, bar.Graph.Key, s)
   end
-  commands.Say("This cell has no control: a slider, name = cells.Slider(value, min, max) on a line of a cell of its own, or an animation of plot.Frames.", s)
+  solid = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i and isTurning(dict.GetOr("Graph", missing, x)), text.BlocksOf(s.Buffers[k]))
+  if value.IsSome(solid)
+    return turnFocusedOn(k, solid.Graph.Key, s)
+  end
+  commands.Say("This cell has no control: a slider, name = cells.Slider(value, min, max) on a line of a cell of its own, an animation of plot.Frames, or a 3D graph of plot.Surface or plot.Line3.", s)
 end
 
 (* -- A move: the number written in the buffer, then the session told, the latest value winning. *)
@@ -1397,8 +1466,10 @@ defn pushed(k, name, number, state)
   setting(k, name, number, state)
 end
 
-(** Does a question to the session other than a run wait for its answer, a Set, a scene or a frame: one at a time, so that each gets its own. *)
-asking(r) = value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsSome(dict.GetOr("Rescene", missing, r)) or value.IsSome(dict.GetOr("Framing", missing, r))
+(** Does a question to the session other than a run wait for its answer, a Set, a scene, a frame or a view: one at a time, so that each gets its
+    own. *)
+asking(r) = value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsSome(dict.GetOr("Rescene", missing, r)) or value.IsSome(dict.GetOr("Framing", missing, r)) or
+  value.IsSome(dict.GetOr("Turning", missing, r))
 
 defn setting(k, name, number, state)
   (** The state with the Set of a slider's number running in a fiber: no cell starts until it answers, so that the cells run with the number set. *)
@@ -1818,19 +1889,243 @@ defn barDrawn(k, key, state)
   if value.IsMissing(x) state else withGraph(k, x, x.Graph, state) end
 end
 
+(* ---- 3D graphs: a scene with a View turns, by a drag on the graph or by the arrows after C-c e f. Each view is asked of the session, cells.Scene
+   with the view, one question at a time, the latest view winning: the session projects the surface, as for the page, and only the places of its
+   points cross; the code is never changed. Its state is in its graph, {View, Code, Aim}: the view shown, the code's, and the latest one asked for,
+   which the next question asks while it differs from the one shown. A graph of `*repl*` turns too, with the session of the file it belongs to. *)
+
+(** Is a graph of a block a 3D graph, which turns? *)
+isTurning(graph) = value.IsSome(graph) and dict.Has("Code", graph)
+
+(** An angle as the line of a view writes it, with a true minus: -62.5 is −62.5, 20.0 is 20. *)
+degrees(x) = "$(if x < 0 "−" else "" end)$(if math.Abs(x) == math.Floor(math.Abs(x)) "$(math.Div(math.Abs(x), 1))" else str.Decimals(1, math.Abs(x)) end)°"
+
+defn ViewWords(graph)
+  (** What the line under a 3D graph says: the view asked for last, and its code's while it differs.
+
+        ViewWords({Aim: [-62.5, 20.0], Code: [-37.5, 30.0]}) --> "view −62.5°, 20° (code −37.5°, 30°)" *)
+  aim = "view $(degrees(graph.Aim[1])), $(degrees(graph.Aim[2]))"
+  if value.Equal(graph.Aim, graph.Code) aim else "$aim (code $(degrees(graph.Code[1])), $(degrees(graph.Code[2])))" end
+end
+
+defn ViewItems(graph, focused, top, under, cell, th)
+  (** What draws the line under a 3D graph, under pixels down its block: its view in muted ink, and a ring of 2 pixels in the accent color around the
+      graph, top pixels down, while it has the keys.
+
+        value.Len(ViewItems({Aim: [0.0, 90.0], Code: [0.0, 90.0], Scene: {Width: 300, Height: 200}}, true, 4, 214, {Width: 8, Height: 19}, {Muted: 3, Accent: 4})) --> 5 *)
+  out = [{Kind: "text", X: 2 * cell.Width, Y: under, Text: ViewWords(graph), Color: th.Muted, Font: "code"}]
+  if not focused
+    return out
+  end
+  left = 2 * cell.Width - 3
+  wide = graph.Scene.Width + 6
+  high = graph.Scene.Height + 6
+  y = top - 3
+  list.Concat(out, [{Kind: "rect", X: left, Y: y, Width: wide, Height: 2, Color: th.Accent}, {Kind: "rect", X: left, Y: y + high - 2, Width: wide, Height: 2, Color: th.Accent},
+    {Kind: "rect", X: left, Y: y, Width: 2, Height: high, Color: th.Accent}, {Kind: "rect", X: left + wide - 2, Y: y, Width: 2, Height: high, Color: th.Accent}])
+end
+
+(** The block of buffer k that shows the 3D graph of a key, or missing. *)
+turnOf(k, key, state) = if k < 1 or k > value.Len(state.Buffers) missing else list.FindFirst(x -> isTurning(dict.GetOr("Graph", missing, x)) and x.Graph.Key == key, text.BlocksOf(state.Buffers[k])) end
+
+defn ownerFor(k, state)
+  (** The buffer whose run has the session that draws the graphs of buffer k: itself, or for `*repl*` the file it belongs to; 0 for none. *)
+  if value.IsSome(runOf(state.Buffers[k]))
+    return k
+  end
+  p = replOf(state.Buffers[k])
+  if value.IsMissing(p) 0 else indexOf(p.Owner, state) end
+end
+
+defn regraphed(k, key, graph, state)
+  (** The state with the block of buffer k that shows the 3D graph of a key drawn again with this graph, its lines as they were. *)
+  x = turnOf(k, key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  made = dict.Merge(x, resultBlock(k, dict.GetOr("Cell", 0, x), x.Line, x.Lines, graph, state))
+  s = state
+  s.Buffers[k] = text.WithBlocks([if isTurning(dict.GetOr("Graph", missing, y)) and y.Graph.Key == key made else y end for y in text.BlocksOf(state.Buffers[k])], state.Buffers[k])
+  s
+end
+
+(** The view [az, el] with el within -90 and 90, and az within -180 and 180, the turn kept. *)
+clampedView(v) = [v[1] - 360.0 * math.Floor((v[1] + 180.0) / 360.0), list.Max(-90.0, list.Min(90.0, v[2]))]
+
+defn turnedTo(k, key, aimed, state)
+  (** The state with the 3D graph of a key in buffer k aimed at a view, its line saying so at once, and the view asked of the session if it is free. *)
+  x = turnOf(k, key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  g = x.Graph
+  g.Aim = clampedView(aimed)
+  turnAsked(k, key, regraphed(k, key, g, state))
+end
+
+defn turnAsked(k, key, state)
+  (** The state with the view aimed at by the 3D graph of a key in buffer k asked of the session, unless it is the one shown, or a question or a cell
+      keeps the session busy: a tick asks again. *)
+  x = turnOf(k, key, state)
+  o = ownerFor(k, state)
+  if value.IsMissing(x) or o == 0 or value.Equal(x.Graph.Aim, x.Graph.View)
+    return state
+  end
+  r = runOf(state.Buffers[o])
+  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task) or asking(r)
+    return state
+  end
+  one = r.Session
+  aim = x.Graph.Aim
+  width = x.Graph.Scene.Width
+  r.Turning = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, view = aim)), Buffer: k, Key: key, View: aim}
+  (* The fiber writes its question now, so that the session projects while this one draws. *)
+  sys.Sleep(0)
+  withRun(o, r, state)
+end
+
+defn turnLanded(o, state)
+  (** The state once the view asked of the session of buffer o came: drawn in its graph, which asks its latest view next if it moved since. A scene
+      that can't come, or isn't sane, leaves the graph as it was, aimed back at what it shows, and says why. *)
+  r = runOf(state.Buffers[o])
+  t = dict.GetOr("Turning", missing, r)
+  if value.IsMissing(t)
+    return state
+  end
+  got = fiber.Wait(t.Task, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  r.Turning = missing
+  s = withRun(o, r, state)
+  x = turnOf(t.Buffer, t.Key, s)
+  if value.IsMissing(x)
+    return s
+  end
+  scene = if result.IsOk(got) got.Value else got end
+  why = if result.IsErr(scene) scene.Error.Message else SceneFault(scene.Value) end
+  g = x.Graph
+  if value.IsSome(why)
+    g.Aim = g.View
+    return commands.Say("This graph doesn't turn: its view can't be drawn, as $why.", regraphed(t.Buffer, t.Key, g, s))
+  end
+  g = dict.Merge(g, Prepared(scene.Value, commands.Home(s)))
+  g.View = t.View
+  turnAsked(t.Buffer, t.Key, regraphed(t.Buffer, t.Key, g, s))
+end
+
+defn turnPending(k, state)
+  (** The state with the 3D graphs of buffer k that aim at a view they don't show asked again, once the session is free. *)
+  s = state
+  for x in text.BlocksOf(state.Buffers[k])
+    g = dict.GetOr("Graph", missing, x)
+    if isTurning(g) and not value.Equal(g.Aim, g.View)
+      s = turnAsked(k, g.Key, s)
+    end
+  end
+  s
+end
+
+defn aiming(k, state)
+  (** Does a 3D graph of buffer k aim at a view it doesn't show, with a session to ask? *)
+  o = ownerFor(k, state)
+  r = if o == 0 missing else runOf(state.Buffers[o]) end
+  if value.IsMissing(r) or value.IsMissing(r.Session)
+    return false
+  end
+  list.Any([isTurning(dict.GetOr("Graph", missing, x)) and not value.Equal(x.Graph.Aim, x.Graph.View) for x in text.BlocksOf(state.Buffers[k])])
+end
+
+defn turnMouse(key, action, point, state)
+  (** A press, a move or a release of the mouse on the block of a 3D graph: a press on the graph gives it the keys and starts a drag that turns it, 0.5°
+      a pixel, as if the hand held it: to the right, its front goes right, and down, its top comes toward you; a release ends the drag. *)
+  k = state.Current
+  x = turnOf(k, key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  g = x.Graph
+  if action == "down"
+    top = value.Len(x.Lines) * state.Cell.Height + 4
+    left = 2 * state.Cell.Width
+    if point.Y < top or point.Y >= top + g.Scene.Height or point.X < left or point.X >= left + g.Scene.Width
+      return state
+    end
+    s = turnFocusedOn(k, key, state)
+    g = turnOf(k, key, s).Graph
+    g.Drag = {X: point.X, Y: point.Y, View: g.Aim}
+    return regraphed(k, key, g, s)
+  end
+  drag = dict.GetOr("Drag", missing, g)
+  if value.IsMissing(drag)
+    return state
+  end
+  if action == "up"
+    g.Drag = missing
+    return regraphed(k, key, g, state)
+  end
+  turnedTo(k, key, [drag.View[1] - 0.5 * (point.X - drag.X), drag.View[2] + 0.5 * (point.Y - drag.Y)], state)
+end
+
+(** Does the 3D graph of a block in buffer k have the keys? *)
+turnFocused(k, graph, state) = isTurning(graph) and value.IsSome(commands.FocusOf(state)) and dict.GetOr("Turn", missing, commands.FocusOf(state)) == graph.Key and dict.GetOr("Buffer", 0, commands.FocusOf(state)) == k
+
+(** The rows of the band while a 3D graph has the keys. *)
+TurnHints() = [{Key: "← →", Name: "the eye round", Group: false}, {Key: "↑ ↓", Name: "the eye higher, lower", Group: false}, {Key: "Home", Name: "the view of the code", Group: false},
+  {Key: "C-g", Name: "leave", Group: false}]
+
+(** The keys of a 3D graph that has them: the arrows move the eye 10°, Right and Left round the graph, Up and Down higher and lower, as az and el
+    grow and shrink; Home goes back to the view of the code; Tab and S-Tab stay, as the graph is the only control of its cell, and C-g leaves. *)
+TurnKeys() = {"right": turnStep(10.0, 0.0), "left": turnStep(-10.0, 0.0), "up": turnStep(0.0, 10.0), "down": turnStep(0.0, -10.0), "home": turnHome, "tab": st -> st,
+  "S-tab": st -> st, "C-g": commands.Unfocused}
+
+(** The command that moves the eye of the 3D graph that has the keys by some degrees. *)
+turnStep(az, el) = state -> turnKeyed(az, el, state)
+
+defn turnKeyed(az, el, state)
+  (** The 3D graph that has the keys aimed some degrees from the view it aims at. *)
+  f = commands.FocusOf(state)
+  x = turnOf(f.Buffer, f.Turn, state)
+  if value.IsMissing(x)
+    return commands.Unfocused(state)
+  end
+  turnedTo(f.Buffer, f.Turn, [x.Graph.Aim[1] + az, x.Graph.Aim[2] + el], state)
+end
+
+defn turnHome(state)
+  (** The 3D graph that has the keys aimed back at the view of its code. *)
+  f = commands.FocusOf(state)
+  x = turnOf(f.Buffer, f.Turn, state)
+  if value.IsMissing(x) commands.Unfocused(state) else turnedTo(f.Buffer, f.Turn, x.Graph.Code, state) end
+end
+
+defn turnFocusedOn(k, key, state)
+  (** The state with the keys on the 3D graph of a key in buffer k, drawn with its ring, and the control that had them without. *)
+  s = commands.Unfocused(state)
+  s.Focus = {Keys: TurnKeys(), Hints: TurnHints(), Leave: st -> turnDrawn(k, key, st), Buffer: k, Turn: key}
+  turnDrawn(k, key, s)
+end
+
+defn turnDrawn(k, key, state)
+  (** The state with the block of the 3D graph of a key in buffer k drawn again, with its ring or without. *)
+  x = turnOf(k, key, state)
+  if value.IsMissing(x) state else regraphed(k, key, x.Graph, state) end
+end
+
 (* ---- The hooks. *)
 
 defn tick(state)
-  (** The state at a tick: the results of each buffer's cells, its stops and its page, the frames of its animations, the answers of `*repl*`, the rows
-      of a viewer, and the blocks moved back under their cells once the text rests. *)
+  (** The state at a tick: the results of each buffer's cells, its stops and its page, the frames of its animations, the views of its 3D graphs, the
+      answers of `*repl*`, the rows of a viewer, and the blocks moved back under their cells once the text rests. *)
   s = state
   for k in 1..value.Len(s.Buffers)
     if value.IsSome(runOf(s.Buffers[k]))
-      s = played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, s)))))))
+      s = turnLanded(k, played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, s))))))))
     end
     if value.IsSome(replOf(s.Buffers[k]))
       s = answered(k, s)
     end
+    s = turnPending(k, s)
   end
   s = viewing(s)
   k = s.Current
@@ -1864,10 +2159,10 @@ defn busy(b)
   (value.IsSome(r) and (value.IsSome(r.Task) or value.IsSome(r.Stopping) or value.IsSome(r.Html) or asking(r))) or (value.IsSome(p) and value.IsSome(p.Task))
 end
 
-(** Do the cells need ticks: a cell runs, a slider's Set, a stop, a page or a frame is waited for, a graph waits for the width of its pane, or an
-    animation plays on the screen? The sliders are drawn again from the text at rest at the ticks the check of a file of Cesia asks for, as the results
+(** Do the cells need ticks: a cell runs, a slider's Set, a stop, a page, a frame or a view is waited for, a graph waits for the width of its pane,
+    an animation plays on the screen, or a 3D graph waits to be asked its view? The sliders are drawn again from the text at rest at the ticks the check of a file of Cesia asks for, as the results
     are put back under their cells. A still animation takes no tick. *)
-Moving(state) = list.Any([busy(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state)) or list.Any([playing(k, state) for k in 1..value.Len(state.Buffers)])
+Moving(state) = list.Any([busy(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state)) or list.Any([playing(k, state) or aiming(k, state) for k in 1..value.Len(state.Buffers)])
 
 defn Hooked(config)
   (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs. *)

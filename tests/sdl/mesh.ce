@@ -1,0 +1,136 @@
+(* The quads of a surface drawn by src/sdl as the SVG of std/plot paints them: at 4 views, the color at the middle of each triangle of each quad is that
+   of the last quad painted there, in the order of the mesh, as an SVG reader paints its paths; a point less than 1.5 pixels from an edge is left aside,
+   where two ways of filling may differ by a pixel. Then a view moved: the colors and the order kept, only the places written again. *)
+use std/dict
+use std/io
+use std/list
+use std/math
+use std/matrix
+use std/plot
+use std/result
+use std/text
+use std/value
+use src/sdl
+use tests/sdl/probe
+
+black = 0x000000
+
+defn hex(color)
+  (** A color "#rrggbb" as 0xRRGGBB. *)
+  n = 0
+  for ch in text.Chars(text.Slice(2, 7, color))
+    n = n * 16 + text.Find(ch, "0123456789abcdef") - 1
+  end
+  n
+end
+
+defn meshAt(view)
+  (** The mesh of a surface of 6 by 8 quads at a view, its palette as numbers. *)
+  z = matrix.Zeros(7, 9)
+  for i in 1..7
+    for j in 1..9
+      z[i, j] = math.Sin(i * 0.8) * math.Cos(j * 0.5) + 0.1 * i
+    end
+  end
+  s = result.Unwrap(plot.Scene(plot.Surface(z), 640, 400, view = view))
+  m = list.FindFirst(x -> x.Kind == "mesh", s.Items)
+  m.Palette = [hex(c) for c in m.Palette]
+  m.Clip = missing
+  m
+end
+
+side(ax, ay, bx, by, px, py) = (bx - ax) * (py - ay) - (by - ay) * (px - ax)   (** Which side of the line a to b the point p is. *)
+
+defn inTriangle(t, px, py)
+  a = side(t[1], t[2], t[3], t[4], px, py)
+  b = side(t[3], t[4], t[5], t[6], px, py)
+  c = side(t[5], t[6], t[1], t[2], px, py)
+  (a >= 0 and b >= 0 and c >= 0) or (a <= 0 and b <= 0 and c <= 0)
+end
+
+defn distance(ax, ay, bx, by, px, py)
+  (** The distance from a point to a segment. *)
+  dx = bx - ax
+  dy = by - ay
+  t = if dx * dx + dy * dy == 0 0.0 else list.Max(0.0, list.Min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy))) end
+  math.Sqrt((ax + t * dx - px) ^ 2 + (ay + t * dy - py) ^ 2)
+end
+
+defn quads(m)
+  (** The quads in the order painted: corners x y x y x y x y, and color. *)
+  r = m.Rows
+  out = []
+  for i in if m.Order[1] > 0 1..r else [r + 1 - k for k in 1..r] end
+    for j in if m.Order[2] > 0 1..m.Columns else [m.Columns + 1 - k for k in 1..m.Columns] end
+      k = m.Colors[(j - 1) * r + i]
+      if k >= 0
+        v = (j - 1) * (r + 1) + i
+        at = [v, v + 1, v + r + 2, v + r + 1]
+        out = list.Append({P: list.Flatten([[m.Xs[a], m.Ys[a]] for a in at]), Color: m.Palette[k + 1]}, out)
+      end
+    end
+  end
+  out
+end
+
+defn agrees(m, image)
+  (** Does the color at the middle of each triangle of each quad agree with the last quad painted there? The count of points looked at, or -1 for a
+      difference. *)
+  qs = quads(m)
+  seen = 0
+  for q in qs
+    for t in [[1, 3, 5], [1, 5, 7]]
+      (* The middle of the pixel under the middle of the triangle. *)
+      px = math.Floor((q.P[t[1]] + q.P[t[2]] + q.P[t[3]]) / 3.0) + 0.5
+      py = math.Floor((q.P[t[1] + 1] + q.P[t[2] + 1] + q.P[t[3] + 1]) / 3.0) + 0.5
+      last = missing
+      near = false
+      for o in qs
+        if inTriangle(o.P[1..6], px, py) or inTriangle([o.P[1], o.P[2], o.P[5], o.P[6], o.P[7], o.P[8]], px, py)
+          last = o
+        end
+        for e in 0..3
+          f = math.Mod(e + 1, 4)
+          if distance(o.P[2 * e + 1], o.P[2 * e + 2], o.P[2 * f + 1], o.P[2 * f + 2], px, py) < 1.5
+            near = true
+          end
+        end
+      end
+      if value.IsSome(last) and not near
+        seen += 1
+        if probe.Pixel(math.Div(math.Floor(px), 1), math.Div(math.Floor(py), 1), image) != last.Color
+          return -1
+        end
+      end
+    end
+  end
+  seen
+end
+
+defn shot(m, window)
+  (** The window that drew the mesh, and its pixels. Each mesh has an Id of its own, as each scene's items have. *)
+  drawn = sdl.Draw([{Kind: "clear", Color: black}, {Kind: "graph", X: 0, Y: 0, Width: 640, Height: 400, Items: [dict.Merge(m, {Id: "$(m.Xs[1]) $(m.Ys[1])", Color: missing})], Font: "../../fonts/NotoSans-Medium.ttf"}], window)
+  {Window: drawn, Image: probe.Pixels(drawn, 640, 400)}
+end
+
+defn check()
+  w = sdl.Open("test", 640, 400, "../../fonts/JetBrainsMono-Regular.ttf")?
+  for view in [[-37.5, 30.0], [52.5, 50.0], [142.5, 10.0], [-127.5, -30.0]]
+    m = meshAt(view)
+    a = shot(m, w)
+    w = a.Window
+    io.Print("$view: $(agrees(m, a.Image) > 40)")
+  end
+  (* The same quads, colors and order, a little turned: only their places are written again. *)
+  one = meshAt([-37.5, 30.0])
+  a = shot(one, w)
+  parts = a.Window.GeoBlocks[1].Parts
+  turned = meshAt([-35.0, 31.0])
+  b = shot(turned, a.Window)
+  io.Print("kept: $(value.Equal(b.Window.GeoBlocks[1].Parts, parts)) $(agrees(turned, b.Image) > 40)")
+  sdl.Frame([{Kind: "clear", Color: black}], b.Window)
+  io.Print(sdl.Close(b.Window))
+  result.Ok("closed")
+end
+
+io.Print(check())
