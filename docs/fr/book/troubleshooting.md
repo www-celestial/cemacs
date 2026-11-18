@@ -145,10 +145,10 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `cesia lsp doesn't start: REASON` | `cesia` n'a pas pu lancer son serveur de langage : est-il dans le `PATH` ? |
 | `cesia lsp ended, code N: the next question starts it again.` | le serveur de langage a fini pendant qu'une question attendait |
 | `No place to go back to.` | `M-,` sans endroit sur la pile |
-| `N places.`, `N places (by name: a method).` | la liste de `M-?` ; une méthode est trouvée par son nom : [Names](names.md#the-references) |
+| `N places.`, `N places (by name: a method).` | la liste de `M-?` ; une méthode est trouvée par son nom : [Noms](names.md#les-références) |
 | `..., N files don't read.` | des fichiers du projet ne se lisent pas, et leurs endroits ne sont pas listés |
 | `Nothing reads NAME.` | le nom est défini, et rien ne le lit |
-| `The program failed: WORDS` | un programme de [src/ide](names.md#how-the-ide-asks) n'a pas répondu en JSON, ou a fini sur une erreur |
+| `The program failed: WORDS` | un programme de [src/ide](names.md#comment-lide-demande) n'a pas répondu en JSON, ou a fini sur une erreur |
 | `cesia can't run: REASON` | `cesia` n'a pas pu démarrer : est-il dans le `PATH` ? |
 | `The program gave no place.`, `... no list.`, `... no edits.`, `... no marks.`, `The program asked nothing.` | la réponse n'avait pas la forme que src/ide lit, ce qu'il vérifie avant d'ouvrir un fichier ou de changer un buffer |
 | `The program asked a run that isn't one of tests.` | une réponse a demandé de lancer autre chose que `cesia test` : refusé |
@@ -167,7 +167,7 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 
 | Message | Ce qui s'est passé |
 |---|---|
-| `SHELL in FOLDER: each line after $ runs at Enter.` | `C-c o t` a lancé le shell : [The shell](shell.md) |
+| `SHELL in FOLDER: each line after $ runs at Enter.` | `C-c o t` a lancé le shell : [Le shell](shell.md) |
 | `The shell doesn't start: REASON` | `cesia` n'a pas pu lancer `tools/shell.ce`, ou celui-ci le shell |
 | `The shell ended: close this buffer, and C-c o t starts another.` | Entrée après la fin du shell, comme après `exit` |
 | `Nothing to write here.` | `C-c i` dans une liste |
@@ -205,7 +205,7 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `File changed on disk. Overwrite? (y or n)` | le fichier a changé depuis que Cemacs l'a lu, ou un fichier est déjà là : `y` écrit par-dessus |
 | `New file, or folder/: ` | dans le gestionnaire de dossiers, le nom à créer |
 | `Rename NAME to: ` | dans le gestionnaire de dossiers, le nouveau nom ou le nouveau chemin ; dans un fichier de Cesia, après `C-c c m`, le nouveau nom d'un nom du code |
-| `Rename NAME to NEW in N places of M files? (y or n)` | `C-c c m` : `y` fait les modifications, comme le dit [Names](names.md#a-rename) |
+| `Rename NAME to NEW in N places of M files? (y or n)` | `C-c c m` : `y` fait les modifications, comme le dit [Noms](names.md#un-renommage) |
 | `Search project: ` | `C-x p g` : les mots à chercher dans le projet |
 | `Replace WORDS with: `, `Replace N places of WORDS in M files with NEW? (y or n)` | `C-c r` dans la liste d'une recherche |
 | `Commit message: ` | `c` dans l'état de `C-x g` : le message du commit, une ligne |

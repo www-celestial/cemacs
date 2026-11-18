@@ -8,6 +8,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Each day too: a new nightly Cesia rebuilds and republishes the site without a push to Cemacs.
+  schedule:
+    - cron: "17 5 * * *"
   workflow_dispatch:
 
 permissions:

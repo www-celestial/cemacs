@@ -174,6 +174,6 @@ start and load, then its work.
 
 A definition, a documentation or a signature is a message to `cesia lsp`, under a millisecond once it runs, about 20 ms for
 its start at the first question; the references and a rename add a process, which Cesia starts, loads src/lookup into
-and runs, more for a name read in many files, all of it in the background; [Speed](performance.md#the-questions-of-src-ide) gives the measures.
+and runs, more for a name read in many files, all of it in the background; [Speed](performance.md#the-questions-of-srcide) gives the measures.
 Typing costs nothing more: no key that types asks anything, and the signature is asked at most once for a place of the
 cursor, half a second after the last key.

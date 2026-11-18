@@ -128,9 +128,10 @@ mettrait `cesia fmt`, le formatter de Cesia (le programme qui remet le code dans
 fmt, si bien que le code tapé dans Cemacs est déjà tel que fmt le laisse :
 
 - Une ligne qui commence un statement (une instruction, un pas du programme comme `x = 1` ou `if a`) reçoit deux espaces
-  pour chaque bloc où elle se trouve. Un bloc est ce qu'ouvre `defn`, `if`, `for`, `while`, `match`, `struct` ou
-  `interface` et que ferme `end` ; `else` ferme une partie d'un `if` ou d'un `match` et ouvre la suivante, aussi se
-  place-t-il un bloc plus à gauche.
+  pour chaque bloc où elle se trouve. Un bloc est ce qu'ouvre `defn`, `if`, `for`, `while`, `match`, `struct`,
+  `interface` ou un `do` placé juste après la `)` d'un appel, et que ferme `end` ; `else` ferme une partie d'un `if` ou
+  d'un `match` et ouvre la suivante, aussi se place-t-il un bloc plus à gauche. Le corps d'un bloc `do` sur une ligne qui
+  commence par `then` va deux espaces plus à droite que cette ligne, et son `end` sous elle.
 - Une ligne qui continue un statement, une continuation line (une ligne de suite), se déplace avec la ligne qui le commence.
   Un statement continue entre parenthèses, crochets ou accolades, `(`, `[` et `{`, que la suite de ce chapitre appelle
   toutes « parenthèses », après un token (un mot ou un signe du code) qui en demande plus, comme `,`, `+`, `and` ou `then`,
@@ -249,8 +250,8 @@ comme avant, et ne complète pas. [Vitesse](performance.md#la-completion) donne 
 
 Le groupe `i`, insert (insérer), de `C-c` écrit les formes de Cesia, chacune à l'indentation de sa place, le curseur là où
 va son nom : `C-c i d` une fonction, `C-c i s` une struct, `C-c i f` une boucle, `C-c i m` un match, `C-c i t` une fonction
-de test, `C-c i c` le marqueur d'une cellule, comme `C-c e i` ([Cellules et résultats](cells.md)). Les formes viennent de
-[src/snippets], par `tools/snippets.ce`, comme les autres questions de [src/ide](names.md#how-the-ide-asks) :
+de test, `C-c i c` le marqueur d'une cell (une cellule de code), comme `C-c e i` ([Cells et résultats](cells.md)). Les formes viennent de
+[src/snippets], par `tools/snippets.ce`, comme les autres questions de [src/ide](names.md#comment-lide-demande) :
 [ide.InsertDefn], [ide.InsertStruct], [ide.InsertFor], [ide.InsertMatch], [ide.InsertTest], [notebook.InsertCell].
 
 ## Effacer

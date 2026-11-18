@@ -108,7 +108,9 @@ The place between two characters where typing inserts text, a line and a column 
 
 A language server is a program that knows one language and tells any editor the errors, completions and definitions of its
 code, over the Language Server Protocol; a debug adapter does the same for a debugger, over the Debug Adapter Protocol.
-Cemacs uses neither: see [Cemacs and other editors](comparison.md#in-features).
+Cemacs is the client of one language server, `cesia lsp`, for the definitions and the documentation of Cesia
+(see [Names](names.md)); its debugger is built in, for Cesia, and speaks no Debug Adapter Protocol: see
+[Cemacs and other editors](comparison.md#in-features).
 
 ## Definition and reference
 
