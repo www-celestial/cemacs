@@ -36,6 +36,7 @@ Les touches des cells sont un groupe de `C-c`, `e` pour *execute* (exécuter), q
 | `C-c e s` | [notebook.StopCell] | arrête la cell qui tourne ; les cells qui attendent après elle ne tournent pas |
 | `C-c e h` | [notebook.WriteHtml] | écrit la page du fichier à côté de lui, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | efface les résultats dessinés ; les noms de la session restent |
+| `C-c e f` | [notebook.FocusControl] | donne les touches au premier slider de la cell du curseur : voir Sliders |
 
 Dans `*repl*`, Enter lance ce qui a été tapé, et `M-p` et `M-n` reculent et avancent dans ce qui a été tapé avant ;
 partout ailleurs, Enter est un saut de ligne, comme toujours.
@@ -65,6 +66,62 @@ calage des lettres sur la grille des pixels), si bien que chaque texte prend la 
 axes, la grille et les textes prennent les couleurs du thème ; les données gardent les leurs. Quand le pane change de
 largeur, la session dessine à nouveau la scene à la nouvelle ; le graphe garde sa forme jusqu'à ce qu'elle arrive.
 `*repl*` dessine un graphe sous sa réponse de la même façon, et la page de `C-c e h` contient chaque graphe en SVG.
+
+## Sliders
+
+Un *slider* (un curseur) est une barre avec un bouton que l'on fait glisser pour changer un nombre. Une cell de sliders
+ne contient que des lignes `name = cells.Slider(value, min, max)`, chacune avec ses nombres écrits là, comme
+[std/cells](https://www-celestial.github.io/cesia-lang/cells.html) le demande :
+
+```cesia norun
+use std/cells
+use std/ode
+use std/result
+
+(* %% Parameters *)
+rho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)
+
+(* %% Lorenz *)
+lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
+s = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
+```
+
+Sous chacune de ces lignes, Cemacs dessine son slider, d'après le texte seul, avant que rien ne tourne : le nom, une piste,
+un bouton, et le nombre tel que le fichier l'écrit. Un mouvement écrit le nouveau nombre dans le buffer, à la place de
+l'ancien : le fichier dit ce que montre la fenêtre, et une fois qu'il est enregistré, `cesia run` et la page de `C-c e h`
+lisent le même nombre. Le nombre bouge par steps (des pas), du min au max, et s'écrit avec les décimales du min et du
+step, `0.3` et jamais `0.30000000000000004`.
+
+- **La souris.** Un clic sur la piste y met le bouton, si bien qu'un seul clic suffit ; un glissé suit le pointeur. La
+  molette fait défiler le buffer, comme partout, et ne fait jamais bouger un slider.
+- **Les touches.** `C-c e f` donne les touches au premier slider de la cell du curseur, dessiné avec un anneau, et la
+  bande des hints liste ses touches, telles que les donne le slider pattern de WAI-ARIA (les règles du W3C qui rendent un
+  contrôle utilisable au clavier et par un lecteur d'écran) : `right` et `up` le font avancer d'un step, `left` et
+  `down` reculer d'un step, `pageup` et `pagedown` de dix steps, `home` et `end` l'amènent à son min et à son max ; `tab`
+  et `S-tab` vont au slider suivant de la cell et au précédent, en boucle. `C-g`, un clic dans le texte, une lettre tapée
+  ou toute autre touche le quittent, et cette touche fait ce qu'elle fait toujours.
+- **Undo.** Un glissé, du clic au relâchement, est une seule étape d'undo (l'annulation), et les touches pressées à la
+  suite sur un même slider aussi, comme la frappe.
+
+Un mouvement ne relance que les cells qui lisent le nom du slider, directement ou par d'autres cells : la session du
+fichier reçoit le nouveau nombre par [cells.Set](https://www-celestial.github.io/cesia-lang/cells.html), *en place* (le
+nom garde sa place, sans être défini de nouveau), si bien qu'une fonction d'une autre cell qui le lit le voit tout de
+suite, et la cell du slider, qui ne contient rien d'autre, ne tourne pas. Sans session encore, une session démarre et
+toutes les cells tournent, depuis le haut. Le bouton et le nombre suivent le pointeur tout de suite ; les résultats
+suivent aussi vite que les cells tournent, et restent affichés jusqu'à ce que les nouveaux arrivent, avec `waiting` ou
+`running…` au-dessus d'eux. Après le slider s'affiche le temps de son dernier rerun (sa dernière relance), comme
+`rerun 104 ms`, pour que vous voyiez pourquoi un graphe est en retard.
+
+**Le dernier nombre gagne.** Pendant que les cells d'un mouvement tournent, le slider ne garde que le dernier nombre vers
+lequel on l'a bougé ; quand elles finissent, ce nombre est donné à la session et elles tournent une fois de plus. Deux
+reruns d'un slider n'attendent jamais l'un derrière l'autre, rien n'est annulé, et un résultat ne vient jamais de deux
+nombres.
+
+**Les résultats périmés.** Un résultat calculé avec un autre nombre que celui que le fichier écrit maintenant le dit, sur
+une ligne au-dessus de lui : `stale: computed with rho = 28.0` (périmé : calculé avec rho = 28.0). Cela arrive après que
+`C-c e s` a arrêté un rerun, ce qui abandonne le nombre qui attendait, après un undo d'un mouvement, et après que vous
+avez tapé un autre nombre à la main ; la ligne s'en va dès que la cell tourne de nouveau. Un nombre tapé à la main ne
+lance rien par lui-même, comme toute modification : `C-c e e` le lance.
 
 ## Ce qui tourne à nouveau
 
@@ -113,6 +170,14 @@ valeur, en table ou en texte, ou son erreur. La page n'a besoin d'aucun autre fi
 `cesia run` calcule, pas l'état de la fenêtre.
 
 ## Sécurité
+
+Un slider n'écrit que le nombre de sa propre valeur, sur sa propre ligne : avant la modification, Cemacs vérifie que cette
+ligne est toujours dans la cell du slider et contient toujours le nombre qu'il y a lu, et refuse le mouvement sinon ; le
+texte est relu à la touche suivante. Le nombre écrit est l'un des steps du slider, entre son min et son max, fait par
+[cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html), et la session ne l'accepte que pour un nom qui tient
+déjà un nombre. Le fichier lui-même est écrit quand vous l'enregistrez, comme tout buffer : par un nouveau fichier à côté
+de lui qu'un rename (un renommage) met à sa place, et jamais par-dessus un fichier qui a changé sur le disque depuis qu'il
+a été lu.
 
 Une scene vient de la session, un autre processus, et Cemacs la lit comme une entrée : avant que quoi que ce soit en soit
 fait, sa taille, la sorte et les champs de chaque élément, et les sommets (les points des formes) que tous feraient sont
