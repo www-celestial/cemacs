@@ -33,7 +33,7 @@ The keys of the cells are a group of `C-c`, `e` for *execute*, which the band of
 | `C-c e s` | [notebook.StopCell] | stops the cell that runs; the cells waiting after it don't run |
 | `C-c e h` | [notebook.WriteHtml] | writes the page of the file beside it, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | clears the results drawn; the names of the session stay |
-| `C-c e f` | [notebook.FocusControl] | gives the keys to the first slider of the cursor's cell, or to the bar of its animation: see Sliders and Animations |
+| `C-c e f` | [notebook.FocusControl] | gives the keys to the first slider of the cursor's cell, to the bar of its animation, or to its 3D graph: see Sliders, Animations and 3D graphs |
 
 In `*repl*`, Enter runs what was typed, and `M-p` and `M-n` go back and on through what was typed before; anywhere else,
 Enter is a new line, as always.
@@ -140,6 +140,37 @@ while the bar says the rate it plays at, as `24/s of 30`. After the last frame c
 where it is, and Cemacs takes no tick for it; a paused animation takes none either. A cell that runs, or a slider's number
 being set, comes before the next frame, which waits.
 
+## 3D graphs
+
+A cell whose last expression is a 3D graph, a surface of `plot.Surface` or lines of `plot.Line3` of
+[std/plot](https://www-celestial.github.io/cesia-lang/graphs.html#3d), shows it at the view its code gives, `view = [az,
+el]` or MATLAB's `[-37.5, 30]`, with a line under it that says the view:
+
+```
+  view −62.5°, 20° (code −37.5°, 30°)
+```
+
+The first angle is the *azimuth*, the turn around the vertical axis, and the second the *elevation*, the angle of the eye
+above the plane of x and y; the line says the view of the code too while the graph shows another.
+
+- **The mouse.** A drag on the graph turns it as if you held it, 0.5° a pixel: to the right, its front goes right; down,
+  its top comes toward you. A press on the graph gives it the keys too.
+- **The keys.** `C-c e f` in its cell gives it the keys, drawn with a ring around it, and the band lists them: the arrows
+  move your eye 10°, `right` and `left` round the graph, `up` and `down` higher and lower, to straight above or below at
+  most; `home` goes back to the view of the code. `C-g`, a click in the text or any other key leaves it.
+
+**Each view is drawn by the session.** Cemacs asks for it with
+[cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html), `view = [az, el]`: std/plot projects the surface
+there, as it does for the page, and only the places of its points on the screen cross back, with the order to draw its
+quads; the colors of the quads stay in Cemacs while only the view changes. One question at a time: while one is asked,
+a drag or a key only changes the view wanted, which the line shows at once, and once the answer comes, the latest view
+wanted is asked, so the graph follows the mouse without a queue of old views. Nothing is written in the file: the code
+keeps its view, the page shows it, and a run of the cell shows it again. To keep the view you found, write the two numbers
+of the line as the cell's `view`.
+
+A 3D graph in `*repl*` turns the same way, with the session of its file. A 3D graph in a grid or in an animation doesn't
+turn.
+
 ## What runs again
 
 `C-c e e` reads the cells of the buffer as it is, its unsaved changes too, and runs the cell of the cursor and those that
@@ -173,14 +204,15 @@ the last prompt, and its output and its value show under it, then a new prompt. 
 x`, goes on with `. ` on the next one. `*repl*` reads every name the cells defined, but a definition of a name a cell
 defines is refused, with the title of that cell: the file would no longer say what the session holds. Try a new value of
 such a name in its cell, or under another name. An animation shows its first frame, without a bar, and says that a cell
-plays it.
+plays it. A 3D graph turns there as under a cell.
 
 ## The page
 
 `C-c e h` runs every cell of the file, as saved, in a new session, and writes `name.html` beside it: each cell's title, its
 code coloured as Cesia's docs colour it, what it printed and its value, as a table or a text, or its error. The page needs
 no other file and no script, and shows what `cesia run` computes, not the state of the window. An animation starts paused
-on its first frame under a box *Play*, which plays it by CSS alone.
+on its first frame under a box *Play*, which plays it by CSS alone. A 3D graph shows at the view of its code, not at the
+view it was turned to in the window.
 
 ## Security
 
@@ -196,8 +228,11 @@ the kind and the fields of each item, and the vertices all of them would make ar
 four million vertices and twenty thousand items at most; a scene past them, or of a shape std/plot never gives, is
 refused, and the cell says why in red. A frame of an animation says its number of frames, from 1 to 300, and its rate,
 from 1 to 60 a second, and is refused otherwise or when its count differs from the animation's: the animation pauses and
-says why. Cemacs asks the session one question at a time, a frame, a slider's number or a scene, so that no answer goes
-to another question. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
+says why. The quads of a surface come as counts, from 1 to 200 a side, the places of exactly their points, each a number
+from -1,000,000 to 1,000,000, a palette of 1 to 256 colors `#rrggbb`, a color of it or -1 for each quad, and an order of
+1 or -1 for its rows and its columns; a 3D graph's view is two numbers, the elevation from -90 to 90: anything else is
+refused, and a view refused leaves the graph at the one it shows, and says why. Cemacs asks the session one question at
+a time, a frame, a slider's number, a view or a scene, so that no answer goes to another question. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
 a million cells. The memory the shapes take is written by `c.Write`, which checks its whole length against the block
 before it writes.
 
@@ -224,3 +259,10 @@ each 4 seconds, of 119 at most. A frame takes about 10 ms from the question to t
 Cemacs draws the frame before, and the frame that shows it about 20 ms, most of it making the triangles of a line of 5,000
 points. Under SDL's dummy driver, which draws its triangles in software, a still frame of this graph takes 38 ms, and the
 animation plays at 6 frames a second.
+
+A surface of 100 by 100 quads turned with the keys, in a pane 1,834 pixels wide, drawn by SDL's OpenGL renderer in an
+offscreen window: from the key to the frame that shows the new view takes 30 ms, the median of 63 steps, under the
+33 ms of 30 frames a second. Of it, the session projects the surface and writes its scene in 6.3 ms, Cemacs reads
+its 192 KB of JSON in 3.5 ms and checks it in 1.3 ms, and the frame takes 8.2 ms, most of it picking the
+places of the 40,000 vertices of the quads from those of the 10,201 points. When the order of the quads changes, as the
+eye passes an axis, Cemacs makes their colors and their order again, about 10 ms more for that step.
