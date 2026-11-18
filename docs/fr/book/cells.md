@@ -36,7 +36,7 @@ Les touches des cells sont un groupe de `C-c`, `e` pour *execute* (exécuter), q
 | `C-c e s` | [notebook.StopCell] | arrête la cell qui tourne ; les cells qui attendent après elle ne tournent pas |
 | `C-c e h` | [notebook.WriteHtml] | écrit la page du fichier à côté de lui, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | efface les résultats dessinés ; les noms de la session restent |
-| `C-c e f` | [notebook.FocusControl] | donne les touches au premier slider de la cell du curseur : voir Sliders |
+| `C-c e f` | [notebook.FocusControl] | donne les touches au premier slider de la cell du curseur, ou à la barre de son animation : voir Sliders et Animations |
 
 Dans `*repl*`, Enter lance ce qui a été tapé, et `M-p` et `M-n` reculent et avancent dans ce qui a été tapé avant ;
 partout ailleurs, Enter est un saut de ligne, comme toujours.
@@ -123,6 +123,40 @@ une ligne au-dessus de lui : `stale: computed with rho = 28.0` (périmé : calcu
 avez tapé un autre nombre à la main ; la ligne s'en va dès que la cell tourne de nouveau. Un nombre tapé à la main ne
 lance rien par lui-même, comme toute modification : `C-c e e` le lance.
 
+## Animations
+
+Une cell dont la dernière expression est une animation, comme
+`plot.Frames([plot.Line(x, math.Sin(x - t)) for t in ts], fps = 30)` de
+[std/plot](https://www-celestial.github.io/cesia-lang/graphs.html), montre sa première image, en pause, au-dessus d'une
+barre :
+
+```
+  ▶ 12 / 120  ───────●──────────────────  30/s
+```
+
+`▶` quand elle est en pause, `‖` quand elle se joue, l'image montrée et leur nombre, une piste avec un bouton à l'image,
+et le rythme. Elle démarre en pause, à chaque lancement de sa cell aussi, comme WCAG 2.2 (les règles du W3C pour des
+pages accessibles) le demande de ce qui bouge plus de 5 secondes.
+
+- **Les touches.** `C-c e f` dans sa cell donne les touches à la barre, dessinée avec un anneau, et la bande les liste :
+  `space` (la barre d'espace) la joue ou la met en pause, `right` et `up` avancent d'une image, `left` et `down` reculent
+  d'une image, `pageup` et `pagedown` de dix, `home` et `end` vont à la première image et à la dernière ; chacune de ces
+  touches la met d'abord en pause. `C-g`, un clic dans le texte ou toute autre touche la quittent.
+- **La souris.** Un clic sur `▶` la joue ou la met en pause ; un clic sur la piste va à l'image sous le pointeur, et un
+  glissé le suit. Un clic sur le graphe ne fait rien.
+
+**Une image à la fois.** Les images restent dans la session : Cemacs demande chacune par
+[cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html), `frame = k`, à la largeur du pane, pendant que
+l'image d'avant se montre, et la garde jusqu'à son heure. Il y a donc au plus deux images dans la mémoire de Cemacs, et
+une animation de 300 images ne traverse jamais en entier. Aucune image n'est sautée : chacune est un état de ce que vous
+avez calculé, et une image en retard se montre en retard, pendant que la barre dit le rythme réel, comme `24/s of 30`
+(24 par seconde sur 30). Après la dernière image vient la première, jusqu'à ce que vous la mettiez en pause.
+
+**Seulement à l'écran.** Elle se joue tant que son graphe est à l'écran : défilée hors de vue, ou avec son buffer dans
+aucun pane, elle attend là où elle est, et Cemacs ne prend aucun tick (aucun tour de la boucle d'affichage) pour elle ;
+une animation en pause n'en prend pas non plus. Une cell qui tourne, ou le nombre d'un slider qu'on donne à la session,
+passe avant l'image suivante, qui attend.
+
 ## Ce qui tourne à nouveau
 
 `C-c e e` lit les cells du buffer tel qu'il est, ses changements non enregistrés aussi, et lance la cell du curseur et
@@ -160,14 +194,16 @@ boucle qui lit du code, le lance et affiche son résultat). Enter lance le code 
 valeur s'affichent dessous, puis un nouveau prompt. Une ligne qui ne finit pas le code, comme `if x`, continue avec `. `
 sur la suivante. `*repl*` lit chaque nom que les cells ont défini, mais une définition d'un nom que définit une cell est
 refusée, avec le titre de cette cell : le fichier ne dirait plus ce que la session contient. Essayez une nouvelle valeur
-d'un tel nom dans sa cell, ou sous un autre nom.
+d'un tel nom dans sa cell, ou sous un autre nom. Une animation montre sa première image, sans barre, et dit qu'une cell la
+joue.
 
 ## La page
 
 `C-c e h` lance toutes les cells du fichier, tel qu'il est enregistré, dans une nouvelle session, et écrit `name.html` à
 côté de lui : le titre de chaque cell, son code coloré comme les docs de Cesia le colorent, ce qu'elle a affiché et sa
 valeur, en table ou en texte, ou son erreur. La page n'a besoin d'aucun autre fichier ni d'aucun script, et montre ce que
-`cesia run` calcule, pas l'état de la fenêtre.
+`cesia run` calcule, pas l'état de la fenêtre. Une animation démarre en pause sur sa première image sous une case *Play*,
+qui la joue par le CSS (les règles de style de la page) seul.
 
 ## Sécurité
 
@@ -182,8 +218,11 @@ a été lu.
 Une scene vient de la session, un autre processus, et Cemacs la lit comme une entrée : avant que quoi que ce soit en soit
 fait, sa taille, la sorte et les champs de chaque élément, et les sommets (les points des formes) que tous feraient sont
 vérifiés contre [notebook.SceneLimits], quatre millions de sommets et vingt mille éléments au plus ; une scene qui les
-dépasse, ou d'une forme que std/plot ne donne jamais, est refusée, et la cell dit pourquoi en rouge. La vérification lit
-chaque nombre une fois : 16 ms pour 100 000 marques, 25 ms pour une heatmap (une carte de chaleur, une grille de cases
+dépasse, ou d'une forme que std/plot ne donne jamais, est refusée, et la cell dit pourquoi en rouge. Une image d'une
+animation dit son nombre d'images, de 1 à 300, et son rythme, de 1 à 60 par seconde, et elle est refusée sinon, ou quand
+son nombre diffère de celui de l'animation : l'animation se met en pause et dit pourquoi. Cemacs pose à la session une
+question à la fois, une image, le nombre d'un slider ou une scene, pour qu'aucune réponse n'aille à une autre question. La
+vérification lit chaque nombre une fois : 16 ms pour 100 000 marques, 25 ms pour une heatmap (une carte de chaleur, une grille de cases
 colorées selon leur valeur) d'un million de cases. La mémoire que prennent les formes est écrite par `c.Write`, qui vérifie
 sa longueur entière contre le bloc avant d'écrire.
 
@@ -205,3 +244,10 @@ d'une nouvelle scene, après un changement de largeur, fait les arrays de ses 29
 immobile coûte un appel par forme : ce qui est écrit reste jusqu'à ce que la scene change. 100 000 marques prennent 249 ms
 pour la première frame de leur scene et 53 ms pour les suivantes, puisque SDL envoie à nouveau leurs 900 000 sommets à
 chaque frame ; une heatmap de 1 000 sur 1 000, une image d'un pixel par case, 116 ms et 3,0 ms.
+
+Une animation de la courbe de Lorenz vue en rotation, 120 images de 5 000 points à 30 par seconde, dans un pane large de
+1 834 pixels, dessinée par le renderer OpenGL de SDL dans une fenêtre hors écran : elle se joue à 30 images par seconde,
+de 118 à 120 images montrées en 4 secondes. Une image prend environ 10 ms de la question à la session jusqu'à sa réponse
+dans Cemacs, dessinée par la session pendant que Cemacs dessine l'image d'avant, et la frame qui la montre environ 20 ms,
+surtout pour faire les triangles d'une courbe de 5 000 points. Sous le pilote factice de SDL, qui dessine ses triangles
+en logiciel, une frame immobile de ce graphe prend 38 ms, et l'animation se joue à 6 images par seconde.
