@@ -132,3 +132,6 @@ end
 isTextClickLeaves() = value.IsMissing(commands.FocusOf(commands.Press({Kind: "mouse", Action: "down", X: 200, Y: 10, Button: 1}, focused())))
 isWheelNoMove() = line(commands.Wheel({Kind: "mouse", Action: "wheel", X: 200, Y: atSlider("rho", opened()).Y, Button: 0, Amount: -1.0}, opened()), 4) == before
 isClearKeepsSliders() = value.Len(sliders(notebook.ClearResults(opened()))) == 2
+(* A file may hold numbers that a slider can't count: the window opens it and draws no slider for them. *)
+wide = "use std/cells\n\n(* %% Parameters *)\nrho = cells.Slider(0.0, -1e308, 1e308)\nn = cells.Slider(0, -4611686018427387903, 4611686018427387903)\nt = cells.Slider(0.0, 0.0, 1e-299)\n"
+isUncountableNoSlider() = value.Len(sliders(notebook.Hooked({}).Idle(view.Start([text.Of(wide, "nb.ce")], look, cell, 1280, 720)))) == 0
