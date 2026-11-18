@@ -219,8 +219,8 @@ changes. 100,000 marks take 249 ms for the first frame of their scene and 53 ms 
 900,000 vertices again at each frame; a heatmap of 1,000 by 1,000, one image of a pixel a cell, 116 ms and 3.0 ms.
 
 An animation of the Lorenz curve seen turning, 120 frames of 5,000 points at 30 a second, in a pane 1,834 pixels wide,
-drawn by SDL's OpenGL renderer in an offscreen window: it plays at 30 frames a second, 118 to 120 frames shown in each 4
-seconds. A frame takes about 10 ms from the question to the session to its answer in Cemacs, drawn by the session while
+drawn by SDL's OpenGL renderer in an offscreen window: it plays at 29 to 30 frames a second, 115 to 119 frames shown in
+each 4 seconds, of 119 at most. A frame takes about 10 ms from the question to the session to its answer in Cemacs, drawn by the session while
 Cemacs draws the frame before, and the frame that shows it about 20 ms, most of it making the triangles of a line of 5,000
 points. Under SDL's dummy driver, which draws its triangles in software, a still frame of this graph takes 38 ms, and the
 animation plays at 6 frames a second.

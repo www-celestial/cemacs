@@ -246,8 +246,8 @@ pour la première frame de leur scene et 53 ms pour les suivantes, puisque SDL e
 chaque frame ; une heatmap de 1 000 sur 1 000, une image d'un pixel par case, 116 ms et 3,0 ms.
 
 Une animation de la courbe de Lorenz vue en rotation, 120 images de 5 000 points à 30 par seconde, dans un pane large de
-1 834 pixels, dessinée par le renderer OpenGL de SDL dans une fenêtre hors écran : elle se joue à 30 images par seconde,
-de 118 à 120 images montrées en 4 secondes. Une image prend environ 10 ms de la question à la session jusqu'à sa réponse
+1 834 pixels, dessinée par le renderer OpenGL de SDL dans une fenêtre hors écran : elle se joue à 29 ou 30 images par
+seconde, de 115 à 119 images montrées en 4 secondes, sur 119 au plus. Une image prend environ 10 ms de la question à la session jusqu'à sa réponse
 dans Cemacs, dessinée par la session pendant que Cemacs dessine l'image d'avant, et la frame qui la montre environ 20 ms,
 surtout pour faire les triangles d'une courbe de 5 000 points. Sous le pilote factice de SDL, qui dessine ses triangles
 en logiciel, une frame immobile de ce graphe prend 38 ms, et l'animation se joue à 6 images par seconde.
