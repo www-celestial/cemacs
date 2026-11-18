@@ -473,7 +473,8 @@ defn graphOf(ran, state)
   g = dict.Put("Key", v.Key, Prepared(v.Scene, commands.Home(state)))
   (* An animation starts paused on its first frame, as at each run of its cell; a 3D graph at the view of its code. *)
   if dict.Has("View", v.Scene)
-    return dict.Merge(g, {View: v.Scene.View, Code: v.Scene.View, Aim: v.Scene.View})
+    seen = clampedView(v.Scene.View)
+    return dict.Merge(g, {View: seen, Code: seen, Aim: seen})
   end
   if dict.Has("Frames", v.Scene) dict.Merge(g, {Frames: v.Scene.Frames, Fps: v.Scene.Fps, Frame: 1, Playing: false, Due: 0.0, Times: [], Want: missing}) else g end
 end
@@ -2028,7 +2029,8 @@ end
 defn aiming(k, state)
   (** Does a 3D graph of buffer k aim at a view it doesn't show, with a session to ask? *)
   o = ownerFor(k, state)
-  if o == 0 or value.IsMissing(runOf(state.Buffers[o]).Session)
+  r = if o == 0 missing else runOf(state.Buffers[o]) end
+  if value.IsMissing(r) or value.IsMissing(r.Session)
     return false
   end
   list.Any([isTurning(dict.GetOr("Graph", missing, x)) and not value.Equal(x.Graph.Aim, x.Graph.View) for x in text.BlocksOf(state.Buffers[k])])
