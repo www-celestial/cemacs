@@ -308,8 +308,9 @@ defn MeshParts(item)
   {Gather: matrix.Reshape([1, 8 * q], matrix.Transpose(gather)), Colors: matrix.Reshape([1, 16 * q], matrix.Transpose(matrix.Matmul(rgba, four))), NV: 4 * q, NI: 6 * q}
 end
 
-(** The places of the vertices of the quads of a surface for SDL, x y x y, picked from its points' places by its parts. *)
-meshPlaces(item, parts) = if parts.NV == 0 [0.0] else col.Pick(parts.Gather, matrix.Reshape([1, 2 * value.Len(item.Xs)], matrix.Transpose(matrix.Reshape([value.Len(item.Xs), 2], list.Concat(item.Xs, item.Ys))))) end
+(** The places of the vertices of the quads of a surface for SDL, x y x y, picked from its points' places by its parts: x over y in a matrix of two
+    rows, by two products, read column by column, is each point's x then its y. *)
+meshPlaces(item, parts) = if parts.NV == 0 [0.0] else col.Pick(parts.Gather, matrix.Reshape([1, 2 * value.Len(item.Xs)], matrix.Matmul(matrix.Reshape([2, 1], [1.0, 0.0]), matrix.Reshape([1, value.Len(item.Xs)], item.Xs)) + matrix.Matmul(matrix.Reshape([2, 1], [0.0, 1.0]), matrix.Reshape([1, value.Len(item.Ys)], item.Ys)))) end
 
 defn meshIndex(count, window)
   (** The triangles of quads drawn one after the other, two a quad, 0 1 2 0 2 3 then 4 5 6 4 6 7 and on, for count indices: the same for every
