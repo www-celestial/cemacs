@@ -8,8 +8,11 @@ use src/rope
 use src/ui
 use std/cells as nb
 use std/dict
+use std/fiber
 use std/list
 use std/math
+use std/result
+use std/sys
 use std/text as str
 use std/value
 
@@ -102,7 +105,7 @@ isLatestPending() = press("right", press("right", focused())).Buffers[1].CellRun
 isTabRound() = commands.FocusOf(press("tab", focused())).Slider == "n" and commands.FocusOf(press("tab", press("tab", focused()))).Slider == "rho"
 isIntSlider() = line(press("up", press("tab", focused())), 5) == "n = cells.Slider(4, 0, 10)"
 isCgLeaves() = value.IsMissing(commands.FocusOf(press("C-g", focused()))) and value.Len(rho(press("C-g", focused())).Draw(1000, look)) == value.Len(rho(opened()).Draw(1000, look))
-isNoSliderHere() = notebook.FocusControl(opened()).Message == "This cell has no slider: name = cells.Slider(value, min, max) on a line of a cell of its own makes one."
+isNoControlHere() = notebook.FocusControl(opened()).Message == "This cell has no control: a slider, name = cells.Slider(value, min, max) on a line of a cell of its own, or an animation of plot.Frames."
 
 defn atSlider(name, s)
   (** The block of a slider on the screen with a point inside it, as the mouse finds it. *)
@@ -148,3 +151,151 @@ defn isFarSliderDrawn()
   shown = sliders(notebook.Hooked({}).Idle(view.Start([text.Of(far, "nb.ce")], look, cell, 1280, 720)))
   value.Len(shown) == 1 and value.Len(shown[1].Draw(1000, look)) > 0
 end
+
+(* Animations, without a session: the block of a cell whose graph is an animation of 3 frames, at key 7, draws its bar; C-c e f, its keys and the mouse
+   play it, pause it and move it; a frame that the session sent, faked here, comes ahead and shows when it is due, and none is asked while it rests. *)
+animSource = "use std/plot\n\n(* %% Wave *)\nplot.Frames([plot.Line([1, 2], [k, k]) for k in 1..3])\n"
+(** The scene of frame k of the animation, as wide as the pane draws graphs. *)
+frameScene(k, width) = {Width: width, Height: 400, Items: [{Kind: "text", X: 10, Y: 20, Text: "frame $k", Size: 12, Color: "ink", Anchor: "start", Angle: 0, Width: 40, Role: "title"}], Dropped: 0, Frames: 3, Fps: 30}
+
+defn animated()
+  (** The window once cell 2 showed the first frame of the animation, paused, as a run gives it. *)
+  s = notebook.Hooked({}).Idle(view.Start([text.Of(animSource, "anim.ce")], look, cell, 1280, 720))
+  g = dict.Merge(notebook.Prepared(frameScene(1, notebook.GraphWidth(s)), "."), {Key: 7, Frames: 3, Fps: 30, Frame: 1, Playing: false, Due: 0.0, Times: [], Want: missing})
+  s.Buffers[1] = text.WithBlocks([dict.Merge(notebook.Block(4, [], cell, graph = g), {Cell: 2, Base: [], Inputs: {}, Status: missing})], s.Buffers[1])
+  (* C-c e f then C-g draw the block again, as the cells make it: its bar takes the mouse. *)
+  s.Buffers[1] = text.Place(4, 0, s.Buffers[1])
+  s = commands.Unfocused(notebook.FocusControl(s))
+  s.Buffers[1] = text.Place(1, 0, s.Buffers[1])
+  s
+end
+anim(s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == 2, text.BlocksOf(s.Buffers[1]))   (** The block of the animation. *)
+barWords(s) = [c.Text for c in anim(s).Draw(1000, look) if c.Kind == "text" and c.Font == "code"]   (** The words of its bar. *)
+defn onBar(state)
+  (** The window after C-c e f, the cursor in the cell of the animation. *)
+  s = state
+  s.Buffers[1] = text.Place(4, 0, s.Buffers[1])
+  notebook.FocusControl(s)
+end
+
+defn sent(frame, s)
+  (** The window as if the session had sent a frame, asked at the pane's width, for the next tick to take. *)
+  out = s
+  r = s.Buffers[1].CellRun
+  scene = frameScene(frame, notebook.GraphWidth(s))
+  r.Framing = {Task: fiber.Spawn(() -> result.Ok(scene)), Key: 7, Frame: frame, Width: notebook.GraphWidth(s)}
+  out.Buffers[1].CellRun = r
+  (* The fiber answers once this one waits: here, at once. *)
+  sys.Sleep(0.001)
+  out
+end
+ticked(s) = notebook.Hooked({}).Idle(s)   (** The window after a tick. *)
+
+defn sessioned(state)
+  (** The window as if its cells had a session: Moving asks for ticks only with one, as no frame would come without it. *)
+  s = state
+  r = s.Buffers[1].CellRun
+  r.Session = "a session"
+  s.Buffers[1].CellRun = r
+  s
+end
+title(s) = [i.Text for i in [c for c in anim(s).Draw(1000, look) if c.Kind == "graph"][1].Items if i.Kind == "text"][1]   (** The title the graph shows. *)
+
+isBarDrawn() = value.Equal(barWords(animated()), ["▶ 1 / 3", "30/s"]) and anim(animated()).Rows == 23
+isNoTicksAtRest() = not notebook.Moving(animated())
+isFocusBar() = commands.FocusOf(onBar(animated())).Bar == 7 and value.Len(commands.FocusOf(onBar(animated())).Hints) == 5 and value.Len(anim(onBar(animated())).Draw(1000, look)) == value.Len(anim(animated()).Draw(1000, look)) + 4
+isSpacePlays() = anim(press("space", onBar(animated()))).Graph.Playing and barWords(press("space", onBar(animated())))[1] == "‖ 1 / 3"
+typed(s) = commands.Update({Kind: "text", Text: " "}, s)   (** The window after a space typed. *)
+isSpaceTyped() = anim(typed(onBar(animated()))).Graph.Playing and line(typed(onBar(animated())), 4) == "plot.Frames([plot.Line([1, 2], [k, k]) for k in 1..3])"
+isSpaceAgainPauses() = not anim(press("space", press("space", onBar(animated())))).Graph.Playing
+isRightAsksNext() = anim(press("right", onBar(animated()))).Graph.Want == 2 and anim(press("right", press("right", onBar(animated())))).Graph.Want == 3
+isEndLast() = anim(press("end", onBar(animated()))).Graph.Want == 3 and value.IsMissing(anim(press("home", onBar(animated()))).Graph.Want)
+isStepPauses() = not anim(press("right", press("space", onBar(animated())))).Graph.Playing
+isCgLeavesBar() = value.IsMissing(commands.FocusOf(press("C-g", onBar(animated())))) and value.Len(anim(press("C-g", onBar(animated()))).Draw(1000, look)) == value.Len(anim(animated()).Draw(1000, look))
+defn isSoughtFrameShows()
+  s = ticked(sent(2, press("right", onBar(animated()))))
+  anim(s).Graph.Frame == 2 and value.IsMissing(anim(s).Graph.Want) and barWords(s)[1] == "▶ 2 / 3" and title(s) == "frame 2"
+end
+
+defn isDueFrameShows()
+  (* Playing, frame 2 comes at once but waits for its time, a thirtieth of a second after the press; then it shows, and the bar keeps the beat. *)
+  s = ticked(sent(2, press("space", onBar(animated()))))
+  early = anim(s).Graph.Frame
+  sys.Sleep(0.05)
+  s = ticked(s)
+  early == 1 and anim(s).Graph.Frame == 2 and anim(s).Graph.Playing and notebook.Moving(sessioned(s)) and title(s) == "frame 2"
+end
+
+defn isLoops()
+  (* From the last frame, the next is the first. *)
+  s = press("space", press("end", onBar(animated())))
+  s = ticked(sent(3, s))
+  s = press("space", s)
+  s = ticked(sent(1, s))
+  sys.Sleep(0.05)
+  s = ticked(s)
+  anim(s).Graph.Frame == 1
+end
+
+defn isOffScreenStill()
+  (* Scrolled away, a playing animation takes no tick. *)
+  s = press("space", onBar(animated()))
+  s.Buffers[1].Top = 40
+  anim(s).Graph.Playing and not notebook.Moving(sessioned(s)) and notebook.Moving(sessioned(press("space", onBar(animated())))) and not notebook.Moving(sessioned(press("space", press("space", onBar(animated())))))
+end
+isNoSessionStill() = not notebook.Moving(press("space", onBar(animated())))   (** Without a session, a playing animation takes no tick. *)
+
+defn isBadFrameStops()
+  (* A frame that isn't sane pauses the animation, which says why. *)
+  s = press("space", onBar(animated()))
+  r = s.Buffers[1].CellRun
+  r.Framing = {Task: fiber.Spawn(() -> result.Ok({Width: notebook.GraphWidth(s), Height: 400, Items: [], Frames: 301, Fps: 30})), Key: 7, Frame: 2, Width: notebook.GraphWidth(s)}
+  s.Buffers[1].CellRun = r
+  sys.Sleep(0.001)
+  s = ticked(s)
+  not anim(s).Graph.Playing and str.Contains("frame 2 can't be drawn", s.Message)
+end
+
+defn atBar(s)
+  (** A point on the bar of the animation on the screen, its block found as the mouse finds it: {X, Y, Left, Width}. *)
+  for y in 0..719
+    hit = view.BlockAt(200, y, s)
+    if value.IsSome(hit) and dict.GetOr("Cell", 0, hit.Block) == 2
+      return {Y: hit.Top + (anim(s).Rows - 1) * cell.Height + 5, Left: hit.Left, Width: hit.Width}
+    end
+  end
+  missing
+end
+pressAt(x, y, s) = commands.Press({Kind: "mouse", Action: "down", X: x, Y: y, Button: 1}, s)   (** A press of the mouse. *)
+defn isPressPlays()
+  b = atBar(animated())
+  s = pressAt(b.Left + 24, b.Y, animated())
+  anim(s).Graph.Playing and commands.FocusOf(s).Bar == 7
+end
+defn isPressTrackSeeks()
+  s = animated()
+  b = atBar(s)
+  p = notebook.BarPlaces(b.Width, 3, cell)
+  s = pressAt(b.Left + p.Track + p.Wide - 4, b.Y, s)
+  anim(s).Graph.Want == 3 and not anim(s).Graph.Playing
+end
+defn isPressGraphNothing()
+  b = atBar(animated())
+  s = pressAt(b.Left + 24, b.Y - 100, animated())
+  not anim(s).Graph.Playing and value.IsMissing(anim(s).Graph.Want)
+end
+
+defn isStillSceneStops()
+  (* A scene without a count of frames, for an animation, is no frame of it: the animation pauses. *)
+  s = press("space", onBar(animated()))
+  r = s.Buffers[1].CellRun
+  r.Framing = {Task: fiber.Spawn(() -> result.Ok(dict.Drop("Fps", dict.Drop("Frames", frameScene(2, notebook.GraphWidth(s)))))), Key: 7, Frame: 2, Width: notebook.GraphWidth(s)}
+  s.Buffers[1].CellRun = r
+  sys.Sleep(0.001)
+  s = ticked(s)
+  not anim(s).Graph.Playing and str.Contains("as it is no frame of an animation", s.Message)
+end
+
+isFrameSceneAccepted() = value.IsMissing(notebook.SceneFault(frameScene(1, 640)))
+isTooManyFramesRefused() = value.IsSome(notebook.SceneFault(dict.Put("Frames", 301, frameScene(1, 640)))) and value.IsSome(notebook.SceneFault(dict.Put("Frames", 2.5, frameScene(1, 640))))
+isBadRateRefused() = value.IsSome(notebook.SceneFault(dict.Put("Fps", 0, frameScene(1, 640)))) and value.IsSome(notebook.SceneFault(dict.Put("Fps", 61, frameScene(1, 640)))) and value.IsSome(notebook.SceneFault(dict.Drop("Fps", frameScene(1, 640))))

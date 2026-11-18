@@ -33,7 +33,7 @@ The keys of the cells are a group of `C-c`, `e` for *execute*, which the band of
 | `C-c e s` | [notebook.StopCell] | stops the cell that runs; the cells waiting after it don't run |
 | `C-c e h` | [notebook.WriteHtml] | writes the page of the file beside it, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | clears the results drawn; the names of the session stay |
-| `C-c e f` | [notebook.FocusControl] | gives the keys to the first slider of the cursor's cell: see Sliders |
+| `C-c e f` | [notebook.FocusControl] | gives the keys to the first slider of the cursor's cell, or to the bar of its animation: see Sliders and Animations |
 
 In `*repl*`, Enter runs what was typed, and `M-p` and `M-n` go back and on through what was typed before; anywhere else,
 Enter is a new line, as always.
@@ -112,6 +112,34 @@ and a result never comes from two numbers.
 after an undo of a move, and after you type another number by hand; the line goes once the cell runs again. A number
 typed by hand runs nothing by itself, as any edit: `C-c e e` runs it.
 
+## Animations
+
+A cell whose last expression is an animation, as `plot.Frames([plot.Line(x, math.Sin(x - t)) for t in ts], fps = 30)`
+of [std/plot](https://www-celestial.github.io/cesia-lang/graphs.html), shows its first frame, paused, over a bar:
+
+```
+  ▶ 12 / 120  ───────●──────────────────  30/s
+```
+
+`▶` while it is paused, `‖` while it plays, the frame shown and their number, a track with a thumb at the frame, and the
+rate. It starts paused, at each run of its cell too, as WCAG 2.2 asks of what moves for more than 5 seconds.
+
+- **The keys.** `C-c e f` in its cell gives the keys to the bar, drawn with a ring, and the band lists them: `space` plays it
+  or pauses it, `right` and `up` go a frame on, `left` and `down` a frame back, `pageup` and `pagedown` ten, `home` and `end`
+  to the first frame and the last; each of these pauses it first. `C-g`, a click in the text or any other key leaves it.
+- **The mouse.** A press on `▶` plays it or pauses it; a press on the track goes to the frame under the pointer, and a drag
+  follows it. A press on the graph does nothing.
+
+**One frame at a time.** The frames stay in the session: Cemacs asks for each with
+[cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html), `frame = k`, at the width of the pane, while the frame
+before shows, and keeps it until its time comes. So at most two frames are in Cemacs's memory, and an animation of 300
+frames never crosses whole. No frame is skipped: each is a state of what you computed, and one late to come shows late,
+while the bar says the rate it plays at, as `24/s of 30`. After the last frame comes the first, until you pause it.
+
+**Only on the screen.** It plays while its graph is on the screen: scrolled away, or with its buffer in no pane, it waits
+where it is, and Cemacs takes no tick for it; a paused animation takes none either. A cell that runs, or a slider's number
+being set, comes before the next frame, which waits.
+
 ## What runs again
 
 `C-c e e` reads the cells of the buffer as it is, its unsaved changes too, and runs the cell of the cursor and those that
@@ -144,13 +172,15 @@ in full, each row under its number: the rows come from the session 200 at a time
 the last prompt, and its output and its value show under it, then a new prompt. A line that doesn't end the code, as `if
 x`, goes on with `. ` on the next one. `*repl*` reads every name the cells defined, but a definition of a name a cell
 defines is refused, with the title of that cell: the file would no longer say what the session holds. Try a new value of
-such a name in its cell, or under another name.
+such a name in its cell, or under another name. An animation shows its first frame, without a bar, and says that a cell
+plays it.
 
 ## The page
 
 `C-c e h` runs every cell of the file, as saved, in a new session, and writes `name.html` beside it: each cell's title, its
 code coloured as Cesia's docs colour it, what it printed and its value, as a table or a text, or its error. The page needs
-no other file and no script, and shows what `cesia run` computes, not the state of the window.
+no other file and no script, and shows what `cesia run` computes, not the state of the window. An animation starts paused
+on its first frame under a box *Play*, which plays it by CSS alone.
 
 ## Security
 
@@ -164,7 +194,10 @@ puts in its place, and never over a file that changed on disk since it was read.
 A scene comes from the session, another process, and Cemacs reads it as input: before anything is made of it, its size,
 the kind and the fields of each item, and the vertices all of them would make are checked against [notebook.SceneLimits],
 four million vertices and twenty thousand items at most; a scene past them, or of a shape std/plot never gives, is
-refused, and the cell says why in red. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
+refused, and the cell says why in red. A frame of an animation says its number of frames, from 1 to 300, and its rate,
+from 1 to 60 a second, and is refused otherwise or when its count differs from the animation's: the animation pauses and
+says why. Cemacs asks the session one question at a time, a frame, a slider's number or a scene, so that no answer goes
+to another question. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
 a million cells. The memory the shapes take is written by `c.Write`, which checks its whole length against the block
 before it writes.
 
@@ -184,3 +217,10 @@ makes the arrays of its 29,000 vertices and gives each to C in one `c.Write`, an
 scene itself takes 6.6 ms in the session. A still graph costs a call a shape: what is written stays until the scene
 changes. 100,000 marks take 249 ms for the first frame of their scene and 53 ms for the next ones, as SDL sends their
 900,000 vertices again at each frame; a heatmap of 1,000 by 1,000, one image of a pixel a cell, 116 ms and 3.0 ms.
+
+An animation of the Lorenz curve seen turning, 120 frames of 5,000 points at 30 a second, in a pane 1,834 pixels wide,
+drawn by SDL's OpenGL renderer in an offscreen window: it plays at 29 to 30 frames a second, 115 to 119 frames shown in
+each 4 seconds, of 119 at most. A frame takes about 10 ms from the question to the session to its answer in Cemacs, drawn by the session while
+Cemacs draws the frame before, and the frame that shows it about 20 ms, most of it making the triangles of a line of 5,000
+points. Under SDL's dummy driver, which draws its triangles in software, a still frame of this graph takes 38 ms, and the
+animation plays at 6 frames a second.

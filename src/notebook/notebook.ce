@@ -2,11 +2,14 @@
     never saved. C-c e e runs the cell of the cursor and the cells that read what it defines, C-c e a every cell from the top; each cell file has a session
     of std/cells, a Cesia process that keeps the names its cells defined. `*variables*` lists them beside, `*repl*` below runs code in the same session, and
     C-c e h writes the page of the file. A cell of sliders, name = cells.Slider(28.0, 0.0, 50.0), draws a slider under each line, which the mouse and C-c e f
-    move: the number is written in the buffer, and only the cells that read it run again. The work is std/cells': runs wait in fibers, and each tick takes their results, so that typing never waits.
+    move: the number is written in the buffer, and only the cells that read it run again. An animation of plot.Frames shows its first frame over a bar,
+    ▶ 1 / 120, that Space plays after C-c e f, or the mouse; its frames come from the session one at a time. The work is std/cells': runs wait in
+    fibers, and each tick takes their results, so that typing never waits.
     src/cemacs.ce adds the hooks of Hooked to the config and these Keys. *)
 use core/commands
 use core/files
 use core/lists
+use core/panes
 use core/run
 use core/text
 use core/view
@@ -188,19 +191,25 @@ defn colorOf(role, th)
   end
 end
 
-defn Block(line, lines, cell, graph = missing)
+defn Block(line, lines, cell, graph = missing, focused = false)
   (** A block of lines under a line, each {Role, Words}, with a thin bar on its left: drawn at the width of the pane, cut to it. A graph, {Key,
-      Scene, Font}, comes under the lines, its scene drawn by sdl at its own width, 400 pixels high.
+      Scene, Font}, comes under the lines, its scene drawn by sdl at its own width, 400 pixels high; an animation's has its bar under it, see BarItems,
+      with a ring when focused.
 
         Block(3, [{Role: "value", Words: "42"}], {Width: 8, Height: 19}).Rows --> 1 *)
   high = if value.IsMissing(graph) 0 else math.Div(graph.Scene.Height + 8 + cell.Height - 1, cell.Height) end
-  rows = list.Max(1, value.Len(lines) + high)
+  bar = if isAnimation(graph) 1 else 0 end
+  rows = list.Max(1, value.Len(lines) + high + bar)
   top = value.Len(lines) * cell.Height + 4
-  draw = (width, look) -> list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
+  draw = (width, look) -> list.Concat(list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
     [rowText(k - 1, "  $(fitted(lines[k].Words, width - 2 * cell.Width, cell))", colorOf(lines[k].Role, look.Theme), cell) for k in 1..value.Len(lines)]),
-    if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font}] end)
+    if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font}] end),
+    if bar == 1 BarItems(graph, focused, width, (value.Len(lines) + high) * cell.Height, cell, look.Theme) else [] end)
   {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Lines: lines}
 end
+
+(** Is a graph of a block an animation, with its bar? *)
+isAnimation(graph) = value.IsSome(graph) and dict.Has("Frames", graph)
 
 defn hexColor(color)
   (** A color of a scene, "#rrggbb", as 0xRRGGBB; "ink" and "grid", the colors of the theme, stay for the draw. *)
@@ -217,8 +226,9 @@ end
 
 (* ---- A scene comes from the session, another process: it is input, checked before anything is made of it. *)
 
-(** The most vertices that the shapes of one scene may make, and the most items, cells and marks: past them a scene is refused, not drawn. *)
-SceneLimits() = {Vertices: 4000000, Items: 20000, Cells: 4194304, Edges: 8193, Marks: 250000, Points: 1000000, Text: 1000}
+(** The most vertices that the shapes of one scene may make, and the most items, cells and marks, and frames of an animation: past them a scene is
+    refused, not drawn. *)
+SceneLimits() = {Vertices: 4000000, Items: 20000, Cells: 4194304, Edges: 8193, Marks: 250000, Points: 1000000, Text: 1000, Frames: 300}
 
 (** Is every element of an array a number, or missing where a gap is allowed? *)
 numbers(xs, gaps) = value.IsArray(xs) and list.All([value.IsNumber(x) or (gaps and value.IsMissing(x)) for x in xs])
@@ -291,14 +301,19 @@ defn itemFault(item, lim)
 end
 
 defn SceneFault(scene)
-  (** What is wrong with a scene that the session sent, or missing: its size, its items and, for all of them, the vertices they would make,
-      checked against SceneLimits() before any memory is taken for it.
+  (** What is wrong with a scene that the session sent, or missing: its size, a frame's count and rate, its items and, for all of them, the vertices
+      they would make, checked against SceneLimits() before any memory is taken for it.
 
         SceneFault({Width: 100, Height: 80, Items: [{Kind: "rect", X: 0, Y: 0, W: 10, H: 10, Color: "#ff0000"}]}) --> missing
         SceneFault({Width: 100, Height: 80, Items: [{Kind: "line", Xs: [1, 2], Ys: [1], Width: 1}]}) --> "a line has no points, or more than 1000000, or not as many y as x" *)
   lim = SceneLimits()
   if not value.IsDict(scene) or not within(dict.GetOr("Width", missing, scene), 100, 8192) or not within(dict.GetOr("Height", missing, scene), 80, 4096)
     return "it is no scene from 100 by 80 to 8192 by 4096 pixels"
+  end
+  frames = dict.GetOr("Frames", missing, scene)
+  fps = dict.GetOr("Fps", missing, scene)
+  if value.IsSome(frames) != value.IsSome(fps) or (value.IsSome(frames) and not (value.IsInt(frames) and within(frames, 1, lim.Frames) and within(fps, 1, 60)))
+    return "it is no frame of 1 to $(lim.Frames), at 1 to 60 a second"
   end
   items = dict.GetOr("Items", missing, scene)
   if not value.IsArray(items) or value.Len(items) > lim.Items
@@ -347,8 +362,16 @@ end
 (** The width that a graph under a cell takes in the pane being edited, in pixels: the pane's text width, past the bar of the block. *)
 GraphWidth(state) = list.Max(200, view.LayoutOf(state).Code.Width - view.Gutter - 8 - 2 * state.Cell.Width)
 
-(** The block of cell i, under its last line, with its lines and its graph. *)
-blockOf(i, lines, r, b, cell, graph) = dict.Merge(Block(anchor(r.Cells[i], b), lines, cell, graph = graph), {Cell: i})
+defn resultBlock(k, i, line, lines, graph, state)
+  (** The block of the result of cell i of buffer k under a line: its lines and its graph; an animation's bar takes the mouse, and has a ring while
+      it has the keys. *)
+  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state)), {Cell: i})
+  if not isAnimation(graph)
+    return made
+  end
+  key = graph.Key
+  dict.Put("Mouse", (action, point, st) -> barMouse(key, action, point, st), made)
+end
 
 defn withBlock(k, i, lines, state, graph = missing, inputs = {}, status = missing)
   (** The state with the block of cell i of buffer k in place of the one it had, or none for a cell that printed nothing and shows no value. Inputs are
@@ -359,7 +382,7 @@ defn withBlock(k, i, lines, state, graph = missing, inputs = {}, status = missin
   kept = [x for x in text.BlocksOf(b) if dict.GetOr("Cell", 0, x) != i]
   note = if value.Len(inputs) == 0 missing else staleNote(inputs, r) end
   shown = list.Concat([x for x in [status, note] if value.IsSome(x)], lines)
-  made = dict.Merge(blockOf(i, shown, r, b, state.Cell, graph), {Base: lines, Inputs: inputs, Status: status})
+  made = dict.Merge(resultBlock(k, i, anchor(r.Cells[i], b), shown, graph, state), {Base: lines, Inputs: inputs, Status: status})
   s = state
   s.Buffers[k] = text.WithBlocks(if value.Len(shown) == 0 and value.IsMissing(graph) kept else list.SortBy(x -> x.Line, list.Append(made, kept)) end, b)
   s
@@ -388,7 +411,9 @@ defn graphOf(ran, state)
   if value.IsSome(fault)
     return {Fault: "This graph isn't drawn: $fault."}
   end
-  dict.Put("Key", v.Key, Prepared(v.Scene, commands.Home(state)))
+  g = dict.Put("Key", v.Key, Prepared(v.Scene, commands.Home(state)))
+  (* An animation starts paused on its first frame, as at each run of its cell. *)
+  if dict.Has("Frames", v.Scene) dict.Merge(g, {Frames: v.Scene.Frames, Fps: v.Scene.Fps, Frame: 1, Playing: false, Due: 0.0, Times: [], Want: missing}) else g end
 end
 
 (** The words of a cell that runs, with the seconds so far. *)
@@ -630,7 +655,7 @@ defn widened(k, state)
       return withBlock(k, pending.Cell, dict.GetOr("Base", old.Lines, old), s, graph = dict.Put("Fixed", true, old.Graph), inputs = dict.GetOr("Inputs", {}, old),
         status = dict.GetOr("Status", missing, old))
     end
-    return withBlock(k, pending.Cell, dict.GetOr("Base", old.Lines, old), s, graph = dict.Put("Key", old.Graph.Key, Prepared(scene.Value, commands.Home(s))),
+    return withBlock(k, pending.Cell, dict.GetOr("Base", old.Lines, old), s, graph = dict.Merge(old.Graph, Prepared(scene.Value, commands.Home(s))),
       inputs = dict.GetOr("Inputs", {}, old), status = dict.GetOr("Status", missing, old))
   end
   x = stale(b, state)
@@ -640,7 +665,8 @@ defn widened(k, state)
   one = r.Session
   key = x.Graph.Key
   width = GraphWidth(state)
-  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width)), Cell: x.Cell}
+  frame = dict.GetOr("Frame", 1, x.Graph)
+  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame)), Cell: x.Cell}
   withRun(k, r, state)
 end
 
@@ -918,6 +944,11 @@ defn answered(k, state)
     after = appended("$words$(graph.Fault)\n$Prompt", b)
     graph = missing
   end
+  if isAnimation(graph)
+    (* *repl* shows the first frame of an animation: a cell plays it, with its bar. *)
+    after = appended("$(words)an animation of $(graph.Frames) frames at $(rateText(graph.Fps)) a second: its first; a cell plays it\n$Prompt", b)
+    graph = {Scene: graph.Scene, Font: graph.Font, Key: graph.Key}
+  end
   if value.IsSome(graph)
     (* The graph under the last line of the answer, above the new prompt. *)
     under = rope.LineCount(after.Rope) - 1
@@ -1054,7 +1085,7 @@ defn restaled(k, state)
         out = list.Append(x, out)
       else
         changed = true
-        out = list.Append(dict.Merge(Block(x.Line, lines, state.Cell, graph = x.Graph), {Cell: x.Cell, Base: x.Base, Inputs: inputs, Status: dict.GetOr("Status", missing, x)}), out)
+        out = list.Append(dict.Merge(resultBlock(k, x.Cell, x.Line, lines, x.Graph, state), {Base: x.Base, Inputs: inputs, Status: dict.GetOr("Status", missing, x)}), out)
       end
     end
   end
@@ -1248,21 +1279,26 @@ defn unjoined(k, state)
 end
 
 defn FocusControl(state)
-  (** C-c e f: gives the keys to the first slider of the cell of the cursor: the arrows move it a step, the pages ten, Home and End to its min and its
-      max, Tab and S-Tab go to the next slider of the cell and the previous one, and C-g, a click in the text or any other key leaves it. *)
+  (** C-c e f: gives the keys to the first control of the cell of the cursor. A slider: the arrows move it a step, the pages ten, Home and End to its
+      min and its max, Tab and S-Tab go to the next slider of the cell and the previous one. The bar of an animation: Space plays it or pauses it, the
+      arrows go a frame back or on, the pages ten, Home and End to the first frame and the last. C-g, a click in the text or any other key leaves it. *)
   k = state.Current
   b = state.Buffers[k]
   if not IsCells(b)
-    return commands.Say("This buffer has no cell: C-c e f gives the keys to a slider of a cell.", state)
+    return commands.Say("This buffer has no cell: C-c e f gives the keys to a slider or an animation of a cell.", state)
   end
   s = fresh(k, state)
   r = runOf(s.Buffers[k])
   i = CellAt(b.Cursor.Line, r.Cells)
   all = dict.GetOr("Sliders", [], r.Analysis[i])
-  if value.Len(all) == 0
-    return commands.Say("This cell has no slider: name = cells.Slider(value, min, max) on a line of a cell of its own makes one.", s)
+  if value.Len(all) > 0
+    return focusedOn(k, all[1].Name, s)
   end
-  focusedOn(k, all[1].Name, s)
+  bar = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i and isAnimation(dict.GetOr("Graph", missing, x)), text.BlocksOf(s.Buffers[k]))
+  if value.IsSome(bar)
+    return barFocusedOn(k, bar.Graph.Key, s)
+  end
+  commands.Say("This cell has no control: a slider, name = cells.Slider(value, min, max) on a line of a cell of its own, or an animation of plot.Frames.", s)
 end
 
 (* -- A move: the number written in the buffer, then the session told, the latest value winning. *)
@@ -1361,8 +1397,8 @@ defn pushed(k, name, number, state)
   setting(k, name, number, state)
 end
 
-(** Does a question to the session other than a run wait for its answer, a Set or a scene: one at a time, so that each gets its own. *)
-asking(r) = value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsSome(dict.GetOr("Rescene", missing, r))
+(** Does a question to the session other than a run wait for its answer, a Set, a scene or a frame: one at a time, so that each gets its own. *)
+asking(r) = value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsSome(dict.GetOr("Rescene", missing, r)) or value.IsSome(dict.GetOr("Framing", missing, r))
 
 defn setting(k, name, number, state)
   (** The state with the Set of a slider's number running in a fiber: no cell starts until it answers, so that the cells run with the number set. *)
@@ -1467,15 +1503,330 @@ defn dropped(r)
   out
 end
 
+(* ---- Animations: a graph of plot.Frames shows one frame at a time, over a bar, ▶ 12 / 120, that plays it at its rate. Its frames come from the
+   session one at a time, cells.Scene with the frame: the next one is asked while one shows and kept ahead until its time, so that an animation never
+   crosses whole and at most two of its frames are in memory. No frame is skipped: one late to come shows late, and the bar says the rate it plays
+   at. An animation starts paused on its first frame, as at each run of its cell, and plays only while it is on the screen. Its state is in its graph,
+   {Frames, Fps, Frame, Playing, Due, Times, Want}: the frame shown, when the next one is due, when the last ones showed, and a frame asked for. *)
+
+defn BarPlaces(width, frames, cell)
+  (** The places of the parts of an animation's bar in its block, in pixels from its left, for a block width pixels wide: {Label, Track, Wide, Rate},
+      the label ▶ 12 / 120, the track and its width, and the rate after it.
+
+        BarPlaces(1000, 120, {Width: 8, Height: 19}).Track --> 120 *)
+  label = 2 * cell.Width
+  track = label + (2 * value.Len("$frames") + 7) * cell.Width
+  wide = list.Max(80, list.Min(480, width - track - 16 * cell.Width))
+  {Label: label, Track: track, Wide: wide, Rate: track + wide + 2 * cell.Width}
+end
+
+(** A rate as the bar writes it: 30, 30 for 30.0 too, or 7.25. *)
+rateText(fps) = if value.IsFloat(fps) and fps == math.Floor(fps) "$(math.Div(fps, 1))" else "$fps" end
+
+defn RateWords(graph)
+  (** What the bar of an animation says of its rate: its own, 30/s, or, while it plays slower, the rate of the frames it showed in the last second,
+      18/s of 30.
+
+        RateWords({Fps: 30, Playing: true, Times: [0.0, 0.1, 0.2, 0.3]}) --> "10/s of 30" *)
+  ts = graph.Times
+  n = value.Len(ts)
+  if graph.Playing and n >= 3 and ts[n] > ts[1]
+    real = (n - 1) / (ts[n] - ts[1])
+    if real < graph.Fps * 0.95
+      return "$(math.Div(math.Round(real), 1))/s of $(rateText(graph.Fps))"
+    end
+  end
+  "$(rateText(graph.Fps))/s"
+end
+
+defn BarItems(graph, focused, width, top, cell, th)
+  (** What draws the bar of an animation, top pixels down its block: ▶ while it is paused or ‖ while it plays, the frame shown and their count, a track
+      in the color of lines with its thumb in ink at the frame, the rate, and a ring of 2 pixels in the accent color while it has the keys.
+
+        value.Len(BarItems({Frame: 1, Frames: 3, Fps: 30, Playing: false, Times: []}, false, 800, 0, {Width: 8, Height: 19}, {Ink: 1, Line: 2, Muted: 3, Accent: 4})) --> 4 *)
+  p = BarPlaces(width, graph.Frames, cell)
+  mid = math.Div(cell.Height, 2)
+  at = if graph.Frames <= 1 0 else math.Div((graph.Frame - 1) * (p.Wide - 8), graph.Frames - 1) end
+  sign = if graph.Playing "‖" else "▶" end
+  out = [{Kind: "text", X: p.Label, Y: top, Text: "$sign $(graph.Frame) / $(graph.Frames)", Color: th.Ink, Font: "code"},
+    {Kind: "rect", X: p.Track, Y: top + mid - 1, Width: p.Wide, Height: 2, Color: th.Line},
+    {Kind: "rect", X: p.Track + at, Y: top + 3, Width: 8, Height: cell.Height - 6, Color: th.Ink},
+    {Kind: "text", X: p.Rate, Y: top, Text: RateWords(graph), Color: th.Muted, Font: "code"}]
+  if not focused
+    return out
+  end
+  left = p.Label - 6
+  wide = p.Track + p.Wide + 6 - left
+  list.Concat(out, [{Kind: "rect", X: left, Y: top, Width: wide, Height: 2, Color: th.Accent}, {Kind: "rect", X: left, Y: top + cell.Height - 2, Width: wide, Height: 2, Color: th.Accent},
+    {Kind: "rect", X: left, Y: top, Width: 2, Height: cell.Height, Color: th.Accent}, {Kind: "rect", X: left + wide - 2, Y: top, Width: 2, Height: cell.Height, Color: th.Accent}])
+end
+
+(** Does the bar of the animation of a graph in buffer k have the keys? *)
+barFocused(k, graph, state) = isAnimation(graph) and value.IsSome(commands.FocusOf(state)) and dict.GetOr("Bar", missing, commands.FocusOf(state)) == graph.Key and dict.GetOr("Buffer", 0, commands.FocusOf(state)) == k
+
+(** The block of buffer k that shows the animation of a key, or missing. *)
+animOf(k, key, state) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) > 0 and isAnimation(dict.GetOr("Graph", missing, x)) and x.Graph.Key == key, text.BlocksOf(state.Buffers[k]))
+
+(** The state with the block x of buffer k showing a graph, its lines as they were. *)
+withGraph(k, x, graph, state) = withBlock(k, x.Cell, dict.GetOr("Base", x.Lines, x), state, graph = graph, inputs = dict.GetOr("Inputs", {}, x), status = dict.GetOr("Status", missing, x))
+
+(** Where the bar of an animation's block starts, in pixels down the block: under its lines and its graph. *)
+barTop(x, cell) = (value.Len(x.Lines) + math.Div(x.Graph.Scene.Height + 8 + cell.Height - 1, cell.Height)) * cell.Height
+
+defn onScreen(k, x, state)
+  (** Is the block x of buffer k on the screen: its buffer shown in a pane, and its line among those the window has room for from the pane's top? *)
+  tree = panes.Tree(state)
+  rows = math.Div(state.Height, state.Cell.Height)
+  for j in 1..panes.Count(tree)
+    leaf = panes.At(j, tree)
+    active = j == panes.Active(state)
+    if (if active state.Current else leaf.Buffer end) == k
+      top = if active or value.IsMissing(leaf.View) state.Buffers[k].Top else leaf.View.Top end
+      if x.Line >= top and x.Line <= top + rows
+        return true
+      end
+    end
+  end
+  false
+end
+
+defn playing(k, state)
+  (** Does an animation of buffer k need ticks: one plays on the screen, or a frame asked for isn't shown yet? Not without a session, which no frame
+      would come from. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Session)
+    return false
+  end
+  for x in text.BlocksOf(state.Buffers[k])
+    if dict.GetOr("Cell", 0, x) > 0 and isAnimation(dict.GetOr("Graph", missing, x)) and ((x.Graph.Playing and onScreen(k, x, state)) or value.IsSome(x.Graph.Want))
+      return true
+    end
+  end
+  false
+end
+
+defn played(k, state)
+  (** The state at a tick for the animations of buffer k: the frame asked of the session kept ahead once it came, and each animation moved on when its
+      next frame is due, or to the frame asked for. *)
+  s = landed(k, state)
+  r = runOf(s.Buffers[k])
+  shown = [x.Graph.Key for x in text.BlocksOf(s.Buffers[k]) if dict.GetOr("Cell", 0, x) > 0 and isAnimation(dict.GetOr("Graph", missing, x))]
+  aheads = dict.GetOr("Ahead", {}, r)
+  if value.Len(aheads) > 0
+    (* The frames ahead of an animation that a run or a clear took away go. *)
+    kept = {}
+    for name in dict.Keys(aheads)
+      if aheads[name].Key in shown
+        kept[name] = aheads[name]
+      end
+    end
+    r.Ahead = kept
+    s = withRun(k, r, s)
+  end
+  for key in shown
+    s = advanced(k, key, s)
+  end
+  s
+end
+
+defn landed(k, state)
+  (** The state once the frame asked in buffer k came: kept ahead of its animation, at the width it was drawn at. A frame that can't come, or isn't
+      sane, pauses its animation, which says why. *)
+  r = runOf(state.Buffers[k])
+  f = dict.GetOr("Framing", missing, r)
+  if value.IsMissing(f)
+    return state
+  end
+  got = fiber.Wait(f.Task, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  r.Framing = missing
+  s = withRun(k, r, state)
+  scene = if result.IsOk(got) got.Value else got end
+  x = animOf(k, f.Key, s)
+  if value.IsMissing(x)
+    return s
+  end
+  why = if result.IsErr(scene) scene.Error.Message else SceneFault(scene.Value) end
+  count = if value.IsMissing(why) dict.GetOr("Frames", missing, scene.Value) else missing end
+  if value.IsMissing(why) and count != x.Graph.Frames
+    why = if value.IsMissing(count) "it is no frame of an animation" else "it has $count frames, not $(x.Graph.Frames)" end
+  end
+  if value.IsSome(why)
+    g = x.Graph
+    g.Playing = false
+    g.Want = missing
+    return commands.Say("This animation stops: its frame $(f.Frame) can't be drawn, as $why. C-c e e runs its cell again.", withGraph(k, x, g, s))
+  end
+  r.Ahead = dict.Put("$(f.Key)", {Key: f.Key, Frame: f.Frame, Width: f.Width, Graph: Prepared(scene.Value, commands.Home(s))}, dict.GetOr("Ahead", {}, r))
+  withRun(k, r, s)
+end
+
+defn advanced(k, key, state)
+  (** The state with the animation of a key in buffer k moved on: to its next frame once it is due, if it plays and shows, or to the frame asked for;
+      shown from the frame ahead when it is that one at the pane's width, else asked of the session. *)
+  x = animOf(k, key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  g = x.Graph
+  want = if g.Playing math.Mod(g.Frame, g.Frames) + 1 else g.Want end
+  if value.IsMissing(want)
+    return state
+  end
+  r = runOf(state.Buffers[k])
+  width = GraphWidth(state)
+  aheads = dict.GetOr("Ahead", {}, r)
+  ahead = dict.GetOr("$key", missing, aheads)
+  if value.IsMissing(ahead) or ahead.Frame != want or ahead.Width != width
+    return asked(k, key, want, width, state)
+  end
+  ng = dict.Merge(g, ahead.Graph)
+  ng.Frame = want
+  if g.Playing
+    now = sys.Now()
+    if now < g.Due or not onScreen(k, x, state)
+      return state
+    end
+    (* On time, the next frame keeps the beat; late by a frame or more, it counts from now: none is skipped to catch up. *)
+    ng.Due = if now - g.Due < 1.0 / g.Fps g.Due + 1.0 / g.Fps else now + 1.0 / g.Fps end
+    ng.Times = list.TakeLast(list.Max(3, math.Div(math.Ceil(g.Fps), 1) + 1), list.Append(now, g.Times))
+  else
+    ng.Want = missing
+  end
+  r.Ahead = dict.Drop("$key", aheads)
+  s = withGraph(k, x, ng, withRun(k, r, state))
+  if ng.Playing asked(k, key, math.Mod(want, g.Frames) + 1, width, s) else s end
+end
+
+defn asked(k, key, frame, width, state)
+  (** The state with a frame of the animation of a key asked of the session of buffer k, at a width, unless a question or a cell keeps it busy: the next
+      tick asks again. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r.Session) or value.IsSome(r.Task) or asking(r)
+    return state
+  end
+  one = r.Session
+  r.Framing = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame)), Key: key, Frame: frame, Width: width}
+  (* The fiber writes its question now, so that the session draws the frame while this one draws the frame before. *)
+  sys.Sleep(0)
+  withRun(k, r, state)
+end
+
+defn toggled(k, key, state)
+  (** The animation of a key in buffer k played from the frame it shows, or paused there. *)
+  x = animOf(k, key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  g = x.Graph
+  g.Playing = not g.Playing
+  g.Want = missing
+  g.Times = []
+  g.Due = sys.Now() + 1.0 / g.Fps
+  advanced(k, key, withGraph(k, x, g, state))
+end
+
+defn sought(k, key, frame, state)
+  (** The animation of a key in buffer k paused, and asked to show a frame. *)
+  x = animOf(k, key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  g = x.Graph
+  g.Playing = false
+  g.Times = []
+  g.Want = if frame == g.Frame missing else frame end
+  advanced(k, key, withGraph(k, x, g, state))
+end
+
+defn barMouse(key, action, point, state)
+  (** A press, a move or a release of the mouse on the block of an animation: a press on its bar gives it the keys, and on ▶ plays or pauses it, on its
+      track goes to the frame under the point, as a single pointer does (WCAG 2.5.7); a move with the button held drags it. A press on its graph or its
+      lines does nothing. *)
+  k = state.Current
+  x = animOf(k, key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  r = runOf(state.Buffers[k])
+  if action == "up"
+    r.Drag = missing
+    return withRun(k, r, state)
+  end
+  if action == "move" and dict.GetOr("Drag", missing, r) != "bar $key"
+    return state
+  end
+  p = BarPlaces(point.Width, x.Graph.Frames, state.Cell)
+  s = state
+  if action == "down"
+    top = barTop(x, state.Cell)
+    if point.Y < top or point.Y >= top + state.Cell.Height or point.X > p.Track + p.Wide + 6
+      return state
+    end
+    s = barFocusedOn(k, key, state)
+    if point.X < p.Track - 6
+      return toggled(k, key, s)
+    end
+  end
+  f = list.Max(0.0, list.Min(1.0, (point.X - p.Track - 4) / list.Max(1, p.Wide - 8)))
+  s = sought(k, key, 1 + math.Div(math.Round(f * (x.Graph.Frames - 1)), 1), s)
+  r = runOf(s.Buffers[k])
+  r.Drag = "bar $key"
+  withRun(k, r, s)
+end
+
+(** The rows of the band while an animation's bar has the keys. *)
+BarHints() = [{Key: "Space", Name: "play, pause", Group: false}, {Key: "← →", Name: "a frame", Group: false}, {Key: "PgUp PgDn", Name: "ten frames", Group: false},
+  {Key: "Home End", Name: "the first, the last", Group: false}, {Key: "C-g", Name: "leave", Group: false}]
+
+(** The keys of an animation's bar that has them, as WAI-ARIA's slider pattern has them: Space plays or pauses, the arrows go a frame back or on, the
+    pages ten, Home and End to the first frame and the last, Tab and S-Tab stay, as the bar is the only control of its cell, and C-g leaves. *)
+BarKeys() = {"space": st -> barKeyed(0, st), "right": barStep(1), "up": barStep(1), "left": barStep(-1), "down": barStep(-1), "pageup": barStep(10),
+  "pagedown": barStep(-10), "home": barStep(-1000), "end": barStep(1000), "tab": st -> st, "S-tab": st -> st, "C-g": commands.Unfocused}
+
+(** The command that moves the bar that has the keys by some frames. *)
+barStep(by) = state -> barKeyed(by, state)
+
+defn barKeyed(by, state)
+  (** The animation whose bar has the keys played or paused, for 0, or moved by some frames from the one shown or asked for, within its first and
+      its last. *)
+  f = commands.FocusOf(state)
+  k = f.Buffer
+  x = if k <= value.Len(state.Buffers) animOf(k, f.Bar, state) else missing end
+  if value.IsMissing(x)
+    return commands.Unfocused(state)
+  end
+  if by == 0
+    return toggled(k, f.Bar, state)
+  end
+  from = if value.IsSome(x.Graph.Want) x.Graph.Want else x.Graph.Frame end
+  sought(k, f.Bar, list.Max(1, list.Min(x.Graph.Frames, from + by)), state)
+end
+
+defn barFocusedOn(k, key, state)
+  (** The state with the keys on the bar of the animation of a key in buffer k, drawn with its ring, and the control that had them without. *)
+  s = commands.Unfocused(state)
+  s.Focus = {Keys: BarKeys(), Hints: BarHints(), Leave: st -> barDrawn(k, key, st), Buffer: k, Bar: key}
+  barDrawn(k, key, s)
+end
+
+defn barDrawn(k, key, state)
+  (** The state with the block of the animation of a key in buffer k drawn again, with its ring or without. *)
+  x = if k <= value.Len(state.Buffers) animOf(k, key, state) else missing end
+  if value.IsMissing(x) state else withGraph(k, x, x.Graph, state) end
+end
+
 (* ---- The hooks. *)
 
 defn tick(state)
-  (** The state at a tick: the results of each buffer's cells, its stops and its page, the answers of `*repl*`, the rows of a viewer, and the blocks moved
-      back under their cells once the text rests. *)
+  (** The state at a tick: the results of each buffer's cells, its stops and its page, the frames of its animations, the answers of `*repl*`, the rows
+      of a viewer, and the blocks moved back under their cells once the text rests. *)
   s = state
   for k in 1..value.Len(s.Buffers)
     if value.IsSome(runOf(s.Buffers[k]))
-      s = exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, s))))))
+      s = played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, s)))))))
     end
     if value.IsSome(replOf(s.Buffers[k]))
       s = answered(k, s)
@@ -1510,13 +1861,13 @@ defn busy(b)
   (** Does a buffer wait for its cells, a slider's Set, its stop, its page or its prompt? *)
   r = runOf(b)
   p = replOf(b)
-  (value.IsSome(r) and (value.IsSome(r.Task) or value.IsSome(r.Stopping) or value.IsSome(r.Html) or value.IsSome(dict.GetOr("Rescene", missing, r))
-    or value.IsSome(dict.GetOr("Setting", missing, r)))) or (value.IsSome(p) and value.IsSome(p.Task))
+  (value.IsSome(r) and (value.IsSome(r.Task) or value.IsSome(r.Stopping) or value.IsSome(r.Html) or asking(r))) or (value.IsSome(p) and value.IsSome(p.Task))
 end
 
-(** Do the cells need ticks: a cell runs, a slider's Set, a stop or a page is waited for, or a graph waits for the width of its pane? The sliders are
-    drawn again from the text at rest at the ticks the check of a file of Cesia asks for, as the results are put back under their cells. *)
-Moving(state) = list.Any([busy(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state))
+(** Do the cells need ticks: a cell runs, a slider's Set, a stop, a page or a frame is waited for, a graph waits for the width of its pane, or an
+    animation plays on the screen? The sliders are drawn again from the text at rest at the ticks the check of a file of Cesia asks for, as the results
+    are put back under their cells. A still animation takes no tick. *)
+Moving(state) = list.Any([busy(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state)) or list.Any([playing(k, state) for k in 1..value.Len(state.Buffers)])
 
 defn Hooked(config)
   (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs. *)

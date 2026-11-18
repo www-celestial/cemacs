@@ -1,0 +1,133 @@
+(** Checks of the animations of the cells against a real session of std/cells, on a file in a new folder under /tmp: the first frame and its bar after
+    a run, paused; Space plays it at its rate, each frame in turn and none skipped, and pauses it; the arrows go to a frame; a rerun of its cell starts
+    it again paused on frame 1; *repl* shows a first frame and says that a cell plays it. It is a script, not a test file: it needs permissions. Run it
+    from the root of cemacs with cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/anim-check.ce, CESIA the real path
+    of the cesia that runs it. It prints ok at the end and stops at the first failure. *)
+use core/commands
+use core/text
+use core/view
+use src/notebook
+use src/rope
+use src/ui
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+(** The run of the buffer of cells. *)
+runIn(s) = s.Buffers[1].CellRun
+
+(** One tick, as the editor gives one. *)
+ticked(s) = notebook.Hooked({}).Idle(s)
+
+defn settled(state)
+  (** The state once the cells stop moving, ticked as the editor ticks it, or a failure after ten seconds. *)
+  s = state
+  waited = 0.0
+  while notebook.Moving(s)
+    check(waited < 10.0, "the cells never ended")
+    sys.Sleep(0.005)
+    waited = waited + 0.005
+    s = ticked(s)
+  end
+  s
+end
+
+(** The block of the animation, the result of the cell Wave. *)
+anim(s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == 2, text.BlocksOf(s.Buffers[1]))
+
+(** The words of its bar. *)
+barWords(s) = [c.Text for c in anim(s).Draw(2000, look) if c.Kind == "text" and c.Font == "code"]
+
+(** The title its graph shows, the number of its frame. *)
+titleOf(s) = [i.Text for i in [c for c in anim(s).Draw(2000, look) if c.Kind == "graph"][1].Items if i.Kind == "text" and i.Role == "title"][1]
+
+(** A key of the bar that has the keys. *)
+press(chord, s) = commands.FocusOf(s).Keys[chord](s)
+
+look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/wave.ce"
+source = "use std/plot\n\n(* %% Wave *)\nplot.Frames([plot.Of([plot.Line([1, 2, 3], [k, 2 * k, k])], title = \"f $$k\") for k in 1..6], fps = 20)\n"
+_ = result.Unwrap(sys.Write(path, source))
+state = notebook.Hooked({}).Idle(commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720)))
+
+(* A run shows frame 1, paused, under its bar, and takes no tick at rest. *)
+ran = settled(notebook.RunAll(state))
+check(value.Equal(barWords(ran), ["▶ 1 / 6", "20/s"]), "the bar shows frame 1 of 6, paused: $(barWords(ran))")
+check(titleOf(ran) == "f 1", "the graph is frame 1: $(titleOf(ran))")
+check(not notebook.Moving(ran), "a paused animation takes no tick")
+
+(* Space plays it: each frame in turn, from 2 on, none skipped, looping after 6, near 20 a second. *)
+s = ran
+s.Buffers[1] = text.Place(4, 0, s.Buffers[1])
+s = notebook.FocusControl(s)
+check(commands.FocusOf(s).Bar == anim(s).Graph.Key, "C-c e f gives the keys to the bar")
+s = commands.Update({Kind: "text", Text: " "}, s)
+check(anim(s).Graph.Playing, "Space plays it")
+seen = [1]
+start = sys.Now()
+while sys.Now() - start < 1.0
+  sys.Sleep(0.004)
+  s = ticked(s)
+  f = anim(s).Graph.Frame
+  if f != list.Last(seen)
+    seen = list.Append(f, seen)
+    check(titleOf(s) == "f $f", "the graph shows the frame the bar says: $(titleOf(s)), $f")
+  end
+end
+for i in 2..value.Len(seen)
+  check(seen[i] == math.Mod(seen[i - 1], 6) + 1, "no frame is skipped: $seen")
+end
+check(value.Len(seen) >= 17 and value.Len(seen) <= 23, "about 20 frames show in a second: $(value.Len(seen) - 1)")
+check(str.EndsWith("/s", barWords(s)[2]), "the bar says the rate: $(barWords(s))")
+
+(* Space pauses it where it is; the arrows then go a frame on, and End to the last. *)
+s = press("space", s)
+still = anim(s).Graph.Frame
+s = settled(s)
+check(not anim(s).Graph.Playing and anim(s).Graph.Frame == still, "Space pauses it on its frame")
+
+s = settled(press("right", s))
+check(anim(s).Graph.Frame == list.Min(6, still + 1) and titleOf(s) == "f $(anim(s).Graph.Frame)", "right goes a frame on: $(titleOf(s))")
+s = settled(press("end", s))
+check(anim(s).Graph.Frame == 6 and titleOf(s) == "f 6" and barWords(s)[1] == "▶ 6 / 6", "End goes to the last frame: $(barWords(s))")
+
+(* A rerun of its cell starts it again paused, on frame 1. *)
+s = press("space", s)
+check(anim(s).Graph.Playing, "it plays again")
+s = commands.Unfocused(s)
+again = settled(notebook.RunCell(s))
+check(not anim(again).Graph.Playing and anim(again).Graph.Frame == 1 and titleOf(again) == "f 1", "a rerun starts it paused on frame 1")
+
+(* *repl* shows the first frame, and says that a cell plays it. *)
+r = notebook.OpenRepl(again)
+k = r.Current
+b = r.Buffers[k]
+r.Buffers[k] = text.ToFileEnd(text.InsertWords("plot.Frames([plot.Line([1, 2], [1, k]) for k in 1..4])", b))
+r = notebook.Enter(r)
+waited = 0.0
+while value.IsSome(r.Buffers[k].Repl.Task)
+  check(waited < 10.0, "*repl* never answered")
+  sys.Sleep(0.005)
+  waited = waited + 0.005
+  r = ticked(r)
+end
+words = rope.Text(r.Buffers[k].Rope)
+check(str.Contains("an animation of 4 frames at 30 a second: its first; a cell plays it", words), "*repl* says a cell plays it: $words")
+check(list.Any([dict.Has("Graph", x) and value.IsSome(x.Graph) and not dict.Has("Frames", x.Graph) for x in text.BlocksOf(r.Buffers[k])]), "*repl* draws the first frame, without a bar")
+
+_ = result.Unwrap(sys.Run("rm", ["-r", folder]))
+io.Print("ok")
