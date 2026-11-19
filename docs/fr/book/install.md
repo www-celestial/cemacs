@@ -23,13 +23,13 @@ La ligne `cesia` du `cesia.toml` de Cemacs nomme la plus ancienne version de Ces
 ```toml
 [project]
 name = "cemacs"
-cesia = "1.1"
+cesia = "1.2"
 src = ["core", "src", "user"]
 native = ["SDL3", "SDL3_ttf"]
 ```
 
-Un Cesia plus ancien s'arrête aussitôt, avec `This project needs Cesia 1.1 or later, and this is ...: run cesia upgrade.`
-(ce projet demande Cesia 1.1 ou plus, et celui-ci est en version ... : lancez cesia upgrade). `cesia version` dit laquelle
+Un Cesia plus ancien s'arrête aussitôt, avec `This project needs Cesia 1.2 or later, and this is ...: run cesia upgrade.`
+(ce projet demande Cesia 1.2 ou plus, et celui-ci est en version ... : lancez cesia upgrade). `cesia version` dit laquelle
 vous avez.
 
 ## SDL3 et SDL3_ttf
