@@ -171,12 +171,23 @@ chemins semblables, le plus court. [lists.Ranked] donne cet ordre ;
 | `C-x p g`, `C-c s p` | [ide.Search] | demande des mots, le nom sous le curseur d'abord, et liste chaque ligne du projet qui les contient |
 | `C-c r`, dans cette liste | | demande ce qui remplace les mots, puis un oui, et les remplace dans les lignes montrées |
 
-Le projet est le dépôt Git qui contient le fichier du buffer courant, comme pour `C-x p f` : voir
-[Fichiers et buffers](files.md#les-fichiers-dun-projet). La recherche est faite par [src/grep], que [src/ide] demande par
-`tools/grep.ce` : `git grep -F`, du texte fixe, jamais un motif, sans tenir compte de la casse quand les mots n'ont pas de
-capitale. Entrée va à la ligne et garde l'endroit quitté pour `M-,`, comme une liste de
-[références](names.md#les-références). `C-c r` remplace comme un [renommage](names.md#un-renommage) : chaque fichier ouvert,
-ses modifications en une étape d'annulation, enregistré s'il l'était.
+`C-x p g` est la touche du `project-find-regexp` d'Emacs, et `C-c s p` la place de la recherche dans un projet de Doom
+Emacs, `SPC s p`. Le projet est le dépôt Git qui contient le fichier du buffer courant, ou sinon le dossier où Cemacs a
+démarré, comme pour `C-x p f` : voir [Fichiers et buffers](files.md#les-fichiers-dun-projet). La recherche est faite par
+[src/grep], que [src/ide] demande par `tools/grep.ce` : il lance `git grep -n --column -I -z --no-color -F -e WORDS` depuis
+la racine du dépôt, dans une fiber, pour que l'éditeur continue pendant que git lit, et liste chaque ligne trouvée, 10 000 au
+plus, comme `path:line:column  the line`, la colonne étant la première place des mots dans la ligne. Les mots sont du texte
+fixe, `-F`, jamais un motif (pattern), et quand ils n'ont pas de capitale, la casse des lettres est mise de côté, `-i`,
+comme le fait `C-s`. Les fichiers sont ceux que git connaît : les fichiers suivis, sans les fichiers binaires, `-I`. Taper
+filtre la liste, et Entrée va à la ligne, en gardant l'endroit quitté pour `M-,`, comme le fait une liste de
+[références](names.md#les-références).
+
+`C-c r` dans la liste demande `Replace WORDS with: `, puis `Replace 3 places of WORDS in 1 files with NEW? (y or n)` : les
+places sont celles des mots dans les lignes que la liste montre à ce moment, si bien qu'un filtre tapé d'abord limite le
+remplacement aux lignes qu'il garde. Après `y`, les modifications sont faites comme les fait un
+[renommage](names.md#un-renommage) : chaque fichier ouvert s'il ne l'est pas, ses modifications en une étape d'annulation,
+enregistré de nouveau s'il était enregistré avant ; un buffer qui a des changements à lui reste non enregistré, et une ligne
+qui ne contient plus les mots est laissée. La casse des nouveaux mots est celle qui est tapée.
 
 ## Les touches
 

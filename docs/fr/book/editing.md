@@ -248,11 +248,22 @@ comme avant, et ne complète pas. [Vitesse](performance.md#la-completion) donne 
 
 ## Les formes de Cesia
 
-Le groupe `i`, insert (insérer), de `C-c` écrit les formes de Cesia, chacune à l'indentation de sa place, le curseur là où
-va son nom : `C-c i d` une fonction, `C-c i s` une struct, `C-c i f` une boucle, `C-c i m` un match, `C-c i t` une fonction
-de test, `C-c i c` le marqueur d'une cell (une cellule de code), comme `C-c e i` ([Cells et résultats](cells.md)). Les formes viennent de
-[src/snippets], par `tools/snippets.ce`, comme les autres questions de [src/ide](names.md#comment-lide-demande) :
-[ide.InsertDefn], [ide.InsertStruct], [ide.InsertFor], [ide.InsertMatch], [ide.InsertTest], [notebook.InsertCell].
+Le groupe `i`, insert (insérer), de `C-c` écrit les formes de Cesia dont un programme est fait, chacune à l'indentation de
+sa place, le curseur là où va son nom ou son premier mot : sur la ligne du curseur quand elle est vide, sinon sur une
+nouvelle ligne après elle.
+
+| Touches | Commande | Ce qu'elle écrit |
+|---|---|---|
+| `C-c i d` | [ide.InsertDefn] | `defn ()`, une ligne pour sa documentation, une ligne vide et `end`, le curseur là où va le nom |
+| `C-c i s` | [ide.InsertStruct] | `struct `, une ligne pour un champ et `end` |
+| `C-c i f` | [ide.InsertFor] | `for  in `, une ligne vide et `end`, le curseur là où va le nom de la variable de la boucle |
+| `C-c i m` | [ide.InsertMatch] | `match `, un cas `->`, `else ->` et `end` |
+| `C-c i t` | [ide.InsertTest] | `defn is()`, une ligne vide et `end` : une fonction de test, son nom après `is` |
+| `C-c i c` | [notebook.InsertCell] | le marqueur d'une cell (une cellule de code), comme `C-c e i` : [Cells et résultats](cells.md) |
+
+Les formes viennent de [src/snippets], par `tools/snippets.ce`, un programme qui n'a besoin d'aucune permission, comme les
+autres questions de [src/ide](names.md#comment-lide-demande) ; Cemacs écrit le texte et donne à chaque ligne l'indentation
+que lui donne Tab.
 
 ## Effacer
 

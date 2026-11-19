@@ -48,7 +48,7 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | Message | Ce qui s'est passé |
 |---|---|
 | `No answer before this one.`, `No answer after this one.` | `M-p` ou `M-n` au bout des réponses données à la question |
-| `{no match}`, après la réponse | Tab dans `Find file: ` n'a trouvé aucune entrée du dossier qui corresponde |
+| `{no match}`, après la réponse | Tab dans `Find file: ` n'a trouvé aucune entrée du dossier qui corresponde à la dernière partie de la réponse |
 
 ### Fichiers et buffers
 
@@ -139,29 +139,31 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | Message | Ce qui s'est passé |
 |---|---|
 | `Names are those of a file of Cesia.` | `M-.`, `M-?`, `C-c c i` ou `C-c c m` dans un buffer qui n'est pas un fichier `.ce` enregistré, ou dans une liste |
-| `No definition or documentation found here.` | `M-.` ou `C-c c i` là où `cesia lsp` ne trouve ni définition ni documentation |
+| `No definition or documentation found here.` | `M-.` ou `C-c c i` là où `cesia lsp` ne trouve ni définition ni documentation : pas de nom, ou une variable locale, ou un paramètre |
 | `No definition found here, in the project or in std/.` | `M-?` sur un tel nom |
 | `No definition found here in the project: a name of std/, or a local, can't be renamed.` | `C-c c m` sur un nom que le projet ne définit pas |
 | `cesia lsp doesn't start: REASON` | `cesia` n'a pas pu lancer son serveur de langage : est-il dans le `PATH` ? |
 | `cesia lsp ended, code N: the next question starts it again.` | le serveur de langage a fini pendant qu'une question attendait |
 | `No place to go back to.` | `M-,` sans endroit sur la pile |
-| `N places.`, `N places (by name: a method).` | la liste de `M-?` ; une méthode est trouvée par son nom : [Noms](names.md#les-références) |
-| `..., N files don't read.` | des fichiers du projet ne se lisent pas, et leurs endroits ne sont pas listés |
+| `N places.`, `N places (by name: a method).` | la liste de `M-?` ; une méthode est trouvée par son nom, chaque `.NAME` du projet : [Noms](names.md#les-références) |
+| `..., N files don't read.` | des fichiers du projet ne se lisent pas, et leurs endroits ne sont donc pas listés : ouvrez-les, la vérification montre pourquoi |
 | `Nothing reads NAME.` | le nom est défini, et rien ne le lit |
-| `The program failed: WORDS` | un programme de [src/ide](names.md#comment-lide-demande) n'a pas répondu en JSON, ou a fini sur une erreur |
+| `The program failed: WORDS` | un programme de [src/ide](names.md#comment-lide-demande) n'a pas répondu en JSON, ou a fini sur une erreur : WORDS est la première ligne qu'il a écrite |
 | `cesia can't run: REASON` | `cesia` n'a pas pu démarrer : est-il dans le `PATH` ? |
 | `The program gave no place.`, `... no list.`, `... no edits.`, `... no marks.`, `The program asked nothing.` | la réponse n'avait pas la forme que src/ide lit, ce qu'il vérifie avant d'ouvrir un fichier ou de changer un buffer |
-| `The program asked a run that isn't one of tests.` | une réponse a demandé de lancer autre chose que `cesia test` : refusé |
+| `The program asked a run that isn't one of tests.` | une réponse a demandé de lancer autre chose que `cesia test`, ou est venue d'un autre programme que celui des tests : refusé |
 | `No program answers NAME.` | une question a nommé un programme que src/ide ne lance pas |
 | `No name.` | Entrée sur une réponse vide à `Rename NAME to: ` |
-| `NAME is a method: ...` | une méthode ou un champ ne se renomme pas |
+| `NAME is a method: its calls ... can't be told from those of other methods of the name.` | une méthode ou un champ ne se renomme pas |
 | `NEW is not a name: a letter, then letters and digits.` | le nouveau nom a un autre caractère, ou est un mot de Cesia |
 | `NEW would be public: ...`, `NEW would be private: ...` | un renommage garde la casse de la première lettre, qui dit en Cesia si un nom est public |
 | `NEW is defined already, at PATH:LINE.` | le package a déjà ce nom |
-| `NEW would be another name at PATH:LINE: choose another one.` | à cette ligne, une variable locale du nouveau nom prendrait la place du nom renommé |
-| `PATH doesn't read: fix it first, so that its places of NAME are known.` | un fichier du projet ne se lit pas : un renommage laisserait ses endroits |
-| `Renamed NAME to NEW: N files saved.` | le renommage est fait |
+| `NEW would be another name at PATH:LINE: choose another one.` | à cette ligne, une variable locale ou un paramètre du nouveau nom prendrait la place du nom renommé |
+| `PATH doesn't read: fix it first, so that its places of NAME are known.` | un fichier du projet qui lit le package ne se lit pas (il ne passe pas le parser) : un renommage laisserait ses endroits |
+| `Renamed NAME to NEW: N files saved.` | le renommage est fait ; `, N left unsaved, with changes of their own` et `, N changed since, left as they are` disent les fichiers qu'il n'a pas enregistrés ou pas changés |
 | `Not renamed.` | `n` à la question d'un renommage |
+| `Saved PATH as typed: WORDS` | le texte d'un fichier de Cesia ne se lit pas, donc `cesia fmt` l'a laissé, et il a été enregistré tel qu'il est tapé ; WORDS dit pourquoi |
+| `cesia fmt has no place to write: REASON`, `cesia fmt can't run` | l'enregistrement d'un fichier de Cesia n'a pas pu passer par `cesia fmt` : il a été enregistré tel qu'il est tapé |
 
 ### Le shell et les formes
 
@@ -170,7 +172,8 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `SHELL in FOLDER: each line after $ runs at Enter.` | `C-c o t` a lancé le shell : [Le shell](shell.md) |
 | `The shell doesn't start: REASON` | `cesia` n'a pas pu lancer `tools/shell.ce`, ou celui-ci le shell |
 | `The shell ended: close this buffer, and C-c o t starts another.` | Entrée après la fin du shell, comme après `exit` |
-| `Nothing to write here.` | `C-c i` dans une liste |
+| `[the shell ended, code N]`, dans le buffer | le shell a fini, avec cet exit code (le nombre qu'un programme rend en finissant) |
+| `Nothing to write here.` | `C-c i` dans une liste, ou une forme qui n'a pas la bonne forme |
 | `Only the forms of C-c i are written by an answer.` | la réponse d'un autre programme a demandé d'écrire du texte : refusé |
 
 ### Exécuter et déboguer

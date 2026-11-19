@@ -154,9 +154,11 @@ Une question qui attend `y` ou `n`, comme `Text not saved. Quit anyway? (y or n)
 majuscule ou en minuscule, et ignore les autres ; `C-g` la ferme sans réponse. Toute autre question se termine par Enter.
 
 Chaque réponse donnée avec Enter est gardée, les 100 dernières de chaque question, comme l'historique du minibuffer d'Emacs :
-dans une question, `M-p` ramène la réponse donnée avant à la même question, et `M-n` va dans l'autre sens, jusqu'à ce que
-vous aviez tapé. Dans `Find file: ` et `Save as: `, Tab complète le nom d'un fichier : voir
-[Fichiers et buffers](files.md#ouvrir-un-fichier).
+dans une question, `M-p` ramène la réponse donnée avant à la même question, celle d'avant encore au `M-p` suivant, et
+`M-n` va dans l'autre sens, jusqu'à ce que vous aviez tapé ; à un bout, la prompt line dit `No answer before this one.` ou
+`No answer after this one.` Une question est reconnue à ses mots : `Find file: ` a donc ses propres réponses, et
+`Search project: ` les siennes. Dans `Find file: ` et `Save as: `, Tab complète le nom d'un fichier : voir
+[Fichiers et buffers](files.md#ouvrir-un-fichier). L'historique dure jusqu'à la fin de Cemacs.
 
 ## La bande des hints
 

@@ -528,11 +528,40 @@ Elle tourne dans son propre processus, depuis une fiber : l'éditeur ne l'attend
 ## Les questions de src/ide
 
 Les touches de [Noms](names.md), de [la recherche dans un projet](search.md#chercher-dans-un-projet), de [Git](git.md) et
-des [tests](running.md#les-tests) demandent chacune un programme, que Cesia démarre, charge et lance : le coût d'une touche
-est ce processus, en arrière-plan, jamais une touche qui tape. Mesuré sur le code de Cemacs, $n = 21$, la médiane : une
-définition 0,80 ms et une documentation 0,70 ms, demandées à `cesia lsp` qui tourne depuis la première question, les [références](names.md#les-références) d'un nom lu dans 13 fichiers 154,6 ms,
-une recherche 11,2 ms, l'état de Git 11,6 ms. Le démarrage ne charge que [src/ide], 460 lignes, et 130 lignes de
-[core/commands] : 82,0 ms contre 79,1 ms pour le plus rapide de 21, la frappe 5,72 ms contre 5,86 ms par touche.
+des [tests](running.md#les-tests) demandent chacune soit à `cesia lsp`, qui tourne depuis la première d'entre elles, soit à
+un programme, que Cesia démarre, charge et lance : le coût d'une touche est ce message ou ce processus, en arrière-plan,
+jamais une touche qui tape. Chaque question telle que Cemacs la pose, sur le code de Cemacs lui-même, le nom `text.Place`
+dans la ligne `b = text.Place(at.Line, at.Column, current(s))` de `core/commands/commands.ce`, un fichier de 1 636 lignes,
+$n = 21$, chacune à son tour, la médiane et le plus rapide :
+
+| Question | Demandée à | Médiane | Le plus rapide |
+|---|---|---|---|
+| `M-.`, la définition | `cesia lsp`, qui tourne | 0,80 ms | 0,71 ms |
+| `C-c c i`, la documentation, et la signature d'un appel | `cesia lsp`, qui tourne | 0,70 ms | 0,65 ms |
+| la même après que le texte du buffer a changé : le serveur le relit | `cesia lsp`, qui tourne | 8,79 ms | 2,97 ms |
+| la première question de la session, le démarrage du serveur compris | `cesia lsp` | 20,6 ms, une fois | |
+| `M-?`, les références : 33 endroits dans 13 fichiers | `cesia lsp`, puis `tools/lookup.ce` | 154,6 ms | 123,8 ms |
+| `C-x p g`, les lignes qui contiennent `text.Place` | `tools/grep.ce` | 11,2 ms | 9,7 ms |
+| `C-x g`, l'état de Git | `tools/git.ce` | 11,6 ms | 10,5 ms |
+| `C-c g l`, le log | `tools/git.ce` | 15,6 ms | 14,1 ms |
+| `C-c t t`, quoi tester, avant que `cesia test` tourne | `tools/testing.ce` | 4,8 ms | 4,4 ms |
+
+Demandée à un programme à chaque touche, une définition prenait 17,2 ms, 16,0 au plus rapide : `cesia lsp`, qui tourne
+pour la session, répond vingt fois plus vite, et c'est la façon de Cesia lui-même de dire où un nom est défini. Environ 3 ms
+de chaque programme sont le démarrage de Cesia, et l'essentiel du reste le chargement de son package. Les références lisent
+chaque fichier du projet qui contient le nom, et chaque définition du haut d'un fichier qui le contient une fois de plus pour
+chacune de ses lectures, comme le dit [Noms](names.md#les-références) : c'est là que va leur temps, un sixième de seconde
+pour un nom lu dans 13 fichiers.
+
+Ces programmes et leurs packages tiennent environ 2 000 lignes de Cesia, que l'éditeur ne charge pas du tout à son
+démarrage. Construits d'abord comme des apps chargées au démarrage, ils le rendaient 8,7 ms plus long, le plus rapide de 21
+démarrages 96,5 ms contre 87,9 ms pour la version d'avant eux, car le chargement de Cesia croît plus vite que le code qu'il
+lit. Demandés à chaque touche, ils ne laissent au démarrage que leurs touches et l'app qui demande, [src/ide], 460 lignes,
+avec l'historique et la completion de la prompt, 130 lignes de [core/commands] : le démarrage le plus rapide 82,0 ms contre
+79,1 ms, la médiane 88,7 ms contre 85,1 ms, $n = 21$, chacun à son tour, le heavy lock tenu (le verrou qui fait passer les
+mesures une à une) sur une machine partagée avec d'autres travaux. Une touche tapée dans un fichier de Cesia de 2 000
+lignes, la mise à jour, la vue et la frame d'une fenêtre de 1280 sur 720 sans vsync, 21 échantillons de 50 touches :
+5,72 ms contre 5,86 ms, la même chose.
 
 ## Au repos
 

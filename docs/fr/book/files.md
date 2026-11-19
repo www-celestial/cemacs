@@ -18,8 +18,10 @@ chemin tel que le système le lit : à partir du dossier où Cemacs a démarré 
 pas votre dossier personnel. La prompt line accepte les lettres, Backspace, `C-y`, qui colle la première ligne du
 presse-papiers, Enter et `C-g`, et vous ne modifiez la réponse qu'à son bout. Tab complète le nom (la completion, l'aide qui
 finit un nom à partir des fichiers qui existent), comme dans Emacs : les noms du dossier qui commencent par la fin de la
-réponse la complètent aussi loin qu'ils s'accordent ; quand il en reste plusieurs, ils s'affichent après la réponse, comme
-`{color/ | commands/ | complete/}`. `M-p` et `M-n` reviennent aux fichiers déjà demandés, comme le dit
+réponse la complètent aussi loin qu'ils s'accordent, un dossier avec son `/` ; quand il en reste plusieurs, ils s'affichent
+après la réponse, comme `{color/ | commands/ | complete/}`, dix au plus. Quand aucun ne commence ainsi, les noms qui
+contiennent ses lettres dans l'ordre conviennent, comme le fait le filtre d'une liste : `nms` puis Tab donnent `names/`.
+`M-p` et `M-n` reviennent aux fichiers déjà demandés, comme le dit
 [La prompt line](windows.md#la-prompt-line).
 
 Un fichier s'ouvre dans un nouveau buffer, qui devient le buffer courant, celui que vous modifiez. Un fichier déjà ouvert
@@ -173,9 +175,12 @@ change pendant qu'il est ouvert, comme le ferait l'`auto-revert-mode` d'Emacs, e
 
 Un fichier de Cesia, un fichier `.ce`, est enregistré comme
 [`cesia fmt`](https://www-celestial.github.io/cesia-lang/commands.html) l'écrit : chaque ligne à l'indentation de ses blocs,
-pas d'espace en fin de ligne, pas deux lignes vides de suite. Le buffer prend ce texte, en une étape d'annulation : `C-/`
-rend ce que vous avez tapé. Un texte qui ne se lit pas est enregistré tel qu'il est tapé, et la prompt line dit pourquoi.
-Un enregistrement d'un fichier de 2 000 lignes prend 60 ms : [Vitesse](performance.md#coller-annuler-et-enregistrer).
+pas d'espace en fin de ligne, pas deux lignes vides de suite. Le texte va dans un fichier à lui dans `.cesia/fmt/` du
+dossier de Cemacs, `cesia fmt` le met en forme, et c'est le texte mis en forme qui est enregistré ; le buffer le prend
+aussi, en une étape d'annulation, si bien que `C-/` rend ce que vous avez tapé, le curseur sur sa ligne. Le fichier de
+`.cesia/fmt/` est effacé aussitôt. Un texte qui ne se lit pas, comme un texte où un crochet reste ouvert, est enregistré tel
+qu'il est tapé, et la prompt line dit `Saved PATH as typed:` et pourquoi `cesia fmt` l'a laissé. L'enregistrement d'un
+fichier de 2 000 lignes prend 60 ms par `cesia fmt`, 8 ms sans : [Vitesse](performance.md#coller-annuler-et-enregistrer).
 
 ### Enregistrer sous
 

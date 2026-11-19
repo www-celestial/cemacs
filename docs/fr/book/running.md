@@ -109,9 +109,13 @@ groupe de `C-c`, `t` pour test, de [src/ide], qui demande à [src/testing] quoi 
 | `C-c t a` | [ide.TestAll] | lance tous les tests du projet |
 | `C-c t r` | [ide.TestAgain] | relance les derniers tests, depuis n'importe quel buffer |
 
-Chacune lance `cesia test` comme `C-c c r` lance un programme, dans le dossier où Cemacs a démarré : dans `isTotal` de
-`src/shop/shop.test.ce`, `cesia test src/shop/shop.test.ce:isTotal` ; dans `src/shop/shop.ce`, `cesia test src/shop`, le
-package avec ses exemples et ses tests. Dans un test, `--> 5` dit ce que doit donner un exemple :
+Chacune lance `cesia test` comme `C-c c r` lance un programme, dans le dossier où Cemacs a démarré : `C-c t t` dans
+`isTotal` de `src/shop/shop.test.ce` lance `cesia test src/shop/shop.test.ce:isTotal`, qui lance ce test seul ; dans
+`src/shop/shop.ce`, `cesia test src/shop`, le package avec les exemples de sa documentation et ses tests ; `C-c t a` lance
+`cesia test`. Une fonction de test est trouvée comme la définition du haut du fichier la plus proche au-dessus du curseur,
+`isTotal() = ...` ou `defn isTotal()`, quand son nom est celui d'un test. La commande est la première ligne de la sortie,
+sous les panes, et un programme qui tourne est d'abord arrêté, comme pour `C-c c r`. Dans un test, `--> 5` dit ce que doit
+donner un exemple :
 
 ```cesia norun
 (** Twice.
@@ -120,10 +124,19 @@ package avec ses exemples et ses tests. Dans un test, `--> 5` dit ce que doit do
 Twice(x) = x * 2
 ```
 
-Quand les tests finissent, la prompt line dit le compte de `cesia test`, comme `1 passed, 2 failed`, et chaque échec devient
-une marque rouge sur sa ligne, dans le buffer de son fichier, comme les erreurs des [Erreurs dans les lignes](check.md) :
-`M-g n` y va, la vérification la garde, les tests suivants l'enlèvent. `cesia test` donne aux tests les permissions de
-`[test]` dans `cesia.toml`, et pas plus.
+Quand les tests finissent, la prompt line dit ce que `cesia test` a dit en dernier, comme `1 passed, 2 failed`, et chaque
+échec, une ligne de la sortie qui commence par le chemin d'un fichier de Cesia et une ligne, comme
+`src/a/a.ce:5: Twice(2) --> 5, got 4`, devient une marque rouge sur cette ligne, dans le buffer de ce fichier s'il en est un
+d'ouvert, avec les mots de l'échec et les deux lignes sous lui qui en disent plus, comme
+`isOne failed  Twice(1) == 3  | Twice(1) = 2`. Les marques sont celles des [Erreurs dans les lignes](check.md) : la mode
+line les compte, `M-g n` et `M-g p` y vont, la prompt line dit celle qui est sous le curseur. Une vérification du fichier les
+garde, une ligne que vous changez perd sa marque, comme celles de la vérification, et la série de tests suivante les enlève
+toutes. `C-c c o` montre la sortie sur le dernier échec, et Enter va à l'endroit qu'une ligne nomme, `(path:line)` sous un
+échec compris.
+
+`cesia test` donne à chaque test les permissions qu'il a par les règles de Cesia, un test lisant les fichiers de son projet
+et n'écrivant que dans son propre dossier, et celles qu'ajoute `allow` de `[test]` dans le `cesia.toml` du projet ; Cemacs
+n'en ajoute aucune.
 
 ## Déboguer
 
