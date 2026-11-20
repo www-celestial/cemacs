@@ -91,6 +91,8 @@ defn session(k, state)
   out = if value.IsMissing(r) newRun() else r end
   out.Session = s
   out.Values = {}
+  (* A new session numbers its outputs from 1, as a new kernel of Jupyter. *)
+  out.Runs = 0
   result.Ok(out)
 end
 
@@ -193,23 +195,33 @@ defn colorOf(role, th)
   end
 end
 
-defn Block(line, lines, cell, graph = missing, focused = false)
+defn Block(line, lines, cell, graph = missing, focused = false, out = missing, at = 0)
   (** A block of lines under a line, each {Role, Words}, with a thin bar on its left: drawn at the width of the pane, cut to it. A graph, {Key,
       Scene, Font}, comes under the lines, its scene drawn by sdl at its own width, 400 pixels high; an animation's has its bar under it, see BarItems,
-      and a 3D graph the line of its view, see ViewItems, each with a ring when focused.
+      and a 3D graph the line of its view, see ViewItems, each with a ring when focused. Out, a label as Out[3]:, marks a result as Jupyter does: the
+      lines after the first at ones, which are its status and its note, start after it, on its row, and the others under them; a result with no line
+      gives the label a row of its own, above its graph.
 
         Block(3, [{Role: "value", Words: "42"}], {Width: 8, Height: 19}).Rows --> 1 *)
+  alone = value.IsSome(out) and value.Len(lines) <= at
+  rowed = if alone list.Append({Role: "note", Words: out}, lines) else lines end
+  pad = if value.IsMissing(out) or alone 0 else value.Len(out) + 1 end
+  label = if value.IsMissing(out) or alone [] else [{At: at, Words: out}] end
   high = if value.IsMissing(graph) 0 else math.Div(graph.Scene.Height + 8 + cell.Height - 1, cell.Height) end
   bar = if isAnimation(graph) or isTurning(graph) 1 else 0 end
-  rows = list.Max(1, value.Len(lines) + high + bar)
-  top = value.Len(lines) * cell.Height + 4
-  under = (value.Len(lines) + high) * cell.Height
-  draw = (width, look) -> list.Concat(list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
-    [rowText(k - 1, "  $(fitted(lines[k].Words, width - 2 * cell.Width, cell))", colorOf(lines[k].Role, look.Theme), cell) for k in 1..value.Len(lines)]),
+  rows = list.Max(1, value.Len(rowed) + high + bar)
+  top = value.Len(rowed) * cell.Height + 4
+  under = (value.Len(rowed) + high) * cell.Height
+  draw = (width, look) -> list.Concat(list.Concat(list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
+    [lineText(k, rowed[k], if k > at pad else 0 end, width, look, cell) for k in 1..value.Len(rowed)]),
+    [rowText(l.At, "  $(l.Words)", colorOf("note", look.Theme), cell) for l in label]),
     if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font}] end),
     if bar == 0 [] else if isAnimation(graph) BarItems(graph, focused, width, under, cell, look.Theme) else ViewItems(graph, focused, top, under, cell, look.Theme) end)
-  {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Lines: lines}
+  {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Lines: lines, Out: out}
 end
+
+(** Line k of a block, {Role, Words}, pad columns after the bar's margin, cut to the width. *)
+lineText(k, l, pad, width, look, cell) = rowText(k - 1, "  $(str.Repeat(pad, " "))$(fitted(l.Words, width - (2 + pad) * cell.Width, cell))", colorOf(l.Role, look.Theme), cell)
 
 (** Is a graph of a block an animation, with its bar? *)
 isAnimation(graph) = value.IsSome(graph) and dict.Has("Frames", graph)
@@ -421,10 +433,10 @@ end
 (** The width that a graph under a cell takes in the pane being edited, in pixels: the pane's text width, past the bar of the block. *)
 GraphWidth(state) = list.Max(200, view.LayoutOf(state).Code.Width - view.Gutter - 8 - 2 * state.Cell.Width)
 
-defn resultBlock(k, i, line, lines, graph, state)
-  (** The block of the result of cell i of buffer k under a line: its lines and its graph; an animation's bar and a 3D graph take the mouse, and have
-      a ring while they have the keys. *)
-  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state)), {Cell: i})
+defn resultBlock(k, i, line, lines, graph, state, out = missing, at = 0)
+  (** The block of the result of cell i of buffer k under a line: its lines and its graph, and its label out after its first at lines, see Block; an
+      animation's bar and a 3D graph take the mouse, and have a ring while they have the keys. *)
+  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state), out = out, at = at), {Cell: i})
   if not (isAnimation(graph) or isTurning(graph))
     return made
   end
@@ -435,11 +447,11 @@ end
 (** The state with one block for cell i of buffer k, its lines and its graph, in place of those it had: see withParts. *)
 withBlock(k, i, lines, state, graph = missing, inputs = {}, status = missing) = withParts(k, i, [{Lines: lines, Graph: graph}], state, inputs = inputs, status = status)
 
-defn withParts(k, i, parts, state, inputs = {}, status = missing)
+defn withParts(k, i, parts, state, inputs = {}, status = missing, out = missing)
   (** The state with the blocks of cell i of buffer k in place of those it had: one for each part of its result, {Lines, Graph}, one under the other
       in their order, each numbered by its Part, or none for a cell that printed nothing and shows no value. Inputs are the sliders its result was
       computed with, by name, and their numbers: while the file writes another number, a note says so above the first part. A status, a line as waiting
-      or running…, goes there too, above the result, which stays. *)
+      or running…, goes there too, above the result, which stays. Out, a label as Out[3]:, marks the first part, after them. *)
   b = state.Buffers[k]
   r = runOf(b)
   kept = [x for x in text.BlocksOf(b) if dict.GetOr("Cell", 0, x) != i]
@@ -451,7 +463,8 @@ defn withParts(k, i, parts, state, inputs = {}, status = missing)
     lines = if j == 1 list.Concat(head, parts[j].Lines) else parts[j].Lines end
     if value.Len(lines) > 0 or value.IsSome(parts[j].Graph)
       first = j == 1
-      made = list.Append(dict.Merge(resultBlock(k, i, at, lines, parts[j].Graph, state), {Base: parts[j].Lines, Inputs: if first inputs else {} end,
+      label = if first out else missing end
+      made = list.Append(dict.Merge(resultBlock(k, i, at, lines, parts[j].Graph, state, out = label, at = if first value.Len(head) else 0 end), {Base: parts[j].Lines, Inputs: if first inputs else {} end,
         Status: if first status else missing end, Part: j}), made)
     end
   end
@@ -471,7 +484,7 @@ defn withStatus(k, i, status, state)
     return withBlock(k, i, [], state, status = status)
   end
   parts = [{Lines: dict.GetOr("Base", x.Lines, x), Graph: dict.GetOr("Graph", missing, x)} for x in old]
-  withParts(k, i, parts, state, inputs = dict.GetOr("Inputs", {}, old[1]), status = status)
+  withParts(k, i, parts, state, inputs = dict.GetOr("Inputs", {}, old[1]), status = status, out = dict.GetOr("Out", missing, old[1]))
 end
 
 (** Are two blocks the same part of the same cell? *)
@@ -481,7 +494,8 @@ defn rebuilt(k, x, graph, state)
   (** The state with block x of buffer k drawn again with another graph, in its place among the parts of its cell: its lines, its status and its note
       as they were. *)
   b = state.Buffers[k]
-  made = dict.Merge(resultBlock(k, x.Cell, x.Line, x.Lines, graph, state), {Base: dict.GetOr("Base", x.Lines, x), Inputs: dict.GetOr("Inputs", {}, x),
+  base = dict.GetOr("Base", x.Lines, x)
+  made = dict.Merge(resultBlock(k, x.Cell, x.Line, x.Lines, graph, state, out = dict.GetOr("Out", missing, x), at = value.Len(x.Lines) - value.Len(base)), {Base: base, Inputs: dict.GetOr("Inputs", {}, x),
     Status: dict.GetOr("Status", missing, x), Part: dict.GetOr("Part", 1, x)})
   s = state
   s.Buffers[k] = text.WithBlocks([if samePart(y, x) made else y end for y in text.BlocksOf(b)], b)
@@ -637,7 +651,9 @@ defn taken(k, state)
   ran = if result.IsOk(got) got.Value else got end
   (* A cell queued again while it ran keeps its result in sight for its next run. *)
   r.Keeping = [j for j in dict.GetOr("Keeping", [], r) if j != i or j in r.Queue]
-  s = withParts(k, i, resultParts(ran, state), withRun(k, r, state), inputs = dict.GetOr("Inputs", {}, r))
+  (* Each result is numbered as Jupyter numbers its outputs: the runs of the session so far, this one counted. *)
+  r.Runs = dict.GetOr("Runs", 0, r) + 1
+  s = withParts(k, i, resultParts(ran, state), withRun(k, r, state), inputs = dict.GetOr("Inputs", {}, r), out = "Out[$(r.Runs)]:")
   if result.IsErr(ran)
     r = dropped(r)
     r.Session = missing
@@ -675,6 +691,7 @@ defn stopped(k, state)
   if answer.Value.Restarted
     r = dropped(r)
     r.Values = {}
+    r.Runs = 0
     r.Task = missing
     r.Queue = []
     s = withRun(k, r, state)
@@ -1209,7 +1226,8 @@ defn restaled(k, state)
         out = list.Append(x, out)
       else
         changed = true
-        out = list.Append(dict.Merge(resultBlock(k, x.Cell, x.Line, lines, x.Graph, state), {Base: x.Base, Inputs: inputs, Status: dict.GetOr("Status", missing, x),
+        label = dict.GetOr("Out", missing, x)
+        out = list.Append(dict.Merge(resultBlock(k, x.Cell, x.Line, lines, x.Graph, state, out = label, at = value.Len(lines) - value.Len(x.Base)), {Base: x.Base, Inputs: inputs, Status: dict.GetOr("Status", missing, x),
           Part: dict.GetOr("Part", 1, x)}), out)
       end
     end

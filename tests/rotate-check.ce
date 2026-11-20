@@ -45,7 +45,7 @@ end
 hill(s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == 2, text.BlocksOf(s.Buffers[1]))
 
 (** The line of its view. *)
-viewLine(s) = [c.Text for c in hill(s).Draw(2000, look) if c.Kind == "text" and c.Font == "code"][1]
+viewLine(s) = [c.Text for c in hill(s).Draw(2000, look) if c.Kind == "text" and c.Font == "code" and not str.StartsWith("Out[", str.Trim(c.Text))][1]
 
 (** The places of the points of its mesh. *)
 places(s) = list.FindFirst(x -> x.Kind == "mesh", hill(s).Graph.Scene.Items).Xs

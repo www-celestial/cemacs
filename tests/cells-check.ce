@@ -40,7 +40,9 @@ defn settled(state)
 end
 
 (** The words of the blocks of a buffer, line by line, each with the line it is under. *)
-shown(b) = [{Line: k.Line, Words: [str.Trim(c.Text) for c in k.Draw(2000, look) if c.Kind == "text"]} for k in text.BlocksOf(b)]
+shown(b) = [{Line: k.Line, Words: [str.Trim(c.Text) for c in k.Draw(2000, look) if c.Kind == "text" and not str.StartsWith("Out[", str.Trim(c.Text))]} for k in text.BlocksOf(b)]
+(** The labels of the blocks of a buffer, as Out[3]:, each with its row in pixels. *)
+labels(b) = [[{Y: c.Y, Words: str.Trim(c.Text)} for c in k.Draw(2000, look) if c.Kind == "text" and str.StartsWith("Out[", str.Trim(c.Text))] for k in text.BlocksOf(b)]
 
 look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
 folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
@@ -57,6 +59,10 @@ blocks = shown(all.Buffers[all.Current])
 check(value.Len(blocks) == 3, "three cells drew a result: $(blocks)")
 check(blocks[1].Line == 10 and value.Equal(blocks[1].Words, ["sum", "60"]), "the sum prints and shows its value under its last line: $(blocks[1])")
 check(blocks[2].Words[1] == "a" and blocks[2].Words[3] == "20" and blocks[2].Words[5] == "3 rows", "a frame shows as a table: $(blocks[2])")
+marks = labels(all.Buffers[all.Current])
+sumTexts = [c for c in text.BlocksOf(all.Buffers[all.Current])[1].Draw(2000, look) if c.Kind == "text"]
+check(value.Equal(marks[1], [{Y: 0, Words: "Out[3]:"}]) and value.Equal(marks[2], [{Y: 0, Words: "Out[4]:"}]) and str.StartsWith("          sum", sumTexts[1].Text),
+  "each result has its Out label, numbered by the runs of the session, its lines after it: $(marks)")
 check(str.StartsWith("line 16: Name", blocks[3].Words[1]), "a name no cell defines is an error of the analysis: $(blocks[3])")
 
 (* C-c e e on the cell Data: it and the cells that read xs run again. *)
@@ -126,7 +132,7 @@ showing.Buffers[showing.Current] = text.InsertWords("\n(* %% Two *)\nuse std/cel
 showing = settled(notebook.RunCell(showing))
 partsOf = st -> [x for x in text.BlocksOf(st.Buffers[st.Current]) if dict.GetOr("Cell", 0, x) == dict.GetOr("Cell", 0, list.Last(text.BlocksOf(st.Buffers[st.Current])))]
 two = partsOf(showing)
-twoWords = [[str.Trim(c.Text) for c in x.Draw(2000, look) if c.Kind == "text"] for x in two]
+twoWords = [[str.Trim(c.Text) for c in x.Draw(2000, look) if c.Kind == "text" and not str.StartsWith("Out[", str.Trim(c.Text))] for x in two]
 check(value.Len(two) == 2 and value.Equal(twoWords, [["first"], ["then", "9"]]) and value.IsSome(dict.GetOr("Graph", missing, two[1])) and value.IsSome(dict.GetOr("Graph", missing, two[2])) and
   not value.Equal(two[1].Graph.Key, two[2].Graph.Key), "cells.Show draws its parts in order, each graph with its key: $(twoWords)")
 wide = showing

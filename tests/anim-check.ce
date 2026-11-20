@@ -49,7 +49,7 @@ end
 anim(s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == 2, text.BlocksOf(s.Buffers[1]))
 
 (** The words of its bar. *)
-barWords(s) = [c.Text for c in anim(s).Draw(2000, look) if c.Kind == "text" and c.Font == "code"]
+barWords(s) = [c.Text for c in anim(s).Draw(2000, look) if c.Kind == "text" and c.Font == "code" and not str.StartsWith("Out[", str.Trim(c.Text))]
 
 (** The title its graph shows, the number of its frame. *)
 titleOf(s) = [i.Text for i in [c for c in anim(s).Draw(2000, look) if c.Kind == "graph"][1].Items if i.Kind == "text" and i.Role == "title"][1]

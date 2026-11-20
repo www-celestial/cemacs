@@ -51,6 +51,12 @@ matrice comme sa forme et ses 10 × 10 premières valeurs, toute autre valeur co
 cell qui n'a rien affiché et ne donne aucune valeur ne dessine rien. Chaque partie est coupée à 40 lignes, la dernière
 disant combien il en reste.
 
+Chaque résultat commence par son étiquette, comme dans Jupyter : `Out[3]:` sur sa première rangée, en gris, les lignes du
+résultat après elle et alignées dessous, pour que ce qu'une cell a donné se distingue de son code. Le nombre compte les
+lancements de la session, celui-ci compris, et repart de 1 avec une nouvelle session ; un résultat qui commence par un
+graphe a l'étiquette sur une rangée à elle, au-dessus du graphe. Un état comme `running…` reste au-dessus de l'étiquette,
+et `*repl*` écrit ses réponses sans.
+
 Une cell montre plus que sa dernière valeur avec `cells.Show` de
 [std/cells](https://www-celestial.github.io/cesia-lang/cells.html), comme `display` dans Jupyter : chaque valeur qu'elle
 montre vient à sa place parmi ce que la cell affiche, un graphe, une table, une matrice ou un texte, puis la valeur de la

@@ -47,6 +47,11 @@ matrix as its shape and its first 10 × 10 values, any other value as its text. 
 seconds so far; the cells after it in the queue show `waiting`. A cell that printed nothing and gives no value draws
 nothing. Each part is cut at 40 lines, the last one saying how many more there are.
 
+Each result starts with its label, as in Jupyter: `Out[3]:` on its first row, in grey, the lines of the result after it and
+aligned under it, so that what a cell gave stands apart from its code. The number counts the runs of the session, this one
+included, and starts again at 1 with a new session; a result that starts with a graph has the label on a row of its own,
+above the graph. A status as `running…` stays above the label, and `*repl*` writes its answers without one.
+
 A cell shows more than its last value with `cells.Show` of
 [std/cells](https://www-celestial.github.io/cesia-lang/cells.html), as `display` does in Jupyter: each value it shows comes
 at its place among what the cell prints, a graph, a table, a matrix or a text, then the value of the last expression comes

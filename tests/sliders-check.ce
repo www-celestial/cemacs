@@ -51,7 +51,7 @@ defn shownIn(title, s)
   r = runIn(s)
   for x in text.BlocksOf(s.Buffers[1])
     if dict.GetOr("Cell", 0, x) > 0 and r.Cells[x.Cell].Title == title
-      return [str.Trim(c.Text) for c in x.Draw(2000, look) if c.Kind == "text"]
+      return [str.Trim(c.Text) for c in x.Draw(2000, look) if c.Kind == "text" and not str.StartsWith("Out[", str.Trim(c.Text))]
     end
   end
   missing
