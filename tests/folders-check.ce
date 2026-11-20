@@ -1,10 +1,14 @@
 (** Checks of the folders app against real folders, in a new folder under /tmp, with the trash where XDG_DATA_HOME says. It is a script, not a test file: it
-    needs permissions. tests/run.sh runs it with XDG_DATA_HOME in a new folder and cesia run --allow read,write,env=HOME,env=PWD,env=XDG_DATA_HOME. It prints ok
-    at the end and stops at the first failure. *)
+    needs permissions. tests/run.sh runs it with XDG_DATA_HOME in a new folder and cesia run --allow read,write,exec=cesia,exec=mkfifo,env=HOME,env=PWD,env=SHELL,
+    env=XDG_DATA_HOME: cesia runs tools/folders.ce, which runs the shell, gzip, tar and git for !, &, Z, c and =. It prints ok at the end and stops at the first
+    failure. *)
 use src/buffers
+use src/check as checker
+use core/commands
 use src/emacs
 use src/folders
 use core/lists
+use core/panes
 use core/press
 use src/rope
 use std/sys
@@ -30,14 +34,31 @@ end
 
 look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}
-withApps() = emacs.Config(() -> dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()))   (** The keys as src/cemacs.ce merges them. *)
+(** The keys as src/cemacs.ce merges them, with the hooks of the check and of &, in the order src/cemacs.ce gives them: the check's takes the place of any. *)
+withApps() = folders.Hooked(checker.Hooked(emacs.Config(() -> dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()))))
+(** The same, with deletions for good. *)
+forGood() = dict.Merge(withApps(), {DeleteToTrash: () -> false})
 here(state) = state.Buffers[state.Current]   (** The current buffer. *)
-names(state) = str.Join(",", list.Map(l -> str.Split(" ", l)[1], str.Lines(rope.Text(here(state).Rope))))   (** The first word of each row of the list. *)
+(** The names the list shows, a folder with its slash. *)
+names(state) = str.Join(",", [if i.IsDir "$(i.Name)/" else i.Name end for i in lists.Of(here(state)).Items])
+(** The mark column of each row. *)
+marks(state) = str.Join("", [str.Slice(1, 1, l) for l in str.Lines(rope.Text(here(state).Rope))])
 nameOf(state) = view.BufferName(here(state))   (** The name of the current buffer: for a list, its folder. *)
+read(path) = result.UnwrapOr("(none)", sys.Read(path))   (** The text of a file, or (none). *)
+modeOf(path) = result.Unwrap(sys.Stat(path)).Mode   (** The mode of a file. *)
+isLink(path) = result.IsOk(sys.ReadLink(path))   (** Is a path a symbolic link? *)
+defn on(name, state)
+  (** The state with the cursor of the list on the row of a name. *)
+  k = list.IndexOf(name, [i.Name for i in lists.Of(here(state)).Items])
+  check(not value.IsMissing(k), "$name is shown: $(names(state))")
+  s = state
+  s.Buffers[s.Current] = text.Place(k, 0, here(state))
+  s
+end
 
 defn removed(path)
-  (** Removes a file or a folder and all it holds. *)
-  if result.Unwrap(sys.Stat(path)).IsDir
+  (** Removes a file or a folder and all it holds, never through a link. *)
+  if not isLink(path) and result.Unwrap(sys.Stat(path)).IsDir
     for name in result.Unwrap(sys.List(path))
       removed("$path/$name")
     end
@@ -45,7 +66,20 @@ defn removed(path)
   result.Unwrap(sys.Remove(path))
 end
 
-folder = "/tmp/cemacs-folders-check-$(value.Text(sys.Now()))"
+defn ticked(state, done)
+  (** The state after ticks, as the window sends them, until done says so, for at most ten seconds. *)
+  s = state
+  for k in 1..200
+    if done(s)
+      return s
+    end
+    sys.Sleep(0.05)
+    s = commands.Update({Kind: "tick", Seconds: 0.05}, s)
+  end
+  s
+end
+
+folder = "/tmp/cemacs-folders-check-$(value.Text(math.Floor(sys.Now() * 1000)))"
 trash = "$(sys.Env("XDG_DATA_HOME"))/Trash"
 check(not value.IsMissing(sys.Env("XDG_DATA_HOME")), "XDG_DATA_HOME is set")
 check(result.IsOk(sys.Mkdir("$folder/sub")), "the folders are made")
@@ -53,65 +87,286 @@ check(result.IsOk(sys.Write("$folder/a.ce", "a")) and result.IsOk(sys.Write("$fo
 start = view.Start([text.Of("a", "$folder/a.ce")], look, cell, 800, 600)
 start.Config = withApps
 
-(* C-x d lists the folder of the current file: folders first, hidden names out; C-c . shows them. *)
+(* C-x d lists the folder of the current file: folders first, hidden names out; . and C-c . show them. *)
 s = press.Press(["C-x", "d"], start)
 check(nameOf(s) == folder, "the list is named by its folder: $(nameOf(s))")
 check(names(s) == "sub/,a.ce", "folders first and hidden names out: $(names(s))")
-check(names(press.Press(["C-c", "."], s)) == "sub/,.hidden,a.ce", "C-c . shows the hidden names")
+check(names(press.Press(["."], s)) == "sub/,.hidden,a.ce", ". shows the hidden names")
 check(names(press.Press(["C-c", ".", "C-c", "."], s)) == "sub/,a.ce", "C-c . again hides them")
+check(str.StartsWith("  drwx", rope.Text(here(s).Rope)), "a row starts with its mark column and its mode: $(rope.Text(here(s).Rope))")
 
-(* Enter opens a folder; in an empty one, C-c n makes a file, and the cursor goes to it. *)
+(* Enter opens a folder; in an empty one, C-c n makes a file, and the cursor goes to it. ^ goes up, onto the folder left. *)
 s = press.Press(["enter"], s)
 check(nameOf(s) == "$folder/sub", "enter opens the folder")
 s = press.Press(["C-c", "n", "new.ce", "enter"], s)
 check(sys.Exists("$folder/sub/new.ce") and names(s) == "new.ce", "C-c n makes a file")
+s = press.Press(["^"], s)
+check(nameOf(s) == folder and here(s).Cursor.Line == 1, "^ goes up, onto sub")
 
-(* Backspace goes up, the cursor on the folder just left. *)
-s = press.Press(["backspace"], s)
-check(nameOf(s) == folder and here(s).Cursor.Line == 1, "backspace goes up, onto sub")
-
-(* C-c n with a slash makes a folder; a name that exists is refused. *)
-s = press.Press(["C-c", "n", "dir2/", "enter"], s)
-check(result.Unwrap(sys.Stat("$folder/dir2")).IsDir and names(s) == "dir2/,sub/,a.ce", "C-c n with a slash makes a folder")
+(* + makes a folder, and the cursor goes to it; C-c n with a slash too; a name that exists is refused. *)
+s = press.Press(["+", "dir2", "enter"], s)
+check(result.Unwrap(sys.Stat("$folder/dir2")).IsDir and names(s) == "dir2/,sub/,a.ce" and here(s).Cursor.Line == 1, "+ makes a folder: $(names(s))")
 s = press.Press(["C-c", "n", "a.ce", "enter"], s)
 check(s.Message == "a.ce already exists.", "an existing name is refused")
 
-(* C-c r renames the row under the cursor: the prompt starts with its name. *)
-s = press.Press(["down", "down", "C-c", "r", "backspace", "backspace", "backspace", "backspace", "b.ce", "enter"], s)
-check(sys.Exists("$folder/b.ce") and not sys.Exists("$folder/a.ce") and names(s) == "dir2/,sub/,b.ce", "C-c r renames")
-check(here(s).Cursor.Line == 3, "the cursor stays on the renamed file")
-
-(* C-c k asks: n keeps the file, y moves it to the trash with its info. *)
-s = press.Press(["C-c", "k", "n"], s)
-check(sys.Exists("$folder/b.ce"), "n keeps the file")
-before = math.Floor(sys.Now())
-s = press.Press(["C-c", "k", "y"], s)
-after = math.Floor(sys.Now())
-check(not sys.Exists("$folder/b.ce") and sys.Exists("$trash/files/b.ce"), "y moves the file to the trash")
-info = result.Unwrap(sys.Read("$trash/info/b.ce.trashinfo"))
-(* The date is the one of this machine's clock, as the Trash specification asks: one of the seconds of the press. *)
-clock(t) = str.Join("", list.Take(19, str.Chars(date.Format(date.Local(t)))))
-check(list.Any(["[Trash Info]\nPath=$folder/b.ce\nDeletionDate=$(clock(t))\n" == info for t in before..after]), "the info of the trash, on the local clock: $info")
-check(names(s) == "dir2/,sub/", "the list no longer shows it")
-
-(* A second file of that name gets another name in the trash. *)
-s = press.Press(["C-c", "n", "b.ce", "enter", "C-c", "k", "y"], s)
-check(sys.Exists("$trash/files/b.ce.2") and sys.Exists("$trash/info/b.ce.2.trashinfo"), "a second b.ce is b.ce.2 in the trash")
-
-(* The line under the panes is the path: / goes into the folder under the cursor, / alone to the root, ~/ to the home, and C-y to a pasted path. *)
-s = press.Press(["C-x", "d"], start)
-check("$folder/" in list.Map(c -> c.Text, list.Filter(c -> c.Kind == "text", view.View(s))), "the path is the filter line")
-check(nameOf(press.Press(["su", "/"], s)) == "$folder/sub", "su then / goes into sub")
-check(nameOf(press.Press(["/"], s)) == "/", "/ alone goes to the root")
-check(nameOf(press.Press(["~", "/"], s)) == sys.Env("HOME"), "~/ goes to the home")
+(* / filters: letters narrow the rows, Enter keeps the filter for the commands, C-g takes it away. / after a part of a folder's name goes into it, / alone
+   to the root, ~/ to the home, and C-y to a pasted path. *)
+check(names(press.Press(["/", "su"], s)) == "sub/", "/ then letters filter")
+check(marks(press.Press(["/", "su", "enter", "m"], s)) == "*", "Enter keeps the filter, and m marks the row left")
+check(names(press.Press(["/", "su", "C-g"], s)) == "dir2/,sub/,a.ce", "C-g takes the filter away")
+check(nameOf(press.Press(["/", "su", "/"], s)) == "$folder/sub", "/ su / goes into sub")
+check(nameOf(press.Press(["/", "/"], s)) == "/", "/ / goes to the root")
+check(nameOf(press.Press(["/", "~", "/"], s)) == sys.Env("HOME"), "/ ~/ goes to the home")
+check(nameOf(press.Press(["/", "backspace"], press.Press(["enter"], s))) == folder, "backspace with no filter goes up")
 pasting = s
 pasting.Clip = "$folder/sub/new.ce"
 check(nameOf(press.Press(["C-y"], pasting)) == "$folder/sub" and names(press.Press(["C-y"], pasting)) == "new.ce", "C-y goes to the folder of a pasted file")
 
-(* Enter on a file opens it in a buffer, and the list closes. *)
-s = press.Press(["C-c", "n", "c.ce", "enter", "enter"], s)
-check(here(s).Path == "$folder/c.ce", "enter opens the file")
+(* C copies a tree whole: folders made, files copied with their mode, links made again, never followed, a link to nothing too. *)
+check(result.IsOk(sys.Mkdir("$folder/src/deep")) and result.IsOk(sys.Write("$folder/src/x.ce", "x")) and result.IsOk(sys.Write("$folder/src/deep/y.ce", "y")), "the tree is made")
+check(result.IsOk(sys.Chmod("$folder/src/x.ce", 493)) and result.IsOk(sys.Symlink("x.ce", "$folder/src/l")) and result.IsOk(sys.Symlink("nowhere", "$folder/src/b")), "the links are made")
+s = press.Press(["g"], s)
+check(names(s) == "dir2/,src/,sub/,a.ce", "g reads the folder again: $(names(s))")
+s = press.Press(["n", "C"], s)
+check(s.Prompt.Label == "Copy src to: " and s.Prompt.Answer == "$folder/src", "C asks where to, from this folder: $(s.Prompt.Answer)")
+s = press.Press(["backspace", "backspace", "backspace", "dst", "enter"], s)
+check(read("$folder/dst/x.ce") == "x" and read("$folder/dst/deep/y.ce") == "y", "C copies the files of the tree: $(s.Message)")
+check(modeOf("$folder/dst/x.ce") == 493, "C keeps the mode of a file")
+check(result.UnwrapOr("", sys.ReadLink("$folder/dst/l")) == "x.ce" and result.UnwrapOr("", sys.ReadLink("$folder/dst/b")) == "nowhere", "C copies the links as links")
+check(s.Message == "Copied src." and names(s) == "dir2/,dst/,src/,sub/,a.ce", "C says what it did, and the list shows the copy: $(s.Message)")
+
+(* A folder can't be copied or moved into itself, and nothing is made for it. *)
+t = press.Press(["C"], on("src", s))
+t.Prompt.Answer = "$folder/src/inner/"
+t = press.Press(["enter"], t)
+check(str.Contains("into itself", t.Message) and not sys.Exists("$folder/src/inner"), "a copy into itself is refused: $(t.Message)")
+t = press.Press(["R"], on("src", s))
+t.Prompt.Answer = "$folder/src/deep"
+t = press.Press(["enter"], t)
+check(str.Contains("into itself", t.Message) and sys.Exists("$folder/src/x.ce"), "a move into itself is refused: $(t.Message)")
+
+(* A file there is replaced only after a yes. *)
+check(result.IsOk(sys.Write("$folder/b.ce", "b")), "b.ce is made")
+s = press.Press(["g"], s)
+t = press.Press(["C"], on("a.ce", s))
+t.Prompt.Answer = "$folder/b.ce"
+t = press.Press(["enter"], t)
+check(t.Prompt.Label == "b.ce exists. Replace it? (y or n) ", "a copy over a file asks first: $(value.Text(t.Prompt))")
+check(read("$folder/b.ce") == "b" and read("$folder/b.ce") == read("$folder/b.ce"), "nothing is replaced before the answer")
+check(read("$folder/b.ce") == "b" and press.Press(["n"], t).Message == "Nothing done.", "n leaves b.ce")
+press.Press(["y"], t)
+check(read("$folder/b.ce") == "a", "y replaces b.ce")
+
+(* A copy never writes through a link at its target: where the copy has a folder and the target a link to another folder, nothing goes under it. *)
+check(result.IsOk(sys.Mkdir("$folder/elsewhere")) and result.IsOk(sys.Mkdir("$folder/dst2/src")) and result.IsOk(sys.Symlink("$folder/elsewhere", "$folder/dst2/src/deep")), "a link in the target is made")
+t = press.Press(["C"], on("src", press.Press(["g"], s)))
+t.Prompt.Answer = "$folder/dst2/"
+t = press.Press(["enter"], t)
+check(t.Prompt.Label == "src exists. Replace it? (y or n) ", "the folder there asks first: $(value.Text(t.Prompt))")
+t = press.Press(["y"], t)
+check(read("$folder/dst2/src/x.ce") == "x" and value.Len(result.Unwrap(sys.List("$folder/elsewhere"))) == 0 and isLink("$folder/dst2/src/deep"), "nothing goes through the link: $(t.Message)")
+check(str.Contains("no folder", t.Message), "the link in the way is said: $(t.Message)")
+(* A file copied onto itself by another path stays whole. *)
+check(result.IsOk(sys.Symlink(folder, "$folder/self")), "a link to the folder itself is made")
+t = press.Press(["C"], on("b.ce", press.Press(["g"], s)))
+t.Prompt.Answer = "$folder/self/b.ce"
+t = press.Press(["enter", "y"], t)
+check(read("$folder/b.ce") == "a" and value.Len([n for n in result.Unwrap(sys.List(folder)) if str.StartsWith(".#cemacs", n)]) == 0, "b.ce onto itself is still a: $(t.Message)")
+(* A special file in a tree is named and left, never read. *)
+check(result.IsOk(sys.Run("mkfifo", ["$folder/src/pipe"])), "a FIFO is made")
+t = press.Press(["C"], on("src", press.Press(["g"], s)))
+t.Prompt.Answer = "$folder/dst4"
+t = press.Press(["enter"], t)
+check(str.Contains("special file", t.Message) and read("$folder/dst4/x.ce") == "x" and not sys.Exists("$folder/dst4/pipe"), "a FIFO is not copied: $(t.Message)")
+for gone in ["dst2", "dst4", "elsewhere", "src/pipe"]
+  removed("$folder/$gone")
+end
+_ = sys.Remove("$folder/self")
+s = press.Press(["g"], s)
+
+(* R renames a file, and the buffer of a file moved goes with it; with marks, R moves the files into a folder. *)
+s = press.Press(["g"], s)
+t = press.Press(["R"], on("b.ce", s))
+t.Prompt.Answer = "$folder/c.ce"
+s = press.Press(["enter"], t)
+check(read("$folder/c.ce") == "a" and not sys.Exists("$folder/b.ce") and str.Contains("c.ce", names(s)), "R renames: $(s.Message)")
+s = on("a.ce", s)
+s = press.Press(["m"], on("c.ce", press.Press(["m"], s)))
+check(marks(s) == "    **", "two files are marked: $(marks(s))")
+check(lists.LabelOf(lists.Of(here(s))) == "$folder/  2 marked", "the line under the panes counts them: $(lists.LabelOf(lists.Of(here(s))))")
+t = press.Press(["R"], s)
+check(t.Prompt.Label == "Rename * [2 files] to: " and t.Prompt.Answer == "$folder/", "R of two files asks for a folder")
+t.Prompt.Answer = "$folder/sub/"
+s = press.Press(["enter"], t)
+check(read("$folder/sub/a.ce") == "a" and read("$folder/sub/c.ce") == "a" and not sys.Exists("$folder/a.ce"), "R moves the marked files into sub: $(s.Message)")
+moved = [b for b in s.Buffers if not lists.IsList(b) and value.IsText(b.Path)]
+check(value.Len(moved) == 1 and moved[1].Path == "$folder/sub/a.ce", "the buffer of a.ce follows it: $(value.Text([b.Path for b in moved]))")
+check(s.Message == "Moved 2 files.", "R says what it did: $(s.Message)")
+
+(* D asks, then moves to the trash with its info; x deletes the rows flagged with d. *)
+s = press.Press(["^"], press.Press(["enter"], on("sub", s)))
+check(nameOf(s) == folder, "back in the folder")
+t = press.Press(["D"], on("dst", s))
+check(t.Prompt.Label == "Move dst to the trash? (y or n) ", "D asks first: $(value.Text(t.Prompt))")
+check(sys.Exists("$folder/dst") and press.Press(["n"], t).Message == "Nothing deleted.", "n keeps it")
+before = math.Floor(sys.Now())
+s = press.Press(["y"], t)
+after = math.Floor(sys.Now())
+check(not sys.Exists("$folder/dst") and sys.Exists("$trash/files/dst/deep/y.ce"), "y moves the folder whole to the trash: $(s.Message)")
+check(s.Message == "Moved to the trash dst.", "D says it moved to the trash: $(s.Message)")
+info = result.Unwrap(sys.Read("$trash/info/dst.trashinfo"))
+clock(t) = str.Join("", list.Take(19, str.Chars(date.Format(date.Local(t)))))
+check(list.Any([info == "[Trash Info]\nPath=$folder/dst\nDeletionDate=$(clock(k))\n" for k in before..after]), "the info of the trash, on the local clock: $info")
+check(result.IsOk(sys.Write("$folder/old.ce~", "")) and result.IsOk(sys.Write("$folder/#auto#", "")), "a backup and an auto-save are made")
+s = press.Press(["g", "~", "#"], s)
+check(str.Contains("D", marks(s)) and lists.LabelOf(lists.Of(here(s))) == "$folder/  2 flagged", "~ and # flag them: $(marks(s))")
+s = press.Press(["x", "y"], s)
+check(not sys.Exists("$folder/old.ce~") and not sys.Exists("$folder/#auto#") and sys.Exists("$trash/files/old.ce~"), "x moves the flagged to the trash: $(s.Message)")
+
+(* With DeleteToTrash false, D deletes for good after yes, and once more for each folder that holds something; a link in it is deleted, never followed. *)
+check(result.IsOk(sys.Mkdir("$folder/keep")) and result.IsOk(sys.Write("$folder/keep/k.ce", "k")), "a folder outside is made")
+check(result.IsOk(sys.Symlink("$folder/keep", "$folder/src/tokeep")), "a link to it is made inside src")
+s.Config = forGood
+s = press.Press(["g"], s)
+t = press.Press(["D"], on("src", s))
+check(t.Prompt.Label == "Delete src for good? (yes or no) ", "D asks yes or no: $(value.Text(t.Prompt))")
+t = press.Press(["y", "enter"], t)
+check(t.Message == "Nothing deleted." and sys.Exists("$folder/src"), "y is not yes")
+t = press.Press(["D", "yes", "enter"], on("src", s))
+check(t.Prompt.Label == "Delete folder src and everything in it? (yes or no) ", "a folder that holds something asks again: $(value.Text(t.Prompt))")
+s = press.Press(["yes", "enter"], t)
+check(not sys.Exists("$folder/src") and read("$folder/keep/k.ce") == "k", "src is deleted, and the folder its link pointed to is left: $(s.Message)")
+check(s.Message == "Deleted src.", "D says it deleted: $(s.Message)")
+s.Config = withApps
+
+(* M gives a mode, in octal or as chmod writes it; T a time. *)
+check(result.IsOk(sys.Write("$folder/run.sh", "")) and result.IsOk(sys.Chmod("$folder/run.sh", 420)), "run.sh is made")
+s = press.Press(["g"], s)
+t = press.Press(["M"], on("run.sh", s))
+check(t.Prompt.Label == "Change mode of run.sh to: " and t.Prompt.Answer == "644", "M asks, the mode of the file first: $(t.Prompt.Answer)")
+s = press.Press(["backspace", "backspace", "backspace", "u+x,o-r", "enter"], t)
+check(modeOf("$folder/run.sh") == 480, "u+x,o-r gives rwxr-----: $(modeOf("$folder/run.sh")) $(s.Message)")
+s = press.Press(["M", "backspace", "backspace", "backspace", "0600", "enter"], on("run.sh", s))
+check(modeOf("$folder/run.sh") == 384, "0600 gives rw-------")
+check(str.Contains("-rw-------", rope.Text(here(s).Rope)), "the row shows the new mode")
+check(str.Contains("Not a mode", press.Press(["M", "u+q", "enter"], on("run.sh", s)).Message), "a wrong mode is said")
+s = press.Press(["T", "2020-01-02 03:04", "enter"], on("run.sh", s))
+check(result.Unwrap(sys.Stat("$folder/run.sh")).Modified == result.Unwrap(folders.TimeOf("2020-01-02 03:04", 0)), "T gives the time asked: $(s.Message)")
+s = press.Press(["T", "enter"], on("run.sh", s))
+check(sys.Now() - result.Unwrap(sys.Stat("$folder/run.sh")).Modified < 5, "T with no answer gives now")
+
+(* S makes a link from the root, Y a relative one, H a hard link. *)
+check(result.IsOk(sys.Write("$folder/f.ce", "f")), "f.ce is made")
+s = press.Press(["g"], s)
+t = press.Press(["S"], on("f.ce", s))
+check(t.Prompt.Label == "Symlink f.ce from: ", "S asks for the link: $(t.Prompt.Label)")
+t.Prompt.Answer = "$folder/abs"
+s = press.Press(["enter"], t)
+check(result.UnwrapOr("", sys.ReadLink("$folder/abs")) == "$folder/f.ce" and read("$folder/abs") == "f", "S links from the root: $(s.Message)")
+t = press.Press(["Y"], on("f.ce", s))
+t.Prompt.Answer = "$folder/sub/rel"
+s = press.Press(["enter"], t)
+check(result.UnwrapOr("", sys.ReadLink("$folder/sub/rel")) == "../f.ce" and read("$folder/sub/rel") == "f", "Y links with a relative path: $(s.Message)")
+t = press.Press(["H"], on("f.ce", s))
+t.Prompt.Answer = "$folder/hard.ce"
+s = press.Press(["enter"], t)
+check(read("$folder/hard.ce") == "f" and not isLink("$folder/hard.ce"), "H makes a hard link")
+check(result.IsOk(sys.Write("$folder/hard.ce", "g")) and read("$folder/f.ce") == "g", "a hard link is the same file")
+check(str.Contains("abs -> $folder/f.ce", rope.Text(here(s).Rope)), "a link shows its target")
+
+(* C-x C-q makes the names a text: a swap of two names renames both, through names of their own. *)
+check(result.IsOk(sys.Write("$folder/one", "1")) and result.IsOk(sys.Write("$folder/two", "2")), "one and two are made")
+s = press.Press(["g"], s)
+lines = str.Lines(rope.Text(press.Press(["C-x", "C-q"], s).Buffers[s.Current].Rope))
+check("one" in lines and "two" in lines, "C-x C-q shows the names: $(value.Text(lines))")
+w = press.Press(["C-x", "C-q"], s)
+swapped = str.Join("\n", [if l == "one" "two" else if l == "two" "one" else l end for l in lines])
+w.Buffers[w.Current] = text.Retyped(swapped, here(w))
+t = press.Press(["C-c", "C-c"], w)
+check(read("$folder/one") == "2" and read("$folder/two") == "1", "C-c C-c swaps one and two: $(t.Message)")
+check(lists.IsList(here(t)) and t.Message == "Renamed 2 files.", "the list comes back: $(t.Message)")
+check(value.Len([n for n in result.Unwrap(sys.List(folder)) if str.StartsWith(".#wdired", n)]) == 0, "no name of its own is left")
+w = press.Press(["C-x", "C-q"], t)
+w.Buffers[w.Current] = text.Retyped(str.Join("\n", [if l == "one" "f.ce" else l end for l in lines]), here(w))
+check(str.Contains("Two lines are named f.ce", press.Press(["C-c", "C-c"], w).Message), "a name twice is refused")
+w = press.Press(["C-x", "C-q"], t)
+w.Buffers[w.Current] = text.Retyped(str.Join("\n", [if l == "one" ".hidden" else l end for l in lines]), here(w))
+check(str.Contains(".hidden exists", press.Press(["C-c", "C-c"], w).Message) and read("$folder/one") == "2", "a name that is there is refused")
+s = t
+
+(* ! runs a command of the shell on the files, through tools/folders.ce; a name with a quote stays one word. *)
+check(result.IsOk(sys.Write("$folder/it's.txt", "q")), "a name with a quote is made")
+s = press.Press(["g"], s)
+t = press.Press(["!", "cat", "enter"], on("it's.txt", s))
+check(t.Message == "q", "! cat on it's.txt: $(t.Message)")
+t = press.Press(["!", "echo * done", "enter"], press.Press(["m"], on("one", press.Press(["m"], on("two", s)))))
+check(t.Message == "one two done", "! with * runs once on the marked: $(t.Message)")
+t = press.Press(["!", "printf '%s\\n' x y z", "enter"], on("one", s))
+check(str.Contains("lines in *Shell Command Output*", t.Message) and lists.IsList(here(t)), "a longer output goes beside the list: $(t.Message)")
+out = [b for b in t.Buffers if dict.GetOr("Name", "", b) == "*Shell Command Output*"]
+check(value.Len(out) == 1 and rope.Text(out[1].Rope) == "x\ny\nz\none\n", "the output buffer: $(value.Text([rope.Text(b.Rope) for b in out]))")
+check(panes.Count(panes.Tree(t)) == 2, "the output shows in another pane")
+
+(* & runs without waiting; its output comes at a tick. *)
+t = press.Press(["&", "echo bg", "enter"], on("one", s))
+check(str.Contains("background", t.Message), "& starts: $(t.Message)")
+t = ticked(t, st -> value.Len([b for b in st.Buffers if dict.GetOr("Name", "", b) == "*Async Shell Command*"]) > 0)
+bg = [b for b in t.Buffers if dict.GetOr("Name", "", b) == "*Async Shell Command*"]
+check(value.Len(bg) == 1 and str.Contains("bg one", rope.Text(bg[1].Rope)), "& gives its output to *Async Shell Command*")
+check(lists.IsList(here(t)), "the editing stays in the list")
+
+(* Z compresses and uncompresses; c puts files in an archive. *)
+s = press.Press(["Z", "y"], on("one", s))
+check(sys.Exists("$folder/one.gz") and not sys.Exists("$folder/one"), "Z compresses one: $(s.Message)")
+s = press.Press(["Z", "y"], on("one.gz", s))
+check(read("$folder/one") == "2" and not sys.Exists("$folder/one.gz"), "Z uncompresses one.gz: $(s.Message)")
+check(result.IsOk(sys.Mkdir("$folder/pack")) and result.IsOk(sys.Write("$folder/pack.tar.gz", "old")), "a folder and an archive of its name are made")
+t = press.Press(["Z", "y"], on("pack", press.Press(["g"], s)))
+check(read("$folder/pack.tar.gz") == "old" and str.Contains("exists already", t.Message), "Z never replaces an archive: $(t.Message)")
+removed("$folder/pack")
+_ = sys.Remove("$folder/pack.tar.gz")
+s = press.Press(["g"], s)
+s = press.Press(["c", "both.tar.gz", "enter"], press.Press(["m"], on("one", press.Press(["m"], on("two", press.Press(["U"], s))))))
+check(sys.Exists("$folder/both.tar.gz") and here(s).Cursor.Line == list.IndexOf("both.tar.gz", [i.Name for i in lists.Of(here(s)).Items]), "c makes an archive: $(s.Message)")
+
+(* = shows the diff of two files; Enter on a line opens it there. *)
+s = press.Press(["U"], s)
+t = press.Press(["="], on("one", s))
+check(t.Prompt.Label == "Diff one with: ", "= asks: $(t.Prompt.Label)")
+t.Prompt.Answer = "$folder/two"
+t = press.Press(["enter"], t)
+check(nameOf(t) == "Diff one two" and str.Contains("-2", rope.Text(here(t).Rope)) and str.Contains("+1", rope.Text(here(t).Rope)), "= lists the diff: $(t.Message) $(rope.Text(here(t).Rope))")
+
+(* A lists the lines of the marked files that a pattern finds; Q replaces it in their buffers, left not saved. *)
+check(result.IsOk(sys.Write("$folder/sub/s.ce", "x = 1\ny = 22\n")), "s.ce is written")
+t = press.Press(["A", "[0-9]{2}", "enter"], on("sub", s))
+check(nameOf(t) == "Search: [0-9]{2}" and rope.Text(here(t).Rope) == "sub/s.ce:2:5  y = 22", "A lists the places in the folder marked: $(rope.Text(here(t).Rope))")
+t = press.Press(["enter"], t)
+check(here(t).Path == "$folder/sub/s.ce" and here(t).Cursor.Line == 2 and here(t).Cursor.Column == 4, "Enter goes to the place")
+t = press.Press(["Q", "[0-9]+", "enter", "n", "enter"], on("sub", s))
+edited = [b for b in t.Buffers if b.Path == "$folder/sub/s.ce"]
+check(value.Len(edited) == 1 and rope.Text(edited[1].Rope) == "x = n\ny = n\n" and text.IsModified(edited[1]), "Q replaces in the buffer, not saved: $(t.Message)")
+check(read("$folder/sub/s.ce") == "x = 1\ny = 22\n" and t.Message == "Replaced 2 places in 1 file: its buffer is not saved.", "the file is as it was: $(t.Message)")
+check(str.Contains("Bad pattern", press.Press(["A", "(", "enter"], on("sub", s)).Message), "a wrong pattern is said, and nothing stops")
+
+(* o opens in the other pane; C-o shows a folder there and stays: a copy then goes to that folder first. *)
+t = press.Press(["C-o"], on("sub", s))
+check(panes.Count(panes.Tree(t)) == 2 and nameOf(t) == folder and folders.OtherFolder(t) == "$folder/sub", "C-o shows sub in the other pane and stays")
+t = press.Press(["C"], on("f.ce", t))
+check(t.Prompt.Answer == "$folder/sub/f.ce", "the copy goes to the folder of the other pane first: $(t.Prompt.Answer)")
+t = press.Press(["enter"], t)
+check(read("$folder/sub/f.ce") == "g", "C copies there")
+other = t.Buffers[panes.At(2, panes.Tree(t)).Buffer]
+check("f.ce" in [i.Name for i in lists.Of(other).Items], "the list of the other pane is read again")
+t = press.Press(["o"], on("f.ce", s))
+check(panes.Count(panes.Tree(t)) == 2 and here(t).Path == "$folder/f.ce" and lists.IsList(t.Buffers[panes.At(1, panes.Tree(t)).Buffer]), "o opens the file in the other pane")
+
+(* Enter on a file opens it in a buffer, and the list closes; q closes it too. *)
+s = press.Press(["enter"], on("f.ce", s))
+check(here(s).Path == "$folder/f.ce", "enter opens the file")
 check(value.Len(list.Filter(b -> lists.IsList(b), s.Buffers)) == 0, "the list is closed")
+s = press.Press(["C-x", "d", "q"], s)
+check(value.Len(list.Filter(b -> lists.IsList(b), s.Buffers)) == 0 and here(s).Path == "$folder/f.ce", "q goes back")
 
 removed(folder)
 check(not sys.Exists(folder), "the folder is gone")

@@ -1,0 +1,541 @@
+(* The commands of the folders that run a program, or read the text of files: ! and & run a command of the shell on the files, Z and c compress, = shows a
+   diff, A searches the files and Q replaces in them, w and W copy their names, y tells what a file is. Cemacs never holds the permission to run these
+   programs: tools/folders.ce does, run as cesia run --allow exec=PROGRAM with that one program alone, which it runs with its arguments, never through a
+   shell but for ! and &, whose shell is that program. *)
+use core/color
+use core/commands
+use core/files
+use core/lists
+use core/panes
+use core/text
+use src/rope
+use std/date
+use std/dict
+use std/fiber
+use std/json
+use std/list
+use std/regex
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(* ---- Words for the shell *)
+
+defn Quoted(name)
+  (** A name as the shell reads it as one word, whatever it holds: between single quotes, each quote in it closed, escaped and opened again; a name that
+      starts with - goes after ./, so that no program takes it for an option.
+
+        Quoted("a b.ce") --> "'a b.ce'"
+        Quoted("it's") --> "'it'\\''s'"
+        Quoted("-rf") --> "'./-rf'" *)
+  safe = if str.StartsWith("-", name) "./$name" else name end
+  "'$(str.Replace("'", "'\\''", safe))'"
+end
+
+defn Expanded(command, names)
+  (** The line that ! gives the shell for a command on the names, by Dired's rules: a * alone, between spaces, stands for all the names, and the command runs
+      once; else a ? alone stands for each name, and the command runs once for each; else each name goes after the command, once for each. Each name is
+      Quoted. A * or a ? inside a word is the shell's own, as in *.ce.
+
+        Expanded("tar -cf x.tar *", ["a", "b c"]) --> "tar -cf x.tar 'a' 'b c'"
+        Expanded("cp ? /tmp", ["a", "b"]) --> "cp 'a' /tmp; cp 'b' /tmp"
+        Expanded("wc -l", ["a", "b"]) --> "wc -l 'a'; wc -l 'b'"
+        Expanded("ls *.ce", ["a"]) --> "ls *.ce 'a'" *)
+  words = str.Split(" ", command)
+  quoted = [Quoted(n) for n in names]
+  if "*" in words
+    return str.Join(" ", [if w == "*" str.Join(" ", quoted) else w end for w in words])
+  end
+  if "?" in words
+    return str.Join("; ", [str.Join(" ", [if w == "?" q else w end for w in words]) for q in quoted])
+  end
+  str.Join("; ", ["$command $q" for q in quoted])
+end
+
+(* ---- Running a program through tools/folders.ce *)
+
+(** The seconds that ! waits for its command, Z and c for their archives, before the program is ended. & has no limit. *)
+CommandLimit() = 60
+ArchiveLimit() = 600   (** The seconds that Z and c wait for their archives before the program is ended. *)
+
+defn ShellPath()
+  (** The shell of ! and &: $SHELL when it is a path from the root, as /bin/bash, else /bin/sh. *)
+  given = sys.Env("SHELL")
+  if value.IsText(given) and str.StartsWith("/", given) and not str.Contains(",", given) given else "/bin/sh" end
+end
+
+(** The question for tools/folders.ce: the program, its arguments, the folder it runs in, and its limit in seconds, 0 for none. *)
+question(program, args, dir, limit, diff = false) = json.Text({Program: program, Args: args, Dir: dir, Limit: limit, Diff: diff})
+
+(** The arguments of cesia that run tools/folders.ce with the permission to run that program alone. *)
+relayArgs(program, state) = ["run", "--allow", "exec=$program", "$(commands.Home(state))/tools/folders.ce"]
+
+defn answerOf(got)
+  (** The answer of tools/folders.ce, {Code, Out, Err} and Rows for a diff, in an Ok, or an Err of the words to say. *)
+  if result.IsErr(got)
+    return result.Err("cesia can't run: $(if value.IsText(got.Error) got.Error else got.Error.Message end)")
+  end
+  parsed = json.Parse(str.Trim(got.Value.Out))
+  if result.IsOk(parsed) and value.IsDict(parsed.Value) and dict.Has("Error", parsed.Value)
+    return result.Err(value.Text(parsed.Value.Error))
+  end
+  if got.Value.Code != 0 or result.IsErr(parsed) or not value.IsDict(parsed.Value) or not value.IsInt(dict.GetOr("Code", missing, parsed.Value))
+    line = list.First([l for l in str.Lines("$(got.Value.Out)\n$(got.Value.Err)") if str.Trim(l) != ""])
+    return result.Err("The program failed: $(if value.IsMissing(line) "code $(got.Value.Code)" else line end)")
+  end
+  result.Ok(parsed.Value)
+end
+
+(** Runs a program in a folder through tools/folders.ce, and waits: an Ok of {Code, Out, Err}, or an Err of the words to say. *)
+ran(program, args, dir, limit, state, diff = false) = answerOf(sys.Run("cesia", relayArgs(program, state), input = question(program, args, dir, limit, diff = diff), timeout = limit + 10))
+
+(** All that a program wrote, its output then its errors. *)
+written(a) = "$(value.Text(dict.GetOr("Out", "", a)))$(value.Text(dict.GetOr("Err", "", a)))"
+
+(* ---- ! and & *)
+
+(** !: asks for a command of the shell and runs it on the files in this folder, by the rules of Expanded, then shows what it wrote. *)
+ShellCommand(state) = withTargets((items, s) -> commands.Ask("! on $(Named(items)): ", "", (answer, u) -> shellRan(answer, items, u), s), state)
+
+defn shellRan(command, items, state)
+  (** The command run, at most CommandLimit() seconds, the folder read again, and what it wrote said, or shown in `*Shell Command Output*` beside the list
+      when it is more than a line. *)
+  if str.Trim(command) == ""
+    return commands.Say("No command given.", state)
+  end
+  v = viewHere(state)
+  got = ran(ShellPath(), ["-c", Expanded(command, [i.Name for i in items])], v.Dir, CommandLimit(), state)
+  s = afterward(under(state), state)
+  if result.IsErr(got)
+    return commands.Say(got.Error, s)
+  end
+  words = written(got.Value)
+  code = got.Value.Code
+  ending = if code == 0 "" else if code == -1 " It was ended after $(CommandLimit()) seconds: & runs a command without a limit." else " It ended with code $code." end
+  lines = str.Lines(str.Trim(words))
+  if str.Trim(words) == ""
+    commands.Say("The command wrote nothing.$ending", s)
+  else if value.Len(lines) == 1 and code == 0
+    commands.Say(lines[1], s)
+  else
+    commands.Say("$(value.Len(lines)) lines in *Shell Command Output*.$ending", beside(b -> outputIn("*Shell Command Output*", words, b), s))
+  end
+end
+
+defn outputIn(name, words, state)
+  (** The state with the buffer of this name holding words, the current one: the one that has it, or a new one. What a program wrote counts as saved. *)
+  shown = text.MarkSaved(missing, text.Of(words, missing))
+  shown.Name = name
+  for k in 1..value.Len(state.Buffers)
+    b = state.Buffers[k]
+    if not lists.IsList(b) and value.IsMissing(b.Path) and dict.GetOr("Name", "", b) == name
+      s = state
+      s.Buffers[k] = shown
+      s.Current = k
+      return s
+    end
+  end
+  s = state
+  s.Buffers = list.Append(shown, state.Buffers)
+  s.Current = value.Len(s.Buffers)
+  s
+end
+
+defn beside(f, state, stay = true)
+  (** f run in the other pane, the pane split when it is the only one, and with stay the editing back in this list, which stays in its pane. *)
+  i = panes.Active(state)
+  s = if value.IsMissing(otherOf(state)) commands.SplitRight(state) else state end
+  if value.IsMissing(otherOf(s))
+    s = commands.SplitBelow(state)
+  end
+  if value.IsMissing(otherOf(s))
+    return f(state)
+  end
+  done = f(commands.FocusPane(otherOf(s), s))
+  if stay commands.FocusPane(i, done) else done end
+end
+
+(** &: asks for a command of the shell and runs it on the files without waiting; what it wrote comes in `*Async Shell Command*` when it ends. *)
+AsyncShellCommand(state) = withTargets((items, s) -> commands.Ask("& on $(Named(items)): ", "", (answer, u) -> started(answer, items, u), s), state)
+
+defn jobsOf(state)
+  (** The commands of & that run, each {Channel, Command}: none for a state from before this field. *)
+  match state
+    {FolderJobs: jobs} -> jobs
+    else -> []
+  end
+end
+
+defn started(command, items, state)
+  (** The command started from a fiber, which waits for it with no limit; Hooked hears its end. *)
+  if str.Trim(command) == ""
+    return commands.Say("No command given.", state)
+  end
+  v = viewHere(state)
+  line = Expanded(command, [i.Name for i in items])
+  ch = fiber.Channel()
+  args = relayArgs(ShellPath(), state)
+  words = question(ShellPath(), ["-c", line], v.Dir, 0)
+  _ = fiber.Spawn(() -> fiber.Send(sys.Run("cesia", args, input = words), ch))
+  s = state
+  s.FolderJobs = list.Append({Channel: ch, Command: line}, jobsOf(state))
+  commands.Say("Running in the background: what it writes comes in *Async Shell Command*.", s)
+end
+
+defn jobsHeard(state)
+  (** The state after a tick: each command of & that ended gives what it wrote to `*Async Shell Command*`, without taking the editing from where it is. *)
+  jobs = jobsOf(state)
+  if value.Len(jobs) == 0
+    return state
+  end
+  s = state
+  left = []
+  for job in jobs
+    got = fiber.Receive(job.Channel, timeout = 0)
+    if result.IsErr(got)
+      left = list.Append(job, left)
+    else
+      a = answerOf(got.Value)
+      words = if result.IsErr(a) a.Error else written(a.Value) end
+      code = if result.IsErr(a) "?" else value.Text(a.Value.Code) end
+      back = s.Current
+      s = outputIn("*Async Shell Command*", "$ $(job.Command)\n$words\n[ended, code $code]\n", s)
+      s.Current = back
+      s = commands.Say("& ended, code $code: *Async Shell Command* has what it wrote.", s)
+    end
+  end
+  s.FolderJobs = left
+  s
+end
+
+defn Hooked(config)
+  (** A config with the hook of the commands of &: at each tick, its Idle then this one's, which hears their ends; it moves while one runs. Its Saved
+      stays, or is one that does nothing, since the editor takes the hooks only all three together. *)
+  c = config
+  idle = dict.GetOr("Idle", s -> s, config)
+  moving = dict.GetOr("Moving", s -> false, config)
+  c.Idle = s -> jobsHeard(idle(s))
+  c.Saved = dict.GetOr("Saved", s -> s, config)
+  c.Moving = s -> moving(s) or value.Len(jobsOf(s)) > 0
+  c
+end
+
+(* ---- Archives *)
+
+defn CompressPlan(name, isDir)
+  (** What Z does with an entry, {Program, Args, Verb}, run in its folder, as Dired's table of suffixes says: a folder becomes a .tar.gz, Makes, an archive
+      opens in this folder, a .tar.gz, .tgz, .tar.xz, .tar.bz2 or .zip, a file compressed by gzip, bzip2, xz or zstd is uncompressed, and any other file
+      is compressed by gzip. None replaces a file: tar keeps those there, -k, unzip too, -n, and gzip, bzip2, xz and zstd refuse to replace one.
+
+        CompressPlan("src", true) --> {Program: "tar", Args: ["-czf", "./src.tar.gz", "./src"], Verb: "Compressed", Makes: "src.tar.gz"}
+        CompressPlan("a.ce.gz", false) --> {Program: "gzip", Args: ["-d", "./a.ce.gz"], Verb: "Uncompressed"}
+        CompressPlan("a.ce", false) --> {Program: "gzip", Args: ["./a.ce"], Verb: "Compressed"} *)
+  here = "./$name"
+  if isDir
+    return {Program: "tar", Args: ["-czf", "$here.tar.gz", here], Verb: "Compressed", Makes: "$name.tar.gz"}
+  end
+  low = str.Lower(name)
+  ends(s) = str.EndsWith(s, low)
+  if ends(".tar.gz") or ends(".tgz")
+    {Program: "tar", Args: ["-x", "-k", "-z", "-f", here], Verb: "Unpacked"}
+  else if ends(".tar.xz")
+    {Program: "tar", Args: ["-x", "-k", "-J", "-f", here], Verb: "Unpacked"}
+  else if ends(".tar.bz2")
+    {Program: "tar", Args: ["-x", "-k", "-j", "-f", here], Verb: "Unpacked"}
+  else if ends(".zip")
+    {Program: "unzip", Args: ["-n", here, "-d", "./$(str.Slice(1, value.Len(name) - 4, name))"], Verb: "Unpacked"}
+  else if ends(".gz")
+    {Program: "gzip", Args: ["-d", here], Verb: "Uncompressed"}
+  else if ends(".bz2")
+    {Program: "bzip2", Args: ["-d", here], Verb: "Uncompressed"}
+  else if ends(".xz")
+    {Program: "xz", Args: ["-d", here], Verb: "Uncompressed"}
+  else if ends(".zst")
+    {Program: "zstd", Args: ["-d", "--rm", here], Verb: "Uncompressed"}
+  else
+    {Program: "gzip", Args: [here], Verb: "Compressed"}
+  end
+end
+
+(** Z: asks y or n, then compresses or uncompresses each file, as CompressPlan says. *)
+Compress(state) = withTargets((items, s) -> commands.Confirm("Compress or uncompress $(Named(items))? (y or n) ", (yes, u) -> if yes == "y" compressed(items, u) else commands.Say("Nothing done.", u) end, s), state)
+
+defn compressed(items, state)
+  (** Each file through the program of its plan, those that failed named. *)
+  v = viewHere(state)
+  done = []
+  failed = []
+  for i in items
+    plan = CompressPlan(i.Name, i.IsDir)
+    there = dict.Has("Makes", plan) and present(Within(v.Dir, plan.Makes))
+    got = if there result.Err("$(plan.Makes) exists already") else ran(plan.Program, plan.Args, v.Dir, ArchiveLimit(), state) end
+    why = if result.IsErr(got) got.Error else if got.Value.Code != 0 str.Trim(written(got.Value)) else missing end
+    if value.IsMissing(why) done = list.Append(i, done) else failed = list.Append("$(i.Name): $(if why == "" "code $(got.Value.Code)" else why end)", failed) end
+  end
+  Summary("Compressed or uncompressed", done, failed, afterward(under(state), state))
+end
+
+defn ArchivePlan(archive, names)
+  (** What c does with the names for an archive, {Program, Args}, run in their folder, by the end of its name: .tar.gz or .tgz, .tar.xz, .tar.bz2, .tar or
+      .zip; or missing for another end.
+
+        ArchivePlan("x.tgz", ["a", "b"]) --> {Program: "tar", Args: ["-czf", "./x.tgz", "./a", "./b"]}
+        ArchivePlan("/t/x.zip", ["a"]) --> {Program: "zip", Args: ["-r", "-q", "/t/x.zip", "./a"]}
+        ArchivePlan("x.rar", ["a"]) --> missing *)
+  low = str.Lower(archive)
+  out = if str.StartsWith("/", archive) archive else "./$archive" end
+  each = ["./$n" for n in names]
+  ends(s) = str.EndsWith(s, low)
+  flags = if ends(".tar.gz") or ends(".tgz") "-czf" else if ends(".tar.xz") "-cJf" else if ends(".tar.bz2") "-cjf" else if ends(".tar") "-cf" else missing end
+  if not value.IsMissing(flags)
+    {Program: "tar", Args: list.Concat([flags, out], each)}
+  else if ends(".zip")
+    {Program: "zip", Args: list.Concat(["-r", "-q", out], each)}
+  else
+    missing
+  end
+end
+
+(** c: asks for the name of an archive, Tab completing it, and puts the files in it, by the end of its name. *)
+CompressTo(state) = withTargets((items, s) -> commands.Ask("Compress $(Named(items)) to: ", "", (answer, u) -> archiveAsked(answer, items, u), s, named = true), state)
+
+defn archiveAsked(answer, items, state)
+  (** The archive made, after a yes when one is there, which goes first. *)
+  v = viewHere(state)
+  plan = ArchivePlan(answer, [i.Name for i in items])
+  if value.IsMissing(plan)
+    return commands.Say("An archive ends with .tar.gz, .tgz, .tar.xz, .tar.bz2, .tar or .zip.", state)
+  end
+  path = Within(v.Dir, answer)
+  if not present(path)
+    return archived(plan, path, items, state)
+  end
+  if isFolder(path) and not isLinkPath(path)
+    return commands.Say("$(BaseName(path)) is a folder.", state)
+  end
+  commands.Confirm("$(BaseName(path)) exists. Replace it? (y or n) ", (yes, s) -> if yes == "y" and result.IsOk(sys.Remove(path)) archived(plan, path, items, s) else commands.Say("Nothing done.", s) end, state)
+end
+
+defn archived(plan, path, items, state)
+  (** The archive made by its program, and the cursor on it. *)
+  v = viewHere(state)
+  got = ran(plan.Program, plan.Args, v.Dir, ArchiveLimit(), state)
+  if result.IsErr(got)
+    return commands.Say(got.Error, state)
+  end
+  if got.Value.Code != 0
+    return commands.Say("$(plan.Program) failed: $(str.Trim(written(got.Value)))", afterward(under(state), state))
+  end
+  commands.Say("Put $(counted(items)) in $(BaseName(path)).", afterward(if Parent(path) == v.Dir BaseName(path) else under(state) end, state))
+end
+
+(* ---- = *)
+
+defn Diff(state)
+  (** =: asks for a file and shows how the file under the cursor differs from it, as git diff --no-index shows it; Enter on a line opens its file there.
+      The answer starts with the other file marked, or else its backup, name~, or else the folder of the other pane. *)
+  v = viewHere(state)
+  item = lists.ItemAt(here(state))
+  if value.IsMissing(item)
+    return commands.Say("Nothing here.", state)
+  end
+  others = [i.Name for i in shownItems(state) if markOf(i.Name, v) == "*" and i.Name != item.Name]
+  other = OtherFolder(state)
+  start = if value.Len(others) == 1 Within(v.Dir, others[1]) else if present(Within(v.Dir, "$(item.Name)~")) Within(v.Dir, "$(item.Name)~") else Slashed(if value.IsMissing(other) v.Dir else other end) end
+  commands.Ask("Diff $(item.Name) with: ", start, (answer, s) -> diffed(Within(v.Dir, item.Name), Within(v.Dir, answer), s), state, named = true)
+end
+
+defn DiffArgs(a, b, dir)
+  (** The folder that git diff --no-index runs in and its arguments for two paths from the root: this folder with the names in it, when both are in it,
+      so that the diff shows them short; else the root. The paths come after --, so that no name becomes an option.
+
+        DiffArgs("/p/a", "/p/b", "/p") --> {Dir: "/p", Args: ["diff", "--no-index", "--no-color", "--", "a", "b"]}
+        DiffArgs("/p/a", "/q/b", "/p") --> {Dir: "/", Args: ["diff", "--no-index", "--no-color", "--", "p/a", "q/b"]} *)
+  inside = IsInside(a, dir) and IsInside(b, dir) and a != dir and b != dir and dir != "/"
+  root = if inside dir else "/" end
+  short(p) = str.Slice(value.Len(Slashed(root)) + 1, value.Len(p), p)
+  {Dir: root, Args: ["diff", "--no-index", "--no-color", "--", short(a), short(b)]}
+end
+
+defn diffed(a, b, state)
+  (** The diff of two files as a list in the other pane, which the editing goes to, the folder staying in its own; from tools/folders.ce, which runs git
+      and makes the rows as src/git does; or what is wrong. *)
+  if not present(b)
+    return commands.Say("No file at $b.", state)
+  end
+  d = DiffArgs(a, b, viewHere(state).Dir)
+  got = ran("git", d.Args, d.Dir, CommandLimit(), state, diff = true)
+  if result.IsErr(got)
+    return commands.Say(got.Error, state)
+  end
+  if got.Value.Code == 0
+    return commands.Say("No difference.", state)
+  end
+  rows = dict.GetOr("Rows", missing, got.Value)
+  if got.Value.Code != 1 or not value.IsArray(rows) or not list.All([isRow(r) for r in rows])
+    return commands.Say("git diff failed: $(str.Trim(written(got.Value)))", state)
+  end
+  shown = [dict.Merge(r, {Item: dict.GetOr("Item", missing, r)}) for r in rows]
+  beside(s -> commands.ShowList("Diff $(BaseName(a)) $(BaseName(b))", shown, () -> {"enter": placeVisited}, s), state, stay = false)
+end
+
+(** Is a value a row of a list: Words, Parts of [role, words], and an Item missing or a place? It comes from another program, so each part is checked. *)
+isRow(r) = value.IsDict(r) and value.IsText(dict.GetOr("Words", missing, r)) and value.IsArray(dict.GetOr("Parts", [], r)) and
+  list.All([value.IsArray(p) and value.Len(p) == 2 and value.IsInt(p[1]) and value.IsText(p[2]) for p in dict.GetOr("Parts", [], r)]) and
+  (value.IsMissing(dict.GetOr("Item", missing, r)) or isPlace(r.Item))
+
+(** Is a value a place in a file, {Path, Line, Column}, a path from the root? *)
+isPlace(p) = value.IsDict(p) and value.IsText(dict.GetOr("Path", missing, p)) and str.StartsWith("/", p.Path) and value.IsInt(dict.GetOr("Line", missing, p)) and value.IsInt(dict.GetOr("Column", missing, p))
+
+defn placeVisited(item, state)
+  (** Enter on a row of a diff or of a search: the file opened at its place, the list closed. *)
+  if value.IsMissing(item)
+    return commands.Say("Nothing to open here.", state)
+  end
+  s = commands.OpenFile(files.Normal(item.Path), commands.ToBuffer(lists.Of(here(state)).Back, state))
+  b = here(s)
+  if lists.IsList(b) or value.IsMissing(b.Path)
+    return s
+  end
+  s.Buffers[s.Current] = text.Place(item.Line, item.Column, b)
+  s
+end
+
+(* ---- A and Q *)
+
+(** The most files that A and Q read, and the most places A lists. *)
+FileLimit() = 20000
+PlaceLimit() = 10000   (** The most places that A lists: past them the list says it is cut. *)
+
+defn filesOf(items, dir)
+  (** The paths of the files of the items, those inside the folders too, at most FileLimit(); a link is left out, never followed. *)
+  out = []
+  for i in items
+    path = Within(dir, i.Name)
+    (* A link is never followed, to a folder or to a file. *)
+    if i.IsDir and not isLinkPath(path)
+      walked = result.UnwrapOr([], sys.Walk(path))
+      out = list.Concat(out, [p for p in walked if not isLinkPath(p)])
+    else if not isLinkPath(path)
+      out = list.Append(path, out)
+    end
+  end
+  list.Take(FileLimit(), out)
+end
+
+(** A: asks for a pattern of std/regex and lists each line of the files, those of the folders too, where it finds something; Enter goes there. *)
+SearchMarked(state) = withTargets((items, s) -> commands.Ask("Search marked files (regexp): ", "", (answer, u) -> searched(answer, items, u), s), state)
+
+defn searched(pattern, items, state)
+  (** The list of the places of a pattern in the files, as the search of a project shows them, their paths from this folder, in the other pane, which the
+      editing goes to, the folder staying in its own. *)
+  bad = PatternError(pattern)
+  if not value.IsMissing(bad)
+    return commands.Say(bad, state)
+  end
+  v = viewHere(state)
+  rows = []
+  for path in filesOf(items, v.Dir)
+    words = textOf(path)
+    if not value.IsMissing(words) and value.Len(rows) < PlaceLimit() and regex.Test(pattern, words)
+      shown = if IsInside(path, v.Dir) str.Slice(value.Len(Slashed(v.Dir)) + 1, value.Len(path), path) else path end
+      lines = str.Split("\n", words)
+      for n in 1..value.Len(lines)
+        found = if value.Len(rows) < PlaceLimit() regex.Find(pattern, lines[n]) else missing end
+        if not value.IsMissing(found)
+          head = "$shown:$n:$(found.Start)  "
+          rows = list.Append({Words: "$head$(lines[n])", Parts: [[color.Comment, head], [color.Plain, lines[n]]], Item: {Path: path, Line: n, Column: found.Start - 1}}, rows)
+        end
+      end
+    end
+  end
+  if value.Len(rows) == 0
+    return commands.Say("No line of $(Named(items)) holds $pattern.", state)
+  end
+  cut = if value.Len(rows) >= PlaceLimit() ", the first $(PlaceLimit()) only" else "" end
+  commands.Say("$(value.Len(rows)) lines$cut.", beside(s -> commands.ShowList("Search: $pattern", rows, () -> {"enter": placeVisited}, s), state, stay = false))
+end
+
+(** Q: asks for a pattern of std/regex and the text that replaces what it finds, $1 for its first group, then replaces it in the buffers of the files,
+    left changed and not saved. *)
+ReplaceMarked(state) = withTargets((items, s) -> commands.Ask("Replace in marked files (regexp): ", "", (pattern, u) -> replaceAsked(pattern, items, u), s), state)
+
+defn replaceAsked(pattern, items, state)
+  (** The question of what replaces the pattern, once it is found right. *)
+  bad = PatternError(pattern)
+  if not value.IsMissing(bad) commands.Say(bad, state) else commands.Ask("Replace $pattern with: ", "", (by, s) -> replaced(pattern, by, items, s), state) end
+end
+
+defn bufferText(path, state)
+  (** The text of the buffer of a file, if one is open, else missing. *)
+  for b in state.Buffers
+    if not lists.IsList(b) and value.IsText(b.Path) and Absolute(b.Path, sys.Env("PWD")) == path
+      return rope.Text(b.Rope)
+    end
+  end
+  missing
+end
+
+defn replaced(pattern, by, items, state)
+  (** Each file where the pattern finds something opened in a buffer, or its buffer taken, with what it finds replaced, as one step of undo, and left not
+      saved; then the list again, and the count said. *)
+  v = viewHere(state)
+  back = state.Current
+  s = state
+  count = 0
+  changed = 0
+  for path in filesOf(items, v.Dir)
+    open = bufferText(path, s)
+    words = if value.IsMissing(open) textOf(path) else open end
+    n = if value.IsMissing(words) 0 else value.Len(regex.FindAll(pattern, words)) end
+    if n > 0
+      s = commands.OpenFile(path, s)
+      b = here(s)
+      if not lists.IsList(b) and value.IsText(b.Path)
+        s.Buffers[s.Current] = text.Retyped(regex.Replace(pattern, by, rope.Text(b.Rope)), b)
+        count += n
+        changed += 1
+      end
+    end
+  end
+  s.Current = back
+  if count == 0 commands.Say("No file of $(Named(items)) holds $pattern.", s) else commands.Say("Replaced $count $(if count == 1 "place" else "places" end) in $changed $(if changed == 1 "file" else "files" end): $(if changed == 1 "its buffer is" else "their buffers are" end) not saved.", s) end
+end
+
+(* ---- w, W, y *)
+
+(** w: the names of the files, a space between, copied to the clipboard. *)
+CopyNames(state) = withTargets((items, s) -> namesCopied(str.Join(" ", [i.Name for i in items]), s), state)
+
+(** W: the paths of the files from the root, a space between, copied to the clipboard. *)
+CopyPaths(state) = withTargets((items, s) -> namesCopied(str.Join(" ", [Within(viewHere(s).Dir, i.Name) for i in items]), s), state)
+
+namesCopied(words, state) = commands.Say("Copied: $words", commands.ToClipboard(words, state))   (** The state with words in the clipboard, as said. *)
+
+defn WhatIs(state)
+  (** y: what the row under the cursor is, said: its kind, its size, its mode as ls writes it and in octal, the time of its last change, and for a link
+      what it points to. *)
+  v = viewHere(state)
+  item = lists.ItemAt(here(state))
+  if value.IsMissing(item)
+    return commands.Say("Nothing here.", state)
+  end
+  e = entryNamed(item.Name, v)
+  commands.Say(Described(e, Within(v.Dir, item.Name)), state)
+end
+
+defn Described(e, path)
+  (** The words of y for an entry at a path.
+
+        Described({Name: "a.ce", IsDir: false, Size: 3250, Modified: missing, Mode: 420}, "/p/a.ce") --> "a.ce: a file of 3.3 kB (3250 bytes), rw-r--r-- (644)" *)
+  if isLink(e) and value.IsMissing(field("Mode", missing, e))
+    return "$(e.Name): a link to $(field("Target", "?", e)), which is missing"
+  end
+  kind = if e.IsDir "a folder of $(value.Len(result.UnwrapOr([], sys.List(path)))) entries" else if IsProgram(field("Mode", 0, e)) "a program of $(SizeText(e.Size)) ($(e.Size) bytes)" else "a file of $(SizeText(e.Size)) ($(e.Size) bytes)" end
+  mode = if value.IsMissing(field("Mode", missing, e)) "" else ", $(PermissionText(e.Mode)) ($(OctalText(e.Mode)))" end
+  modified = field("Modified", missing, e)
+  when = if value.IsMissing(modified) "" else ", changed $(str.Replace("T", " ", str.Join("", list.Take(16, str.Chars(date.Format(date.Local(modified)))))))" end
+  link = if isLink(e) "a link to $(field("Target", "?", e)), " else "" end
+  "$(e.Name): $link$kind$mode$when"
+end

@@ -37,7 +37,8 @@ else
   ensure(value.Equal(changed.Theme(), ui.Light) and value.Equal(changed.Window(), {Width: 1600, Height: 900}), "the theme and the window of the examples")
   ensure(changed.Keys()["C-c t s"] == commands.Save and changed.Keys()["C-c t"] == "tools" and changed.Keys()["C-x C-s"] == commands.Save, "the keys of the examples, over those of Cemacs")
   ensure(panes.Count(panes.Tree(changed.Start(first))) == 2, "the start of the examples splits the pane")
-  same = [name for name in names if not (name in ["FontSize", "TabText", "ScrollMargin", "Theme", "Window", "Keys", "Start"])]
+  ensure(made.DeleteToTrash() and not changed.DeleteToTrash(), "the deletions of the examples are for good")
+  same = [name for name in names if not (name in ["FontSize", "TabText", "ScrollMargin", "Theme", "Window", "DeleteToTrash", "Keys", "Start"])]
   ensure(list.All([value.Equal(changed[name], made[name]) for name in same]), "the fields the examples don't name stay")
 end
 io.Print("ok")

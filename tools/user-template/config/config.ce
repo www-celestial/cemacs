@@ -16,6 +16,7 @@ defn Changed(config)
   (* c.ScrollMargin = () -> 5 *)
   (* c.Theme = () -> ui.Light *)
   (* c.Window = () -> {Width: 1600, Height: 900} *)
+  (* c.DeleteToTrash = () -> false *)
   (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)
   (* c.Start = s -> commands.SplitRight(s) *)
   c

@@ -99,16 +99,34 @@ table(emacs.PromptKeys())
 ## A list
 
 In a list, these keys come over the global ones, and the list's own keys come over them: Enter in every list, and the keys of
-the folder manager, `C-c n`, `C-c r`, `C-c k`, `C-c .`, `C-y` and Backspace, which [Files and buffers](files.md#the-folder-manager)
-tells.
+the folder manager, below.
 
 ```cesia output=md fold=code
 table(emacs.ListKeys())
 ```
 
 When two keymaps bind one key, the one that comes first here wins: in a list, the keys of the list, then those that need no
-row, then [emacs.ListKeys], then the global keys. In a list, the band of hints shows the keys of the list too, those of the
-folder manager as `a function`, since they are written in place in its code; the `?` lists show the global keys only.
+row, then [emacs.ListKeys], then the global keys. In a list, the band of hints shows the keys of the list too; the `?` lists
+show the global keys only.
+
+## The folder manager
+
+In the folder manager, these keys come over those of a list, and each letter typed is a command, as in Emacs's Dired:
+[Files and buffers](files.md#the-folder-manager) tells what each one does. After `/`, the letters filter the names until
+Enter or `C-g`.
+
+```cesia output=md fold=code
+(* Space types a space, which the table names. *)
+named(bindings) = dict.Dict([{Key: if k == " " "space" else k end, Value: bindings[k]} for k in dict.Keys(bindings)])
+table(named(dict.Merge(folders.FolderKeys(), folders.Letters())))
+```
+
+The second key after `*` and `%`:
+
+```cesia output=md fold=code
+second(prefix, bindings) = [{Key: "$prefix $k", Value: bindings[k]} for k in dict.Keys(bindings)]
+table(dict.Dict(list.Concat(second("*", folders.StarLetters()), second("%", folders.PercentLetters()))))
+```
 
 ## The list of completions
 

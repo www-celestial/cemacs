@@ -503,21 +503,35 @@ $n = 21$ : le démarrage de `cesia fmt` et sa double lecture du fichier, et seul
 ## Le gestionnaire de dossiers
 
 Un dossier de 10 000 fichiers, le buffer du premier fichier courant, médianes de 21 passes, chacune avec
-`commands.Settled` tel que l'éditeur l'appelle après chaque événement :
+`commands.Settled` tel que l'éditeur l'appelle après chaque événement, cette version et `main` à 3cc0974, avant les touches
+de Dired, à tour de rôle :
 
-| Étape | Médiane de 21 | La plus rapide, la plus lente |
-|---|---|---|
-| l'ouverture du dossier, `C-x d` | 105 ms | 96, 127 ms |
-| la première lettre tapée, `9`, qui garde 3 439 rangées | 7,4 ms | 5,8, 23,0 ms |
-| une deuxième lettre, `9` à nouveau, qui filtre les rangées montrées | 8,4 ms | 7,6, 14,8 ms |
+| Étape | Cette version : médiane de 21 | La plus rapide, la plus lente | Avant |
+|---|---|---|---|
+| l'ouverture du dossier, `C-x d` | 102 ms | 100, 114 ms | 98 ms |
+| `/` puis la première lettre, `9`, qui garde 3 439 rangées ; avant, la lettre seule | 9,4 ms | 8,8, 11,2 ms | 11,3 ms |
+| une deuxième lettre, `9` à nouveau, qui filtre les rangées montrées | 4,2 ms | 3,9, 5,3 ms | 4,0 ms |
+| `m`, la première marque, qui fait la rangée de chaque nom | 10,8 ms | 8,4, 19,3 ms | |
+| `m`, une deuxième marque | 5,2 ms | 4,7, 11,8 ms | |
+| `t`, 10 000 marques d'un coup | 63 ms | 50, 82 ms | |
+| `s`, les rangées triées par date, à partir des entrées lues | 68 ms | 63, 73 ms | |
 
 Le script a fait le dossier, 10 000 fichiers nommés de `file-1.ce` à `file-10000.ce`, puis a chronométré [folders.Open] avec
-[commands.Settled], et deux événements de texte à travers [commands.Update], comme la fenêtre les envoie. L'ouverture lit le
-dossier une fois : une liste et un regard sur chacune des 10 000 entrées, puis les rangées et leurs couleurs. Une lettre
-filtre les rangées lues alors, à partir de celles déjà montrées quand le filtre n'a fait que grandir. Ces temps datent d'avant
-que le filtre cherche chaque lettre en code natif ;
+[commands.Settled], et les touches à travers [commands.Update], comme la fenêtre les envoie. L'ouverture lit le dossier une
+fois : une liste et un regard sur chacune des 10 000 entrées, puis les rangées et leurs couleurs. Le mode, que les rangées
+montrent depuis cette version, coûte 4 ms des 102 : [folders.Rows] fait la partie de chaque mode, taille et âge une seule
+fois, pour la première rangée qui l'a, et les rangées la partagent, là où une partie faite pour chaque rangée coûtait 20 ms
+de plus. Une lettre filtre les rangées lues alors, à partir de celles déjà montrées quand le filtre n'a fait que grandir ;
 [Un cas : trouver un fichier à partir de quelques lettres](finding.md#la-vitesse--chaque-lettre-répond-tout-de-suite) mesure le filtre
-depuis, sur 1 933 rangées : 288 lettres tapées en 210 ms contre 402 avant.
+sur 1 933 rangées : 288 lettres tapées en 210 ms contre 402 avant qu'il cherche chaque lettre en code natif. Une marque
+refait sa rangée, et la liste son texte, sans relire le dossier.
+
+Les touches de Dired ajoutent environ 1 900 lignes à `src/folders`, que Cemacs charge à son démarrage : le démarrage jusqu'à
+la première frame, avec le driver dummy de SDL (un faux écran), les packages de `src/cemacs.ce`, $n = 21$, à tour de rôle,
+30,0 ms [29,8, 30,3] contre 29,0 ms [28,9, 29,3] pour `main` à 3cc0974. Le corps de leurs fonctions n'est lu qu'à leur
+premier appel, comme le dit
+[How Cesia works](https://www-celestial.github.io/cesia-lang/internals.html#the-cache-of-loaded-packages), donc la
+milliseconde est la lecture de leurs noms et de leurs paramètres.
 
 ## La vérification
 

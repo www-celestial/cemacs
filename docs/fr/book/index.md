@@ -48,7 +48,7 @@ peut lire.
 3. [Édition](editing.md) : le curseur, la mark et la sélection, les déplacements, la frappe, l'indentation du code Cesia,
    la completion, couper et coller, annuler, la souris.
 4. [Fichiers et buffers](files.md) : ouvrir, enregistrer sans risque, quels fichiers s'ouvrent, les fins de ligne, la liste
-   des buffers, le gestionnaire de dossiers.
+   des buffers, le gestionnaire de dossiers avec les touches de Dired.
 5. [Fenêtre et panes](windows.md) : la fenêtre, ses panes, la mode line, la prompt line et la bande des hints.
 6. [Recherche](search.md) : l'incremental search dans un buffer, `C-s` et `C-r`, et ce que Cemacs trouve d'autre : des
    rangées de listes, des touches, des erreurs, des endroits.

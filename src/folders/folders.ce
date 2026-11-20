@@ -1,19 +1,25 @@
-(** The folders: the files and folders of a folder in a list, as a file manager. The line under the panes is the path, which typing goes on: the letters
-    filter the names, / goes into the folder under the cursor, ~/ to the home and / alone to the root, and backspace takes back a letter or, with none, goes up.
-    C-y goes to a pasted path. Enter opens, C-c n makes a file or a folder, C-c r renames and C-c k moves to the trash. Names that start with a dot stay hidden
-    until C-c . shows them. *)
+(** The folders: the files and folders of a folder in a list, as Emacs's Dired. Each letter typed is a command, as in Dired: n and p move, m marks, d flags
+    for deletion and x deletes, C copies, R renames or moves, D deletes now, M changes the mode, T the time, + makes a folder, ! runs a command of the shell on
+    the files, and ? lists them all; the commands act on the rows marked with *, or else on the row under the cursor. / filters: what is typed after it goes on
+    the path of the line under the panes, the letters filter the names, / goes into the folder under the cursor, ~/ to the home and / alone to the root, and
+    Enter keeps the filter and gives the letters back to the commands. C-x C-q makes the names a text to edit, and C-c C-c renames the files as it says.
+    The state of a list lives in its Folder field, a view: see NewView. The commands are in this file and in the others of src/folders: operations.ce for
+    the copies, moves and deletions, modes.ce for the modes, shell.ce for the programs it runs and wdired.ce for the names edited. *)
 use core/color
 use core/commands
 use core/files
 use core/lists
-use std/date
-use std/encode
-use std/sys
+use core/panes
 use core/text
-use std/text as str
+use std/date
+use std/dict
+use std/fiber
 use std/list
 use std/math
+use std/regex
 use std/result
+use std/sys
+use std/text as str
 use std/value
 
 Keys() = {"C-x d": Open, "C-c f d": Open}   (** The keys that work everywhere: C-c f d in the group of the files. *)
@@ -22,7 +28,7 @@ defn Open(state)
   (** Opens the folder of the current file, or the folder Cemacs started in. *)
   b = state.Buffers[state.Current]
   here = if value.IsMissing(b.Path) or lists.IsList(b) "." else Parent(b.Path) end
-  show(Absolute(here, sys.Env("PWD")), false, missing, state)
+  show(NewView(Absolute(here, sys.Env("PWD"))), missing, state)
 end
 
 (** The folder above a path; the root stays the root.
@@ -40,16 +46,34 @@ BaseName(path) = str.Split("/", files.Normal(path))[value.Len(str.Split("/", fil
       Absolute("src", "/home/a") --> "/home/a/src" *)
 Absolute(path, from) = if str.StartsWith("/", path) or value.IsMissing(from) files.Normal(path) else files.Normal("$from/$path") end
 
-(** A name in a folder: a path from the root stays as it is. *)
-within(dir, name) = if str.StartsWith("/", name) files.Normal(name) else files.Normal("$dir/$name") end
+(** A name in a folder: a path from the root stays as it is.
+
+      Within("/p", "a.ce") --> "/p/a.ce"
+      Within("/p", "/q/b.ce") --> "/q/b.ce" *)
+Within(dir, name) = if str.StartsWith("/", name) files.Normal(name) else files.Normal("$dir/$name") end
+
+(* ---- The entries of a folder *)
 
 defn entryOf(dir, name)
-  (** An entry of a folder, {Name, IsDir, Size, Modified}, or missing if it vanished between the list and its stat. *)
-  match sys.Stat("$dir/$name")
-    result.Ok(st) -> {Name: name, IsDir: st.IsDir, Size: st.Size, Modified: st.Modified}
+  (** An entry of a folder, {Name, IsDir, IsLink, Size, Modified, Mode, Target}, or missing if it vanished between the list and its stat. A symbolic link
+      is shown as what it points to, with its Target; one that points to nothing has no Size, Modified nor Mode. *)
+  path = "$dir/$name"
+  match sys.Stat(path)
+    result.Ok(st) -> {Name: name, IsDir: st.IsDir, IsLink: st.IsLink, Size: st.Size, Modified: st.Modified, Mode: st.Mode, Target: if st.IsLink linkOf(path) else missing end}
+    result.Err(_) -> brokenOf(name, path)
+  end
+end
+
+defn brokenOf(name, path)
+  (** The entry of a symbolic link that points to nothing, which sys.Stat can't follow, or missing for a name that is gone. *)
+  match sys.ReadLink(path)
+    result.Ok(t) -> {Name: name, IsDir: false, IsLink: true, Size: missing, Modified: missing, Mode: missing, Target: t}
     result.Err(_) -> missing
   end
 end
+
+(** The path that a link points to, as it was written, or "?" when it can't be read. *)
+linkOf(path) = result.UnwrapOr("?", sys.ReadLink(path))
 
 defn entriesOf(dir)
   (** The entries of a folder, in an Ok, or an Err when it can't be read. *)
@@ -57,35 +81,177 @@ defn entriesOf(dir)
   result.Ok(list.Filter(e -> not value.IsMissing(e), [entryOf(dir, n) for n in names]))
 end
 
+(** A field of an entry, or the value given for an entry without it, as those that a test writes by hand. *)
+field(name, otherwise, e) = dict.GetOr(name, otherwise, e)
+
+isLink(e) = field("IsLink", false, e) == true   (** Is the entry a symbolic link? *)
+
 (** The name of an entry as a row shows it: a folder ends with a slash. *)
 shownName(e) = if e.IsDir "$(e.Name)/" else e.Name end
 
-defn Rows(entries, hidden, now)
-  (** The rows of a folder: folders first, then files, in the order of the entries, each {Words, Key, Item}. The filter reads the name only, and a name that
-      starts with a dot is left out unless hidden is true. *)
-  shown = list.Filter(e -> hidden or not str.StartsWith(".", e.Name), entries)
-  ordered = list.Concat(list.Filter(e -> e.IsDir, shown), list.Filter(e -> not e.IsDir, shown))
-  width = list.Reduce((w, e) -> list.Max(w, value.Len(shownName(e))), 0, ordered)
-  list.Map(e -> rowOf(e, width, now), ordered)
+(* ---- The view: what a folder list shows, and how *)
+
+(** The view of a folder as it opens: its Dir, the names that start with a dot hidden, sorted by name, with the details of each entry, no mark, the letters
+    as commands, no key pending. Entries and Read, the time it was read at, come when it is read: see Shown; Index, the row of each name, at the first
+    mark.
+
+      NewView("/p").Sort --> "name" *)
+NewView(dir) = {Dir: dir, Hidden: false, Sort: "name", Details: true, Marks: dict.Dict(), Filtering: false, Prefix: "", Entries: [], Index: missing, Read: 0}
+
+defn ViewOf(b)
+  (** The view of a buffer that is a folder list, or missing for any other buffer. *)
+  match lists.Of(b)
+    {Folder: v} -> v
+    else -> missing
+  end
 end
 
-defn rowOf(e, width, now)
-  (** The row of an entry: its name padded to width in the color of its kind, the size of a file as a number, and its age, faint. *)
-  size = if e.IsDir "" else SizeText(e.Size) end
-  parts = [[RoleOf(e), str.PadRight(width, " ", shownName(e))], [color.Plain, "  "], [color.Number, str.PadLeft(7, " ", size)], [color.Plain, "  "],
-    [color.Comment, AgeText(now - e.Modified, e.Modified)]]
-  {Words: str.Join("", list.Map(p -> p[2], parts)), Parts: parts, Key: e.Name, Item: {Name: e.Name, IsDir: e.IsDir}}
+here(state) = state.Buffers[state.Current]   (** The current buffer. *)
+viewHere(state) = ViewOf(here(state))   (** The view of the current buffer, which the keys of a folder list find there. *)
+
+defn withView(v, state)
+  (** The state with the view in the list of the current buffer, and its label made again. *)
+  s = state
+  l = lists.Of(here(state))
+  l.Folder = v
+  l.Label = labelOf(v, l.Filter)
+  s.Buffers[state.Current].List = l
+  s
 end
+
+(** The sorts that s goes through, in order. *)
+sorts = ["name", "date", "size"]
+
+defn Sorted(entries, by)
+  (** The entries in the order of a sort: folders first, then files, each by name, in the order of the listing, by date, the newest first, or by size,
+      the largest first; equal ones keep their order.
+
+        [e.Name for e in Sorted([{Name: "a", IsDir: false, Size: 1, Modified: 5}, {Name: "b", IsDir: false, Size: 9, Modified: 1}], "size")] --> ["b", "a"] *)
+  key = if by == "date" (e -> 0 - number(field("Modified", 0, e))) else if by == "size" (e -> 0 - number(field("Size", 0, e))) else (e -> 0) end
+  dirs = list.SortBy(key, [e for e in entries if e.IsDir])
+  rest = list.SortBy(key, [e for e in entries if not e.IsDir])
+  list.Concat(dirs, rest)
+end
+
+(** A number, or 0 for missing, as the size of a link that points to nothing. *)
+number(x) = if value.IsMissing(x) 0 else x end
+
+defn Rows(entries, hidden, now, sort = "name", details = true, marks = missing)
+  (** The rows of a folder, each {Words, Parts, Key, Item}: folders first, then files, in the order of the sort, as Sorted gives it. The filter reads the
+      name only, and a name that starts with a dot is left out unless hidden is true. Each row starts with the column of its mark, * or D or a space, from
+      marks, names to marks; with details, the mode, the size and the age of the entry come before its name, and a link ends with -> and its target. A
+      folder holds few modes, sizes and ages: the part of each is made once, for the first row that has it, and the others share it. *)
+  shown = Sorted([e for e in entries if hidden or not str.StartsWith(".", e.Name)], sort)
+  given = if value.IsMissing(marks) dict.Dict() else marks end
+  made = {Modes: dict.Dict(), Sizes: dict.Dict(), Ages: dict.Dict()}
+  rows = []
+  for e in shown
+    facts = []
+    if details
+      key = modeKey(e)
+      mode = dict.GetOr(key, missing, made.Modes)
+      if value.IsMissing(mode)
+        mode = [color.Comment, "$(ModeText(e))  "]
+        made.Modes = dict.Put(key, mode, made.Modes)
+      end
+      words = sizeOf(e)
+      size = dict.GetOr(words, missing, made.Sizes)
+      if value.IsMissing(size)
+        size = [color.Number, str.PadLeft(7, " ", words)]
+        made.Sizes = dict.Put(words, size, made.Sizes)
+      end
+      when = ageOf(e, now)
+      age = dict.GetOr(when, missing, made.Ages)
+      if value.IsMissing(age)
+        age = [color.Comment, "  $(str.PadRight(10, " ", when))  "]
+        made.Ages = dict.Put(when, age, made.Ages)
+      end
+      facts = [mode, size, age]
+    end
+    row = rowOf(e, facts)
+    m = dict.GetOr(e.Name, " ", given)
+    rows = list.Append(if m == " " row else Marked(row, m) end, rows)
+  end
+  rows
+end
+
+defn modeKey(e)
+  (** The number that stands for the mode of an entry and its kind, for the parts that Rows makes once: below 0 for a link or a mode unknown. *)
+  mode = field("Mode", missing, e)
+  if field("IsLink", false, e) == true
+    return 0 - 1
+  end
+  if value.IsMissing(mode) (if e.IsDir 0 - 2 else 0 - 3 end) else mode + (if e.IsDir 4096 else 0 end) end
+end
+
+(** The part of the column of no mark, which every row without one shares. *)
+noMark = [color.Number, "  "]
+
+defn rowOf(e, facts)
+  (** The row of an entry with no mark, the parts of its details given, none without: then its name in the color of its kind, Role, and the target of a
+      link. Body holds the words after the mark, and Named the place of the name among the parts, for Marked. *)
+  name = shownName(e)
+  role = RoleOf(e)
+  link = field("IsLink", false, e) == true
+  target = if link " -> $(field("Target", "?", e))" else "" end
+  body = if value.Len(facts) == 0 "$name$target" else "$(facts[1][2])$(facts[2][2])$(facts[3][2])$name$target" end
+  parts = if value.Len(facts) == 0 [noMark, [role, name]] else [noMark, facts[1], facts[2], facts[3], [role, name]] end
+  if link
+    parts = list.Append([color.Comment, target], parts)
+  end
+  {Words: "  $body", Parts: parts, Key: e.Name, Item: {Name: e.Name, IsDir: e.IsDir}, Body: body, Named: value.Len(facts) + 2, Role: role}
+end
+
+(** The size of an entry as a row shows it: none for a folder or a link to nothing. *)
+sizeOf(e) = if e.IsDir or value.IsMissing(field("Size", missing, e)) "" else SizeText(e.Size) end
+
+(** The age of an entry as a row shows it, at now: none for a link to nothing. *)
+ageOf(e, now) = if value.IsMissing(field("Modified", missing, e)) "" else AgeText(now - e.Modified, e.Modified) end
+
+defn Marked(row, mark)
+  (** A row with its mark, * marked, D flagged for deletion, any other character a mark of its own, a space none: the mark and a space start its words, and
+      the name of a row marked takes the color of its mark, that of its kind without one.
+
+        Marked({Body: "a.ce", Parts: [[4, "  "], [6, "a.ce"]], Named: 2, Role: 6}, "*").Words --> "* a.ce" *)
+  parts = row.Parts
+  parts[1] = [markRole(mark), "$mark "]
+  parts[row.Named] = [if mark == " " row.Role else markRole(mark) end, parts[row.Named][2]]
+  out = row
+  out.Words = "$mark $(row.Body)"
+  out.Parts = parts
+  out
+end
+
+(** The color of a mark: D, which deletes, as a keyword, any other as a number. *)
+markRole(mark) = if mark == "D" color.Keyword else color.Number end
 
 (* The kinds of files by the end of their name, each shown in a color of the theme. *)
 code = ["ce", "cen", "ml", "mli", "kt", "kts", "java", "c", "h", "cpp", "hpp", "rs", "go", "py", "js", "ts", "sh", "el", "vim", "lua", "rb"]
 settings = ["toml", "json", "yaml", "yml", "csv", "lock", "xml", "ini", "cfg", "conf"]
 media = ["png", "jpg", "jpeg", "gif", "svg", "webp", "ttf", "otf", "pdf", "mp3", "mp4", "wav", "zip", "gz", "tar", "bundle"]
 
-(** The end of a name after its last dot, in lower case, or "" for a name with none.
+defn Extension(name)
+  (** The end of a name after its last dot, in lower case, or "" for a name with none. The dots are found natively, one after the other: each row of a
+      folder asks.
 
-      Extension("Main.KT") --> "kt" *)
-Extension(name) = if str.Contains(".", name) str.Lower(list.Last(str.Split(".", name))) else "" end
+        Extension("Main.KT") --> "kt"
+        Extension("a.tar.gz") --> "gz"
+        Extension("Makefile") --> "" *)
+  at = str.ByteFind(".", 1, name)
+  if value.IsMissing(at)
+    return ""
+  end
+  next = str.ByteFind(".", at + 1, name)
+  while not value.IsMissing(next)
+    at = next
+    next = str.ByteFind(".", at + 1, name)
+  end
+  if at == str.ByteLength(name) "" else str.Lower(str.ByteSlice(at + 1, str.ByteLength(name), name)) end
+end
+
+(** The color of each kind of file, by the end of its name. *)
+kinds = dict.Dict(list.Concat(list.Concat([{Key: x, Value: color.String} for x in code], [{Key: x, Value: color.Keyword} for x in settings]),
+  [{Key: x, Value: color.Field} for x in media]))
 
 defn RoleOf(e)
   (** The color of the name of an entry: a hidden one is faint, a folder a name, code a string, settings and data a keyword, pictures, fonts and archives a
@@ -95,8 +261,7 @@ defn RoleOf(e)
   else if e.IsDir
     color.Name
   else
-    ext = Extension(e.Name)
-    if ext in code color.String else if ext in settings color.Keyword else if ext in media color.Field else color.Plain end
+    dict.GetOr(Extension(e.Name), color.Plain, kinds)
   end
 end
 
@@ -141,26 +306,54 @@ defn AgeText(age, modified)
   end
 end
 
-defn show(dir, hidden, at, state)
-  (** The state with the list of a folder, read now, and the cursor on the name at when it is there. A folder that can't be read is a message. *)
-  match entriesOf(dir)
-    result.Ok(entries) -> Shown(dir, entries, hidden, at, sys.Now(), state)
+(* ---- Showing a folder *)
+
+defn show(v, at, state)
+  (** The state with the list of the folder of a view, read now, and the cursor on the name at when it is there. The marks of names that are gone go. A
+      folder that can't be read is a message. *)
+  match entriesOf(v.Dir)
+    result.Ok(entries) -> shownView(v, entries, at, sys.Now(), state)
     result.Err(e) -> commands.Say(e.Message, state)
   end
 end
 
-defn Shown(dir, entries, hidden, at, now, state)
-  (** The state with the list of a folder from its entries, as read at now, and the cursor on the name at when it is there. The rows are made once here:
-      each event filters them, and none reads the folder again. *)
-  rows = Rows(entries, hidden, now)
-  s = commands.ShowList(dir, rows, () -> keysOf(dir, hidden), state, free = () -> freeOf(dir, hidden), label = Slashed(dir),
-    typed = (words, st) -> typedIn(dir, hidden, words, st))
+defn Shown(dir, entries, hidden, at, now, state, sort = "name", details = true)
+  (** The state with the list of a folder from its entries, as read at now, and the cursor on the name at when it is there, for a view with no mark. The
+      rows are made once here: each event filters them, and none reads the folder again. *)
+  v = NewView(dir)
+  v.Hidden = hidden
+  v.Sort = sort
+  v.Details = details
+  shownView(v, entries, at, now, state)
+end
+
+defn shownView(view, entries, at, now, state)
+  (** The state with the list of a view from its entries: the list of a folder already open gives its place to this one, and the filter it kept stays. *)
+  names = if value.Len(dict.Keys(view.Marks)) == 0 dict.Dict() else dict.Dict([{Key: e.Name, Value: true} for e in entries]) end
+  v = view
+  v.Marks = if value.Len(dict.Keys(view.Marks)) == 0 view.Marks else dict.Dict([{Key: k, Value: view.Marks[k]} for k in dict.Keys(view.Marks) if dict.Has(k, names)]) end
+  v.Entries = entries
+  v.Read = now
+  v.Prefix = ""
+  rows = Rows(entries, v.Hidden, now, sort = v.Sort, details = v.Details, marks = v.Marks)
+  v.Index = missing
+  was = viewHere(state)
+  filter = if value.IsMissing(was) or was.Dir != v.Dir "" else lists.Of(here(state)).Filter end
+  s = commands.ShowList(v.Dir, rows, () -> dict.Dict(), state, free = FolderKeys, label = labelOf(v, filter), typed = typedIn)
+  s = withView(v, if filter == "" s else commands.AddToFilter(filter, s) end)
   onName(at, s)
 end
 
+(** The view of the current list read again, its marks and settings kept, the cursor on the same name: g does it, and every command that changes the
+    folder. *)
+reread(state) = show(viewHere(state), under(state), state)
+
+(** The view of the current list shown again from the entries it read, as a sort or the details change it: the ages are those of when it was read. *)
+redrawn(v, state) = shownView(v, v.Entries, under(state), v.Read, state)
+
 defn onName(at, state)
   (** The state with the cursor of the list on the row of this name, if there is one. *)
-  b = state.Buffers[state.Current]
+  b = here(state)
   items = lists.Of(b).Items
   for k in 1..value.Len(items)
     if items[k].Name == at
@@ -172,193 +365,690 @@ defn onName(at, state)
   state
 end
 
-(** The keys of the list that act on the row under the cursor. *)
-keysOf(dir, hidden) = {"enter": (item, s) -> enter(dir, hidden, item, s), "C-c r": (item, s) -> rename(dir, hidden, item, s),
-  "C-c k": (item, s) -> trash(dir, hidden, item, s)}
-
-(** The keys of the list that need no row: going up, going to a pasted path, making a file or a folder, showing the hidden names. *)
-freeOf(dir, hidden) = {"backspace": s -> back(dir, hidden, s), "S-backspace": s -> back(dir, hidden, s), "C-y": s -> pasted(dir, hidden, s),
-  "C-c n": s -> make(dir, hidden, s), "C-c .": s -> show(dir, not hidden, under(s), s)}
+defn labelOf(v, filter)
+  (** The words before the filter on the line under the panes: the folder with its slash while / filters, then the marks, the sort and the hidden names
+      shown, or the hint of ?, and a slash before a filter kept. *)
+  if v.Filtering
+    return Slashed(v.Dir)
+  end
+  marked = value.Len([k for k in dict.Keys(v.Marks) if v.Marks[k] == "*"])
+  flagged = value.Len([k for k in dict.Keys(v.Marks) if v.Marks[k] == "D"])
+  parts = list.Concat(list.Concat(if marked > 0 ["$marked marked"] else [] end, if flagged > 0 ["$flagged flagged"] else [] end),
+    list.Concat(if v.Sort != "name" ["by $(v.Sort)"] else [] end, if v.Hidden ["hidden shown"] else [] end))
+  info = if value.Len(parts) == 0 "? lists the keys" else str.Join(", ", parts) end
+  "$(Slashed(v.Dir))  $info$(if filter == "" "" else "  /" end)"
+end
 
 (** A folder with the slash that a name typed after it needs: the root stays /.
 
       Slashed("/a/b") --> "/a/b/" *)
 Slashed(dir) = if str.EndsWith("/", dir) dir else "$dir/" end
 
-defn typedIn(dir, hidden, words, state)
-  (** A text typed in the list: / goes into a folder, to the home after ~, or to the root with nothing typed; anything else grows the filter. *)
-  if words != "/"
-    return commands.AddToFilter(words, state)
+(* ---- Keys *)
+
+(** The keys of a folder list that start with Ctrl or Alt, Enter and Backspace, which need no row. Each reads the view of the list; the letters come to
+    typedIn, which finds them in Letters. *)
+FolderKeys() = {"enter": Enter, "S-enter": Enter, "backspace": Back, "S-backspace": Back, "C-g": Cancel, "C-y": PastePath, "C-c n": NewFile,
+  "C-c r": Rename, "C-c k": Delete, "C-c .": ToggleHidden, "C-o": ShowOther, "M-}": NextMarked, "M-S-]": NextMarked, "M-{": PreviousMarked, "M-S-[": PreviousMarked,
+  "C-x C-q": EditNames}
+
+(** The letters of a folder list and the command each runs, as in Dired; * and % wait for a second letter: see Starred and Percent. *)
+Letters() = {"n": Next, " ": Next, "p": Previous, "<": PreviousFolder, ">": NextFolder, "^": Up, "e": Visit, "f": Visit, "v": Visit, "o": OpenOther,
+  "j": Jump, "g": Refresh, "q": Quit, "m": Mark, "u": Unmark, "U": UnmarkAll, "t": ToggleMarks, "d": Flag, "~": FlagBackups, "#": FlagAutoSaves,
+  "x": DeleteFlagged, "*": StarPrefix, "%": PercentPrefix, "/": StartFilter, "C": Copy, "R": Rename, "D": Delete, "S": Symlink,
+  "Y": RelativeSymlink, "H": HardLink, "M": ChangeMode, "T": Touch, "+": MakeFolder, "Z": Compress, "c": CompressTo, "!": ShellCommand,
+  "&": AsyncShellCommand, "=": Diff, "A": SearchMarked, "Q": ReplaceMarked, "w": CopyNames, "W": CopyPaths, "y": WhatIs, "s": NextSort,
+  "(": ToggleDetails, ".": ToggleHidden, "?": KeysSummary}
+
+(** The second letters after *, as in Dired: ! and the others unmark, / marks the folders, @ the links, * the programs, . an extension, s every row, m, u
+    and t as alone, c changes one mark into another, and % marks by a pattern. *)
+StarLetters() = {"!": UnmarkAll, "/": MarkFolders, "@": MarkLinks, "*": MarkPrograms, ".": MarkExtension, "s": MarkAll, "m": Mark, "u": Unmark,
+  "t": ToggleMarks, "c": ChangeMarks, "%": MarkMatching}
+
+(** The second letters after %, as in Dired: m marks the names that a pattern finds, d flags them, and g marks the files whose text it finds. *)
+PercentLetters() = {"m": MarkMatching, "d": FlagMatching, "g": MarkHolding}
+
+defn typedIn(words, state)
+  (** A text typed in a folder list: while / filters, it goes on the path; else each character is a command, the second after * or %. A text of more
+      than one character, as an input method may send, goes on into the question that one of them asks, and stops when the list is gone. *)
+  s = state
+  cs = str.Chars(words)
+  for k in 1..value.Len(cs)
+    if not value.IsMissing(s.Prompt)
+      return commands.Update({Kind: "text", Text: str.Join("", list.Skip(k - 1, cs))}, s)
+    end
+    v = viewHere(s)
+    if value.IsMissing(v)
+      return s
+    end
+    s = if v.Filtering filterTyped(cs[k], s) else lettered(cs[k], v, s) end
   end
-  filter = lists.Of(state.Buffers[state.Current]).Filter
+  s
+end
+
+defn lettered(c, v, state)
+  (** The command of a letter, or of the second letter after * or %; a letter of none says so. *)
+  table = if v.Prefix == "*" StarLetters() else if v.Prefix == "%" PercentLetters() else Letters() end
+  keys = if v.Prefix == "" c else "$(v.Prefix) $c" end
+  s = if v.Prefix == "" state else withView(dict.Merge(v, {Prefix: ""}), state) end
+  if not dict.Has(c, table)
+    return commands.Say("$keys is not a key of the folders: ? lists them.", s)
+  end
+  f = table[c]
+  f(s)
+end
+
+(** The state waiting for the second letter after * or %, as the line under the panes says. *)
+waiting(prefix, state) = commands.Say("$prefix -", withView(dict.Merge(viewHere(state), {Prefix: prefix}), state))
+
+StarPrefix(state) = waiting("*", state)   (** *: waits for a second letter, one of StarLetters, the marks of a kind. *)
+PercentPrefix(state) = waiting("%", state)   (** %: waits for a second letter, one of PercentLetters, the marks by a pattern. *)
+
+(** ?: the keys of the folder list, in short, on the line under the panes. *)
+KeysSummary(state) = commands.Say(str.Join("  ", ["n p move", "m mark", "u unmark", "d flag", "x delete flagged", "C copy", "R move", "D delete", "+ folder",
+  "M mode", "T time", "S link", "! shell", "/ filter", "s sort", "( details", "g refresh", "q quit; Files and buffers in the book has them all"]), state)
+
+defn Enter(state)
+  (** Enter: while / filters, the filter is kept and the letters are commands again; else the row under the cursor opens, as Visit. *)
+  v = viewHere(state)
+  if v.Filtering withView(dict.Merge(v, {Filtering: false}), state) else Visit(state) end
+end
+
+defn Back(state)
+  (** Backspace: while / filters, the last character of the filter taken back, or with none the folder above; else the row above unmarked, as DEL in
+      Dired. *)
+  v = viewHere(state)
+  if not v.Filtering
+    return UnmarkBack(state)
+  end
+  if lists.Of(here(state)).Filter != ""
+    commands.ListBack(state)
+  else if v.Dir == "/"
+    commands.Say("This is the root.", state)
+  else
+    Up(state)
+  end
+end
+
+defn Cancel(state)
+  (** C-g: a second letter that waits is no longer awaited; while / filters, the filter goes and the letters are commands again; else the filter kept
+      goes, or with none the list closes, as in every list. *)
+  v = viewHere(state)
+  filter = lists.Of(here(state)).Filter
+  if v.Prefix != ""
+    commands.Say("Quit", withView(dict.Merge(v, {Prefix: ""}), state))
+  else if v.Filtering or filter != ""
+    withView(dict.Merge(v, {Filtering: false}), if filter == "" state else commands.ListCancel(state) end)
+  else
+    commands.ListCancel(state)
+  end
+end
+
+(** /: the letters typed after it go on the path of the line under the panes, and filter the names, until Enter or C-g. *)
+StartFilter(state) = withView(dict.Merge(viewHere(state), {Filtering: true}), state)
+
+defn filterTyped(c, state)
+  (** A character typed while / filters: / goes into a folder, to the home after ~, or to the root with nothing typed; any other grows the filter. *)
+  if c != "/"
+    return commands.AddToFilter(c, state)
+  end
+  v = viewHere(state)
+  filter = lists.Of(here(state)).Filter
   if filter == ""
-    show("/", hidden, missing, state)
+    show(moved(v, "/"), missing, state)
   else if filter == "~"
     home = sys.Env("HOME")
-    if value.IsMissing(home) commands.Say("HOME is not set.", state) else show(home, hidden, missing, state) end
+    if value.IsMissing(home) commands.Say("HOME is not set.", state) else show(moved(v, home), missing, state) end
   else
-    into(dir, hidden, state)
+    into(v, state)
   end
 end
 
-defn into(dir, hidden, state)
-  (** The folder under the cursor, or else the first folder shown, opened: what / after a part of its name does. *)
-  b = state.Buffers[state.Current]
-  item = lists.ItemAt(b)
-  folders = list.Filter(i -> i.IsDir, lists.Of(b).Items)
-  chosen = if not value.IsMissing(item) and item.IsDir item else if value.Len(folders) > 0 folders[1] else missing end
-  if value.IsMissing(chosen) commands.Say("No folder matches.", state) else show(within(dir, chosen.Name), hidden, missing, state) end
+defn moved(v, dir)
+  (** The view of another folder, with the settings of this one, no mark and no filter. *)
+  out = v
+  out.Dir = dir
+  out.Marks = dict.Dict()
+  out.Prefix = ""
+  out
 end
 
-defn pasted(dir, hidden, state)
+defn into(v, state)
+  (** The folder under the cursor, or else the first folder shown, opened: what / after a part of its name does. *)
+  b = here(state)
+  item = lists.ItemAt(b)
+  found = list.Filter(i -> i.IsDir, lists.Of(b).Items)
+  chosen = if not value.IsMissing(item) and item.IsDir item else if value.Len(found) > 0 found[1] else missing end
+  if value.IsMissing(chosen) commands.Say("No folder matches.", state) else show(moved(v, Within(v.Dir, chosen.Name)), missing, state) end
+end
+
+defn PastePath(state)
   (** C-y: the path on the clipboard, from the root, the home with ~, or this folder: a folder opens, and a file shows its folder with the cursor on it. *)
+  v = viewHere(state)
   words = str.Trim(str.Join("", list.Take(1, str.Lines(commands.Clipboard(state)))))
   home = sys.Env("HOME")
-  path = if str.StartsWith("~", words) and not value.IsMissing(home) files.Normal("$home/$(str.Join("", list.Skip(1, str.Chars(words))))") else within(dir, words) end
+  path = if str.StartsWith("~", words) and not value.IsMissing(home) files.Normal("$home/$(str.Join("", list.Skip(1, str.Chars(words))))") else Within(v.Dir, words) end
   if words == "" or not sys.Exists(path)
     commands.Say("No file or folder at $words.", state)
   else if result.Unwrap(sys.Stat(path)).IsDir
-    show(path, hidden, missing, state)
+    show(moved(v, path), missing, state)
   else
-    show(Parent(path), hidden, BaseName(path), state)
+    show(moved(v, Parent(path)), BaseName(path), state)
   end
 end
+
+(* ---- Moving *)
 
 defn under(state)
   (** The name under the cursor of the list, or missing. *)
-  item = lists.ItemAt(state.Buffers[state.Current])
+  item = lists.ItemAt(here(state))
   if value.IsMissing(item) missing else item.Name end
 end
 
-defn back(dir, hidden, state)
-  (** Backspace: the last character of the filter taken back, or with no filter the folder above, the cursor on the one just left. *)
-  if lists.Of(state.Buffers[state.Current]).Filter != ""
-    commands.ListBack(state)
-  else if dir == "/"
-    commands.Say("This is the root.", state)
+defn toLine(k, state)
+  (** The state with the cursor of the list on line k. *)
+  s = state
+  s.Buffers[state.Current] = text.Place(k, 0, here(state))
+  s
+end
+
+Next(state) = commands.NextLine(state)   (** n, Space: the next row. *)
+Previous(state) = commands.PreviousLine(state)   (** p: the row before. *)
+
+defn folderLine(by, state)
+  (** The cursor on the next folder row after the cursor, or before it with by -1, or a message when there is none. *)
+  items = lists.Of(here(state)).Items
+  k = here(state).Cursor.Line + by
+  while k >= 1 and k <= value.Len(items)
+    if items[k].IsDir
+      return toLine(k, state)
+    end
+    k += by
+  end
+  commands.Say(if by > 0 "No folder below." else "No folder above." end, state)
+end
+
+NextFolder(state) = folderLine(1, state)   (** >: the next row of a folder. *)
+PreviousFolder(state) = folderLine(-1, state)   (** <: the row of a folder before. *)
+
+defn Up(state)
+  (** ^: the folder above, the cursor on the one just left. *)
+  v = viewHere(state)
+  if v.Dir == "/" commands.Say("This is the root.", state) else show(moved(v, Parent(v.Dir)), BaseName(v.Dir), state) end
+end
+
+defn Visit(state)
+  (** Enter, e, f, v: a folder opens in the list; a file in a buffer, with the list closed. *)
+  v = viewHere(state)
+  item = lists.ItemAt(here(state))
+  if value.IsMissing(item)
+    return commands.Say("Nothing here.", state)
+  end
+  path = Within(v.Dir, item.Name)
+  if item.IsDir
+    show(moved(v, path), missing, state)
   else
-    show(Parent(dir), hidden, BaseName(dir), state)
+    commands.OpenFile(path, commands.ToBuffer(lists.Of(here(state)).Back, state))
   end
 end
 
-defn enter(dir, hidden, item, state)
-  (** Enter: a folder opens in the list, and a file in a buffer, with the list closed. *)
-  path = within(dir, item.Name)
-  if item.IsDir
-    show(path, hidden, missing, state)
-  else
-    commands.OpenFile(path, commands.ToBuffer(lists.Of(state.Buffers[state.Current]).Back, state))
-  end
+defn otherOf(state)
+  (** The pane after the one being edited, or missing with one pane. *)
+  n = panes.Count(panes.Tree(state))
+  if n < 2 missing else math.Mod(panes.Active(state), n) + 1 end
 end
+
+defn OtherFolder(state)
+  (** The folder of the list that the other pane shows, the next one, as Dired's dwim-target finds it: the folder the copies and moves go to first, or
+      missing when it shows none. *)
+  j = otherOf(state)
+  if value.IsMissing(j)
+    return missing
+  end
+  k = panes.At(j, panes.Tree(state)).Buffer
+  v = if k <= value.Len(state.Buffers) ViewOf(state.Buffers[k]) else missing end
+  if value.IsMissing(v) missing else v.Dir end
+end
+
+defn inOther(stay, state)
+  (** The row under the cursor shown in the other pane, a folder as its list, a file in a buffer, the pane split first when it is the only one; the
+      editing goes there, or with stay comes back to this list. *)
+  v = viewHere(state)
+  item = lists.ItemAt(here(state))
+  if value.IsMissing(item)
+    return commands.Say("Nothing here.", state)
+  end
+  i = panes.Active(state)
+  s = if value.IsMissing(otherOf(state)) commands.SplitRight(state) else state end
+  if value.IsMissing(otherOf(s))
+    s = commands.SplitBelow(state)
+  end
+  if value.IsMissing(otherOf(s))
+    return s
+  end
+  s = commands.FocusPane(otherOf(s), s)
+  path = Within(v.Dir, item.Name)
+  s = if item.IsDir show(moved(v, path), missing, s) else commands.OpenFile(path, s) end
+  if stay commands.FocusPane(i, s) else s end
+end
+
+OpenOther(state) = inOther(false, state)   (** o: the row under the cursor opened in the other pane, split if needed, and the editing there. *)
+ShowOther(state) = inOther(true, state)   (** C-o: the row under the cursor shown in the other pane, the editing staying in the list. *)
+
+(** j: asks for a name, Tab completing it, and puts the cursor on it; a path elsewhere shows its folder. *)
+Jump(state) = commands.Ask("Jump to file: ", Slashed(viewHere(state).Dir), jumped, state, named = true)
+
+defn jumped(answer, state)
+  (** The cursor on the row of the name answered, the filter and the hidden names opened for it if they hid it; or the folder of a path elsewhere. *)
+  v = viewHere(state)
+  path = Within(v.Dir, str.Trim(answer))
+  if path == v.Dir or not (sys.Exists(path) or result.IsOk(sys.ReadLink(path)))
+    return commands.Say("No file at $answer.", state)
+  end
+  name = BaseName(path)
+  if Parent(path) != v.Dir
+    return show(moved(v, Parent(path)), name, state)
+  end
+  if under(onName(name, state)) == name
+    return onName(name, state)
+  end
+  (* The row is hidden, by the filter or as a name with a dot: both are opened for it. *)
+  open = v
+  open.Hidden = v.Hidden or str.StartsWith(".", name)
+  open.Filtering = false
+  s = if lists.Of(here(state)).Filter == "" state else commands.ListCancel(state) end
+  onName(name, redrawn(open, withView(open, s)))
+end
+
+(** g: the folder read again, the marks of the names still there kept. *)
+Refresh(state) = commands.Say("Read again.", reread(state))
+
+(** q: the list closed, back to the buffer it was opened from. *)
+Quit(state) = commands.ToBuffer(lists.Of(here(state)).Back, state)
+
+(* ---- Marks *)
+
+defn withMarks(changes, state)
+  (** The state with the marks of some names changed, a dictionary from names to marks, a space for none: only their rows are made again, and the folder
+      isn't read. *)
+  v = viewHere(state)
+  b = here(state)
+  l = lists.Of(b)
+  rows = l.Rows
+  marks = v.Marks
+  if value.IsMissing(v.Index)
+    (* The row of each name, made at the first mark: a folder only looked at needs none. *)
+    v.Index = dict.Dict([{Key: rows[k].Key, Value: k} for k in 1..value.Len(rows)])
+  end
+  for name in dict.Keys(changes)
+    m = changes[name]
+    k = dict.GetOr(name, missing, v.Index)
+    if not value.IsMissing(k)
+      rows[k] = Marked(rows[k], m)
+      marks = if m == " " dict.Drop(name, marks) else dict.Put(name, m, marks) end
+    end
+  end
+  v.Marks = marks
+  l.Rows = rows
+  l.Shown = missing
+  s = state
+  s.Buffers[state.Current].List = l
+  withView(v, s)
+end
+
+(** The items of the rows the list shows. *)
+shownItems(state) = lists.Of(here(state)).Items
+
+(** The mark of a name, a space for none. *)
+markOf(name, v) = dict.GetOr(name, " ", v.Marks)
+
+defn markHere(mark, state)
+  (** The row under the cursor given a mark, and the cursor on the next row. *)
+  item = lists.ItemAt(here(state))
+  if value.IsMissing(item)
+    return commands.Say("Nothing here.", state)
+  end
+  commands.NextLine(withMarks(dict.Dict([{Key: item.Name, Value: mark}]), state))
+end
+
+Mark(state) = markHere("*", state)   (** m: the row under the cursor marked, and the cursor on the next. *)
+Unmark(state) = markHere(" ", state)   (** u: the row under the cursor unmarked, and the cursor on the next. *)
+Flag(state) = markHere("D", state)   (** d: the row under the cursor flagged for deletion, which x does, and the cursor on the next. *)
+
+defn UnmarkBack(state)
+  (** Backspace: the row above unmarked, and the cursor on it, as DEL in Dired. *)
+  line = here(state).Cursor.Line
+  if line <= 1
+    return commands.Say("No row above.", state)
+  end
+  s = toLine(line - 1, state)
+  withMarks(dict.Dict([{Key: under(s), Value: " "}]), s)
+end
+
+defn markWhere(test, mark, what, state)
+  (** Every row shown that the test keeps, given a mark, and how many said. *)
+  v = viewHere(state)
+  chosen = [i.Name for i in shownItems(state) if test(i, entryNamed(i.Name, v))]
+  s = withMarks(dict.Dict([{Key: n, Value: mark} for n in chosen]), state)
+  commands.Say("$(value.Len(chosen)) $(if value.Len(chosen) == 1 what else "$(what)s" end) $(if mark == "D" "flagged" else if mark == " " "unmarked" else "marked" end).", s)
+end
+
+(** The entry of a name in the view, or missing. *)
+entryNamed(name, v) = list.FindFirst(e -> e.Name == name, v.Entries)
+
+(** U, * !: every mark taken away. *)
+UnmarkAll(state) = markWhere((i, e) -> markOf(i.Name, viewHere(state)) != " ", " ", "row", state)
+
+defn ToggleMarks(state)
+  (** t: the rows marked with * unmarked, and those with no mark marked; the other marks stay. *)
+  v = viewHere(state)
+  changes = dict.Dict([{Key: i.Name, Value: if markOf(i.Name, v) == "*" " " else "*" end} for i in shownItems(state) if markOf(i.Name, v) == "*" or markOf(i.Name, v) == " "])
+  withMarks(changes, state)
+end
+
+MarkFolders(state) = markWhere((i, e) -> i.IsDir and not isLink(e), "*", "folder", state)   (** * /: every folder marked, a link to one not. *)
+MarkLinks(state) = markWhere((i, e) -> isLink(e), "*", "link", state)   (** * @: every symbolic link marked. *)
+MarkAll(state) = markWhere((i, e) -> true, "*", "row", state)   (** * s: every row marked. *)
+
+(** * *: every program marked, a file that someone may run, by the x bits of its mode. *)
+MarkPrograms(state) = markWhere((i, e) -> not i.IsDir and not isLink(e) and IsProgram(field("Mode", 0, e)), "*", "program", state)
+
+(** * .: asks for an extension, the one of the row under the cursor first, and marks every file that ends with it. *)
+MarkExtension(state) = commands.Ask("Mark extension: ", Extension(value.Text(under(state))), (answer, s) -> markWhere((i, e) -> not i.IsDir and Extension(i.Name) == str.Lower(dropDot(answer)), "*", "file", s), state)
+
+(** An extension without the dot it may start with. *)
+dropDot(words) = if str.StartsWith(".", words) str.Slice(2, value.Len(words), words) else words end
+
+(** ~: every backup flagged, a name that ends with ~, as Emacs makes them. *)
+FlagBackups(state) = markWhere((i, e) -> str.EndsWith("~", i.Name), "D", "backup", state)
+
+(** #: every file saved by an editor on its own flagged, a name between two #, as Emacs makes them. *)
+FlagAutoSaves(state) = markWhere((i, e) -> value.Len(i.Name) > 2 and str.StartsWith("#", i.Name) and str.EndsWith("#", i.Name), "D", "auto-save file", state)
+
+(** * c: asks for a mark and the mark that takes its place, as * c in Dired: D gives the rows flagged a mark that copies take. *)
+ChangeMarks(state) = commands.Ask("Change the mark: ", "*", (old, s) -> commands.Ask("Change $old to (a space unmarks): ", "", (new, t) -> marksChanged(old, new, t), s), state)
+
+defn marksChanged(old, new, state)
+  (** Each row with the mark old given the mark new, each one character. *)
+  if value.Len(old) != 1 or value.Len(new) != 1
+    return commands.Say("A mark is one character.", state)
+  end
+  markWhere((i, e) -> markOf(i.Name, viewHere(state)) == old, new, "row", state)
+end
+
+(** % m, * %: asks for a pattern of std/regex and marks every row whose name it finds. *)
+MarkMatching(state) = commands.Ask("Mark (regexp): ", "", (answer, s) -> byPattern(answer, "*", s), state)
+
+(** % d: asks for a pattern of std/regex and flags every row whose name it finds for deletion. *)
+FlagMatching(state) = commands.Ask("Flag for deletion (regexp): ", "", (answer, s) -> byPattern(answer, "D", s), state)
+
+defn byPattern(pattern, mark, state)
+  (** Every row whose name the pattern finds given the mark, or the message of a pattern that is wrong. *)
+  bad = PatternError(pattern)
+  if not value.IsMissing(bad) commands.Say(bad, state) else markWhere((i, e) -> regex.Test(pattern, i.Name), mark, "row", state) end
+end
+
+(** % g: asks for a pattern of std/regex and marks every file whose text it finds, as grep -l would list them. *)
+MarkHolding(state) = commands.Ask("Mark files containing (regexp): ", "", (answer, s) -> holding(answer, s), state)
+
+defn holding(pattern, state)
+  (** Every file shown whose text the pattern finds, marked; a folder, a link to nothing, a file over TextLimit() bytes or with a zero byte is left out. *)
+  bad = PatternError(pattern)
+  if not value.IsMissing(bad)
+    return commands.Say(bad, state)
+  end
+  v = viewHere(state)
+  markWhere((i, e) -> not i.IsDir and holds(pattern, textOf(Within(v.Dir, i.Name))), "*", "file", state)
+end
+
+(** Does a text, or missing for a file that is none, hold what the pattern finds? *)
+holds(pattern, words) = not value.IsMissing(words) and regex.Test(pattern, words)
+
+defn jumpMarked(by, state)
+  (** The cursor on the next row with a mark after the cursor, or before it with by -1, round the end with a message. *)
+  v = viewHere(state)
+  items = shownItems(state)
+  n = value.Len(items)
+  line = here(state).Cursor.Line
+  for step in 1..n
+    k = math.Mod(line - 1 + by * step + n * step, n) + 1
+    if markOf(items[k].Name, v) != " "
+      s = toLine(k, state)
+      wrapped = (by > 0 and k <= line) or (by < 0 and k >= line)
+      return if wrapped commands.Say("Round the end for the next mark.", s) else s end
+    end
+  end
+  commands.Say("No row has a mark.", state)
+end
+
+NextMarked(state) = jumpMarked(1, state)   (** M-}: the next row with a mark. *)
+PreviousMarked(state) = jumpMarked(-1, state)   (** M-{: the row with a mark before. *)
+
+(* ---- Views *)
+
+defn NextSort(state)
+  (** s: the rows sorted by the next of name, date and size, as the line under the panes says. *)
+  v = viewHere(state)
+  k = list.IndexOf(v.Sort, sorts)
+  out = v
+  out.Sort = sorts[math.Mod(if value.IsMissing(k) 0 else k end, value.Len(sorts)) + 1]
+  commands.Say("Sorted by $(out.Sort).", redrawn(out, state))
+end
+
+defn ToggleDetails(state)
+  (** (: the mode, the size and the age of each row hidden, or shown again. *)
+  v = viewHere(state)
+  out = v
+  out.Details = not v.Details
+  redrawn(out, state)
+end
+
+defn ToggleHidden(state)
+  (** ., C-c .: the names that start with a dot shown, or hidden again. *)
+  v = viewHere(state)
+  out = v
+  out.Hidden = not v.Hidden
+  redrawn(out, state)
+end
+
+(* ---- What a pattern finds *)
+
+defn PatternError(pattern)
+  (** Why a pattern of std/regex is wrong, or missing for one that is right. std/regex stops the program on a wrong one: syntaxError finds the mistakes of
+      its syntax first, in the words of std/regex, and a pattern it lets through is tried in a fiber of its own, which a stop ends alone, for the limits
+      of its size.
+
+        PatternError("[a-z]+") --> missing
+        PatternError("(a") --> "Bad pattern: a parenthesis isn't closed." *)
+  wrong = syntaxError(str.Chars(pattern))
+  if not value.IsMissing(wrong)
+    return "Bad pattern: $wrong."
+  end
+  got = fiber.Wait(fiber.Spawn(() -> regex.Test(pattern, "")))
+  if result.IsErr(got) value.Text(dict.GetOr("Message", got.Error, got.Error)) else missing end
+end
+
+(** Is a character a digit? *)
+isDigit(c) = c >= "0" and c <= "9"
+
+(** The code of a character after a backslash in a class, as std/regex reads it, or missing for one that stands for a set, as \d, which no range takes. *)
+escapedCode(c) = if c in ["d", "D", "w", "W", "s", "S"] missing else if c == "n" 10 else if c == "t" 9 else if c == "r" 13 else str.Code(c) end
+
+defn syntaxError(cs)
+  (** The mistake of a pattern, in its characters, as std/regex's parser names it, or missing: a backslash at the end, a class or a parenthesis not
+      closed, a parenthesis not open, a quantifier with nothing before it, a count without its number, not closed or backwards, a range backwards, a zero
+      byte. *)
+  n = value.Len(cs)
+  i = 1
+  depth = 0
+  atom = false
+  while i <= n
+    c = cs[i]
+    if c == str.FromBytes([0])
+      return "it holds a zero byte"
+    else if c == "\\"
+      if i == n
+        return "a backslash ends the pattern"
+      end
+      i += 2
+      atom = true
+    else if c == "["
+      i += 1
+      if i <= n and cs[i] == "^"
+        i += 1
+      end
+      first = true
+      while first or i > n or cs[i] != "]"
+        if i > n
+          return "a class isn't closed"
+        end
+        first = false
+        low = str.Code(cs[i])
+        if cs[i] == "\\"
+          if i == n
+            return "a backslash ends the pattern"
+          end
+          low = escapedCode(cs[i + 1])
+          i += 1
+        end
+        i += 1
+        if i + 1 <= n and cs[i] == "-" and cs[i + 1] != "]"
+          high = str.Code(cs[i + 1])
+          if cs[i + 1] == "\\"
+            if i + 2 > n
+              return "a backslash ends the pattern"
+            end
+            high = escapedCode(cs[i + 2])
+            i += 1
+          end
+          if not value.IsMissing(low) and not value.IsMissing(high) and high < low
+            return "a range is backwards"
+          end
+          i += 2
+        end
+      end
+      i += 1
+      atom = true
+    else if c == "("
+      i += 1
+      if i <= n and cs[i] == "?"
+        i += 1
+        if i <= n and cs[i] == ":"
+          i += 1
+          depth += 1
+          atom = false
+        else
+          while i <= n and cs[i] in ["i", "m", "s"]
+            i += 1
+          end
+          if i > n or cs[i] != ")"
+            return "a parenthesis isn't closed"
+          end
+          i += 1
+          atom = true
+        end
+      else
+        depth += 1
+        atom = false
+      end
+    else if c == ")"
+      if depth == 0
+        return "a parenthesis isn't open"
+      end
+      depth -= 1
+      i += 1
+      atom = true
+    else if c == "*" or c == "+" or c == "?"
+      if not atom
+        return "nothing to repeat"
+      end
+      i += 1
+      if i <= n and cs[i] == "?"
+        i += 1
+      end
+    else if c == "{"
+      if not atom
+        return "nothing to repeat"
+      end
+      i += 1
+      start = i
+      while i <= n and isDigit(cs[i])
+        i += 1
+      end
+      if i == start
+        return "a count needs a number"
+      end
+      low = str.Number(str.Join("", cs[start..(i - 1)]))
+      high = low
+      if i <= n and cs[i] == ","
+        i += 1
+        from = i
+        while i <= n and isDigit(cs[i])
+          i += 1
+        end
+        high = if i == from missing else str.Number(str.Join("", cs[from..(i - 1)])) end
+        if i == from and (i > n or cs[i] != "}")
+          return "a count needs a number"
+        end
+      end
+      if i > n or cs[i] != "}"
+        return "a count isn't closed"
+      end
+      if not value.IsMissing(high) and high < low
+        return "a count is backwards"
+      end
+      i += 1
+      if i <= n and cs[i] == "?"
+        i += 1
+      end
+    else if c == "|"
+      i += 1
+      atom = false
+    else
+      i += 1
+      atom = true
+    end
+  end
+  if depth > 0 "a parenthesis isn't closed" else missing end
+end
+
+(** The largest file whose text a search reads, in bytes. *)
+TextLimit() = 1000000
+
+defn textOf(path)
+  (** The text of a file for a search, or missing for one over TextLimit() bytes, one that can't be read, or one with a zero byte, which is no text. *)
+  st = sys.Stat(path)
+  if result.IsErr(st) or not st.Value.IsFile or st.Value.Size > TextLimit()
+    return missing
+  end
+  words = sys.Read(path)
+  if result.IsErr(words) or str.Contains(str.FromBytes([0]), words.Value) missing else words.Value end
+end
+
+(* ---- Making a file *)
 
 (** The first part of a name typed in a prompt, which the folder shows: a for a/b.ce. *)
 firstPart(name) = str.Split("/", name)[1]
 
 (** C-c n: asks for a name, then makes a folder for one that ends with a slash, else an empty file. *)
-make(dir, hidden, state) = commands.Ask("New file, or folder/: ", "", (answer, s) -> made(dir, hidden, answer, s), state)
+NewFile(state) = commands.Ask("New file, or folder/: ", "", made, state)
 
-defn made(dir, hidden, answer, state)
+defn made(answer, state)
   (** The state after the name of a new file or folder was given: made, and the cursor on it, or a message. A name that exists is refused. *)
   if answer == "" or answer == "/"
     return commands.Say("No name.", state)
   end
-  path = within(dir, answer)
-  if sys.Exists(path)
+  v = viewHere(state)
+  path = Within(v.Dir, answer)
+  if present(path)
     return commands.Say("$answer already exists.", state)
   end
   done = if str.EndsWith("/", answer) sys.Mkdir(path) else sys.Write(path, "") end
   match done
-    result.Ok(_) -> show(dir, hidden, firstPart(answer), state)
+    result.Ok(_) -> show(v, firstPart(answer), state)
     result.Err(e) -> commands.Say(e.Message, state)
   end
 end
 
-(** C-c r: asks for the new name of the row under the cursor; a path in it moves the entry. *)
-rename(dir, hidden, item, state) = commands.Ask("Rename $(item.Name) to: ", item.Name, (answer, s) -> renamed(dir, hidden, item, answer, s), state)
-
-defn renamed(dir, hidden, item, answer, state)
-  (** The state after the new name was given: renamed, and the cursor on it, or a message. A name that exists is refused. *)
-  if answer == "" or answer == item.Name
-    return state
-  end
-  to = within(dir, answer)
-  if sys.Exists(to)
-    return commands.Say("$answer already exists.", state)
-  end
-  match sys.Rename(within(dir, item.Name), to)
-    result.Ok(_) -> show(dir, hidden, firstPart(answer), state)
-    result.Err(e) -> commands.Say(e.Message, state)
-  end
-end
-
-(** C-c k: asks y or n, then moves the row under the cursor to the trash. *)
-trash(dir, hidden, item, state) = commands.Confirm("Move $(item.Name) to the trash? (y or n) ", (answer, s) -> if answer == "y" trashed(dir, hidden, item, s) else s end, state)
-
-defn nextName(item, state)
-  (** The name of the row after this one, or of the one before at the end, for the cursor once it is gone. *)
-  items = lists.Of(state.Buffers[state.Current]).Items
-  k = list.IndexOf(item, items)
-  if value.IsMissing(k) or value.Len(items) < 2 missing else if k < value.Len(items) items[k + 1].Name else items[k - 1].Name end
-end
-
-defn trashed(dir, hidden, item, state)
-  (** The state after the entry went to the trash, the cursor on the row that took its place, or a message. Nothing is ever deleted for good. *)
-  root = TrashRoot(sys.Env("XDG_DATA_HOME"), sys.Env("HOME"))
-  if value.IsMissing(root)
-    return commands.Say("There is no trash: HOME is not set.", state)
-  end
-  match ToTrash(within(dir, item.Name), root, sys.Now())
-    result.Ok(_) -> show(dir, hidden, nextName(item, state), state)
-    result.Err(e) -> commands.Say("Can't move $(item.Name) to the trash: $(e.Message)", state)
-  end
-end
-
-defn TrashRoot(data, home)
-  (** The trash of the person, as freedesktop says: in XDG_DATA_HOME when it is set, else in ~/.local/share, or missing with neither.
-
-        TrashRoot(missing, "/home/a") --> "/home/a/.local/share/Trash" *)
-  if not value.IsMissing(data) and data != ""
-    "$data/Trash"
-  else if value.IsMissing(home) or home == ""
-    missing
-  else
-    "$home/.local/share/Trash"
-  end
-end
-
-(** The info of a path put in the trash when, a date of std/date: its path, percent-encoded part by part, and the date and time as
-    YYYY-MM-DDThh:mm:ss, without a zone. ToTrash gives it the time of this machine's clock, date.Local, as the specification asks.
-
-      TrashInfo("/a b/c.ce", date.FromUnix(0)) --> "[Trash Info]\nPath=/a%20b/c.ce\nDeletionDate=1970-01-01T00:00:00\n" *)
-TrashInfo(path, when) = "[Trash Info]\nPath=$(str.Join("/", list.Map(encode.UrlEncode, str.Split("/", path))))\nDeletionDate=$(str.Join("", list.Take(19, str.Chars(date.Format(when)))))\n"
-
-defn FreeName(name, taken)
-  (** The name itself, or the first of name.2, name.3... that the function taken refuses.
-
-        FreeName("a.ce", n -> n == "a.ce") --> "a.ce.2" *)
-  if not taken(name)
-    return name
-  end
-  k = 2
-  while taken("$name.$k")
-    k += 1
-  end
-  "$name.$k"
-end
-
-defn ToTrash(path, root, now)
-  (** Moves a file or a folder to the trash in root: the entry into files/, and into info/ a .trashinfo with its path and the date on this machine's clock
-      at now, in seconds since 1970. The info is written first, and removed if the move fails, as for an entry on another disk, which can't be moved there:
-      Ok(its name in the trash) or an Err. *)
-  sys.Mkdir("$root/files")?
-  sys.Mkdir("$root/info")?
-  name = FreeName(BaseName(path), n -> sys.Exists("$root/files/$n") or sys.Exists("$root/info/$n.trashinfo"))
-  info = "$root/info/$name.trashinfo"
-  sys.Write(info, TrashInfo(path, date.Local(now)))?
-  moved = sys.Rename(path, "$root/files/$name")
-  if result.IsErr(moved)
-    sys.Remove(info)
-    return moved
-  end
-  result.Ok(name)
-end
+(** Is something at a path, a link that points to nothing too? *)
+present(path) = sys.Exists(path) or result.IsOk(sys.ReadLink(path))

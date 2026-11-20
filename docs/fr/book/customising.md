@@ -48,6 +48,7 @@ defn Changed(config)
   (* c.ScrollMargin = () -> 5 *)
   (* c.Theme = () -> ui.Light *)
   (* c.Window = () -> {Width: 1600, Height: 900} *)
+  (* c.DeleteToTrash = () -> false *)
   (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)
   (* c.Start = s -> commands.SplitRight(s) *)
   c
@@ -132,7 +133,7 @@ Leurs valeurs aujourd'hui, lues dans le code au moment où cette page a été co
 use src/emacs
 use src/ui
 use std/value
-[emacs.TabText(), emacs.WheelLines(), emacs.ScrollMargin(), emacs.DragZone(), emacs.FontSize(), emacs.HintDelay(), emacs.CheckDelay()] --> ["  ", 3.0, 3, 4, 15, 0.5, 0.5]
+[emacs.TabText(), emacs.WheelLines(), emacs.ScrollMargin(), emacs.DragZone(), emacs.FontSize(), emacs.HintDelay(), emacs.CheckDelay(), emacs.DeleteToTrash()] --> ["  ", 3.0, 3, 4, 15, 0.5, 0.5, true]
 [value.Equal(emacs.Theme(), ui.Dark), emacs.Window()] --> [true, {Width: 1280, Height: 720}]
 ```
 
@@ -145,6 +146,7 @@ use std/value
 | [emacs.FontSize] | des points | la taille des trois polices | une fois, quand la fenêtre s'ouvre |
 | [emacs.HintDelay] | des secondes | l'attente après une prefix key avant que la bande des hints s'affiche | à chaque tick |
 | [emacs.CheckDelay] | des secondes | le temps sans touche après lequel un buffer Cesia qui a changé est vérifié | à chaque tick |
+| [emacs.DeleteToTrash] | vrai ou faux | si `D` et `x` du gestionnaire de dossiers mettent à la corbeille, comme `delete-by-moving-to-trash` de Doom Emacs ; faux efface pour de bon, après une question pour chaque dossier qui contient quelque chose : voir [Effacer](files.md#effacer) | à chaque effacement |
 | [emacs.Theme] | un record de couleurs | le thème : [ui.Dark], ou [ui.Light], ou un thème à vous avec les mêmes champs | une fois, quand la fenêtre s'ouvre |
 | [emacs.Window] | des pixels, `{Width, Height}` | la taille de la fenêtre quand elle s'ouvre, que vous pouvez changer ensuite | une fois, quand la fenêtre s'ouvre |
 | [emacs.Start] | une fonction d'un état vers un état | ce que fait l'éditeur à son démarrage, après avoir ouvert les fichiers qu'on lui a donnés : rien | une fois, après l'ouverture des fichiers |
@@ -197,7 +199,7 @@ fenêtre :
 | `MouseKeys` | la souris, selon l'action de son événement |
 | `ListKeys` | les touches de chaque liste, devant les touches globales |
 | `CompleteKeys` | les touches de la liste des completions, devant les touches globales |
-| `TabText`, `WheelLines`, `ScrollMargin`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `Theme`, `Window` | les réglages |
+| `TabText`, `WheelLines`, `ScrollMargin`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `DeleteToTrash`, `Theme`, `Window` | les réglages |
 | `Start` | ce que fait l'éditeur une fois, à son démarrage |
 | `Idle`, `Saved`, `Moving` | les hooks, qu'ajoute [check.Hooked] : voir plus bas |
 

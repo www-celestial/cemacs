@@ -48,6 +48,7 @@ defn Changed(config)
   (* c.ScrollMargin = () -> 5 *)
   (* c.Theme = () -> ui.Light *)
   (* c.Window = () -> {Width: 1600, Height: 900} *)
+  (* c.DeleteToTrash = () -> false *)
   (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)
   (* c.Start = s -> commands.SplitRight(s) *)
   c
@@ -129,7 +130,7 @@ values today, read from the code as this page was built:
 use src/emacs
 use src/ui
 use std/value
-[emacs.TabText(), emacs.WheelLines(), emacs.ScrollMargin(), emacs.DragZone(), emacs.FontSize(), emacs.HintDelay(), emacs.CheckDelay()] --> ["  ", 3.0, 3, 4, 15, 0.5, 0.5]
+[emacs.TabText(), emacs.WheelLines(), emacs.ScrollMargin(), emacs.DragZone(), emacs.FontSize(), emacs.HintDelay(), emacs.CheckDelay(), emacs.DeleteToTrash()] --> ["  ", 3.0, 3, 4, 15, 0.5, 0.5, true]
 [value.Equal(emacs.Theme(), ui.Dark), emacs.Window()] --> [true, {Width: 1280, Height: 720}]
 ```
 
@@ -142,6 +143,7 @@ use std/value
 | [emacs.FontSize] | points | the size of the three fonts | once, when the window opens |
 | [emacs.HintDelay] | seconds | the wait after a prefix key before the band of hints shows | at each tick |
 | [emacs.CheckDelay] | seconds | the time with no key after which a Cesia buffer that changed is checked | at each tick |
+| [emacs.DeleteToTrash] | true or false | whether `D` and `x` of the folder manager move to the trash, as Doom Emacs's `delete-by-moving-to-trash`; false deletes for good, after a question for each folder that holds something: see [Deleting](files.md#deleting) | at each deletion |
 | [emacs.Theme] | a record of colours | the theme: [ui.Dark], or [ui.Light], or one of your own with the same fields | once, when the window opens |
 | [emacs.Window] | pixels, `{Width, Height}` | the size of the window when it opens, which you can change after | once, when the window opens |
 | [emacs.Start] | a function from a state to a state | what the editor does at its start, after it opened the files it was given: nothing | once, after the files opened |
@@ -193,7 +195,7 @@ The editor runs on a config, a record of functions that [emacs.Config] makes, [c
 | `MouseKeys` | the mouse, by the action of its event |
 | `ListKeys` | the keys of every list, over the global ones |
 | `CompleteKeys` | the keys of the list of completions, over the global ones |
-| `TabText`, `WheelLines`, `ScrollMargin`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `Theme`, `Window` | the settings |
+| `TabText`, `WheelLines`, `ScrollMargin`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `DeleteToTrash`, `Theme`, `Window` | the settings |
 | `Start` | what the editor does once at its start |
 | `Idle`, `Saved`, `Moving` | the hooks, which [check.Hooked] adds: see below |
 

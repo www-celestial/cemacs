@@ -77,6 +77,8 @@ end
 (** The words in the clipboard. *)
 clipped(state) = if value.IsMissing(state.Window) state.Clip else sdl.Paste(state.Window) end
 
+ToClipboard(words, state) = clip(words, state)   (** The state with words in the clipboard, for an app, as the names that w copies in the folders. *)
+
 (* ---- Moves *)
 
 defn move(f, state)
@@ -248,8 +250,9 @@ ask(label, answer, done, state, named = false) = prompted({Label: label, Answer:
 (** The state with a prompt that takes y or n. *)
 confirm(label, done, state) = prompted({Label: label, Answer: "", Done: done, Choice: true}, state)
 
-(** A prompt for an app: label, the answer it starts with, and done, which gets the answer and the state without the prompt. *)
-Ask(label, answer, done, state) = ask(label, answer, done, state)
+(** A prompt for an app: label, the answer it starts with, and done, which gets the answer and the state without the prompt. With named, Tab completes the
+    name of a file, as in Find file. *)
+Ask(label, answer, done, state, named = false) = ask(label, answer, done, state, named = named)
 
 Confirm(label, done, state) = confirm(label, done, state)   (** A prompt for an app that takes y or n: done gets "y" or "n" and the state. *)
 
@@ -650,11 +653,24 @@ without(k, items) = list.Concat(list.Take(k - 1, items), list.Skip(k, items))   
 
 defn dropped(k, current, state)
   (** The state without buffer k, and current the current one, as withBuffers keeps it. A pane that showed buffer k shows the buffer that takes its place, at
-      the place that one holds, and a pane on a buffer after it counts one less. *)
-  s = withBuffers(without(k, state.Buffers), current, state)
+      the place that one holds, and a pane on a buffer after it counts one less; so does the buffer a list goes back to, as a list that another pane
+      keeps. *)
+  s = withBuffers([backShifted(k, b) for b in without(k, state.Buffers)], current, state)
   n = value.Len(s.Buffers)
   s.Panes = panes.MapLeaves(leaf -> renumbered(k, n, leaf), panes.Tree(state))
   s
+end
+
+defn backShifted(k, b)
+  (** A buffer once buffer k is gone: a list that goes back to a buffer after it counts one less; any other buffer stays as it is. *)
+  l = lists.Of(b)
+  if value.IsMissing(l) or l.Back <= k
+    return b
+  end
+  out = b
+  l.Back = l.Back - 1
+  out.List = l
+  out
 end
 
 (** A leaf of a pane after buffer k went, of the n buffers left. *)
@@ -1030,6 +1046,9 @@ SplitRight(state) = split("columns", state)   (** The pane being edited split in
 (** The next pane, from the last to the first. *)
 NextPane(state) = focused(math.Mod(panes.Active(state), panes.Count(panes.Tree(state))) + 1, state)
 
+(** Pane j being edited, for an app that shows a buffer in another pane and comes back, as C-o of the folders does. *)
+FocusPane(j, state) = focused(list.Max(1, list.Min(j, panes.Count(panes.Tree(state)))), state)
+
 defn ClosePane(state)
   (** The pane being edited closed: the other side of its split takes its place, and the pane there is edited. The last pane stays. *)
   tree = panes.Tree(state)
@@ -1176,26 +1195,28 @@ defn ShowList(name, rows, rowKeys, state, free = missing, label = missing, typed
       rowKeys is a function that gives the keys of the list, whose functions take the item under the cursor and the state; free, if given, gives keys that take
       only the state, and so run with no row left. Typing filters the rows, and the ListKeys of the config take the filter back; label, if given, takes the
       place of "Filter: " before it, and typed gets each typed text and the state in place of the filter, which AddToFilter can still grow. With ranked, the
-      rows the filter keeps come the best first, by lists.Score, in place of their order. A list open already gives its place to this one. *)
+      rows the filter keeps come the best first, by lists.Score, in place of their order. A list open already gives its place to this one, but one that
+      another pane shows, which stays there, as the folder of the other pane does for the copies of src/folders. *)
   here = current(state)
   back = if lists.IsList(here) lists.Of(here).Back else state.Current end
-  s = withoutList(state)
+  gone = listsLeaving(state)
+  s = list.Reduce((acc, k) -> dropped(k, if acc.Current > k acc.Current - 1 else acc.Current end, acc), state, gone)
+  back -= value.Len([k for k in gone if k < back])
   b = text.Of("", missing)
-  b.List = {Name: name, Rows: rows, Keys: rowKeys, Free: free, Filter: "", Items: [], Back: list.Min(back, value.Len(s.Buffers)), Shown: missing, Label: label, Typed: typed,
-    Ranked: ranked}
+  b.List = {Name: name, Rows: rows, Keys: rowKeys, Free: free, Filter: "", Items: [], Back: list.Max(1, list.Min(back, value.Len(s.Buffers))), Shown: missing, Label: label,
+    Typed: typed, Ranked: ranked}
   s.Buffers = list.Append(b, s.Buffers)
   s.Current = value.Len(s.Buffers)
   refreshed(s)
 end
 
-defn withoutList(state)
-  (** The state without its list, if one is open, and current on the same buffer as before. *)
-  for k in 1..value.Len(state.Buffers)
-    if lists.IsList(state.Buffers[k])
-      return dropped(k, if state.Current > k state.Current - 1 else state.Current end, state)
-    end
-  end
-  state
+defn listsLeaving(state)
+  (** The buffers of the lists that a new list closes, the last first, so that each drop leaves the numbers of those after it: every list but those
+      that a pane other than the one being edited shows. *)
+  tree = panes.Tree(state)
+  i = panes.Active(state)
+  kept = [panes.At(j, tree).Buffer for j in 1..panes.Count(tree) if j != i]
+  list.Reverse([k for k in 1..value.Len(state.Buffers) if lists.IsList(state.Buffers[k]) and not (k in kept)])
 end
 
 defn ToBuffer(k, state)
@@ -1361,9 +1382,24 @@ defn hinted(event, state)
 end
 
 defn bindingsHere(state)
-  (** The keys that a chord would be looked up in now: those of the list in the current buffer, or else those of the editor. A prompt has no pairs. *)
-  if lists.IsList(current(state)) listKeys(state) else config(state).Keys() end
+  (** The keys that a chord would be looked up in now: those of the list in the current buffer, or else those of the editor, with the buffer's own over
+      them. A prompt has no pairs. *)
+  if lists.IsList(current(state)) listKeys(state) else withOwnKeys(current(state), config(state).Keys()) end
 end
+
+defn OwnKeysOf(b)
+  (** The keys of a buffer of text of its own, chords to commands, over those of the editor while it is the current one, as the names of a folder that
+      C-x C-q makes editable have C-c C-c: missing for a buffer without, as one from before this field.
+
+        OwnKeysOf({Rope: missing}) --> missing *)
+  match b
+    {OwnKeys: k} -> k
+    else -> missing
+  end
+end
+
+(** The keys of the editor with those of the buffer over them, or the keys alone for a buffer with none, which costs nothing. *)
+withOwnKeys(b, bindings) = if value.IsMissing(OwnKeysOf(b)) bindings else dict.Merge(bindings, OwnKeysOf(b)) end
 
 (** What Chain holds while a command runs, if the command before it was a cut of a line: neither true, which only a new cut sets, nor false. *)
 wasCut() = "cut"
@@ -1414,7 +1450,7 @@ defn routed(chord, state)
       s.Completion = c
       ran(own[chord], withChords(chord, s))
     else
-      chorded(chord, config(s).Keys(), s)
+      chorded(chord, withOwnKeys(current(s), config(s).Keys()), s)
     end
   end
 end

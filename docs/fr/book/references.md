@@ -96,7 +96,7 @@ comparé. Les titres des travaux restent dans leur langue.
   2014-01-02. https://specifications.freedesktop.org/trash/latest/.
   Ce que Cemacs en a pris : la corbeille dans le dossier personnel, ses dossiers `files/` et `info/`, le fichier `.trashinfo`
   écrit en premier, le chemin percent-encoded, et la date sur l'horloge locale. Là où Cemacs s'en écarte est dit dans
-  [Fichiers et buffers](files.md#créer-renommer-et-mettre-à-la-corbeille).
+  [Fichiers et buffers](files.md#la-corbeille).
 - *XDG Base Directory Specification*, version 0.8, freedesktop.org, 2021-05-08.
   https://specifications.freedesktop.org/basedir/latest/.
   Ce que Cemacs en a pris : `$XDG_DATA_HOME`, et `$HOME/.local/share` quand il n'a pas de valeur, pour la place de la

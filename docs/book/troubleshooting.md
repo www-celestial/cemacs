@@ -12,7 +12,7 @@ prints `Ok(missing)`.
 | What the terminal shows | Why | What to do |
 |---|---|---|
 | `bash: cesia: command not found`, or `cesia: command not found` | Cesia isn't installed, or not on the `PATH` | install Cesia: see [Install](install.md#cesia) |
-| `This project needs Cesia 1.2 or later, and this is ...: run cesia upgrade.` | the Cesia on the `PATH` is older than `cesia.toml` asks | `cesia upgrade` |
+| `This project needs Cesia 1.3 or later, and this is ...: run cesia upgrade.` | the Cesia on the `PATH` is older than `cesia.toml` asks | `cesia upgrade` |
 | `Err({Kind: "c", Message: "Can't load SDL3: libSDL3.so.0: cannot open shared object file: No such file or directory."})` | SDL3 isn't installed, or isn't where the system looks | install it, or set `LD_LIBRARY_PATH` to its folder: see [Install](install.md#sdl3-and-sdl3_ttf) |
 | the same with `SDL3_ttf` and `libSDL3_ttf.so.0` | SDL3_ttf is missing | the same |
 | `Err({Kind: "sdl", Message: "This program needs SDL 3.2 or later."})` | the SDL3 found is a 3.0 or 3.1 | a newer SDL3, from the system or from `tools/sdl-libs.sh` |
@@ -70,14 +70,26 @@ These are the messages of the commands, in the order of the chapters. A message 
 
 | Message | What happened |
 |---|---|
-| `This is the root.` | Backspace at `/` |
+| `This is the root.` | `^`, or Backspace after `/`, at `/` |
 | `No folder matches.` | `/` after letters that match no folder |
 | `HOME is not set.` | `~/` with no `HOME` in the environment |
 | `No file or folder at PATH.` | `C-y` with a path in the clipboard that leads nowhere |
-| `No name.` | an empty answer to `New file, or folder/: ` |
-| `NAME already exists.` | a new name, or a rename, to a name that is taken |
+| `X is not a key of the folders: ? lists them.` | a letter, or a second key after `*` or `%`, that no command takes |
+| `Nothing here.` | a command on a row, in a folder that is empty or a filter that left no row |
+| `No name.`, `No name given.` | an empty answer to `New file, or folder/: `, or to a copy, a move or a link |
+| `NAME already exists.` | a new name, or a new folder, that is taken |
+| `ANSWER is no folder: the files go into one.` | a copy, a move or a link of more than one file to a name that is no folder: end it with `/` to make one |
+| `Can't copy NAME into itself.`, `Can't rename NAME into itself.` | the answer is inside the folder sent: nothing is made |
+| `Bad pattern: REASON.` | a pattern of `%`, `A` or `Q` that std/regex refuses, as `Bad pattern: a class isn't closed.` |
+| `Not a mode: ANSWER. ...` | an answer to `M` that is neither octal nor as `chmod` writes it |
+| `Not a time: ANSWER. ...` | an answer to `T` that is neither `YYYY-MM-DD` nor `YYYY-MM-DD hh:mm` |
 | `There is no trash: HOME is not set.` | neither `XDG_DATA_HOME` nor `HOME` is set, so there is no trash to move to |
-| `Can't move NAME to the trash: REASON` | most often a file on another disk than your home: see [Files and buffers](files.md#making-renaming-and-trashing). The file stays where it was |
+| `can't move NAME to the trash: REASON` | most often a file on another disk than your home: see [Files and buffers](files.md#the-trash). The file stays where it was |
+| `Copied 2 of 3; NAME: REASON` | a command that failed on some files, the first named, as for a permission refused; the others are done |
+| `NAME is a special file, as a FIFO or a device, which is not copied` | a copy of a tree that holds one: the rest is copied |
+| `NAME.tar.gz exists already` | `Z` on a folder whose archive is there: it is never replaced |
+| `PROGRAM can't run: REASON` | `!`, `&`, `Z`, `c` or `=` with a program missing from the `PATH`: see [Running programs](files.md#running-programs) |
+| `Two lines are named NAME.`, `NAME exists already.` | the names of `C-x C-q` would clash: nothing is renamed, and the text stays to fix |
 | a reason from the system | reading the folder, making, or renaming failed |
 
 ### The files of a project

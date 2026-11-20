@@ -39,7 +39,7 @@ project=$(mktemp -d)
 (cd "$project" && SHELL=/bin/sh timeout -s KILL 180 cesia run --allow read,write,exec=cesia,exec=git,env=PWD,env=SHELL "$root/tests/ide-check.ce" "$root")
 rm -rf "$project"
 trash=$(mktemp -d)
-XDG_DATA_HOME="$trash" timeout -s KILL 60 cesia run --allow read,write,env=HOME,env=PWD,env=XDG_DATA_HOME tests/folders-check.ce
+XDG_DATA_HOME="$trash" timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mkfifo,env=HOME,env=PWD,env=SHELL,env=XDG_DATA_HOME tests/folders-check.ce
 rm -rf "$trash"
 SDL_VIDEODRIVER=dummy timeout -s KILL 60 cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/window-check.ce
 tests/start-check.sh

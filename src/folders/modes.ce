@@ -1,0 +1,179 @@
+(* The modes of files, as ls writes them and chmod reads them, and the times that T gives, for the folders. A mode is a number from 0 to 4095, its permission
+   bits: Cesia has no octal literal, so 420 here is 644 in octal, rw-r--r--, and 493 is 755, rwxr-xr-x. *)
+use std/date
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/text as str
+use std/value
+
+(* The bits of a mode by who and what, as chmod names them: u the owner, g the group, o the others. *)
+readBits = {u: 256, g: 32, o: 4}
+writeBits = {u: 128, g: 16, o: 2}
+runBits = {u: 64, g: 8, o: 1}
+setId = {u: 2048, g: 1024, o: 0}
+sticky = 512
+
+(** Does a mode let someone run the file: any of its three x bits?
+
+      IsProgram(493) --> true
+      IsProgram(420) --> false *)
+IsProgram(mode) = math.BitAnd(mode, 73) != 0
+
+(** Is a bit of a number set? *)
+has(mode, bit) = math.BitAnd(mode, bit) != 0
+
+defn tripletOf(mode, who)
+  (** The three letters of one who in a mode, r, w and x, with s or S for a set id of the owner or the group, and t or T for the sticky bit of the others. *)
+  r = if has(mode, readBits[who]) "r" else "-" end
+  w = if has(mode, writeBits[who]) "w" else "-" end
+  run = has(mode, runBits[who])
+  special = if who == "o" has(mode, sticky) else has(mode, setId[who]) end
+  letter = if who == "o" "t" else "s" end
+  x = if special (if run letter else str.Upper(letter) end) else if run "x" else "-" end
+  "$r$w$x"
+end
+
+(** The nine letters of a mode, as ls -l writes them after the kind.
+
+      PermissionText(420) --> "rw-r--r--"
+      PermissionText(2541) --> "rwsr-xr-x"
+      PermissionText(932) --> "rw-r--r-T" *)
+PermissionText(mode) = "$(tripletOf(mode, "u"))$(tripletOf(mode, "g"))$(tripletOf(mode, "o"))"
+
+defn ModeText(e)
+  (** The mode of an entry as ls -l writes it: d for a folder, l for a link, which Linux gives every right, - for a file, then its nine letters; ? for an
+      entry whose mode is unknown, as one written by hand.
+
+        ModeText({Name: "src", IsDir: true, Mode: 493}) --> "drwxr-xr-x"
+        ModeText({Name: "a", IsDir: false, IsLink: true, Mode: 420}) --> "lrwxrwxrwx" *)
+  if dict.GetOr("IsLink", false, e) == true
+    return "lrwxrwxrwx"
+  end
+  kind = if e.IsDir "d" else "-" end
+  mode = dict.GetOr("Mode", missing, e)
+  if value.IsMissing(mode) "$(kind)?????????" else "$kind$(PermissionText(mode))" end
+end
+
+defn OctalText(mode)
+  (** A mode in octal, as chmod takes it, three digits at least.
+
+        OctalText(420) --> "644"
+        OctalText(2541) --> "4755" *)
+  digits = ""
+  n = mode
+  while n > 0
+    digits = "$(math.Mod(n, 8))$digits"
+    n = math.Div(n, 8)
+  end
+  str.PadLeft(3, "0", digits)
+end
+
+(** Is a text a mode in octal, one to four digits from 0 to 7? *)
+isOctal(words) = value.Len(words) >= 1 and value.Len(words) <= 4 and list.All([c >= "0" and c <= "7" for c in str.Chars(words)])
+
+defn octalOf(words)
+  (** The number of digits in octal. *)
+  n = 0
+  for c in str.Chars(words)
+    n = n * 8 + str.Code(c) - 48
+  end
+  n
+end
+
+(** The words of a mode that ParseMode refuses. *)
+notAMode(words) = result.Err("Not a mode: $words. Give it in octal, as 644, or as chmod writes it, as u+x,g-w or a=r.")
+
+defn ParseMode(words, mode, isDir)
+  (** The mode that an answer gives a file of this mode, a folder with isDir: in octal, as 644 or 0755, or as chmod writes it, clauses apart by commas,
+      each who, of u, g, o and a, none for a, then + to add, - to take away or = to set, and what, of r, w, x, X, which is x for a folder or a file that
+      someone may run already, s and t. Ok(the mode) or an Err of the words to say.
+
+        ParseMode("644", 0, false) --> result.Ok(420)
+        ParseMode("u+x,go-w", 438, false) --> result.Ok(484)
+        ParseMode("a=r", 493, true) --> result.Ok(292)
+        ParseMode("+X", 420, true) --> result.Ok(493)
+        result.IsErr(ParseMode("u+q", 420, false)) --> true *)
+  answer = str.Trim(words)
+  if isOctal(answer)
+    return result.Ok(octalOf(answer))
+  end
+  out = mode
+  for clause in str.Split(",", answer)
+    done = clauseApplied(clause, out, isDir)
+    if value.IsMissing(done)
+      return notAMode(answer)
+    end
+    out = done
+  end
+  result.Ok(math.BitAnd(out, 4095))
+end
+
+defn clauseApplied(clause, mode, isDir)
+  (** A mode after one clause of chmod, as u+x or go=rx, or missing for a clause that isn't one. *)
+  cs = str.Chars(clause)
+  k = 1
+  whos = ""
+  while k <= value.Len(cs) and cs[k] in ["u", "g", "o", "a"]
+    whos = "$whos$(cs[k])"
+    k += 1
+  end
+  who = if whos == "" or str.Contains("a", whos) ["u", "g", "o"] else list.Unique([c for c in str.Chars(whos)]) end
+  if k > value.Len(cs)
+    return missing
+  end
+  out = mode
+  while k <= value.Len(cs)
+    op = cs[k]
+    if not (op in ["+", "-", "="])
+      return missing
+    end
+    k += 1
+    what = ""
+    while k <= value.Len(cs) and cs[k] in ["r", "w", "x", "X", "s", "t"]
+      what = "$what$(cs[k])"
+      k += 1
+    end
+    bits = bitsOf(what, who, out, isDir)
+    out = if op == "+" math.BitOr(out, bits) else if op == "-" math.BitAnd(out, math.BitNot(bits)) else math.BitOr(math.BitAnd(out, math.BitNot(allOf(who))), bits) end
+  end
+  out
+end
+
+defn bitsOf(what, who, mode, isDir)
+  (** The bits that the letters of a clause name for those who: X counts as x for a folder or a file that someone may run. *)
+  bits = 0
+  for c in str.Chars(what)
+    for w in who
+      b = if c == "r" readBits[w] else if c == "w" writeBits[w] else if c == "x" runBits[w] else if c == "X" (if isDir or IsProgram(mode) runBits[w] else 0 end) else if c == "s" setId[w] else if w == "o" sticky else 0 end
+      bits = math.BitOr(bits, b)
+    end
+  end
+  bits
+end
+
+(** Every bit that = clears for those who: their r, w and x, the set id of the owner and the group, and the sticky bit with the others. *)
+allOf(who) = list.Reduce((acc, w) -> math.BitOr(acc, readBits[w] + writeBits[w] + runBits[w] + setId[w] + (if w == "o" sticky else 0 end)), 0, who)
+
+defn TimeOf(words, now)
+  (** The time that an answer of T gives, in seconds since 1970: now for none, else a day, YYYY-MM-DD, at midnight, or a day and an hour, YYYY-MM-DD hh:mm
+      or hh:mm:ss, on the clock of this machine, as touch reads them. Ok(the seconds) or an Err of the words to say.
+
+        TimeOf("", 1000.0) --> result.Ok(1000.0)
+        result.IsErr(TimeOf("tomorrow", 0)) --> true *)
+  answer = str.Trim(words)
+  if answer == ""
+    return result.Ok(now)
+  end
+  parts = [p for p in str.Split(" ", answer) if p != ""]
+  clock = if value.Len(parts) == 1 "00:00:00" else if value.Len(parts) == 2 and value.Len(str.Split(":", parts[2])) == 2 "$(parts[2]):00" else if value.Len(parts) == 2 parts[2] else missing end
+  got = if value.IsMissing(clock) result.Err("") else date.Parse("$(parts[1]) $clock") end
+  if result.IsErr(got)
+    return result.Err("Not a time: $answer. Give YYYY-MM-DD, or YYYY-MM-DD hh:mm, or nothing for now.")
+  end
+  (* The day was read as in UTC: the offset of this machine's clock at that time makes it local, read twice for a day that changes summer time. *)
+  utc = date.ToUnix(got.Value)
+  first = utc - date.Local(utc).Offset
+  result.Ok(utc - date.Local(first).Offset)
+end

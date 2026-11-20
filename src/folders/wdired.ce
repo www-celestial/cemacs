@@ -1,0 +1,158 @@
+(* The names of a folder as a text to edit, as Emacs's Wdired: C-x C-q in a folder list makes a buffer of the names it shows, one a line, which every key
+   of the editor edits; C-c C-c, or C-x C-s, renames each file whose line changed, and C-c C-k or C-g leaves with no change. These keys are the buffer's
+   own, its OwnKeys, over those of the editor while it is the current one. *)
+use core/commands
+use core/lists
+use core/text
+use src/rope
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn EditNames(state)
+  (** C-x C-q: the names the list shows as a text to edit, in their order, the cursor on the same line, in place of the list. *)
+  b = here(state)
+  v = viewHere(state)
+  names = [i.Name for i in shownItems(state)]
+  if value.Len(names) == 0
+    return commands.Say("No name to edit.", state)
+  end
+  t = text.Place(b.Cursor.Line, 0, text.Of(str.Join("\n", names), missing))
+  t.Name = "*Wdired $(Slashed(v.Dir))*"
+  t.OwnKeys = {"C-c C-c": FinishNames, "C-x C-s": FinishNames, "C-c C-k": AbortNames, "C-g": AbortNames}
+  t.Wdired = {List: b, Names: names}
+  s = state
+  s.Buffers[state.Current] = t
+  commands.Say("Edit the names: C-c C-c renames the files, C-c C-k leaves them as they are.", s)
+end
+
+defn wdiredOf(b)
+  (** What a buffer of names to edit keeps of its list, {List, Names}, or missing for any other buffer. *)
+  match b
+    {Wdired: w} -> w
+    else -> missing
+  end
+end
+
+defn backToList(at, state)
+  (** The list put back in place of the buffer of names, read again, the cursor on the name at. *)
+  w = wdiredOf(here(state))
+  s = state
+  s.Buffers[state.Current] = w.List
+  show(viewHere(s), at, s)
+end
+
+defn AbortNames(state)
+  (** C-c C-k, C-g: the names left as they are, and the list back as it was, the cursor on the line of the names. *)
+  if value.IsMissing(wdiredOf(here(state))) commands.Cancel(state) else commands.Say("No name changed.", lineList(state)) end
+end
+
+defn lineList(state)
+  (** The list with its cursor on the line of the cursor in the names, for the name to come back on. *)
+  w = wdiredOf(here(state))
+  s = state
+  s.Buffers[state.Current] = text.Place(here(state).Cursor.Line, 0, w.List)
+  s
+end
+
+defn NamesPlan(old, new, taken)
+  (** The renames that the names edited ask for, [{From, To}], in an Ok, or an Err of the words to say: the lines are as many as the names, none empty,
+      none with a /, none twice, and none a name that is there already, which taken tells, but one that another line renames away.
+
+        NamesPlan(["a", "b"], ["b", "a"], n -> false) --> result.Ok([{From: "a", To: "b"}, {From: "b", To: "a"}])
+        result.IsErr(NamesPlan(["a", "b"], ["c", "c"], n -> false)) --> true
+        result.IsErr(NamesPlan(["a"], ["x"], n -> n == "x")) --> true *)
+  lines = if value.Len(new) == value.Len(old) + 1 and list.Last(new) == "" list.DropLast(1, new) else new end
+  if value.Len(lines) != value.Len(old)
+    return result.Err("The names are $(value.Len(old)) lines, and the text has $(value.Len(lines)): each line is the new name of the file of its line.")
+  end
+  for k in 1..value.Len(lines)
+    n = lines[k]
+    if n == "" or n == "." or n == ".."
+      return result.Err("Line $k has no name.")
+    end
+    if str.Contains("/", n)
+      return result.Err("Line $k holds a /: a name changes here, the folder doesn't.")
+    end
+  end
+  seen = dict.Dict()
+  for n in lines
+    if dict.Has(n, seen)
+      return result.Err("Two lines are named $n.")
+    end
+    seen = dict.Put(n, true, seen)
+  end
+  moving = dict.Dict([{Key: old[k], Value: true} for k in 1..value.Len(old) if old[k] != lines[k]])
+  plan = [{From: old[k], To: lines[k]} for k in 1..value.Len(old) if old[k] != lines[k]]
+  for p in plan
+    if taken(p.To) and not dict.Has(p.To, moving)
+      return result.Err("$(p.To) exists already.")
+    end
+  end
+  result.Ok(plan)
+end
+
+defn FinishNames(state)
+  (** C-c C-c, C-x C-s: the files renamed as the lines say, through names of their own first, so that two names can swap; the list back, the marks gone
+      with their names to the new ones. Out of a buffer of names, the key does what the editor gives it. *)
+  w = wdiredOf(here(state))
+  if value.IsMissing(w)
+    return commands.Run(state)
+  end
+  v = ViewOf(w.List)
+  plan = NamesPlan(w.Names, str.Split("\n", rope.Text(here(state).Rope)), n -> present(Within(v.Dir, n)))
+  if result.IsErr(plan)
+    return commands.Say(plan.Error, state)
+  end
+  if value.Len(plan.Value) == 0
+    return commands.Say("No name changed.", backToList(under(lineList(state)), state))
+  end
+  done = Renamed(v.Dir, plan.Value, math.Floor(sys.Now()))
+  s = if result.IsOk(done) renamedBuffers([{From: Within(v.Dir, p.From), To: Within(v.Dir, p.To)} for p in plan.Value], lineList(state)) else lineList(state) end
+  marks = v.Marks
+  for p in plan.Value
+    if dict.Has(p.From, v.Marks) and result.IsOk(done)
+      marks = dict.Put(p.To, v.Marks[p.From], dict.Drop(p.From, marks))
+    end
+  end
+  moved = v
+  moved.Marks = marks
+  s.Buffers[s.Current].List.Folder = moved
+  at = list.FindFirst(p -> p.From == under(s), plan.Value)
+  back = show(moved, if value.IsMissing(at) under(s) else at.To end, s)
+  if result.IsErr(done) commands.Say(done.Error, back) else commands.Say("Renamed $(value.Len(plan.Value)) $(if value.Len(plan.Value) == 1 "file" else "files" end).", back) end
+end
+
+defn Renamed(dir, plan, now)
+  (** The renames of a plan made in a folder, each first to a name of its own, then to its new name, so that a and b can swap: Ok(missing), or an Err of
+      the words to say. A rename that fails in the first step puts back those done; one that fails in the second puts its file back under its old name
+      when nothing took it since, else leaves it under the name of its own, which the Err says: no file is ever replaced. *)
+  temps = []
+  for k in 1..value.Len(plan)
+    p = plan[k]
+    temp = FreeName(".#wdired-$now-$k", n -> present(Within(dir, n)))
+    got = sys.Rename(Within(dir, p.From), Within(dir, temp))
+    if result.IsErr(got)
+      for t in temps
+        _ = sys.Rename(Within(dir, t.Temp), Within(dir, t.From))
+      end
+      return result.Err("Nothing renamed: $(p.From): $(got.Error.Message)")
+    end
+    temps = list.Append({From: p.From, To: p.To, Temp: temp}, temps)
+  end
+  failed = []
+  for t in temps
+    got = sys.Rename(Within(dir, t.Temp), Within(dir, t.To))
+    if result.IsErr(got)
+      (* The old name goes back only when nothing took it since, as the file of another line: else the file keeps the name of its own, said. *)
+      back = if present(Within(dir, t.From)) result.Err("taken") else sys.Rename(Within(dir, t.Temp), Within(dir, t.From)) end
+      kept = if result.IsOk(back) "" else ", kept as $(t.Temp)" end
+      failed = list.Append("$(t.From): $(got.Error.Message)$kept", failed)
+    end
+  end
+  if value.Len(failed) == 0 result.Ok(missing) else result.Err("Renamed $(value.Len(temps) - value.Len(failed)) of $(value.Len(temps)); $(failed[1])") end
+end

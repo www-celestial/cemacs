@@ -1,0 +1,583 @@
+(* The commands of the folders that change files: copies, moves, links, deletions, modes, times and new folders. Each acts on the rows marked with *, or
+   else on the row under the cursor; a copy or a move goes first to the folder of the other pane when it shows a folder, as Dired's dwim-target does, else
+   to this one. An error on one file names it and the others go on; the line under the panes then says what was done. A tree is never followed through a
+   symbolic link: a link is copied as a link and deleted as a link. *)
+use core/commands
+use core/files
+use core/lists
+use core/panes
+use core/text
+use std/date
+use std/dict
+use std/encode
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(* ---- The rows a command acts on *)
+
+defn Targets(state)
+  (** The items a command acts on: the rows shown marked with *, or else the row under the cursor, or none in an empty folder. *)
+  v = viewHere(state)
+  marked = [i for i in shownItems(state) if markOf(i.Name, v) == "*"]
+  if value.Len(marked) > 0
+    return marked
+  end
+  item = lists.ItemAt(here(state))
+  if value.IsMissing(item) [] else [item] end
+end
+
+(** The items as a prompt names them: the name of one, or * and their count, as Dired does.
+
+      Named([{Name: "a.ce"}]) --> "a.ce"
+      Named([{Name: "a.ce"}, {Name: "b.ce"}]) --> "* [2 files]" *)
+Named(items) = if value.Len(items) == 1 items[1].Name else "* [$(value.Len(items)) files]" end
+
+(** How many items a message counts: the name of one, else their number. *)
+counted(items) = if value.Len(items) == 1 items[1].Name else "$(value.Len(items)) files" end
+
+defn withTargets(f, state)
+  (** f on the items a command acts on, or a message in an empty folder. *)
+  items = Targets(state)
+  if value.Len(items) == 0 commands.Say("Nothing here.", state) else f(items, state) end
+end
+
+defn Summary(verb, done, failed, state)
+  (** The state with what a command did said: the verb and the count, then, if some failed, how many and the reason of the first, which names it. *)
+  total = value.Len(done) + value.Len(failed)
+  if value.Len(failed) == 0
+    return commands.Say("$verb $(counted(done)).", state)
+  end
+  more = if value.Len(failed) > 1 " ($(value.Len(failed) - 1) more failed)" else "" end
+  commands.Say("$verb $(value.Len(done)) of $total; $(failed[1])$more", state)
+end
+
+defn landing(gone, state)
+  (** The name the cursor goes to once some rows are gone: the first row left at the cursor or after it, else before it. *)
+  items = shownItems(state)
+  line = here(state).Cursor.Line
+  left = [k for k in 1..value.Len(items) if not (items[k].Name in gone)]
+  after = [k for k in left if k >= line]
+  k = if value.Len(after) > 0 after[1] else list.Last(left) end
+  if value.IsMissing(k) missing else items[k].Name end
+end
+
+defn afterward(at, state)
+  (** The current list read again, the cursor on the name at, and the list of the other pane too, once files changed. *)
+  s = show(viewHere(state), at, state)
+  j = otherOf(s)
+  if value.IsMissing(j)
+    return s
+  end
+  k = panes.At(j, panes.Tree(s)).Buffer
+  if k == s.Current or k > value.Len(s.Buffers) or value.IsMissing(ViewOf(s.Buffers[k]))
+    return s
+  end
+  i = panes.Active(s)
+  t = commands.FocusPane(j, s)
+  t = show(viewHere(t), under(t), t)
+  t = commands.FocusPane(i, t)
+  t.Message = s.Message
+  t
+end
+
+(* ---- Paths *)
+
+(** Is this path the folder from, or inside it? A folder can't be copied or moved there.
+
+      IsInside("/p/src/a", "/p/src") --> true
+      IsInside("/p/srcs", "/p/src") --> false *)
+IsInside(path, from) = path == from or str.StartsWith("$from/", path)
+
+(** Is a path a folder, through a link too? *)
+isFolder(path) = result.IsOk(sys.Stat(path)) and result.Unwrap(sys.Stat(path)).IsDir
+
+(** Is a path a symbolic link, one that points to nothing too? *)
+isLinkPath(path) = result.IsOk(sys.ReadLink(path))
+
+defn RelativePath(from, to)
+  (** The path from the folder from to the path to, both from the root, as a relative link holds it.
+
+        RelativePath("/p/a", "/p/b/c.ce") --> "../b/c.ce"
+        RelativePath("/p", "/p/c.ce") --> "c.ce" *)
+  a = [x for x in str.Split("/", files.Normal(from)) if x != ""]
+  b = [x for x in str.Split("/", files.Normal(to)) if x != ""]
+  k = 0
+  while k < value.Len(a) and k < value.Len(b) and a[k + 1] == b[k + 1]
+    k += 1
+  end
+  path = str.Join("/", list.Concat([".." for x in list.Skip(k, a)], list.Skip(k, b)))
+  if path == "" "." else path end
+end
+
+defn Destinations(items, dir, answer, isDir = isFolder)
+  (** Where each item goes for an answer to Copy, Rename and the links, {From, To, Item}, or an Err of the words to say. The answer is a path, from this
+      folder when it doesn't start with /: one item goes into it when it is a folder, as isDir tells, or ends with /, else becomes it; more go into it, a
+      folder. *)
+  if str.Trim(answer) == ""
+    return result.Err("No name given.")
+  end
+  target = Within(dir, answer)
+  into = str.EndsWith("/", answer) or isDir(target)
+  if value.Len(items) > 1 and not into
+    return result.Err("$answer is no folder: the files go into one.")
+  end
+  result.Ok([{From: Within(dir, i.Name), To: if into "$target/$(i.Name)" else target end, Item: i} for i in items])
+end
+
+(* ---- The trees of files *)
+
+defn nodeOf(path, rel)
+  (** One entry of a tree, never followed through a link: {Rel, Kind, Target, Mode, Modified}, of kind dir, file, link or error, with its Message. A
+      special file, as a FIFO or a device, is an error: reading one can wait for ever. *)
+  st = sys.Stat(path)
+  if result.IsOk(st) and not st.Value.IsLink
+    if not st.Value.IsDir and not st.Value.IsFile
+      return {Rel: rel, Kind: "error", Message: "$(BaseName(path)) is a special file, as a FIFO or a device, which is not copied"}
+    end
+    return {Rel: rel, Kind: if st.Value.IsDir "dir" else "file" end, Target: missing, Mode: st.Value.Mode, Modified: st.Value.Modified}
+  end
+  link = sys.ReadLink(path)
+  if result.IsOk(link)
+    return {Rel: rel, Kind: "link", Target: link.Value, Mode: missing, Modified: missing}
+  end
+  {Rel: rel, Kind: "error", Message: st.Error.Message}
+end
+
+defn TreeOf(path)
+  (** Every entry of a tree, the path itself first and each folder before what it holds, a level after the other, read whole before anything is written,
+      so that a copy into it can't feed itself; a link is an entry, never entered. *)
+  out = []
+  todo = [""]
+  at = 1
+  while at <= value.Len(todo)
+    rel = todo[at]
+    at += 1
+    full = if rel == "" path else "$path/$rel" end
+    node = nodeOf(full, rel)
+    out = list.Append(node, out)
+    if node.Kind == "dir"
+      names = sys.List(full)
+      if result.IsErr(names)
+        out = list.Append({Rel: rel, Kind: "error", Message: names.Error.Message}, out)
+      else
+        for n in names.Value
+          todo = list.Append(if rel == "" n else "$rel/$n" end, todo)
+        end
+      end
+    end
+  end
+  out
+end
+
+(** The words of an error of a path. *)
+errorOf(path, e) = if value.IsText(e) "$(BaseName(path)): $e" else "$(BaseName(path)): $(e.Message)" end
+
+defn Placed(make, path)
+  (** A file or a link that make writes at a path given, made at a name of its own beside path, then renamed over it, so that what was at path stays
+      whole until the new one is, nothing is written through a link there, and a copy of a file onto itself by another path leaves it as it was. A folder
+      at path is an Err, never replaced. Ok(missing) or an Err. *)
+  if isFolder(path) and not isLinkPath(path)
+    return result.Err("$(BaseName(path)) is a folder")
+  end
+  dir = Parent(path)
+  temp = "$dir/$(FreeName(".#cemacs-$(BaseName(path))", n -> present("$dir/$n")))"
+  made = make(temp)
+  if result.IsErr(made)
+    _ = if present(temp) sys.Remove(temp) else result.Ok(missing) end
+    return made
+  end
+  moved = sys.Rename(temp, path)
+  if result.IsErr(moved)
+    _ = sys.Remove(temp)
+    return moved
+  end
+  (* A rename onto another name of the same file does nothing, and leaves the name of its own. *)
+  if present(temp) sys.Remove(temp) else result.Ok(missing) end
+end
+
+defn copyNode(node, from, to)
+  (** One entry of a tree copied from the tree at from to the one at to: a folder made, a file copied as cp -p does, a link made again with the same
+      target, each of the last two through Placed. *)
+  a = if node.Rel == "" from else "$from/$(node.Rel)" end
+  b = if node.Rel == "" to else "$to/$(node.Rel)" end
+  if node.Kind == "dir"
+    if isFolder(b) and not isLinkPath(b)
+      return result.Ok(missing)
+    end
+    if present(b) result.Err("$(BaseName(b)) is there and is no folder") else sys.Mkdir(b) end
+  else if node.Kind == "file"
+    Placed(t -> sys.Copy(a, t), b)
+  else if node.Kind == "link"
+    Placed(t -> sys.Symlink(node.Target, t), b)
+  else
+    result.Err(node.Message)
+  end
+end
+
+(** Is a relative path inside one of the folders that failed? Nothing is written under a folder that couldn't be made, as a link there. *)
+underFailed(rel, failed) = list.Any([rel != "" and str.StartsWith(if f == "" "" else "$f/" end, rel) for f in failed])
+
+defn CopyTree(from, to)
+  (** Copies a file, a link or a folder and all it holds from a path to another, never through a link: Ok(missing), or an Err that names the first entry
+      that failed after the others were copied. A folder at to takes what from holds, its files replaced. Nothing goes under a folder that couldn't be
+      made, as where a link or a file is in its place: a link there is never written through. The modes and times of the folders are set last, the
+      deepest first, so that a folder that can't be written is written into first. *)
+  tree = TreeOf(from)
+  first = missing
+  failed = []
+  for node in tree
+    if not underFailed(node.Rel, failed)
+      done = copyNode(node, from, to)
+      if result.IsErr(done)
+        if node.Kind == "dir"
+          failed = list.Append(node.Rel, failed)
+        end
+        if value.IsMissing(first)
+          first = errorOf(if node.Rel == "" from else "$from/$(node.Rel)" end, done.Error)
+        end
+      end
+    end
+  end
+  for node in list.Reverse([n for n in tree if n.Kind == "dir" and not (n.Rel in failed) and not underFailed(n.Rel, failed)])
+    b = if node.Rel == "" to else "$to/$(node.Rel)" end
+    _ = sys.Chmod(b, node.Mode)
+    _ = sys.SetModified(b, node.Modified)
+  end
+  if value.IsMissing(first) result.Ok(missing) else result.Err(first) end
+end
+
+defn RemoveTree(path)
+  (** Deletes a file, a link or a folder and all it holds for good, never through a link: a link is deleted, not what it points to. Ok(missing), or an Err
+      that names the first entry that failed after the others were deleted. *)
+  if isLinkPath(path) or not isFolder(path)
+    return sys.Remove(path)
+  end
+  first = missing
+  names = sys.List(path)
+  if result.IsErr(names)
+    return names
+  end
+  for n in names.Value
+    done = RemoveTree("$path/$n")
+    if result.IsErr(done) and value.IsMissing(first)
+      first = done
+    end
+  end
+  gone = sys.Remove(path)
+  if value.IsMissing(first) gone else first end
+end
+
+defn MoveTree(from, to)
+  (** Moves a file, a link or a folder: a rename, or across disks, where a rename can't go, a copy then a deletion of what was copied, only once the copy
+      is whole. Ok(missing) or an Err. *)
+  moved = sys.Rename(from, to)
+  if result.IsOk(moved) or not str.Contains("cross-device", value.Text(dict.GetOr("Message", "", moved.Error)))
+    return moved
+  end
+  CopyTree(from, to)?
+  RemoveTree(from)
+end
+
+(* ---- Copy, rename, links *)
+
+(** The transfers: each kind, the words of its prompt, what it says when done, and what it does with each {From, To, Item}. *)
+transferOf(kind) = {
+  Copy: {Label: "Copy", After: "to", Done: "Copied", Act: p -> CopyTree(p.From, p.To)},
+  Rename: {Label: "Rename", After: "to", Done: "Moved", Act: p -> MoveTree(p.From, p.To)},
+  Symlink: {Label: "Symlink", After: "from", Done: "Linked", Act: p -> linked(p.From, p.To)},
+  Relative: {Label: "Relative symlink", After: "from", Done: "Linked", Act: p -> linked(RelativePath(Parent(p.To), p.From), p.To)},
+  Hard: {Label: "Hardlink", After: "to", Done: "Linked", Act: p -> hardLinked(p.From, p.To)}
+}[kind]
+
+(** A symbolic link made at link to target, through Placed: a file or a link there is replaced once the new link is made. *)
+linked(target, link) = Placed(t -> sys.Symlink(target, t), link)
+
+defn hardLinked(from, to)
+  (** A hard link made at to for the file from, through Placed: a folder has none. *)
+  if isFolder(from) and not isLinkPath(from)
+    return result.Err("a folder can't be hard linked")
+  end
+  Placed(t -> sys.Link(from, t), to)
+end
+
+Copy(state) = transferred("Copy", state)   (** C: copies the files to a folder or a name asked, folders and all they hold; links stay links. *)
+Rename(state) = transferred("Rename", state)   (** R, C-c r: renames a file, or moves the files to a folder asked, across disks too. *)
+Symlink(state) = transferred("Symlink", state)   (** S: makes a symbolic link to each file, at a name or in a folder asked, with its path from the root. *)
+RelativeSymlink(state) = transferred("Relative", state)   (** Y: makes a symbolic link to each file as S does, with a relative path. *)
+HardLink(state) = transferred("Hard", state)   (** H: makes a hard link to each file, another name of it on the same disk. *)
+
+defn transferred(kind, state)
+  (** Asks where the files go, the folder of the other pane first, else this one, with the name of one file, Tab completing it. *)
+  t = transferOf(kind)
+  v = viewHere(state)
+  other = OtherFolder(state)
+  to = Slashed(if value.IsMissing(other) v.Dir else other end)
+  withTargets((items, s) -> commands.Ask("$(t.Label) $(Named(items)) $(t.After): ", if value.Len(items) == 1 "$to$(items[1].Name)" else to end,
+    (answer, u) -> transferTo(kind, items, answer, u), s, named = true), state)
+end
+
+defn transferTo(kind, items, answer, state)
+  (** The files sent where the answer says: refused into themselves, a folder made for an answer that ends with /, and a yes asked before any file that is
+      there is replaced, else those are left. *)
+  v = viewHere(state)
+  goes = Destinations(items, v.Dir, answer)
+  if result.IsErr(goes)
+    return commands.Say(goes.Error, state)
+  end
+  inside = [p for p in goes.Value if p.Item.IsDir and not isLinkPath(p.From) and (kind == "Copy" or kind == "Rename") and p.From != p.To and IsInside(p.To, p.From)]
+  if value.Len(inside) > 0
+    return commands.Say("Can't $(str.Lower(transferOf(kind).Label)) $(inside[1].Item.Name) into itself.", state)
+  end
+  target = Within(v.Dir, answer)
+  if str.EndsWith("/", answer) and not present(target)
+    made = sys.Mkdir(target)
+    if result.IsErr(made)
+      return commands.Say(errorOf(target, made.Error), state)
+    end
+  end
+  pairs = [p for p in goes.Value if p.From != p.To]
+  if value.Len(pairs) == 0
+    return commands.Say("Nothing to do: the files are there already.", state)
+  end
+  there = [p for p in pairs if present(p.To)]
+  if value.Len(there) == 0
+    return transfer(kind, pairs, state)
+  end
+  names = str.Join(", ", list.Take(3, [BaseName(p.To) for p in there]))
+  label = if value.Len(there) == 1 "$names exists. Replace it? (y or n) " else "$(value.Len(there)) exist ($names$(if value.Len(there) > 3 ", ..." else "" end)). Replace them? (y or n) " end
+  commands.Confirm(label, (yes, s) -> transfer(kind, if yes == "y" pairs else [p for p in pairs if not present(p.To)] end, s), state)
+end
+
+defn transfer(kind, pairs, state)
+  (** Each file sent, those that failed named, the buffers of the files moved given their new path; then the folders read again. *)
+  t = transferOf(kind)
+  if value.Len(pairs) == 0
+    return commands.Say("Nothing done.", state)
+  end
+  done = []
+  failed = []
+  for p in pairs
+    act = t.Act
+    got = act(p)
+    if result.IsOk(got)
+      done = list.Append(p.Item, done)
+    else
+      failed = list.Append(errorOf(p.From, got.Error), failed)
+    end
+  end
+  s = if kind == "Rename" renamedBuffers([p for p in pairs if p.Item in done], state) else state end
+  gone = if kind == "Rename" [i.Name for i in done] else [] end
+  Summary(t.Done, done, failed, afterward(landing(gone, s), s))
+end
+
+defn renamedBuffers(pairs, state)
+  (** The buffers of the files moved, and of those inside the folders moved, given their new paths, so that a save goes to the file where it is now. *)
+  s = state
+  pwd = sys.Env("PWD")
+  for k in 1..value.Len(state.Buffers)
+    b = state.Buffers[k]
+    if not lists.IsList(b) and value.IsText(b.Path)
+      path = Absolute(b.Path, pwd)
+      for p in pairs
+        if IsInside(path, p.From)
+          s.Buffers[k].Path = "$(p.To)$(str.Slice(value.Len(p.From) + 1, value.Len(path), path))"
+        end
+      end
+    end
+  end
+  s
+end
+
+(* ---- Deletions *)
+
+defn deletesToTrash(state)
+  (** Do deletions move to the trash, as the DeleteToTrash of the config says? A config without it does, as one from before this setting. *)
+  f = dict.GetOr("Config", missing, state)
+  if value.IsMissing(f)
+    return true
+  end
+  setting = dict.GetOr("DeleteToTrash", () -> true, f())
+  setting() != false
+end
+
+Delete(state) = withTargets(deleting, state)   (** D, C-c k: deletes the files, after a question, to the trash or for good as DeleteToTrash says. *)
+
+defn DeleteFlagged(state)
+  (** x: deletes the rows flagged with D, after a question, to the trash or for good as DeleteToTrash says. *)
+  v = viewHere(state)
+  items = [i for i in shownItems(state) if markOf(i.Name, v) == "D"]
+  if value.Len(items) == 0 commands.Say("No row is flagged: d flags one.", state) else deleting(items, state) end
+end
+
+defn deleting(items, state)
+  (** The question before a deletion: y or n for the trash, where a file can come back from; yes or no for good. *)
+  if deletesToTrash(state)
+    commands.Confirm("Move $(Named(items)) to the trash? (y or n) ", (yes, s) -> if yes == "y" trashedAll(items, s) else commands.Say("Nothing deleted.", s) end, state)
+  else
+    commands.Ask("Delete $(Named(items)) for good? (yes or no) ", "", (yes, s) -> if yes == "yes" foldersAsked([i for i in items if hasEntries(i, s)], items, s) else commands.Say("Nothing deleted.", s) end, state)
+  end
+end
+
+(** Is an item a folder that holds something, which a deletion for good asks about once more? *)
+hasEntries(item, state) = item.IsDir and not isLinkPath(Within(viewHere(state).Dir, item.Name)) and value.Len(result.UnwrapOr([], sys.List(Within(viewHere(state).Dir, item.Name)))) > 0
+
+defn foldersAsked(asked, items, state)
+  (** Each folder that holds something asked about by its name, yes or no, then the deletion of the items, those said no to left. *)
+  if value.Len(asked) == 0
+    return deletedAll(items, state)
+  end
+  f = asked[1]
+  rest = list.Skip(1, asked)
+  commands.Ask("Delete folder $(f.Name) and everything in it? (yes or no) ", "", (yes, s) -> foldersAsked(rest, if yes == "yes" items else [i for i in items if i != f] end, s), state)
+end
+
+defn deletedAll(items, state)
+  (** The items deleted for good, a folder with all it holds, never through a link. *)
+  v = viewHere(state)
+  if value.Len(items) == 0
+    return commands.Say("Nothing deleted.", state)
+  end
+  done = []
+  failed = []
+  for i in items
+    got = RemoveTree(Within(v.Dir, i.Name))
+    if result.IsOk(got) done = list.Append(i, done) else failed = list.Append(errorOf(Within(v.Dir, i.Name), got.Error), failed) end
+  end
+  Summary("Deleted", done, failed, afterward(landing([i.Name for i in done], state), state))
+end
+
+defn trashedAll(items, state)
+  (** The items moved to the trash, a folder whole. *)
+  v = viewHere(state)
+  root = TrashRoot(sys.Env("XDG_DATA_HOME"), sys.Env("HOME"))
+  if value.IsMissing(root)
+    return commands.Say("There is no trash: HOME is not set.", state)
+  end
+  done = []
+  failed = []
+  for i in items
+    got = ToTrash(Within(v.Dir, i.Name), root, sys.Now())
+    if result.IsOk(got) done = list.Append(i, done) else failed = list.Append("can't move $(i.Name) to the trash: $(got.Error.Message)", failed) end
+  end
+  Summary("Moved to the trash", done, failed, afterward(landing([i.Name for i in done], state), state))
+end
+
+(* ---- Modes, times, folders *)
+
+defn ChangeMode(state)
+  (** M: asks for a mode, in octal or as chmod writes it, the mode of one file first, and gives it to each file. *)
+  v = viewHere(state)
+  first(items) = if value.Len(items) == 1 OctalText(field("Mode", 0, entryNamed(items[1].Name, v))) else "" end
+  withTargets((items, s) -> commands.Ask("Change mode of $(Named(items)) to: ", first(items), (answer, u) -> modesChanged(items, answer, u), s), state)
+end
+
+defn modesChanged(items, answer, state)
+  (** Each file given the mode of the answer, a mode as chmod writes it read from the mode of each. *)
+  v = viewHere(state)
+  done = []
+  failed = []
+  for i in items
+    e = entryNamed(i.Name, v)
+    mode = ParseMode(answer, field("Mode", 0, e), i.IsDir)
+    if result.IsErr(mode)
+      return commands.Say(mode.Error, state)
+    end
+    got = sys.Chmod(Within(v.Dir, i.Name), mode.Value)
+    if result.IsOk(got) done = list.Append(i, done) else failed = list.Append(errorOf(Within(v.Dir, i.Name), got.Error), failed) end
+  end
+  Summary("Changed the mode of", done, failed, afterward(under(state), state))
+end
+
+(** T: asks for a time, none for now, YYYY-MM-DD or YYYY-MM-DD hh:mm, and gives it to each file as the time of its last change, as touch does. *)
+Touch(state) = withTargets((items, s) -> commands.Ask("Change time of $(Named(items)) to (none for now): ", "", (answer, u) -> touched(items, answer, u), s), state)
+
+defn touched(items, answer, state)
+  (** Each file given the time of the answer. *)
+  v = viewHere(state)
+  when = TimeOf(answer, sys.Now())
+  if result.IsErr(when)
+    return commands.Say(when.Error, state)
+  end
+  done = []
+  failed = []
+  for i in items
+    got = sys.SetModified(Within(v.Dir, i.Name), when.Value)
+    if result.IsOk(got) done = list.Append(i, done) else failed = list.Append(errorOf(Within(v.Dir, i.Name), got.Error), failed) end
+  end
+  Summary("Touched", done, failed, afterward(under(state), state))
+end
+
+(** +: asks for the name of a new folder, Tab completing it, and makes it with the folders above it. *)
+MakeFolder(state) = commands.Ask("Create folder: ", Slashed(viewHere(state).Dir), madeFolder, state, named = true)
+
+defn madeFolder(answer, state)
+  (** The folder of the answer made, and the cursor on it when it is in this folder. *)
+  v = viewHere(state)
+  path = Within(v.Dir, answer)
+  if str.Trim(answer) == "" or path == v.Dir
+    return commands.Say("No name given.", state)
+  end
+  if present(path)
+    return commands.Say("$(BaseName(path)) already exists.", state)
+  end
+  match sys.Mkdir(path)
+    result.Ok(_) -> commands.Say("Made $(BaseName(path))/.", afterward(if IsInside(path, v.Dir) firstPart(str.Slice(value.Len(v.Dir) + 2, value.Len(path), path)) else under(state) end, state))
+    result.Err(e) -> commands.Say(errorOf(path, e), state)
+  end
+end
+
+(* ---- The trash, as freedesktop.org says *)
+
+defn TrashRoot(data, home)
+  (** The trash of the person, as freedesktop says: in XDG_DATA_HOME when it is set, else in ~/.local/share, or missing with neither.
+
+        TrashRoot(missing, "/home/a") --> "/home/a/.local/share/Trash" *)
+  if not value.IsMissing(data) and data != ""
+    "$data/Trash"
+  else if value.IsMissing(home) or home == ""
+    missing
+  else
+    "$home/.local/share/Trash"
+  end
+end
+
+(** The info of a path put in the trash when, a date of std/date: its path, percent-encoded part by part, and the date and time as
+    YYYY-MM-DDThh:mm:ss, without a zone. ToTrash gives it the time of this machine's clock, date.Local, as the specification asks.
+
+      TrashInfo("/a b/c.ce", date.FromUnix(0)) --> "[Trash Info]\nPath=/a%20b/c.ce\nDeletionDate=1970-01-01T00:00:00\n" *)
+TrashInfo(path, when) = "[Trash Info]\nPath=$(str.Join("/", list.Map(encode.UrlEncode, str.Split("/", path))))\nDeletionDate=$(str.Join("", list.Take(19, str.Chars(date.Format(when)))))\n"
+
+defn FreeName(name, taken)
+  (** The name itself, or the first of name.2, name.3... that the function taken refuses.
+
+        FreeName("a.ce", n -> n == "a.ce") --> "a.ce.2" *)
+  if not taken(name)
+    return name
+  end
+  k = 2
+  while taken("$name.$k")
+    k += 1
+  end
+  "$name.$k"
+end
+
+defn ToTrash(path, root, now)
+  (** Moves a file or a folder to the trash in root: the entry into files/, and into info/ a .trashinfo with its path and the date on this machine's clock
+      at now, in seconds since 1970. The info is written first, and removed if the move fails, as for an entry on another disk, which can't be moved there:
+      Ok(its name in the trash) or an Err. *)
+  sys.Mkdir("$root/files")?
+  sys.Mkdir("$root/info")?
+  name = FreeName(BaseName(path), n -> present("$root/files/$n") or sys.Exists("$root/info/$n.trashinfo"))
+  info = "$root/info/$name.trashinfo"
+  sys.Write(info, TrashInfo(path, date.Local(now)))?
+  moved = sys.Rename(path, "$root/files/$name")
+  if result.IsErr(moved)
+    _ = sys.Remove(info)
+    return moved
+  end
+  result.Ok(name)
+end

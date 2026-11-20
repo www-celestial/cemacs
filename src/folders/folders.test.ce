@@ -1,25 +1,30 @@
 (** Tests of the folders: run with cesia test . Those that read and change real folders are in tests/folders-check.ce. *)
 use src/buffers
 use core/color
+use core/commands
 use src/emacs
 use src/folders
+use core/lists
 use core/press
 use src/rope
 use core/text
 use src/ui
 use core/view
 use std/text as str
+use std/date
 use std/dict
 use std/list
+use std/result
 use std/value
 
 look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
 cell = {Width: 8, Height: 19}
 (** The Emacs keys with the keys of the apps, as src/cemacs.ce merges them. *)
 withApps() = emacs.Config(() -> dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()))
-(** A folder of two files, a folder and a hidden folder, all changed 5 minutes ago but a.toml, 2 hours ago. *)
-entries = [{Name: "b.ce", IsDir: false, Size: 3250, Modified: 1000.0}, {Name: ".git", IsDir: true, Size: 0, Modified: 1000.0},
-  {Name: "src", IsDir: true, Size: 0, Modified: 1000.0}, {Name: "a.toml", IsDir: false, Size: 12, Modified: -6200.0}]
+(** A folder of two files, a folder, a hidden folder and a link, all changed 5 minutes ago but a.toml, 2 hours ago. *)
+entries = [{Name: "b.ce", IsDir: false, Size: 3250, Modified: 1000.0, Mode: 420}, {Name: ".git", IsDir: true, Size: 0, Modified: 1000.0, Mode: 493},
+  {Name: "src", IsDir: true, Size: 0, Modified: 1000.0, Mode: 493}, {Name: "a.toml", IsDir: false, Size: 12, Modified: -6200.0, Mode: 420},
+  {Name: "run", IsDir: false, IsLink: true, Size: 7, Modified: 1000.0, Mode: 493, Target: "bin/run.sh"}]
 defn listed(hidden, at)
   (** The list of that folder, /p, opened from a file. *)
   s = view.Start([text.Of("x", "/p/x.ce")], look, cell, 800, 600)
@@ -29,22 +34,120 @@ end
 here(state) = state.Buffers[state.Current]
 wordsOf(state) = rope.Text(here(state).Rope)
 played(items) = press.Press(items, listed(false, missing))
+(** The mark column of each row, in order. *)
+marksOf(state) = str.Join("", [str.Slice(1, 1, l) for l in str.Lines(wordsOf(state))])
+labelOf(state) = lists.LabelOf(lists.Of(here(state)))
 
 isKeyBound() = folders.Keys()["C-x d"] == folders.Open
 isNamedByItsFolder() = view.BufferName(here(listed(false, missing))) == "/p"
-isFoldersFirstHiddenOut() = wordsOf(listed(false, missing)) == "src/             5 min\nb.ce     3.3 kB  5 min\na.toml     12 B  2 h"
-isHiddenShown() = str.Lines(wordsOf(listed(true, missing)))[1] == ".git/            5 min"
+isFoldersFirstHiddenOut() = wordsOf(listed(false, missing)) == "  drwxr-xr-x           5 min       src/\n  -rw-r--r--   3.3 kB  5 min       b.ce\n  -rw-r--r--     12 B  2 h         a.toml\n  lrwxrwxrwx      7 B  5 min       run -> bin/run.sh"
+isHiddenShown() = str.Lines(wordsOf(listed(true, missing)))[1] == "  drwxr-xr-x           5 min       .git/"
 isCursorOnTheName() = here(listed(false, "a.toml")).Cursor.Line == 3
-isFilterOnTheNameOnly() = wordsOf(played(["m"])) == "a.toml     12 B  2 h"
-isBackspaceTakesTheFilterBack() = value.Len(str.Lines(wordsOf(played(["m", "backspace"])))) == 3
+isDetailsHidden() = wordsOf(played(["("])) == "  src/\n  b.ce\n  a.toml\n  run -> bin/run.sh"
+isDetailsBack() = wordsOf(played(["(", "("])) == wordsOf(listed(false, missing))
 (** The parts of a row, joined, are its words. *)
 partsWords(r) = str.Join("", list.Map(p -> p[2], r.Parts))
-isPartsAreTheWords() = value.Len(list.Filter(r -> partsWords(r) != r.Words, folders.Rows(entries, true, 1300.0))) == 0
-roles(r) = str.Join(",", list.Map(p -> value.Text(p[1]), r.Parts))
-isFolderAName() = folders.Rows(entries, false, 1300.0)[1].Parts[1][1] == color.Name
-isHiddenAComment() = folders.Rows(entries, true, 1300.0)[1].Parts[1][1] == color.Comment
-isCodeAString() = folders.Rows(entries, false, 1300.0)[2].Parts[1][1] == color.String
-isSettingsAKeyword() = folders.Rows(entries, false, 1300.0)[3].Parts[1][1] == color.Keyword
-isSizeANumberAgeAComment() = folders.Rows(entries, false, 1300.0)[2].Parts[3][1] == color.Number and folders.Rows(entries, false, 1300.0)[2].Parts[5][1] == color.Comment
-isPathInTheFilterLine() = "/p/m" in list.Map(c -> c.Text, list.Filter(c -> c.Kind == "text", view.View(played(["m"]))))
+isPartsAreTheWords() = value.Len(list.Filter(r -> partsWords(r) != r.Words, folders.Rows(entries, true, 1300.0, marks = {"b.ce": "*"}))) == 0
+nameRole(r) = r.Parts[value.Len(r.Parts)][1]
+isFolderAName() = nameRole(folders.Rows(entries, false, 1300.0)[1]) == color.Name
+isHiddenAComment() = nameRole(folders.Rows(entries, true, 1300.0)[1]) == color.Comment
+isCodeAString() = nameRole(folders.Rows(entries, false, 1300.0)[2]) == color.String
+isSettingsAKeyword() = nameRole(folders.Rows(entries, false, 1300.0)[3]) == color.Keyword
+isSizeANumberAgeAComment() = folders.Rows(entries, false, 1300.0)[2].Parts[3][1] == color.Number and folders.Rows(entries, false, 1300.0)[2].Parts[4][1] == color.Comment
+isLinkTargetFaint() = value.Equal(list.Last(folders.Rows(entries, false, 1300.0)[4].Parts), [color.Comment, " -> bin/run.sh"])
+isMarkedNameColored() = folders.Rows(entries, false, 1300.0, marks = {"b.ce": "D"})[2].Parts[5][1] == color.Keyword
 isListReadOnly() = wordsOf(played(["C-k"])) == wordsOf(listed(false, missing))
+
+(* Sorting: folders first, then by name, date or size. *)
+isSortedByDate() = value.Equal([e.Name for e in folders.Sorted(entries, "date")], [".git", "src", "b.ce", "run", "a.toml"])
+isSortedBySize() = value.Equal([e.Name for e in folders.Sorted(entries, "size")], [".git", "src", "b.ce", "a.toml", "run"])
+isSortedByName() = value.Equal([e.Name for e in folders.Sorted(entries, "name")], [".git", "src", "b.ce", "a.toml", "run"])
+isSortKeyCycles() = labelOf(played(["s"])) == "/p/  by date" and labelOf(played(["s", "s"])) == "/p/  by size" and labelOf(played(["s", "s", "s"])) == "/p/  ? lists the keys"
+isSortKeepsTheCursorName() = folders.ViewOf(here(played(["n", "s"]))).Sort == "date" and str.Contains("b.ce", str.Lines(wordsOf(played(["n", "s"])))[here(played(["n", "s"])).Cursor.Line])
+
+(* Marks: m, u, d, t, U, backspace, the groups of *, and the count on the line under the panes. *)
+isMarkMovesDown() = marksOf(played(["m"])) == "*   " and here(played(["m"])).Cursor.Line == 2
+isMarkTwice() = marksOf(played(["m", "m"])) == "**  " and labelOf(played(["m", "m"])) == "/p/  2 marked"
+isUnmark() = marksOf(played(["m", "p", "u"])) == "    "
+isFlag() = marksOf(played(["d", "d"])) == "DD  " and labelOf(played(["d"])) == "/p/  1 flagged"
+isToggleLeavesFlags() = marksOf(played(["m", "d", "t"])) == " D**"
+isUnmarkAll() = marksOf(played(["m", "d", "U"])) == "    " and marksOf(played(["m", "d", "*", "!"])) == "    "
+isBackspaceUnmarksAbove() = marksOf(played(["m", "m", "backspace"])) == "*   " and here(played(["m", "m", "backspace"])).Cursor.Line == 2
+isMarkFolders() = marksOf(played(["*", "/"])) == "*   "
+isMarkLinks() = marksOf(played(["*", "@"])) == "   *"
+isMarkAll() = marksOf(played(["*", "s"])) == "****"
+isMarkExtension() = marksOf(played(["*", ".", "toml", "enter"])) == "  * "
+isMarkByPattern() = marksOf(played(["%", "m", "^[ab]\\.", "enter"])) == " ** " and marksOf(played(["%", "d", "o", "enter"])) == "  D "
+isBadPatternSaid() = here(played(["%", "m", "[a-", "enter"])).Rope == here(listed(false, missing)).Rope and str.Contains("class", played(["%", "m", "[a-", "enter"]).Message)
+isUnknownStarLetter() = str.Contains("* z", played(["*", "z"]).Message) and folders.ViewOf(here(played(["*", "z"]))).Prefix == ""
+isStarPending() = played(["*"]).Message == "* -" and played(["*", "C-g"]).Message == "Quit"
+isChangeMarks() = marksOf(played(["m", "*", "c", "backspace", "*", "enter", "D", "enter"])) == "D   "
+isNextMarked() = here(played(["m", "n", "m", "M-{"])).Cursor.Line == 3 and here(played(["n", "n", "m", "C-p", "C-p", "M-}"])).Cursor.Line == 3
+isNextMarkedWraps() = here(played(["m", "M-}"])).Cursor.Line == 1 and str.Contains("Round", played(["m", "M-}"]).Message)
+isMarksKeptBySort() = marksOf(played(["n", "m", "s"])) == " *  "
+
+(* / filters: letters narrow the rows, Enter keeps the filter, C-g takes it away. *)
+isFilterOnTheNameOnly() = wordsOf(played(["/", "m"])) == "  -rw-r--r--     12 B  2 h         a.toml"
+isFilterLineIsThePath() = "/p/m" in list.Map(c -> c.Text, list.Filter(c -> c.Kind == "text", view.View(played(["/", "m"]))))
+isEnterKeepsTheFilter() = wordsOf(played(["/", "m", "enter"])) == wordsOf(played(["/", "m"])) and not folders.ViewOf(here(played(["/", "m", "enter"]))).Filtering
+isLettersAreCommandsAgain() = marksOf(played(["/", "b", "enter", "m"])) == "*"
+isCancelTakesTheFilter() = wordsOf(played(["/", "m", "C-g"])) == wordsOf(listed(false, missing)) and not folders.ViewOf(here(played(["/", "m", "C-g"]))).Filtering
+isFilterBackspace() = value.Len(str.Lines(wordsOf(played(["/", "m", "backspace"])))) == 4
+isLabelSaysTheFilter() = labelOf(played(["/", "b", "enter"])) == "/p/  ? lists the keys  /"
+isUnknownLetterSaid() = str.Contains("? lists them", played(["z"]).Message)
+isMoveKeys() = here(played(["n", "n", "p"])).Cursor.Line == 2 and here(played([" "])).Cursor.Line == 2 and here(played(["n", "n", ">"])).Cursor.Line == 3
+isFolderLineKeys() = here(played(["n", "n", "<"])).Cursor.Line == 1 and str.Contains("No folder", played([">"]).Message)
+isQuitGoesBack() = value.Len(list.Filter(b -> lists.IsList(b), played(["q"]).Buffers)) == 0 and here(played(["q"])).Path == "/p/x.ce"
+isCopyNames() = played(["m", "m", "w"]).Clip == "src b.ce" and played(["n", "W"]).Clip == "/p/b.ce"
+isWhatIs() = played(["n", "y"]).Message == "b.ce: a file of 3.3 kB (3250 bytes), rw-r--r-- (644), changed $(str.Replace("T", " ", str.Join("", list.Take(16, str.Chars(date.Format(date.Local(1000.0)))))))"
+
+(* The pure parts: modes, times, paths, the words of the shell, archives, the names edited. *)
+isModeText() = folders.ModeText({Name: "x", IsDir: false, Mode: 493}) == "-rwxr-xr-x" and folders.PermissionText(4077) == "rwsr-sr-t"
+isOctal() = folders.ParseMode("0755", 0, false) == result.Ok(493) and folders.ParseMode("7", 420, false) == result.Ok(7) and result.IsErr(folders.ParseMode("8", 0, false))
+isSymbolic() = folders.ParseMode("u=rwx,g=rx,o=", 0, false) == result.Ok(488) and folders.ParseMode("go-rwx", 511, false) == result.Ok(448)
+isSymbolicSpecial() = folders.ParseMode("u+s,+t", 493, false) == result.Ok(3053) and folders.ParseMode("a-x", 2541, false) == result.Ok(2468)
+isCapitalX() = folders.ParseMode("a+X", 420, false) == result.Ok(420) and folders.ParseMode("a+X", 484, false) == result.Ok(493)
+isBadModes() = list.All([result.IsErr(folders.ParseMode(m, 0, false)) for m in ["", "u", "x+r", "u+r,", "12345", "u+rq"]])
+isProgram() = folders.IsProgram(1) and not folders.IsProgram(420 + 2048)
+isTimes() = result.IsOk(folders.TimeOf("2026-11-01", 0)) and result.IsOk(folders.TimeOf("2026-11-01 12:30", 0)) and result.IsOk(folders.TimeOf("2026-11-01 12:30:05", 0)) and result.IsErr(folders.TimeOf("2026-13-01", 0))
+isTimeHourLater() = result.Unwrap(folders.TimeOf("2026-11-01 13:30", 0)) - result.Unwrap(folders.TimeOf("2026-11-01 12:30", 0)) == 3600
+isInside() = folders.IsInside("/p/src", "/p/src") and folders.IsInside("/p/src/a/b", "/p/src") and not folders.IsInside("/p/src2", "/p/src")
+isRelative() = folders.RelativePath("/a/b/c", "/a/d/e.ce") == "../../d/e.ce" and folders.RelativePath("/", "/a") == "a" and folders.RelativePath("/a", "/a") == "."
+isQuoted() = folders.Quoted("a'b c") == "'a'\\''b c'" and folders.Quoted("$(str.FromBytes([10]))x") == "'\nx'" and folders.Quoted("-n") == "'./-n'"
+dollar = str.FromBytes([36])
+isQuotedHostile() = folders.Quoted("`id`; $(dollar)(whoami) > x") == "'`id`; $(dollar)(whoami) > x'"
+isExpandedOnce() = folders.Expanded("du -sh * | sort", ["a", "b"]) == "du -sh 'a' 'b' | sort"
+isExpandedEach() = folders.Expanded("file ?", ["x y", "z"]) == "file 'x y'; file 'z'"
+isExpandedAppended() = folders.Expanded("gzip -k", ["a"]) == "gzip -k 'a'"
+isCompressPlans() = value.Equal(folders.CompressPlan("x.tgz", false).Args, ["-x", "-k", "-z", "-f", "./x.tgz"]) and value.Equal(folders.CompressPlan("x.zip", false).Args, ["-n", "./x.zip", "-d", "./x"]) and
+  value.Equal(folders.CompressPlan("-x", false).Args, ["./-x"])
+isArchivePlans() = folders.ArchivePlan("y.tar", ["a"]) == {Program: "tar", Args: ["-cf", "./y.tar", "./a"]} and folders.ArchivePlan("Y.TAR.GZ", ["a"]).Args[1] == "-czf"
+isDiffArgsAfterDashes() = value.Equal(folders.DiffArgs("/p/-a", "/p/b", "/p").Args, ["diff", "--no-index", "--no-color", "--", "-a", "b"])
+none(path) = false
+isDestinationsOne() = value.Equal(result.Unwrap(folders.Destinations([{Name: "a", IsDir: false}], "/p", "b", isDir = none)), [{From: "/p/a", To: "/p/b", Item: {Name: "a", IsDir: false}}])
+isDestinationsInto() = result.Unwrap(folders.Destinations([{Name: "a", IsDir: false}], "/p", "/q/", isDir = none))[1].To == "/q/a" and
+  result.Unwrap(folders.Destinations([{Name: "a", IsDir: false}], "/p", "q", isDir = p -> p == "/p/q"))[1].To == "/p/q/a"
+isDestinationsManyNeedAFolder() = result.IsErr(folders.Destinations([{Name: "a", IsDir: false}, {Name: "b", IsDir: false}], "/p", "c", isDir = none)) and
+  result.IsErr(folders.Destinations([{Name: "a"}], "/p", "", isDir = none))
+isNamed() = folders.Named([{Name: "a"}, {Name: "b"}, {Name: "c"}]) == "* [3 files]"
+isNamesPlanSwap() = folders.NamesPlan(["a", "b", "c"], ["b", "a", "c"], n -> true) == result.Ok([{From: "a", To: "b"}, {From: "b", To: "a"}])
+isNamesPlanNoChange() = folders.NamesPlan(["a"], ["a", ""], n -> true) == result.Ok([])
+isNamesPlanRefusals() = list.All([result.IsErr(folders.NamesPlan(["a", "b"], new, n -> n == "h")) for new in [["a"], ["a", "b", "c"], ["", "b"], ["a/x", "b"], ["b", "b"], ["h", "b"], ["..", "b"]]])
+isNamesPlanOntoUnchanged() = result.IsErr(folders.NamesPlan(["a", "b"], ["b", "b"], n -> false))
+isPatternError() = value.IsMissing(folders.PatternError("a+")) and str.Contains("Bad pattern", value.Text(folders.PatternError("(a")))
+
+(* C-x C-q: the names as a text with keys of its own; C-c C-k and C-g bring the list back unchanged. *)
+isEditNamesText() = wordsOf(played(["C-x", "C-q"])) == "src\nb.ce\na.toml\nrun" and not lists.IsList(here(played(["C-x", "C-q"])))
+isEditNamesOwnKeys() = dict.Has("C-c C-c", here(played(["C-x", "C-q"])).OwnKeys)
+isEditNamesAbort() = wordsOf(played(["C-x", "C-q", "C-c", "C-k"])) == wordsOf(listed(false, missing)) and lists.IsList(here(played(["C-x", "C-q", "C-g"])))
+isEditNamesTyping() = wordsOf(played(["n", "C-x", "C-q", "C-e", "x"])) == "src\nb.cex\na.toml\nrun"
+isEditNamesRefusedCount() = str.Contains("lines", played(["C-x", "C-q", "C-k", "C-k", "C-c", "C-c"]).Message) and not lists.IsList(here(played(["C-x", "C-q", "C-k", "C-k", "C-c", "C-c"])))
+(** The patterns that the syntax check refuses, each as std/regex itself does, and those it lets through. *)
+wrongPatterns = ["(", ")", "a)", "[a", "[z-a]", "*a", "a|*", "a{", "a{x}", "a{2", "a{3,1}", "\\", "[a\\", "(?x)", "(?i"]
+rightPatterns = ["a", "()", "[]a]", "[a-z]", "[\\n-a]", "[\\d-z]", "a*+", "a??", "a{2}", "a{2,}", "a{2,3}?", "(?i)a", "(?:a|b)", "^*$", "\\(", "[^]]", "a|", "|a"]
+isPatternsRefusedAsRegexDoes() = list.All([str.StartsWith("Bad pattern", value.Text(folders.PatternError(p))) for p in wrongPatterns])
+isPatternsLetThrough() = list.All([value.IsMissing(folders.PatternError(p)) for p in rightPatterns])
+isSlashThenCancelKeepsTheList() = lists.IsList(here(played(["/", "C-g"]))) and not folders.ViewOf(here(played(["/", "C-g"]))).Filtering
+(** A text of several characters, as an input method sends: the letters after one that asks go into its question. *)
+sent(words) = commands.Update({Kind: "text", Text: words}, listed(false, missing))   (** The list after one text event of these words. *)
+isTextIntoTheQuestion() = sent("*.toml").Prompt.Answer == "toml" and marksOf(press.Press(["enter"], sent("*.toml"))) == "  * "

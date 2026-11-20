@@ -37,6 +37,10 @@ HintDelay() = 0.5
 (** The seconds with no key after which a Cesia buffer that changed is checked: see src/check. *)
 CheckDelay() = 0.5
 
+(** Do the deletions of the folders, D and x, move the files to the trash, from where they can come back, as Doom Emacs's delete-by-moving-to-trash? With
+    false, they delete for good, a folder with all it holds, after a question for each folder that holds something. *)
+DeleteToTrash() = true
+
 (** The keys, with the function each one runs: one chord, or more with a space between, as "C-x C-s" or "C-c f f". Any function from a state to a state will do,
     also an anonymous one, as in "C-c C-x": s -> say("hi", s). A chord waits for the next one as soon as a binding here goes on after it, and C-g after it takes
     the keys back. Under C-c, the keys are in groups as in Doom Emacs, each named by a text: f for files, b buffers, w windows, s search, c code, d debug and q quit. Waiting
@@ -132,4 +136,4 @@ CompleteKeys() = {"C-n": commands.CompleteNext, "down": commands.CompleteNext, "
     read once, when the window opens, and Start runs once, after the files opened. *)
 Config(keys) = {Keys: keys, PromptKeys: PromptKeys, MouseKeys: MouseKeys, PromptMouseKeys: PromptMouseKeys, ListKeys: ListKeys, CompleteKeys: CompleteKeys,
   TabText: TabText, WheelLines: WheelLines, ScrollMargin: ScrollMargin, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay, CheckDelay: CheckDelay,
-  Theme: Theme, Window: Window, Start: Start}
+  DeleteToTrash: DeleteToTrash, Theme: Theme, Window: Window, Start: Start}

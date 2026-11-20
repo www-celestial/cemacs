@@ -104,8 +104,7 @@ table(emacs.PromptKeys())
 ## Une liste
 
 Dans une liste, ces touches passent devant les touches globales, et les touches propres à la liste passent devant elles :
-Enter dans chaque liste, et les touches du gestionnaire de dossiers, `C-c n`, `C-c r`, `C-c k`, `C-c .`, `C-y` et
-Backspace, que décrit [Fichiers et buffers](files.md#le-gestionnaire-de-dossiers).
+Enter dans chaque liste, et les touches du gestionnaire de dossiers, plus bas.
 
 ```cesia output=md fold=code
 table(emacs.ListKeys())
@@ -113,8 +112,26 @@ table(emacs.ListKeys())
 
 Quand deux keymaps lient une même touche, celle qui vient en premier ici gagne : dans une liste, les touches de la liste,
 puis celles qui n'ont pas besoin de rangée, puis [emacs.ListKeys], puis les touches globales. Dans une liste, la bande des
-hints montre aussi les touches de la liste, celles du gestionnaire de dossiers sous le nom `a function`, puisqu'elles sont
-écrites sur place dans son code ; les listes de `?` ne montrent que les touches globales.
+hints montre aussi les touches de la liste ; les listes de `?` ne montrent que les touches globales.
+
+## Le gestionnaire de dossiers
+
+Dans le gestionnaire de dossiers, ces touches passent devant celles d'une liste, et chaque lettre tapée est une commande,
+comme dans Dired d'Emacs : [Fichiers et buffers](files.md#le-gestionnaire-de-dossiers) dit ce que fait chacune. Après `/`, les
+lettres filtrent les noms jusqu'à Enter ou `C-g`.
+
+```cesia output=md fold=code
+(* Space types a space, which the table names. *)
+named(bindings) = dict.Dict([{Key: if k == " " "space" else k end, Value: bindings[k]} for k in dict.Keys(bindings)])
+table(named(dict.Merge(folders.FolderKeys(), folders.Letters())))
+```
+
+La deuxième touche après `*` et `%` :
+
+```cesia output=md fold=code
+second(prefix, bindings) = [{Key: "$prefix $k", Value: bindings[k]} for k in dict.Keys(bindings)]
+table(dict.Dict(list.Concat(second("*", folders.StarLetters()), second("%", folders.PercentLetters()))))
+```
 
 ## La liste des completions
 

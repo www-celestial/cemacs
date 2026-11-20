@@ -16,20 +16,21 @@ Cemacs est un programme Cesia : Cesia vient donc en premier. Son livre dit comme
 https://www-celestial.github.io/cesia-lang/install.html. `cesia` doit être dans votre `PATH`, car Cemacs le lance pour
 vérifier votre code (`cesia check`) et pour exécuter vos programmes (`cesia run` et `cesia do`). `git`, en version 2.31 ou
 plus, dans le `PATH`, donne la liste des fichiers d'un projet, `C-x p f` ; sans lui, cette liste dit que git ne peut pas
-tourner, et le reste marche.
+tourner, et le reste marche. Le gestionnaire de dossiers lance `gzip`, `tar`, `zip`, `unzip` et `git` pour `Z`, `c` et `=`,
+quand ils sont dans le `PATH` : voir [Lancer des programmes](files.md#lancer-des-programmes).
 
 La ligne `cesia` du `cesia.toml` de Cemacs nomme la plus ancienne version de Cesia dont il a besoin :
 
 ```toml
 [project]
 name = "cemacs"
-cesia = "1.2"
+cesia = "1.3"
 src = ["core", "src", "user"]
 native = ["SDL3", "SDL3_ttf"]
 ```
 
-Un Cesia plus ancien s'arrête aussitôt, avec `This project needs Cesia 1.2 or later, and this is ...: run cesia upgrade.`
-(ce projet demande Cesia 1.2 ou plus, et celui-ci est en version ... : lancez cesia upgrade). `cesia version` dit laquelle
+Un Cesia plus ancien s'arrête aussitôt, avec `This project needs Cesia 1.3 or later, and this is ...: run cesia upgrade.`
+(ce projet demande Cesia 1.3 ou plus, et celui-ci est en version ... : lancez cesia upgrade). `cesia version` dit laquelle
 vous avez.
 
 ## SDL3 et SDL3_ttf

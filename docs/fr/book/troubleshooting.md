@@ -13,7 +13,7 @@ termine. Quand il se termine normalement, il affiche `Ok(missing)`.
 | Ce que montre le terminal | Pourquoi | Que faire |
 |---|---|---|
 | `bash: cesia: command not found`, ou `cesia: command not found` | Cesia n'est pas installé, ou pas dans le `PATH` | installez Cesia : voir [Installation](install.md#cesia) |
-| `This project needs Cesia 1.2 or later, and this is ...: run cesia upgrade.` | le Cesia du `PATH` est plus ancien que ce que demande `cesia.toml` | `cesia upgrade` |
+| `This project needs Cesia 1.3 or later, and this is ...: run cesia upgrade.` | le Cesia du `PATH` est plus ancien que ce que demande `cesia.toml` | `cesia upgrade` |
 | `Err({Kind: "c", Message: "Can't load SDL3: libSDL3.so.0: cannot open shared object file: No such file or directory."})` | SDL3 n'est pas installé, ou n'est pas là où le système cherche | installez-le, ou mettez dans `LD_LIBRARY_PATH` son dossier : voir [Installation](install.md#sdl3-et-sdl3_ttf) |
 | la même chose avec `SDL3_ttf` et `libSDL3_ttf.so.0` | SDL3_ttf manque | la même chose |
 | `Err({Kind: "sdl", Message: "This program needs SDL 3.2 or later."})` | le SDL3 trouvé est un 3.0 ou un 3.1 | un SDL3 plus récent, du système ou de `tools/sdl-libs.sh` |
@@ -71,14 +71,26 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 
 | Message | Ce qui s'est passé |
 |---|---|
-| `This is the root.` | Backspace à `/` |
+| `This is the root.` | `^`, ou Backspace après `/`, à `/` |
 | `No folder matches.` | `/` après des lettres qui ne correspondent à aucun dossier |
 | `HOME is not set.` | `~/` sans `HOME` dans l'environnement |
 | `No file or folder at PATH.` | `C-y` avec, dans le presse-papiers, un chemin qui ne mène nulle part |
-| `No name.` | une réponse vide à `New file, or folder/: ` |
-| `NAME already exists.` | un nouveau nom, ou un renommage, vers un nom qui est pris |
+| `X is not a key of the folders: ? lists them.` | une lettre, ou une deuxième touche après `*` ou `%`, qu'aucune commande ne prend |
+| `Nothing here.` | une commande sur une rangée, dans un dossier vide ou un filtre qui n'a laissé aucune rangée |
+| `No name.`, `No name given.` | une réponse vide à `New file, or folder/: `, ou à une copie, un déplacement ou un lien |
+| `NAME already exists.` | un nouveau nom, ou un nouveau dossier, qui est pris |
+| `ANSWER is no folder: the files go into one.` | une copie, un déplacement ou un lien de plus d'un fichier vers un nom qui n'est pas un dossier : finissez-le par `/` pour en créer un |
+| `Can't copy NAME into itself.`, `Can't rename NAME into itself.` | la réponse est à l'intérieur du dossier envoyé : rien n'est créé |
+| `Bad pattern: REASON.` | un pattern (un motif de recherche) de `%`, `A` ou `Q` que std/regex refuse, comme `Bad pattern: a class isn't closed.` |
+| `Not a mode: ANSWER. ...` | une réponse à `M` qui n'est ni en octal ni écrite comme `chmod` l'écrit |
+| `Not a time: ANSWER. ...` | une réponse à `T` qui n'est ni `YYYY-MM-DD` ni `YYYY-MM-DD hh:mm` |
 | `There is no trash: HOME is not set.` | ni `XDG_DATA_HOME` ni `HOME` n'a de valeur : il n'y a donc pas de corbeille où mettre le fichier |
-| `Can't move NAME to the trash: REASON` | le plus souvent un fichier sur un autre disque que votre dossier personnel : voir [Fichiers et buffers](files.md#créer-renommer-et-mettre-à-la-corbeille). Le fichier reste là où il était |
+| `can't move NAME to the trash: REASON` | le plus souvent un fichier sur un autre disque que votre dossier personnel : voir [Fichiers et buffers](files.md#la-corbeille). Le fichier reste là où il était |
+| `Copied 2 of 3; NAME: REASON` | une commande qui a échoué sur certains fichiers, le premier nommé, comme pour une permission refusée ; les autres sont faits |
+| `NAME is a special file, as a FIFO or a device, which is not copied` | une copie d'un arbre qui en contient un : le reste est copié |
+| `NAME.tar.gz exists already` | `Z` sur un dossier dont l'archive est là : elle n'est jamais remplacée |
+| `PROGRAM can't run: REASON` | `!`, `&`, `Z`, `c` ou `=` avec un programme absent du `PATH` : voir [Lancer des programmes](files.md#lancer-des-programmes) |
+| `Two lines are named NAME.`, `NAME exists already.` | les noms de `C-x C-q` se heurteraient : rien n'est renommé, et le texte reste à corriger |
 | une raison donnée par le système | la lecture du dossier, la création ou le renommage a échoué |
 
 ### Les fichiers d'un projet

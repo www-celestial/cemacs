@@ -463,20 +463,32 @@ of a second where a key still feels at once, and only at a save.
 ## The folder manager
 
 A folder of 10,000 files, the first file's buffer current, medians of 21 passes, each with `commands.Settled` as the editor
-calls it after each event:
+calls it after each event, this version and `main` at 3cc0974, before the keys of Dired, taking turns:
 
-| Step | Median of 21 | Fastest, slowest |
-|---|---|---|
-| opening the folder, `C-x d` | 105 ms | 96, 127 ms |
-| the first letter typed, `9`, which keeps 3,439 rows | 7.4 ms | 5.8, 23.0 ms |
-| a second letter, `9` again, filtering the rows shown | 8.4 ms | 7.6, 14.8 ms |
+| Step | This version: median of 21 | Fastest, slowest | Before |
+|---|---|---|---|
+| opening the folder, `C-x d` | 102 ms | 100, 114 ms | 98 ms |
+| `/` then the first letter, `9`, which keeps 3,439 rows; before, the letter alone | 9.4 ms | 8.8, 11.2 ms | 11.3 ms |
+| a second letter, `9` again, filtering the rows shown | 4.2 ms | 3.9, 5.3 ms | 4.0 ms |
+| `m`, the first mark, which makes the row of each name | 10.8 ms | 8.4, 19.3 ms | |
+| `m`, a second mark | 5.2 ms | 4.7, 11.8 ms | |
+| `t`, 10,000 marks at once | 63 ms | 50, 82 ms | |
+| `s`, the rows sorted by date, from the entries read | 68 ms | 63, 73 ms | |
 
 The script made the folder, 10,000 files named `file-1.ce` to `file-10000.ce`, then timed [folders.Open] with
-[commands.Settled], and two text events through [commands.Update], as the window sends them. Opening reads the folder once:
-one listing and one look at each of the 10,000 entries, then the rows and their colours. A letter filters the rows read then,
-from those already shown when the filter only grew. These times are from before the filter found each letter natively;
-[A case: finding a file from a few letters](finding.md#speed-each-letter-answers-at-once) measures the filter since, on
-1,933 rows: 288 letters typed in 210 ms against 402 before.
+[commands.Settled], and the keys through [commands.Update], as the window sends them. Opening reads the folder once: one
+listing and one look at each of the 10,000 entries, then the rows and their colours. The mode, which the rows show since
+this version, costs 4 ms of the 102: [folders.Rows] makes the part of each mode, size and age once, for the first row that
+has it, and the rows share it, where a part made for each row cost 20 ms more. A letter filters the rows read then, from
+those already shown when the filter only grew; [A case: finding a file from a few letters](finding.md#speed-each-letter-answers-at-once)
+measures the filter on 1,933 rows: 288 letters typed in 210 ms against 402 before it found each letter natively. A mark
+makes its row again, and the list its text, without reading the folder.
+
+The keys of Dired add about 1,900 lines to `src/folders`, which Cemacs loads at its start: the start to the first frame,
+SDL's dummy driver, the packages of `src/cemacs.ce`, $n = 21$, taking turns, 30.0 ms [29.8, 30.3] against 29.0 ms [28.9,
+29.3] for `main` at 3cc0974. The bodies of their functions are read at their first call only, as
+[How Cesia works](https://www-celestial.github.io/cesia-lang/internals.html#the-cache-of-loaded-packages) tells, so the
+1 ms is the reading of their names and parameters.
 
 ## The check
 

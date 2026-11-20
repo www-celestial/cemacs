@@ -4,6 +4,7 @@ use src/emacs
 use core/commands
 use core/complete
 use core/keys
+use core/lists
 use core/panes
 use core/press
 use core/text
@@ -679,6 +680,32 @@ isQuitWithListAsksNothing() = inFruits(["C-x", "C-c"]).Ending
 isOneListAtATime() = value.Len(commands.ShowList("Fruits", fruits, fruitKeys, withFruits(stateOf("x"))).Buffers) == 2
 (** From a list, ToBuffer goes to a buffer and closes the list on the way. *)
 isToBufferClosesList() = commands.ToBuffer(1, withFruits(stateOf("x"))).Current == 1 and value.Len(commands.ToBuffer(1, withFruits(stateOf("x"))).Buffers) == 1
+(** A list that another pane shows stays when a new one opens there, as the folders of two panes do: the fruits in both panes, the second edited. *)
+defn isListOfTheOtherPaneStays()
+  s = press.Press(["C-x", "3", "C-x", "o"], withFruits(stateOf("x")))
+  t = commands.Settled(commands.ShowList("Fruits", fruits, fruitKeys, s))
+  value.Len(t.Buffers) == 3 and t.Current == 3 and value.Equal(shownBuffers(t), [2, 3]) and value.Equal(listsLeaving(t), [3])
+end
+(** When a buffer before it goes, a list still goes back to the same buffer: a, x and the fruits, which go back to x, line 2 then line 1. *)
+defn isBackFollowsADrop()
+  s = withFruits(stateOf("x"))
+  l = lists.Of(s.Buffers[2])
+  l.Back = 2
+  fruitsList = s.Buffers[2]
+  fruitsList.List = l
+  s.Buffers = [text.Of("a", missing), s.Buffers[1], fruitsList]
+  t = dropped(1, 2, s)
+  lists.Of(t.Buffers[2]).Back == 1 and rope.Text(t.Buffers[lists.Of(t.Buffers[2]).Back].Rope) == "x"
+end
+(** The pane being edited goes where FocusPane says, kept inside the panes there are. *)
+isFocusPane() = commands.FocusPane(2, press.Press(["C-x", "3"], stateOf("a"))).Pane == 2 and commands.FocusPane(5, press.Press(["C-x", "3"], stateOf("a"))).Pane == 2
+(** A buffer may carry keys of its own, over those of the editor while it is the current one, a pair too; the others stay. *)
+defn isOwnKeysOverTheEditor()
+  s = stateOf("ab")
+  s.Buffers[1].OwnKeys = {"C-f": st -> say("own", st), "C-c C-c": st -> say("pair", st)}
+  press.Press(["C-f"], s).Message == "own" and press.Press(["C-c", "C-c"], s).Message == "pair" and here(press.Press(["C-e"], s)).Cursor.Column == 2
+end
+isToClipboard() = clipped(commands.ToClipboard("w", stateOf("x"))) == "w"
 
 (** Panes: C-x 2 and C-x 3 split the pane being edited, C-x o goes to the next one, C-x 0 closes it and C-x 1 keeps only it. In a window of 800 by 600, two
     panes one above the other are 289 high, and the code of the second one starts at y = 289. *)

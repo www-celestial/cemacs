@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-No release yet: this is what `main` holds. Cemacs needs Cesia 1.2, and its first release takes its number here.
+No release yet: this is what `main` holds. Cemacs needs Cesia 1.3, and its first release takes its number here.
 
 Cemacs is a text editor for Cesia, written in Cesia, with the keys of Emacs and the colours of Cesia's code. A band shows
 what a key can lead to, so no key has to be learnt before the start.
@@ -12,6 +12,11 @@ what a key can lead to, so no key has to be learnt before the start.
 - The keys of Emacs, and groups of keys under `C-c`, as in Doom Emacs: `C-c f` files, `C-c s` search, `C-c c` code, `C-c t`
   tests, `C-c g` Git, `C-c e` cells; a band of hints shows what can follow a key, and `?` after a first key lists its pairs.
 - Buffers and panes, a buffer list, and a manager of folders on `C-x d`, with the trash.
+- The manager of folders takes the keys of Emacs's Dired: letters are commands, `m` marks and `d` flags, `C` copies a tree
+  whole and `R` moves it across disks too, `D` and `x` delete, to the trash or for good as `DeleteToTrash` says, `S`, `Y`
+  and `H` link, `M` and `T` give a mode and a time, `!` and `&` run the shell on the files, `Z` and `c` compress, `=` shows a
+  diff, `A` and `Q` search and replace, `C-x C-q` edits the names as a text, a copy goes first to the folder of the other
+  pane; `/` filters as letters did, and each program runs with the permission to run it alone.
 - Incremental search, `C-s` and `C-r` as in Emacs; a list's filter matches its words apart, in any order, ranked by fzy's
   score as Vim and Neovim do; `C-x p f` lists the files of the project's Git repository and `C-x p g` searches its lines.
 - In a file of Cesia, Enter starts the new line where `cesia fmt` puts it, Tab puts a line at its place or completes the

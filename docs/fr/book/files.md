@@ -229,74 +229,237 @@ pas enregistré, et il en va de même pour la fermeture de la fenêtre et pour l
 |---|---|---|
 | `C-x d`, `C-c f d` | [folders.Open] | ouvre le dossier du fichier courant, ou le dossier où Cemacs a démarré |
 
-Le gestionnaire de dossiers est une liste des fichiers et des dossiers d'un dossier, comme Dired dans Emacs. La liste est
-nommée par le chemin absolu du dossier, et la prompt line montre ce chemin, terminé par `/`, suivi de ce que vous tapez.
+Le gestionnaire de dossiers est une liste des fichiers et des dossiers d'un dossier, comme Dired dans Emacs, et il en prend
+les touches : chaque lettre que vous tapez est une commande, `n` la rangée suivante, `m` une marque, `C` une copie, `D` un
+effacement, et `?` dit les principales sur la prompt line. Une commande agit sur les rangées marquées d'un `*`, ou, s'il n'y
+en a aucune, sur la rangée sous le curseur. La liste est nommée par le chemin absolu du dossier. La prompt line montre ce
+chemin, terminé par `/`, puis ce que la liste contient de plus : le nombre de rangées marquées et signalées, le tri quand il
+n'est pas par nom, `hidden shown` (les noms cachés montrés), ou, sans rien de cela, `? lists the keys` (`?` donne les
+touches). L'état d'une liste, son dossier, ses marques et sa façon de les montrer, est un record, la vue, que
+[folders.NewView] commence et que [folders.ViewOf] lit.
+
+### Les rangées
+
 Voici les rangées d'un dossier, telles que [folders.Rows] les fait à partir de ses entrées, deux heures après le dernier
-changement de chacune :
+changement de chacune, avec `LICENSE` marqué :
 
 ```cesia
 use src/folders
 use std/io
-entries = [{Name: "cesia.toml", IsDir: false, Size: 262, Modified: 0}, {Name: "src", IsDir: true, Size: 0, Modified: 0},
-  {Name: ".git", IsDir: true, Size: 0, Modified: 0}, {Name: "LICENSE", IsDir: false, Size: 1069, Modified: 0}]
-for row in folders.Rows(entries, false, 7200)
+entries = [{Name: "cesia.toml", IsDir: false, Size: 262, Modified: 0, Mode: 420}, {Name: "src", IsDir: true, Size: 0, Modified: 0, Mode: 493},
+  {Name: ".git", IsDir: true, Size: 0, Modified: 0, Mode: 493}, {Name: "LICENSE", IsDir: false, Size: 1069, Modified: 0, Mode: 420},
+  {Name: "run", IsDir: false, IsLink: true, Size: 120, Modified: 0, Mode: 493, Target: "bin/cemacs"}]
+for row in folders.Rows(entries, false, 7200, marks = {"LICENSE": "*"})
   io.Print(row.Words)
 end
 ```
 
-Les dossiers viennent d'abord, chacun avec un `/` après son nom, puis les fichiers, chaque groupe dans l'ordre des noms. Un
-fichier montre sa taille, comptée par 1000 : `B` pour les octets jusqu'à 999, puis `kB`, `MB`, `GB` et `TB`, avec une
-décimale en dessous de 10, comme le fait [folders.SizeText]. Son âge dit quand il a changé pour la dernière fois : `now`
-(maintenant) en dessous d'une minute, puis les minutes, les heures, et les jours jusqu'à 30, puis la date, comme le fait
-[folders.AgeText].
+Chaque rangée commence par sa marque, dans une colonne à elle : `*` marquée, `D` signalée pour l'effacement, une espace pour
+aucune. Une marque, ici, est ce signe au début d'une rangée, qu'il ne faut pas confondre avec la mark d'Emacs, qui commence
+une sélection. Viennent ensuite ses détails : le mode, sa taille et son âge ; `(` les cache, et les montre à nouveau. Le
+mode (les droits d'un fichier : qui peut le lire, l'écrire, le lancer) s'écrit comme `ls -l` l'écrit, comme le fait
+[folders.ModeText] : le genre, `d` pour un dossier, `l` pour un lien symbolique (un fichier qui renvoie vers un autre
+chemin), `-` pour un fichier, puis trois lettres pour chacun du propriétaire, du groupe et des autres, `r` pour lire, `w`
+pour écrire et `x` pour lancer, ou entrer dans un dossier ; `s` et `t` tiennent la place des bits set-id (lancer avec les
+droits du propriétaire ou du groupe) et sticky (dans un dossier partagé, seul le propriétaire d'un fichier peut l'effacer).
+Un lien montre `lrwxrwxrwx`, comme Linux le donne à tout lien, puis la taille et l'âge de ce vers quoi il pointe, et son nom
+finit par `->` et sa cible. Un mode est un nombre de 0 à 4095, que Cesia écrit en décimal : 420 est `644` en octal,
+`rw-r--r--`.
 
 ```cesia
-folders.SizeText(142) --> "142 B"
+folders.PermissionText(420) --> "rw-r--r--"
+folders.OctalText(493) --> "755"
 folders.SizeText(3250) --> "3.3 kB"
 folders.AgeText(7200, 0) --> "2 h"
 ```
 
-La date est en UTC, l'heure de Greenwich, et une rangée ne montre pas l'heure du jour. Les noms prennent les couleurs du code
-selon ce qu'ils sont : un dossier comme un nom, un dossier ou un fichier caché pâle comme un commentaire, le code comme un
-texte (`.ce`, `.ml`, `.c`, `.py`, `.sh`, `.el` et d'autres langages), les réglages et les données comme un mot-clé
-(`.toml`, `.json`, `.yaml`, `.csv`, `.lock` et d'autres), les images, les polices et les archives comme un champ (`.png`,
-`.svg`, `.ttf`, `.pdf`, `.zip`, `.tar` et d'autres), tout le reste sans couleur.
+Un fichier montre sa taille, comptée par 1000 : `B` pour les octets jusqu'à 999, puis `kB`, `MB`, `GB` et `TB`, avec une
+décimale en dessous de 10, comme le fait [folders.SizeText]. Son âge dit quand il a changé pour la dernière fois : `now`
+(maintenant) en dessous d'une minute, puis les minutes, les heures, et les jours jusqu'à 30, puis la date, comme le fait
+[folders.AgeText]. La date est en UTC, l'heure de Greenwich, et une rangée ne montre pas l'heure du jour ; `y` la dit, sur
+l'horloge de cette machine. Les âges sont ceux du moment où le dossier a été lu : `g` le relit.
 
-Un nom qui commence par un point est caché, comme le font la plupart des gestionnaires de fichiers sous Linux : `C-c .`
-montre les noms cachés, ou les cache à nouveau.
+Les dossiers viennent d'abord, chacun avec un `/` après son nom, puis les fichiers, chaque groupe dans l'ordre des noms. `s`
+les trie plutôt par date, le plus récent d'abord, puis par taille, le plus grand d'abord, puis à nouveau par nom, comme le
+fait [folders.Sorted] ; les dossiers restent devant dans chaque tri. Les noms prennent les couleurs du code selon ce qu'ils
+sont : un dossier comme un nom, un dossier ou un fichier caché pâle comme un commentaire, le code comme un texte (`.ce`,
+`.ml`, `.c`, `.py`, `.sh`, `.el` et d'autres langages), les réglages et les données comme un mot-clé (`.toml`, `.json`,
+`.yaml`, `.csv`, `.lock` et d'autres), les images, les polices et les archives comme un champ (`.png`, `.svg`, `.ttf`,
+`.pdf`, `.zip`, `.tar` et d'autres), tout le reste sans couleur. Le nom d'une rangée marquée prend la couleur de sa marque.
+Un nom qui commence par un point est caché, comme le font la plupart des gestionnaires de fichiers sous Linux : `.` ou
+`C-c .` montre les noms cachés, ou les cache à nouveau.
 
-### Se déplacer dans les dossiers
+### Se déplacer et ouvrir
 
-Ce que vous tapez s'ajoute au chemin de la prompt line :
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `n`, Espace, `C-n`, `down` | [folders.Next] | la rangée suivante |
+| `p`, `C-p`, `up` | [folders.Previous] | la rangée d'avant |
+| `>`, `<` | [folders.NextFolder], [folders.PreviousFolder] | la rangée suivante d'un dossier, ou celle d'avant |
+| `^` | [folders.Up] | le dossier du dessus, le curseur sur celui qu'on vient de quitter |
+| `enter`, `e`, `f`, `v` | [folders.Visit] | un dossier s'ouvre dans la liste ; un fichier s'ouvre dans un buffer, et la liste se ferme |
+| `o` | [folders.OpenOther] | ouvre la rangée dans l'autre pane, qu'un partage crée quand il n'y a qu'un pane, et y va |
+| `C-o` | [folders.ShowOther] | montre la rangée dans l'autre pane, et reste dans la liste |
+| `j` | [folders.Jump] | demande `Jump to file: ` (aller au fichier), le dossier montré d'abord, et met le curseur sur le nom ; Tab le complète |
+| `g` | [folders.Refresh] | relit le dossier, en gardant les marques des noms toujours là |
+| `q` | [folders.Quit] | ferme la liste, et revient au buffer d'où elle a été ouverte |
+| `C-g` | | enlève un filtre gardé, ou, s'il n'y en a pas, ferme la liste, comme dans toute liste |
+
+L'autre pane est le suivant, celui où va `C-x o`. Un pane se partage côte à côte, ou, quand il est trop étroit, l'un au-dessus
+de l'autre. `o` et `C-o` sur un dossier y montrent sa liste : deux dossiers côte à côte, ce dont une copie ou un déplacement
+se sert d'abord, comme le dit [Agir sur les fichiers](#agir-sur-les-fichiers). `j` prend aussi un chemin : un nom dans un
+autre dossier montre ce dossier, le curseur sur lui, et un nom qu'un filtre ou le point cachait est montré à nouveau. `^` à
+la racine dit `This is the root.` (c'est la racine).
+
+### Filtrer et taper un chemin
 
 | Vous tapez | Ce que cela fait |
 |---|---|
-| des lettres | filtrer les noms, comme dans toute liste |
+| `/` | commence le filtre : ce que vous tapez ensuite s'ajoute au chemin de la prompt line |
+| des lettres, après `/` | filtrent les noms, comme dans toute liste |
 | une partie du nom d'un dossier, puis `/` | entre dans le dossier sous le curseur si c'en est un, sinon dans le premier dossier montré, ou dit `No folder matches.` (aucun dossier ne correspond) |
 | `/` sans rien de tapé | va à la racine, `/` |
 | `~`, puis `/` | va à votre dossier personnel, d'après `HOME`, ou dit `HOME is not set.` (HOME n'a pas de valeur) |
 | `backspace` | défait la dernière lettre, ou, s'il n'y en a pas, va au dossier du dessus, le curseur sur celui qu'on vient de quitter |
+| `enter` | garde le filtre, et rend les lettres aux commandes |
+| `C-g` | enlève le filtre, et rend les lettres aux commandes |
 | `C-y` | va au chemin du presse-papiers : un dossier s'ouvre, un fichier montre son dossier avec le curseur sur lui |
-| `enter` | un dossier s'ouvre dans la liste ; un fichier s'ouvre dans un buffer, et la liste se ferme |
 
-`backspace` à la racine dit `This is the root.` (c'est la racine). Un chemin collé peut commencer par `/`, par `~`, ou être
-relatif au dossier montré ; un chemin qui ne mène nulle part dit `No file or folder at PATH.` (pas de fichier ni de dossier à
-PATH)
+[folders.StartFilter] est le `/` qui le commence. Le filtre est propre à Cemacs : Dired n'en a pas, et ses lettres sont des
+commandes. Un filtre gardé par Enter se montre sur la prompt line après un `/`, et les commandes agissent alors sur les
+rangées qu'il montre, et sur les marquées parmi elles : une rangée que le filtre cache n'est jamais copiée ni effacée.
+`backspace` à la racine dit `This is the root.` Un chemin collé peut commencer par `/`, par `~`, ou être relatif au dossier
+montré ; un chemin qui ne mène nulle part dit `No file or folder at PATH.` (pas de fichier ni de dossier à PATH). `C-y`
+marche aussi sans `/`.
 
-### Créer, renommer et mettre à la corbeille
+### Les marques
 
-| Touches | Ce qu'elles font |
-|---|---|
-| `C-c n` | demande `New file, or folder/: ` (nouveau fichier, ou dossier/) : un nom qui finit par `/` crée un dossier, avec les dossiers au-dessus de lui ; tout autre nom, un fichier vide |
-| `C-c r` | demande `Rename NAME to: ` (renommer NAME en), avec le nom à changer ; un chemin dans la réponse déplace le fichier ou le dossier là |
-| `C-c k` | demande `Move NAME to the trash? (y or n) ` (mettre NAME à la corbeille ?), puis met la rangée sous le curseur à la corbeille |
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `m`, `* m` | [folders.Mark] | marque la rangée sous le curseur d'un `*`, et passe à la suivante |
+| `u`, `* u` | [folders.Unmark] | enlève sa marque, et passe à la suivante |
+| `backspace` | [folders.UnmarkBack] | va à la rangée du dessus, et enlève sa marque, comme `DEL` dans Dired |
+| `d` | [folders.Flag] | signale la rangée pour l'effacement d'un `D`, et passe à la suivante |
+| `U`, `* !` | [folders.UnmarkAll] | enlève toutes les marques |
+| `t`, `* t` | [folders.ToggleMarks] | marque les rangées sans marque, et démarque celles marquées d'un `*` ; un `D` reste |
+| `* /` | [folders.MarkFolders] | marque chaque dossier, mais pas un lien vers un dossier |
+| `* @` | [folders.MarkLinks] | marque chaque lien symbolique |
+| `* *` | [folders.MarkPrograms] | marque chaque fichier que quelqu'un peut lancer, d'après le `x` de son mode |
+| `* .` | [folders.MarkExtension] | demande `Mark extension: ` (marquer l'extension), celle de la rangée sous le curseur d'abord, et marque chaque fichier qui finit ainsi |
+| `* s` | [folders.MarkAll] | marque chaque rangée |
+| `* c` | [folders.ChangeMarks] | demande une marque et celle qui prend sa place : `D` puis `*` marque les rangées signalées |
+| `% m`, `* %` | [folders.MarkMatching] | demande `Mark (regexp): ` (marquer, une expression régulière) et marque chaque rangée dont le pattern trouve le nom |
+| `% d` | [folders.FlagMatching] | demande `Flag for deletion (regexp): ` (signaler pour l'effacement) et signale chaque rangée dont le pattern trouve le nom |
+| `% g` | [folders.MarkHolding] | demande `Mark files containing (regexp): ` (marquer les fichiers qui contiennent) et marque chaque fichier dont le pattern trouve le texte |
+| `~` | [folders.FlagBackups] | signale chaque copie de sauvegarde, un nom qui finit par `~`, comme Emacs les fait |
+| `#` | [folders.FlagAutoSaves] | signale chaque fichier d'auto-save (l'enregistrement qu'un éditeur fait seul), un nom entre deux `#`, comme Emacs les fait |
+| `M-}`, `M-{` | [folders.NextMarked], [folders.PreviousMarked] | la rangée suivante qui a une marque, ou celle d'avant, en repartant du début après la fin |
 
-Ces touches ne marchent que dans le gestionnaire de dossiers. Un nom qui existe déjà est refusé avec `NAME already exists.`
-(NAME existe déjà), et un nom vide dit `No name.` (pas de nom). Après chacune, le dossier est relu, et le curseur va au nom.
+Les marques restent à travers un tri, un filtre et `g`, tant que leurs noms sont là ; elles s'en vont avec le dossier qu'on
+quitte. `*` et `%` attendent une deuxième touche, comme la prompt line le dit par `* -` ; `C-g` les reprend, et une deuxième
+touche sans commande le dit. Un pattern (un motif, l'expression régulière qui décrit les textes cherchés) est un pattern de
+[std/regex](https://www-celestial.github.io/cesia-lang/texts.html#regular-expressions), dont le temps reste linéaire quel que
+soit le pattern : aucun ne peut bloquer l'éditeur. Un pattern faux est dit sur la prompt line, comme
+`Bad pattern: a class isn't closed.` (une classe n'est pas fermée), et rien n'est marqué : [folders.PatternError] le vérifie
+d'abord, car std/regex arrête le programme qui lui en donne un faux. `% g` lit les fichiers de 1 MB au plus, et laisse de côté
+ceux qui contiennent un octet nul, qui ne sont pas du texte.
 
-Rien n'est jamais effacé pour de bon : `C-c k` met à la corbeille, le dossier d'où le gestionnaire de fichiers de votre
-bureau peut restaurer un fichier. Cemacs suit la Trash specification de freedesktop.org, version 1.0, pour la corbeille de
-votre dossier personnel :
+### Agir sur les fichiers
+
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `C` | [folders.Copy] | demande `Copy NAME to: ` (copier NAME vers) et copie, un dossier avec tout ce qu'il contient |
+| `R`, `C-c r` | [folders.Rename] | demande `Rename NAME to: ` (renommer NAME en) et renomme, ou déplace dans un dossier, d'un disque à l'autre aussi |
+| `S` | [folders.Symlink] | demande `Symlink NAME from: ` (lien symbolique vers NAME depuis) et y crée un lien symbolique vers le fichier, avec son chemin depuis la racine |
+| `Y` | [folders.RelativeSymlink] | la même chose avec un chemin relatif, comme `../lib/a.so` |
+| `H` | [folders.HardLink] | demande `Hardlink NAME to: ` et crée un hard link (un autre nom du même fichier, sur le même disque) |
+| `M` | [folders.ChangeMode] | demande `Change mode of NAME to: ` (changer le mode de NAME en), le mode d'un fichier d'abord, et donne le mode |
+| `T` | [folders.Touch] | demande `Change time of NAME to (none for now): ` (changer l'heure de NAME, rien pour maintenant) et donne l'heure de son dernier changement, comme le fait `touch` |
+| `+` | [folders.MakeFolder] | demande `Create folder: ` (créer le dossier), ce dossier d'abord, et le crée, avec les dossiers au-dessus de lui |
+| `C-c n` | | demande `New file, or folder/: ` (nouveau fichier, ou dossier/) : un nom qui finit par `/` crée un dossier, tout autre un fichier vide |
+| `w` | [folders.CopyNames] | copie les noms dans le presse-papiers, une espace entre eux |
+| `W` | [folders.CopyPaths] | copie les chemins depuis la racine dans le presse-papiers, une espace entre eux |
+| `y` | [folders.WhatIs] | dit ce qu'est la rangée : son genre, sa taille, son mode en lettres et en octal, l'heure de son dernier changement, et pour un lien sa cible |
+
+Une commande agit sur les rangées marquées d'un `*` que la liste montre, ou, s'il n'y en a aucune, sur la rangée sous le
+curseur ; sa question les nomme, par le nom d'une seule, ou `* [3 files]` pour plusieurs, comme le fait Dired. La réponse de
+`C`, `R`, `S`, `Y` et `H` est un chemin, depuis le dossier montré quand il ne commence pas par `/`, et Tab le complète comme
+dans `Find file`. Elle commence par le dossier de l'autre pane, quand ce pane montre la liste d'un dossier, comme le fait
+`dired-dwim-target` dans Dired (deviner la cible : le dossier d'à côté), ou sinon par ce dossier-ci, et, pour un seul fichier,
+par son nom après lui : Enter seul copie ou déplace le fichier dans l'autre pane sous son propre nom. Un seul fichier va dans
+la réponse quand elle est un dossier ou finit par `/`, sinon il la prend comme nouveau nom ; plusieurs fichiers vont dedans,
+un dossier. Une réponse qui finit par `/` et ne nomme encore aucun dossier le crée. [folders.Destinations] dit où chacun va.
+
+```cesia
+use std/result
+result.Unwrap(folders.Destinations([{Name: "a.ce", IsDir: false}], "/p", "/q/"))[1].To --> "/q/a.ce"
+```
+
+Un fichier déjà là n'est remplacé qu'après un oui : `b.ce exists. Replace it? (y or n)` (b.ce existe, le remplacer ?), ou,
+pour plusieurs, `3 exist (a.ce, b.ce, c.ce). Replace them? (y or n)` ; n laisse ceux-là, et les autres continuent. Un dossier
+copié sur un dossier qui est là lui donne ce qu'il contient, les fichiers de même nom remplacés. Un dossier n'est jamais
+copié ni déplacé dans lui-même : `Can't copy src into itself.` (impossible de copier src dans lui-même), et rien n'est créé.
+Après chaque commande, le dossier est relu, et la liste de l'autre pane aussi ; la prompt line dit ce qui a été fait, comme
+`Copied 3 files.` (3 fichiers copiés).
+
+Une copie, [folders.CopyTree], lit tout l'arbre d'abord, puis l'écrit, pour qu'une copie dans un lien vers lui-même ne puisse
+pas se nourrir d'elle-même. Chaque fichier est copié comme le fait `cp -p`, avec son mode et ses heures ; un dossier reçoit
+son mode et son heure une fois ce qu'il contient en place, le plus profond d'abord ; et un lien symbolique est refait avec la
+même cible, jamais suivi, un lien vers rien aussi. Un fichier ou un lien est écrit à un nom à lui à côté de sa place, puis
+renommé par-dessus ce qui était là, comme le fait [folders.Placed] : ce qui était là reste entier jusqu'à ce que le nouveau
+le soit, rien n'est jamais écrit à travers un lien de la cible, et un fichier copié sur lui-même par un autre chemin reste
+tel qu'il était. Là où la copie a un dossier et la cible un fichier ou un lien, cette entrée échoue et rien ne va dessous ;
+un fichier spécial, comme une FIFO (un tube nommé) ou un périphérique, est nommé et laissé, car en lire un peut attendre
+sans fin. Un déplacement, [folders.MoveTree], est un renommage ; d'un disque à
+l'autre, où un renommage ne peut pas aller, il copie, puis efface ce qu'il a copié, seulement une fois la copie entière. Les
+buffers des fichiers déplacés, et de ceux qui sont dans les dossiers déplacés, prennent leur nouveau chemin, pour qu'un
+enregistrement aille là où le fichier est maintenant.
+
+Le mode de `M` est en octal, comme `644` ou `0755`, ou écrit comme `chmod` l'écrit, [folders.ParseMode] : des clauses
+séparées par des virgules, chacune avec qui, parmi `u` le propriétaire, `g` le groupe, `o` les autres et `a` tous, rien
+valant `a`, puis `+` pour ajouter, `-` pour enlever ou `=` pour fixer, puis quoi, parmi `r`, `w`, `x`, `X`, qui vaut `x` pour
+un dossier ou pour un fichier que quelqu'un peut déjà lancer, `s` et `t`. Chaque fichier reçoit le mode calculé à partir du
+sien :
+
+```cesia
+folders.ParseMode("u+x,go-w", 438, false) --> result.Ok(484)
+folders.ParseMode("a+X", 420, true) --> result.Ok(493)
+result.IsErr(folders.ParseMode("u+q", 420, false)) --> true
+```
+
+La réponse de `T` est rien, pour maintenant, un jour, `2026-11-21`, à minuit, ou un jour et une heure, `2026-11-21 14:30`,
+ou avec les secondes, sur l'horloge de cette machine, comme le lit [folders.TimeOf]. `C-c n` est propre à Cemacs ; un nom
+qui existe déjà est refusé avec `NAME already exists.` (NAME existe déjà), et un nom vide dit `No name.` (pas de nom).
+
+Une erreur sur un fichier le nomme, et les autres continuent : `Copied 2 of 3; b.ce: permission denied` (2 copiés sur 3 ;
+b.ce : permission refusée), avec le nombre des autres échecs.
+
+### Effacer
+
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `D`, `C-c k` | [folders.Delete] | efface les rangées marquées, ou la rangée sous le curseur, après une question |
+| `x` | [folders.DeleteFlagged] | efface les rangées signalées d'un `D`, après une question |
+
+Chaque effacement demande d'abord. Le réglage [emacs.DeleteToTrash], vrai tant que vous ne le changez pas, comme
+`delete-by-moving-to-trash` dans Doom Emacs, dit où vont les fichiers :
+
+- Vrai : à la corbeille, un dossier entier, après `Move NAME to the trash? (y or n)` (mettre NAME à la corbeille ?) ; la
+  prompt line dit ensuite `Moved to the trash NAME.` (NAME mis à la corbeille). Un fichier peut en revenir, comme le dit
+  [La corbeille](#la-corbeille).
+- Faux : pour de bon, après `Delete NAME for good? (yes or no)` (effacer NAME pour de bon ?), qui veut le mot `yes`, tapé, et
+  Enter ; chaque dossier qui contient quelque chose demande alors une fois de plus, par son nom :
+  `Delete folder NAME and everything in it? (yes or no)` (effacer le dossier NAME et tout ce qu'il contient ?). Un non laisse
+  ce dossier, et les autres s'en vont. La prompt line dit ensuite `Deleted NAME.` (NAME effacé). Un lien symbolique est
+  effacé, jamais ce vers quoi il pointe, dans un dossier aussi : [folders.RemoveTree] n'en suit jamais aucun.
+
+[Changer Cemacs](customising.md#les-réglages) dit comment le régler dans votre `Changed` : `c.DeleteToTrash = () -> false`.
+Après un effacement, le curseur va à la rangée qui a pris la place de la première partie.
+
+### La corbeille
+
+Cemacs suit la Trash specification de freedesktop.org, version 1.0, pour la corbeille de votre dossier personnel, le dossier
+d'où le gestionnaire de fichiers de votre bureau peut restaurer un fichier :
 
 - La corbeille est `$XDG_DATA_HOME/Trash`, ou `~/.local/share/Trash` quand `XDG_DATA_HOME` n'a pas de valeur. Sans `HOME`
   non plus, elle dit `There is no trash: HOME is not set.` (il n'y a pas de corbeille : HOME n'a pas de valeur)
@@ -320,11 +483,124 @@ spécification demande une création exclusive (une création qui échoue quand 
 sous Unix) : deux programmes qui mettent le même nom à la corbeille au même instant pourraient donc se heurter, car Cesia
 n'a pas encore une telle création. Et pour un fichier sur un autre disque que votre dossier personnel, où un renommage ne
 peut pas atteindre la corbeille, il n'emploie pas le dossier de corbeille que la spécification met au sommet de ce disque :
-le déplacement échoue, et la prompt line dit `Can't move NAME to the trash: REASON` (impossible de mettre NAME à la
+le déplacement échoue, et la prompt line dit `can't move NAME to the trash: REASON` (impossible de mettre NAME à la
 corbeille : la raison), le fichier laissé là où il était.
 
-Le dossier est lu une fois chaque fois qu'il est montré, une liste et un regard sur chaque entrée ; la frappe ne fait que
-filtrer les rangées lues alors. [Vitesse](performance.md) donne les temps.
+### Modifier les noms
+
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `C-x C-q` | [folders.EditNames] | fait des noms que la liste montre un texte à modifier, un par ligne, à la place de la liste |
+| `C-c C-c`, `C-x C-s` | [folders.FinishNames] | renomme chaque fichier dont la ligne a changé, et ramène la liste |
+| `C-c C-k`, `C-g` | [folders.AbortNames] | laisse les noms tels qu'ils sont, et ramène la liste |
+
+C'est le Wdired d'Emacs (Dired qu'on peut écrire). Chaque touche de l'éditeur modifie le texte : `C-s` y cherche, comme le dit
+[Recherche](search.md), `C-k` coupe une ligne et `C-/` annule. Les trois touches ci-dessus sont celles du buffer, qui passent
+avant les touches globales tant qu'il est le buffer courant. Avant que rien ne soit renommé, [folders.NamesPlan] vérifie les
+lignes : autant que de noms, aucune vide, aucune avec un `/`, car c'est un nom qui change ici, pas son dossier, aucune deux
+fois, et aucune qui soit un nom déjà là, sauf si une autre ligne renomme celui-là ailleurs. Une ligne qui échoue dit pourquoi
+sur la prompt line, et le texte reste à corriger :
+
+```cesia
+folders.NamesPlan(["a", "b"], ["b", "a"], n -> true) --> result.Ok([{From: "a", To: "b"}, {From: "b", To: "a"}])
+result.IsErr(folders.NamesPlan(["a", "b"], ["c", "c"], n -> false)) --> true
+```
+
+Chaque fichier est d'abord renommé vers un nom à lui, `.#wdired-` et un nombre, puis vers son nouveau nom, pour que deux
+noms puissent s'échanger, comme le fait [folders.Renamed] ; un renommage qui échoue à la première étape remet en place ceux
+déjà faits, et rien n'est renommé. Un renommage qui échoue à la seconde étape remet son fichier sous son ancien nom, ou,
+quand un autre fichier a pris ce nom entre-temps, le laisse sous son nom à lui, que la prompt line dit : aucun fichier n'est
+jamais remplacé. Les marques suivent leurs fichiers vers les nouveaux noms, et les buffers des fichiers renommés aussi.
+
+### Lancer des programmes
+
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `!` | [folders.ShellCommand] | demande `! on NAME: ` et lance une commande du shell sur les fichiers, dans ce dossier, puis montre ce qu'elle a écrit |
+| `&` | [folders.AsyncShellCommand] | la même chose, sans attendre : ce qu'elle a écrit vient dans le buffer `*Async Shell Command*` quand elle finit |
+| `Z` | [folders.Compress] | demande y ou n, puis compresse ou décompresse chaque fichier |
+| `c` | [folders.CompressTo] | demande `Compress NAME to: ` (compresser NAME dans) et met les fichiers dans une archive, d'après la fin de son nom |
+| `=` | [folders.Diff] | demande `Diff NAME with: ` et liste en quoi le fichier sous le curseur diffère de celui-là, son diff ; Enter sur une ligne l'y ouvre |
+| `A` | [folders.SearchMarked] | demande `Search marked files (regexp): ` (chercher dans les fichiers marqués) et liste chaque ligne des fichiers, ceux des dossiers aussi, que le pattern trouve ; Enter y va |
+| `Q` | [folders.ReplaceMarked] | demande un pattern et ce qui le remplace, puis le remplace dans les buffers des fichiers, laissés changés et non enregistrés |
+
+La commande de `!` et de `&` suit les règles de Dired, comme [folders.Expanded] fait la ligne pour le shell : un `*` seul,
+entre des espaces, tient la place de tous les fichiers, et la commande tourne une fois ; sinon un `?` seul tient la place de
+chaque fichier, et la commande tourne une fois pour chacun ; sinon chaque fichier vient après la commande, une fois pour
+chacun. Un `*` dans un mot, comme `*.ce`, est celui du shell. Chaque nom est mis entre guillemets par [folders.Quoted], entre
+des guillemets simples, chaque guillemet qu'il contient fermé, échappé et rouvert, pour qu'un nom avec une espace, un
+guillemet, un `$` ou un accent grave reste un seul mot et ne se lance jamais ; un nom qui commence par `-` vient après `./`,
+pour qu'aucun programme ne le prenne pour une option.
+
+```cesia
+folders.Expanded("tar -cf x.tar *", ["a", "b c"]) --> "tar -cf x.tar 'a' 'b c'"
+folders.Expanded("wc -l", ["a", "it's"]) --> "wc -l 'a'; wc -l 'it'\\''s'"
+folders.Quoted("-rf") --> "'./-rf'"
+```
+
+`!` attend sa commande 60 secondes au plus, [folders.CommandLimit], et l'arrête ensuite ; `&` n'a pas de limite, et l'éditeur
+continue pendant ce temps. Ce qu'une commande a écrit se montre sur la prompt line quand c'est une ligne, ou sinon dans le
+buffer `*Shell Command Output*`, dans l'autre pane, la liste restant là où vous êtes. Le shell est celui de `$SHELL`, ou
+`/bin/sh`.
+
+`Z` fait ce que dit la table des suffixes de Dired, [folders.CompressPlan] : un dossier devient un `.tar.gz`, par `tar` ; un
+`.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2` ou `.zip` s'ouvre dans ce dossier, un `.zip` dans un dossier de son nom ; un fichier
+compressé par `gzip`, `bzip2`, `xz` ou `zstd` est décompressé ; tout autre fichier est compressé par `gzip`. Aucun ne
+remplace un fichier : `tar` garde ceux qui sont là, `-k`, `unzip` aussi, `-n`, les autres refusent, et un dossier dont le
+`.tar.gz` est là dit `NAME.tar.gz exists already` (NAME.tar.gz existe déjà). `c` crée un
+`.tar.gz` ou `.tgz`, un `.tar.xz`, un `.tar.bz2` ou un `.tar` par `tar`, ou un `.zip` par `zip`, comme le dit
+[folders.ArchivePlan] ; une archive déjà là s'en va d'abord, après un oui. Chacun attend 600 secondes au plus,
+[folders.ArchiveLimit]. `=` lance `git diff --no-index --no-color -- A B`, les noms après `--`, pour qu'aucun ne devienne une
+option, et montre ses lignes comme [Git](git.md) montre un diff, les lignes nouvelles de la couleur des textes, les anciennes
+de celle des mots-clés ; sa réponse commence par l'autre fichier marqué, sinon par la copie de sauvegarde `NAME~`, sinon par
+le dossier de l'autre pane.
+
+`A` liste ses endroits comme le fait [la recherche dans un projet](search.md#chercher-dans-un-projet),
+`PATH:LINE:COLUMN` puis la ligne, le chemin depuis le dossier montré, 10 000 endroits au plus dans 20 000 fichiers, chacun de
+1 MB au plus et sans octet nul. `Q` remplace dans le texte du buffer d'un fichier, quand il y en a un d'ouvert, sinon dans
+celui du fichier, par std/regex : `$1` dans le texte qui remplace tient la place du premier groupe du pattern. Chaque fichier
+changé s'ouvre dans un buffer, changé en une seule étape d'annulation et non enregistré, et la prompt line dit combien
+d'endroits dans combien de fichiers : `C-x C-s` enregistre chacun, et `C-/` l'annule. Ni l'un ni l'autre ne suit un lien
+symbolique.
+
+Cemacs ne tient jamais la permission de lancer ces programmes. Chacun passe par `tools/folders.ce`, que Cemacs lance comme
+`cesia run --allow exec=PROGRAM tools/folders.ce`, avec ce seul programme : `gzip`, `tar`, `zip`, `unzip`, `bzip2`, `xz`,
+`zstd`, `git`, ou le shell de `!` et `&`. Il lance le programme avec ses arguments, chacun un seul mot, jamais par un shell
+sauf pour `!` et `&`, dans le dossier montré, et rend ce qu'il a écrit, en JSON. Un programme absent du `PATH` dit
+`PROGRAM can't run` (PROGRAM ne peut pas tourner), et le reste marche.
+
+### Les vues et l'aide
+
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `s` | [folders.NextSort] | trie par date, puis par taille, puis à nouveau par nom |
+| `(` | [folders.ToggleDetails] | cache le mode, la taille et l'âge de chaque rangée, ou les montre à nouveau |
+| `.`, `C-c .` | [folders.ToggleHidden] | montre les noms qui commencent par un point, ou les cache à nouveau |
+| `?` | [folders.KeysSummary] | dit les principales touches sur la prompt line |
+
+[folders.Letters] est la table des lettres et de leurs commandes, et [folders.StarLetters] et [folders.PercentLetters] celles
+de la deuxième touche après `*` et `%`. Dans une liste, attendre après une prefix key montre la bande des hints, comme
+partout.
+
+### Ce qui diffère de Dired
+
+Cemacs prend les touches de Dired, et laisse de côté certaines de ses commandes :
+
+- Pas de sous-dossier montré dans la liste, le `i` de Dired : `o` ou `C-o` montre un dossier à côté.
+- Pas de changement de propriétaire ni de groupe, `O` et `G`, qui demandent le plus souvent les droits de root, et pas
+  d'impression, `P`.
+- Pas d'argument numérique avant une commande, comme `3 m` ou `C-u` : les marques et les filtres font ce travail.
+- `Q` remplace chaque endroit d'un coup, là où celui de Dired demande à chacun : les buffers restent non enregistrés, et
+  `C-/` annule un fichier.
+- `/`, le filtre, `C-c n`, `W` et `.` pour les noms cachés sont propres à Cemacs ; le `.` de Dired, qui signale les copies de
+  sauvegarde numérotées, n'est pas là.
+- Les dossiers viennent d'abord dans chaque tri, et une rangée montre l'âge de son fichier, là où `ls -l` montre une date.
+
+### La vitesse
+
+Le dossier est lu une fois chaque fois qu'il est montré, une liste et un regard sur chaque entrée, deux pour un lien
+symbolique ; le filtre ne fait que filtrer les rangées lues alors. Une marque ne change que ses rangées, et un tri ou `(`
+refait les rangées à partir des entrées lues, sans relire le dossier. [Vitesse](performance.md) donne les temps.
 
 ## Les fichiers d'un projet
 

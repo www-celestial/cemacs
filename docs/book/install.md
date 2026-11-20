@@ -14,19 +14,21 @@ macOS may work with the libraries of Homebrew, and Windows has no `bash` for `bi
 Cemacs is a Cesia program, so Cesia comes first: its book says how to install it, at
 https://www-celestial.github.io/cesia-lang/install.html. `cesia` must be on your `PATH`, since Cemacs runs it to check your
 code (`cesia check`), and to run your programs (`cesia run` and `cesia do`). `git`, 2.31 or later, on the `PATH` gives the list of a
-project's files, `C-x p f`; without it, that list says that git can't run, and the rest works.
+project's files, `C-x p f`; without it, that list says that git can't run, and the rest works. The folder manager runs
+`gzip`, `tar`, `zip`, `unzip` and `git` for `Z`, `c` and `=`, when they are on the `PATH`: see
+[Running programs](files.md#running-programs).
 
 The `cesia` line of Cemacs's `cesia.toml` names the oldest Cesia it needs:
 
 ```toml
 [project]
 name = "cemacs"
-cesia = "1.2"
+cesia = "1.3"
 src = ["core", "src", "user"]
 native = ["SDL3", "SDL3_ttf"]
 ```
 
-An older Cesia stops at once, with `This project needs Cesia 1.2 or later, and this is ...: run cesia upgrade.` `cesia
+An older Cesia stops at once, with `This project needs Cesia 1.3 or later, and this is ...: run cesia upgrade.` `cesia
 version` tells which one you have.
 
 ## SDL3 and SDL3_ttf

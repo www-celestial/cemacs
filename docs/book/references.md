@@ -89,7 +89,7 @@ are.
 - Mikhail Ramendik, David Faure, Alexander Larsson and Ryan Lortie. *Trash Specification*, version 1.0, freedesktop.org,
   2014-01-02. https://specifications.freedesktop.org/trash/latest/.
   What Cemacs took: the trash in the home, its `files/` and `info/` folders, the `.trashinfo` file written first, the
-  percent-encoded path, and the date on the local clock. Where Cemacs differs is in [Files and buffers](files.md#making-renaming-and-trashing).
+  percent-encoded path, and the date on the local clock. Where Cemacs differs is in [Files and buffers](files.md#the-trash).
 - *XDG Base Directory Specification*, version 0.8, freedesktop.org, 2021-05-08.
   https://specifications.freedesktop.org/basedir/latest/.
   What Cemacs took: `$XDG_DATA_HOME`, and `$HOME/.local/share` when it isn't set, for the place of the trash.
