@@ -136,8 +136,8 @@ use std/value
 | Setting | Unit | What it says | Read |
 |---|---|---|---|
 | [emacs.TabText] | a text | what Tab types | at each Tab |
-| [emacs.WheelLines] | lines, a float | the lines that one notch of the wheel moves the screen; a touchpad sends parts of a notch | at each turn of the wheel |
-| [emacs.ScrollMargin] | lines | the lines kept between the cursor and the top or the bottom of the screen, as `scroll-margin` in Emacs; 0 moves the screen only when the cursor leaves it | at each frame |
+| [emacs.WheelLines] | rows, a float | the rows that one notch of the wheel moves the screen; a touchpad sends parts of a notch | at each turn of the wheel |
+| [emacs.ScrollMargin] | rows, the height of a line of code | the rows kept between the cursor and the top or the bottom of the screen, as `scroll-margin` in Emacs; 0 moves the screen only when the cursor leaves it | at each frame |
 | [emacs.DragZone] | pixels | how far the mouse may go from a press, on either axis, for it to stay a click | at each move of the mouse |
 | [emacs.FontSize] | points | the size of the three fonts | once, when the window opens |
 | [emacs.HintDelay] | seconds | the wait after a prefix key before the band of hints shows | at each tick |

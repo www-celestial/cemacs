@@ -66,6 +66,8 @@ calage des lettres sur la grille des pixels), si bien que chaque texte prend la 
 axes, la grille et les textes prennent les couleurs du thème ; les données gardent les leurs. Quand le pane change de
 largeur, la session dessine à nouveau la scene à la nouvelle ; le graphe garde sa forme jusqu'à ce qu'elle arrive.
 `*repl*` dessine un graphe sous sa réponse de la même façon, et la page de `C-c e h` contient chaque graphe en SVG.
+L'écran glisse sur un graphe une rangée à la fois, sa partie basse visible quand l'écran commence dedans : voir
+[L'écran d'un pane](windows.md#lécran-dun-pane).
 
 ## Sliders
 

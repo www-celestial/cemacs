@@ -368,11 +368,11 @@ selection. Once the mouse has left the zone, the cursor follows it, even back in
 keeps selecting, and the screen follows. A press is a command, so it ends a prefix key, a chain of `C-k` and a step of
 typing. The other buttons only do that.
 
-One notch of the wheel moves the screen by [emacs.WheelLines] lines, 3, without making the pane under the mouse the one you
-edit. The cursor stays on the screen, as in Emacs: when the screen would leave it nearer than [emacs.ScrollMargin] lines,
-3, to its top or its bottom, it goes to the nearest line past them, at the column it had, as `C-n` keeps it. A key after
-the wheel acts there, on the screen. A touchpad sends parts of a notch: what is less than a line is kept for the next
-event, so a slow stroke still scrolls.
+One notch of the wheel moves the screen by [emacs.WheelLines] rows, 3, through a graph as through the lines, without making
+the pane under the mouse the one you edit. The cursor stays on the screen, as in Emacs: when the screen would leave it
+nearer than [emacs.ScrollMargin] rows, 3, to its top or its bottom, it goes to the nearest line past them, at the column it
+had, as `C-n` keeps it. A key after the wheel acts there, on the screen. A touchpad sends parts of a notch: what is less
+than a row is kept for the next event, so a slow stroke still scrolls.
 
 While a question is open on the prompt line, only the wheel and the end of a drag work, so that the text can't change under
 the question.

@@ -100,17 +100,9 @@ paneLayoutsIn(lay, state) = list.Map(r -> PaneLayout(r, state.Cell), panes.Rects
 (** The layout of each pane of a state, as PaneLayout gives it, in the order of the panes. *)
 PaneLayouts(state) = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, ShowsOutput(state)), state)
 
-(** The place of a buffer on the screen, which a pane keeps while another one is edited: the cursor, the mark and where it came from, the top and the left
-    of the screen, and whether the mouse put the cursor there. *)
-ViewOf(b) = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Left: b.Left, Pointed: pointed(b)}
-
-defn pointed(b)
-  (** Did the mouse put the cursor where it is, with no key since? A buffer or a place from before this field says no. *)
-  match b
-    {Pointed: p} -> p
-    else -> false
-  end
-end
+(** The place of a buffer on the screen, which a pane keeps while another one is edited: the cursor, the mark and where it came from, the top, the rows of it
+    above the screen and the left of the screen, and what holds the screen. *)
+ViewOf(b) = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Skip: skipField(b), Left: b.Left, Hold: HoldOf(b)}
 
 defn WithView(v, b)
   (** The buffer at the place v, brought inside its text, which may have changed in another pane, or the buffer as it is for a v that is missing. *)
@@ -121,8 +113,9 @@ defn WithView(v, b)
   out.Mark = v.Mark
   out.Origin = v.Origin
   out.Top = list.Min(list.Max(1, v.Top), rope.LineCount(b.Rope))
+  out.Skip = list.Max(0, skipField(v))
   out.Left = list.Max(0, v.Left)
-  out.Pointed = pointed(v)
+  out.Hold = HoldOf(v)
   out
 end
 
@@ -148,19 +141,21 @@ BufferName(b) = bufferName(b)
 label(b) = if text.IsModified(b) "$(bufferName(b)) *" else bufferName(b) end
 
 defn Follow(rows, columns, margin, b)
-  (** A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, with margin lines between it and the top and the bottom
-      of the screen, whose colors are known up to the last line on the screen, but for a list, and whose Screen keeps the tokens of the lines on the screen for
+  (** A buffer whose top, skip and left keep the cursor on the screen of rows rows and columns characters, with margin rows between it and the top and the
+      bottom of the screen, as Settle moves them, whose colors are known up to the last line on the screen, but for a list, and whose Screen keeps the tokens of the lines on the screen for
       the view, and for the next frame. A screen more than ColorBatch() lines past the colors known is shown at once: its states are guessed (Guess) and the
       colors are read ColorBatch() lines further, then as much at each tick until they reach it, when the screen is drawn again with its exact colors.
-      It is the only place that moves the screen: view only reads. The wheel moves the top, and the cursor with it into the lines that Band gives. A cursor
-      that the mouse put, with no key since, keeps no margin: a click near the edge leaves the text under the mouse where it is.
+      It is the only place that moves the screen after a key: view only reads, and the wheel moves it by rows with Scrolled. A cursor that the mouse put,
+      with no key since, keeps no margin, so that a click near the edge leaves the text under the mouse where it is; a screen that the wheel holds stays.
 
         Follow(2, 10, 0, {Rope: rope.Of("a\nb\nc"), Cursor: {Line: 3, Column: 0}, Top: 1, Left: 0, Colors: color.BlankColors()}).Top --> 2 *)
   line = b.Cursor.Line
   column = b.Cursor.Column
   seenRows = list.Max(1, rows)
   seenColumns = list.Max(1, columns)
-  top = topOn(line, seenRows, if pointed(b) 0 else Kept(seenRows, margin) end, b)
+  hold = HoldOf(b)
+  place = if hold == "wheel" {Top: list.Min(b.Top, rope.LineCount(b.Rope)), Skip: SkipOf(b, Under(b))} else Settle(line, seenRows, if hold == "mouse" 0 else margin end, b) end
+  top = place.Top
   left = if column < b.Left
     column
   else if column >= b.Left + seenColumns
@@ -171,6 +166,7 @@ defn Follow(rows, columns, margin, b)
   lastLine = list.Min(rope.LineCount(b.Rope), top + seenRows)
   out = b
   out.Top = top
+  out.Skip = place.Skip
   out.Left = left
   (* A list draws its rows with their own parts, so its colors would be read for nothing: the rows of a growing output change at each tick. *)
   if lists.IsList(b)
@@ -378,80 +374,242 @@ end
 (** The rows of blocks under line n. *)
 extra(n, under) = if value.IsMissing(under) 0 else dict.GetOr("$n", 0, under) end
 
+(** The rows that line n takes on the screen: its own, then those of the blocks under it. *)
+height(n, under) = 1 + extra(n, under)
+
+defn skipField(b)
+  (** The Skip that a buffer or a place holds, or 0 for one from before this field. *)
+  match b
+    {Skip: k} -> k
+    else -> 0
+  end
+end
+
+(** The rows of the top line that are above the screen: 0 when the screen starts at the line, more when it starts inside the blocks under it, which then show
+    their lower part only. At most the rows of those blocks, so that a block taken away leaves none.
+
+      SkipOf(text.Of("a", missing), missing) --> 0 *)
+SkipOf(b, under) = list.Max(0, list.Min(skipField(b), extra(b.Top, under)))
+
+defn HoldOf(b)
+  (** What holds the screen of a buffer until the next key: "mouse" while the cursor is where the mouse put it, which keeps no margin around it, so that the
+      text doesn't move under the mouse; "wheel" while the wheel holds the screen where no line can take the cursor, inside a block taller than the screen;
+      "" when the screen follows the cursor with its margin. A buffer or a place from before this field has "".
+
+        HoldOf(text.Of("a", missing)) --> "" *)
+  match b
+    {Hold: h} -> h
+    else -> ""
+  end
+end
+
 defn RowOf(n, b, under)
-  (** The row of the screen of line n, from 0 at the top line of the buffer: one a line, and the rows of the blocks under the lines above it. *)
-  if value.IsMissing(under) or n <= b.Top
+  (** The row of the screen of line n, from 0 at the first row: one a line and the rows of the blocks under the lines from the top line, less the rows of the
+      top line above the screen. A line above the top line gives a row under 0. *)
+  if value.IsMissing(under)
     return n - b.Top
   end
-  row = 0
+  row = -SkipOf(b, under)
+  if n <= b.Top
+    return row + n - b.Top
+  end
   for m in b.Top..n - 1
-    row = row + 1 + extra(m, under)
+    row = row + height(m, under)
   end
   row
 end
 
 defn LineAtRow(row, b, under)
-  (** The line of the buffer on a row of the screen, from 0 at the top: a row of a block is the row of the line above it. *)
-  if value.IsMissing(under) or row <= 0
+  (** The line of the buffer on a row of the screen, from 0 at the first row: a row of a block is the row of the line above it. *)
+  if value.IsMissing(under)
     return b.Top + row
+  end
+  at = row + SkipOf(b, under)
+  if at <= 0
+    return b.Top + at
   end
   n = b.Top
   r = 0
   last = rope.LineCount(b.Rope)
-  while n < last and r + 1 + extra(n, under) <= row
-    r = r + 1 + extra(n, under)
+  while n < last and r + height(n, under) <= at
+    r = r + height(n, under)
     n = n + 1
   end
-  if r + 1 + extra(n, under) <= row n + row - r - extra(n, under) else n end
+  if r + height(n, under) <= at n + at - r - extra(n, under) else n end
 end
 
-(** The margin that a screen of rows rows keeps around the cursor: at most half of the lines beside the cursor's own, so that a small screen keeps one above
-    as many as below.
+(** The margin that a screen of rows rows keeps around the cursor: at most half of the rows beside the cursor's own, so that a small screen keeps as many
+    above as below.
 
       [Kept(30, 3), Kept(5, 3), Kept(1, 3)] --> [3, 2, 0] *)
 Kept(rows, margin) = list.Max(0, list.Min(margin, math.Div(rows - 1, 2)))
 
-defn topOn(line, rows, m, b)
-  (** The top of a screen of rows rows that shows line with m lines above and below it, as far as the file has them, moved as little as it can from b.Top:
-      the top is kept while the line is inside the lines that Band gives. Blocks under the lines that leave no room for the margin show the line alone. *)
-  below = list.Min(rope.LineCount(b.Rope), line + m)
-  highest = list.Max(1, line - m)
-  if b.Top <= highest and below < b.Top + rows and RowOf(below, b, Under(b)) < rows
-    return b.Top
-  end
-  lowest = TopFor(below, rows, b)
-  if lowest <= highest
-    return list.Min(list.Max(b.Top, lowest), highest)
-  end
-  list.Min(list.Max(b.Top, TopFor(line, rows, b)), line)
-end
+(** The place of the screen, {Top, Skip}, that puts line on a row of the screen: the rows above it are those of the lines and the blocks above it, a block
+    cut at the top when only its lower part fits. At the start of the file the first line is on the first row, and line higher than row.
 
-defn Band(rows, margin, b)
-  (** The lines that the cursor can be on while the screen of rows rows keeps its top, b.Top, as Follow keeps it: the lines on the screen but margin ones at its
-      top and its bottom, as Kept gives it, unless the file starts or ends there. {First, Last}, with First past Last when the top shows less than the margin
-      under it, at the end of the file: Follow then moves the top back.
+      PlaceAt(10, 3, text.Of(str.Join("\n", list.Map(n -> "x", list.Range(1, 20))), missing)) --> {Top: 7, Skip: 0} *)
+PlaceAt(line, row, b) = placeAt(line, row, Under(b))
 
-        Band(10, 2, dict.Merge(text.Of(str.Join("\n", list.Map(n -> "x", list.Range(1, 100))), missing), {Top: 21})) --> {First: 23, Last: 28} *)
-  seen = list.Max(1, rows)
-  m = Kept(seen, margin)
-  count = rope.LineCount(b.Rope)
-  shown = list.Min(count, LineAtRow(seen - 1, b, Under(b)))
-  {First: if b.Top == 1 1 else b.Top + m end, Last: if shown >= count count else shown - m end}
-end
-
-defn TopFor(line, rows, b)
-  (** The top line that shows line at the last row of a screen of rows rows, with the blocks under the lines above it. *)
-  under = Under(b)
+defn placeAt(line, row, under)
+  (** PlaceAt, with the rows of the blocks given. *)
   if value.IsMissing(under)
-    return line - rows + 1
+    return {Top: list.Max(1, line - row), Skip: 0}
   end
-  used = 1
+  need = row
   t = line
-  while t > 1 and used + 1 + extra(t - 1, under) <= rows
-    used = used + 1 + extra(t - 1, under)
+  while need > 0 and t > 1
     t = t - 1
+    h = height(t, under)
+    if h > need
+      return {Top: t, Skip: h - need}
+    end
+    need = need - h
   end
-  t
+  {Top: t, Skip: 0}
+end
+
+defn rowsBefore(line, cap, under)
+  (** The rows of the file above line, of the lines and their blocks, up to cap. *)
+  if value.IsMissing(under)
+    return list.Max(0, list.Min(line - 1, cap))
+  end
+  r = 0
+  t = line
+  while r < cap and t > 1
+    t = t - 1
+    r = r + height(t, under)
+  end
+  list.Min(r, cap)
+end
+
+defn rowsAfter(line, count, cap, under)
+  (** The rows of the file under line: of its blocks, then of the lines after it and theirs, up to cap. *)
+  if value.IsMissing(under)
+    return list.Max(0, list.Min(count - line, cap))
+  end
+  r = extra(line, under)
+  t = line
+  while r < cap and t < count
+    t = t + 1
+    r = r + height(t, under)
+  end
+  list.Min(r, cap)
+end
+
+defn screenRow(line, rows, b, under)
+  (** The row of line on a screen of rows rows: -1 when it is above, rows when it is under, reading no more lines than the screen holds. *)
+  if value.IsMissing(under)
+    return list.Max(-1, list.Min(line - b.Top, rows))
+  end
+  skip = SkipOf(b, under)
+  if line < b.Top or (line == b.Top and skip > 0)
+    return -1
+  end
+  if line - b.Top - skip >= rows
+    return rows
+  end
+  list.Min(RowOf(line, b, under), rows)
+end
+
+defn bounds(line, rows, margin, b, under)
+  (** Where line may be on a screen of rows rows that keeps margin rows above and under it, as far as the file has them: {Low, High, Row}, the first and last
+      rows it may be on and the row it is on now, as screenRow gives it. *)
+  m = Kept(rows, margin)
+  {Low: rowsBefore(line, m, under), High: rows - 1 - rowsAfter(line, rope.LineCount(b.Rope), m, under), Row: screenRow(line, rows, b, under)}
+end
+
+(** Does the screen of rows rows keep its place for the cursor on line, with margin rows around it? Follow moves it otherwise. *)
+Keeps(line, rows, margin, b) = keepsIn(bounds(line, list.Max(1, rows), margin, b, Under(b)))
+keepsIn(c) = c.Low <= c.Row and c.Row <= c.High
+
+defn Settle(line, rows, margin, b)
+  (** The place of a screen of rows rows, {Top, Skip}, that shows line with margin rows above and under it, as far as the file has them, moved as little as it
+      can, row by row, from where b has it: the same while line is where Keeps says.
+
+        Settle(30, 10, 3, text.Of(str.Join("\n", list.Map(n -> "x", list.Range(1, 100))), missing)) --> {Top: 24, Skip: 0} *)
+  seen = list.Max(1, rows)
+  under = Under(b)
+  c = bounds(line, seen, margin, b, under)
+  if c.Row < c.Low
+    placeAt(line, c.Low, under)
+  else if c.Row > c.High
+    placeAt(line, c.High, under)
+  else
+    {Top: b.Top, Skip: SkipOf(b, under)}
+  end
+end
+
+defn Scrolled(k, b)
+  (** The buffer with its screen moved by k rows, down for k above 0 and up under it, through the blocks a row at a time as through the lines: from the first
+      row of the file to the last row of its last line.
+
+        Scrolled(3, text.Of("a\nb\nc\nd\ne", missing)).Top --> 4 *)
+  under = Under(b)
+  count = rope.LineCount(b.Rope)
+  top = list.Min(list.Max(1, b.Top), count)
+  skip = SkipOf(b, under)
+  left = math.Abs(k)
+  while left > 0
+    if k > 0
+      rest = extra(top, under) - skip
+      if left <= rest
+        skip = skip + left
+        left = 0
+      else if top < count
+        left = left - rest - 1
+        top = top + 1
+        skip = 0
+      else
+        skip = extra(top, under)
+        left = 0
+      end
+    else if skip >= left
+      skip = skip - left
+      left = 0
+    else if top > 1
+      left = left - skip - 1
+      top = top - 1
+      skip = extra(top, under)
+    else
+      skip = 0
+      left = 0
+    end
+  end
+  out = b
+  out.Top = top
+  out.Skip = skip
+  out
+end
+
+defn Wheeled(rows, margin, b)
+  (** The buffer after the wheel moved its screen: its cursor on the nearest line of the screen that Keeps, at the column it wanted, as C-n keeps it; with
+      none, as at the end of the file, where it is if it is on the screen, else on the nearest line of the screen, which Follow then brings to its margin.
+      With no line on the screen, inside a block taller than it, the cursor stays where it was and the screen holds there until the next key. *)
+  seen = list.Max(1, rows)
+  line = b.Cursor.Line
+  out = b
+  out.Hold = ""
+  if Keeps(line, seen, margin, out)
+    return out
+  end
+  under = Under(b)
+  first = if SkipOf(b, under) > 0 b.Top + 1 else b.Top end
+  last = list.Min(rope.LineCount(b.Rope), LineAtRow(seen - 1, b, under))
+  order = if line < first list.Range(first, last) else list.Reverse(list.Range(first, last)) end
+  for n in order
+    if Keeps(n, seen, margin, out)
+      return text.MoveLine(n - line, out)
+    end
+  end
+  row = screenRow(line, seen, out, under)
+  if 0 <= row and row < seen
+    return out
+  end
+  if value.Len(order) > 0
+    return text.MoveLine(order[1] - line, out)
+  end
+  out.Hold = "wheel"
+  out
 end
 
 (** A command of a block moved to its place on the screen. *)
@@ -584,21 +742,24 @@ defn code(b, lay, look, focused, marks)
   cell = lay.Cell
   rect = lay.Code
   out = [box(rect.X, rect.Y, rect.Width, rect.Height, th.Code, 0)]
-  first = b.Top
+  top = b.Top
   under = Under(b)
   rowOf = {}
   last = list.Min(rope.LineCount(b.Rope), b.Top + lay.Rows - 1)
+  skip = SkipOf(b, under)
   if not value.IsMissing(under)
-    (* The lines that fit with the blocks under them. *)
-    row = 0
-    n = first
+    (* The lines that fit with the blocks under them, from the rows of the top line above the screen. *)
+    row = -skip
+    n = top
     while n <= rope.LineCount(b.Rope) and row < lay.Rows
       rowOf["$n"] = row
-      row = row + 1 + extra(n, under)
+      row = row + height(n, under)
       n = n + 1
     end
     last = n - 1
   end
+  (* The first line whose words are on the screen: the top line's are above it while the screen starts inside its blocks. *)
+  first = if skip > 0 top + 1 else top end
   lineY = if value.IsMissing(under) (n -> rowY(n - b.Top, rect, cell)) else (n -> rowY(rowOf["$n"], rect, cell)) end
   here = b.Cursor.Line
   if focused and here >= first and here <= last
@@ -618,7 +779,7 @@ defn code(b, lay, look, focused, marks)
     out = list.Concat(out, answer(b, n, marks.Run, lineY(n), lay.Columns, rect, cell, th))
   end
   if not value.IsMissing(under)
-    out = list.Concat(out, blocksIn(b, first, last, lay, look, lineY))
+    out = list.Concat(out, blocksIn(b, top, last, lay, look, lineY))
   end
   out = list.Concat(out, marked(b, first, last, lay, look, lineY))
   if here >= first and here <= last and b.Cursor.Column >= b.Left and b.Cursor.Column - b.Left < lay.Columns
@@ -629,7 +790,8 @@ end
 
 defn blocksIn(b, first, last, lay, look, lineY)
   (** The blocks under the lines from first to last, each drawn from the left of the text, under its line, the ones below it after it; a command that
-      would go past the bottom of the code area is left out, but a graph, which shows what the pane has room for. *)
+      would go past the top or the bottom of the code area is left out, but a graph, which shows what the pane has room for: its top part at the bottom
+      of the pane, Visible, and its lower part at the top, Hidden, when the screen starts inside it. *)
   cell = lay.Cell
   rect = lay.Code
   x = rect.X + Gutter
@@ -642,10 +804,11 @@ defn blocksIn(b, first, last, lay, look, lineY)
       y = dict.GetOr("$(k.Line)", lineY(k.Line) + cell.Height, ys)
       ys["$(k.Line)"] = y + k.Rows * cell.Height
       for c in k.Draw(width, look)
-        if c.Kind == "graph" and y + c.Y < bottom
-          (* A graph that the bottom of the pane cuts shows its top. *)
-          out = list.Append(dict.Put("Visible", bottom - y - c.Y, placed(c, x, y)), out)
-        else if y + c.Y + dict.GetOr("Height", cell.Height, c) <= bottom
+        high = dict.GetOr("Height", cell.Height, c)
+        if c.Kind == "graph" and y + c.Y < bottom and y + c.Y + high > rect.Y
+          cut = dict.Put("Visible", bottom - y - c.Y, placed(c, x, y))
+          out = list.Append(if y + c.Y < rect.Y dict.Put("Hidden", rect.Y - y - c.Y, cut) else cut end, out)
+        else if y + c.Y >= rect.Y and y + c.Y + high <= bottom
           out = list.Append(placed(c, x, y), out)
         end
       end

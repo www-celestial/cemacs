@@ -139,8 +139,8 @@ use std/value
 | Réglage | Unité | Ce qu'il dit | Lu |
 |---|---|---|---|
 | [emacs.TabText] | un texte | ce que tape Tab | à chaque Tab |
-| [emacs.WheelLines] | des lignes, un float (un nombre à virgule) | les lignes dont un cran de la molette déplace l'écran ; un touchpad envoie des morceaux de cran | à chaque tour de molette |
-| [emacs.ScrollMargin] | des lignes | les lignes gardées entre le curseur et le haut ou le bas de l'écran, comme `scroll-margin` dans Emacs ; 0 ne déplace l'écran que quand le curseur en sort | à chaque frame |
+| [emacs.WheelLines] | des rangées, un float (un nombre à virgule) | les rangées dont un cran de la molette déplace l'écran ; un touchpad envoie des morceaux de cran | à chaque tour de molette |
+| [emacs.ScrollMargin] | des rangées, la hauteur d'une ligne de code | les rangées gardées entre le curseur et le haut ou le bas de l'écran, comme `scroll-margin` dans Emacs ; 0 ne déplace l'écran que quand le curseur en sort | à chaque frame |
 | [emacs.DragZone] | des pixels | jusqu'où la souris peut aller depuis un appui, sur chaque axe, pour que cela reste un clic | à chaque déplacement de la souris |
 | [emacs.FontSize] | des points | la taille des trois polices | une fois, quand la fenêtre s'ouvre |
 | [emacs.HintDelay] | des secondes | l'attente après une prefix key avant que la bande des hints s'affiche | à chaque tick |

@@ -59,7 +59,9 @@ soft edges, its areas, bars, marks and cells, and its texts in Noto Sans Medium,
 without kerning, the adjustment of the space between two letters, and without hinting, so that each text takes the width
 std/plot gave it. The axes, the grid and the texts take the colours of the theme; the data keep their own. When the pane
 changes its width, the session draws the scene again at the new one; the graph keeps its shape until it comes. `*repl*`
-draws a graph under its answer in the same way, and the page of `C-c e h` holds each graph as SVG.
+draws a graph under its answer in the same way, and the page of `C-c e h` holds each graph as SVG. The screen slides over a
+graph a row at a time, its lower part showing when the screen starts inside it: see
+[The screen of a pane](windows.md#the-screen-of-a-pane).
 
 ## Sliders
 

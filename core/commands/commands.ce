@@ -566,7 +566,7 @@ defn searched(forward, state)
   (** C-s and C-r: a search from the cursor, or in a search the next place. In another prompt, nothing. *)
   if value.IsMissing(state.Prompt)
     b = current(state)
-    from = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Left: b.Left}
+    from = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Skip: view.SkipOf(b, view.Under(b)), Left: b.Left}
     search = {Forward: forward, From: from, Found: missing, Failing: false, Wrapped: false, Steps: []}
     withSearch(search, prompted({Label: "", Answer: "", Done: searchEnded, Choice: false, Search: search}, state))
   else if value.IsMissing(searchOf(state))
@@ -631,6 +631,7 @@ defn searchCancel(state)
   b.Mark = from.Mark
   b.Origin = from.Origin
   b.Top = from.Top
+  b.Skip = dict.GetOr("Skip", 0, from)
   b.Left = from.Left
   say("Quit", closed(put(b, state)))
 end
@@ -1488,7 +1489,7 @@ defn onKey(event, state)
       which ends a step of typing even if it changes nothing. *)
   s = state
   s.Message = if state.Pending != "" "$(state.Pending) -" else "" end
-  s.Buffers[state.Current].Pointed = false
+  s.Buffers[state.Current].Hold = ""
   s.Second = false
   chord = keys.Chord(event)
   held = event.Ctrl or event.Alt
@@ -1527,7 +1528,7 @@ defn onText(event, state)
   else
     s.Chain = false
     s = Unfocused(s)
-    s.Buffers[state.Current].Pointed = false
+    s.Buffers[state.Current].Hold = ""
     open = not value.IsMissing(complete.Of(s))
     s.Completion = missing
     if open refined(event.Text, keyed(event.Text, s)) else keyed(event.Text, s) end
@@ -1543,9 +1544,10 @@ defn wheelRest(state)
 end
 
 defn Wheel(event, state)
-  (** The screen of the pane under the mouse moved by the wheel, the WheelLines of the config for each notch, without making that pane the one being edited. The
-      cursor stays on the screen, as in Emacs: past the ScrollMargin of the config from its top or its bottom, it goes to the nearest line inside, at the column
-      it had, as C-n keeps it. What is less than a line stays for the next event, since a touchpad sends many small ones. *)
+  (** The screen of the pane under the mouse moved by the wheel, the WheelLines of the config for each notch, in rows, through the blocks under the lines as
+      through the lines, without making that pane the one being edited. The cursor stays on the screen, as in Emacs: past the ScrollMargin of the config from
+      its top or its bottom, it goes to the nearest line inside, at the column it had, as C-n keeps it; see view.Wheeled. What is less than a row stays for
+      the next event, since a touchpad sends many small ones. *)
   i = panes.Active(state)
   j = view.PaneAt(event.X, event.Y, state)
   if j > 0 and j != i
@@ -1556,16 +1558,10 @@ defn Wheel(event, state)
 end
 
 defn wheeled(event, state)
-  (** The screen of the current buffer moved by the wheel, and its cursor brought into the lines of view.Band. *)
-  b = current(state)
+  (** The screen of the current buffer moved by the wheel, and its cursor brought where Follow keeps it. *)
   wanted = wheelRest(state) - event.Amount * config(state).WheelLines()
   lines = math.Div(math.Floor(wanted + 0.5), 1)
-  b.Top = list.Min(list.Max(1, b.Top + lines), rope.LineCount(b.Rope))
-  band = view.Band(rows(state), ScrollMargin(state), b)
-  line = list.Min(list.Max(b.Cursor.Line, band.First), band.Last)
-  if line != b.Cursor.Line
-    b = text.MoveLine(line - b.Cursor.Line, b)
-  end
+  b = view.Wheeled(rows(state), ScrollMargin(state), view.Scrolled(lines, current(state)))
   s = put(b, state)
   s.Wheel = wanted - lines
   s
@@ -1586,7 +1582,7 @@ defn down(event, state)
     b = text.Place(at.Line, at.Column, current(s))
     b.Mark = b.Cursor
     b.Origin = "mouse"
-    b.Pointed = true
+    b.Hold = "mouse"
     out = put(b, s)
     out.Dragging = true
     out.Pressed = {X: event.X, Y: event.Y}

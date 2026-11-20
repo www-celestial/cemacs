@@ -265,45 +265,123 @@ defn isFollowMarginAtFileEdges()
   view.Follow(10, 80, 3, hundredAt(1)).Top == 1 and view.Follow(10, 80, 3, hundredAt(2)).Top == 1 and view.Follow(10, 80, 3, last).Top == 91
 end
 
-defn isFollowPointedKeepsTop()
+defn isFollowMouseKeepsTop()
   (** The cursor that the mouse put on the last row keeps the screen: no margin until a key. *)
   b = hundredAt(10)
-  b.Pointed = true
+  b.Hold = "mouse"
   view.Follow(10, 80, 3, b).Top == 1
+end
+
+defn isFollowWheelHolds()
+  (** A screen that the wheel holds stays, the cursor away from it. *)
+  b = hundredAt(1)
+  b.Top = 50
+  b.Hold = "wheel"
+  view.Follow(10, 80, 3, b).Top == 50
 end
 
 isFollowMarginOfSmallScreen() = view.Follow(3, 80, 3, hundredAt(3)).Top == 2   (** A screen of 3 rows keeps one line around the cursor. *)
 
 defn isFollowMarginPastBlock()
-  (** A block too high for the margin: the cursor's line shows, and the screen starts at a line. *)
+  (** Under a block of 20 rows, the cursor's line comes in 3 rows over the bottom, the screen starting inside the block: its lower part shows. *)
   b = text.WithBlocks([blockAt(9, 20, "result")], text.Of(manyLines(100), "a.ce"))
   b.Cursor = {Line: 10, Column: 0}
   f = view.Follow(10, 80, 3, b)
-  f.Top <= 10 and view.RowOf(10, f, view.Under(f)) < 10
+  f.Top == 9 and f.Skip == 15 and view.RowOf(10, f, view.Under(f)) == 6
+end
+
+defn isFollowBlockAboveKeepsCursorStill()
+  (** A block of 15 rows two lines under the cursor moves nothing while the cursor is far from the bottom: the margin counts rows. *)
+  b = text.WithBlocks([blockAt(7, 15, "result")], text.Of(manyLines(100), "a.ce"))
+  b.Cursor = {Line: 5, Column: 0}
+  view.Follow(28, 80, 3, b).Top == 1
+end
+
+defn isWheelInsideTallBlockHolds()
+  (** Inside a block of 40 rows on a screen of 10, no line can take the cursor: the screen holds, the cursor where it was, until a key. *)
+  b = text.WithBlocks([blockAt(5, 40, "result")], text.Of(manyLines(100), "a.ce"))
+  w = view.Wheeled(10, 3, view.Scrolled(15, b))
+  w.Hold == "wheel" and w.Cursor.Line == 1 and w.Top == 5 and w.Skip == 11 and view.Follow(10, 80, 3, w).Skip == 11
+end
+
+defn isWheelNotchInBlockMovesRows()
+  (** A notch of 3 rows inside a block of 20 rows moves the screen 3 rows into it, never past the whole block at once. *)
+  b = text.WithBlocks([blockAt(2, 20, "result")], text.Of(manyLines(100), "a.ce"))
+  one = view.Scrolled(3, b)
+  two = view.Scrolled(3, one)
+  one.Top == 2 and one.Skip == 2 and two.Top == 2 and two.Skip == 5
+end
+
+(** The rows of the file above line n, of the lines and their blocks. *)
+rowsAbove(n, u) = list.Sum([1 + dict.GetOr("$k", 0, if value.IsMissing(u) {} else u end) for k in list.Range(1, n - 1)])
+(** The rows of the file under the words of line n, to the end. *)
+rowsUnder(n, count, u) = rowsAbove(count + 1, u) - rowsAbove(n, u) - 1
+
+defn placeOf(b)
+  (** The place of a screen as one number: the rows of the file above its first row. *)
+  u = view.Under(b)
+  rowsAbove(b.Top, u) + view.SkipOf(b, u)
+end
+
+defn buffered(p)
+  (** A buffer of p.Lines lines with the blocks of p, its screen at p.Top and p.Skip, the cursor on p.Line. *)
+  b = text.WithBlocks(list.Map(k -> blockAt(k.Line, k.Rows, "r"), p.Blocks), text.Of(manyLines(p.Lines), missing))
+  b.Top = list.Min(p.Top, p.Lines)
+  b.Skip = p.Skip
+  b.Cursor = {Line: list.Min(p.Line, p.Lines), Column: 0}
+  b
 end
 
 defn isFollowSettled(p)
-  (** For any text, blocks, screen, margin, top and cursor: the screen shows the cursor, keeps the margin where the file and the blocks leave room, stays put
-      when followed again, and keeps its top for the lines that Band gives, and only for them while the margin has room. *)
-  b = text.WithBlocks(list.Map(k -> blockAt(k.Line, k.Rows, "r"), p.Blocks), text.Of(manyLines(p.Lines), missing))
-  b.Top = list.Min(p.Top, p.Lines)
-  b.Cursor = {Line: list.Min(p.Line, p.Lines), Column: 0}
+  (** For any text, blocks, screen, margin, place and cursor: the screen shows the words of the cursor's line, with the margin above and under them as far as
+      the file has rows; it stays where Keeps says, and else moves to the nearest place, the line on the first or the last row the margin allows; followed
+      again, it stays. *)
+  b = buffered(p)
   f = view.Follow(p.Rows, 80, p.Margin, b)
   u = view.Under(f)
   line = b.Cursor.Line
-  shows = f.Top <= line and view.RowOf(line, f, u) < p.Rows
+  row = view.RowOf(line, f, u)
   m = view.Kept(p.Rows, p.Margin)
-  below = list.Min(p.Lines, line + m)
-  roomy = view.TopFor(below, p.Rows, f) <= list.Max(1, line - m)
-  band = view.Band(p.Rows, p.Margin, b)
-  kept = if band.First <= line and line <= band.Last f.Top == b.Top else not roomy or f.Top != b.Top end
-  margins = not roomy or ((f.Top == 1 or line - f.Top >= m) and view.RowOf(below, f, u) < p.Rows)
-  shows and kept and margins and view.Follow(p.Rows, 80, p.Margin, f).Top == f.Top
+  low = list.Min(m, rowsAbove(line, u))
+  high = p.Rows - 1 - list.Min(m, rowsUnder(line, p.Lines, u))
+  fits = low <= row and row <= high
+  kept = if view.Keeps(line, p.Rows, p.Margin, b) placeOf(f) == placeOf(b) else row == low or row == high end
+  again = view.Follow(p.Rows, 80, p.Margin, f)
+  fits and kept and placeOf(again) == placeOf(f)
 end
 
-blocks = gen.List(gen.Of({Line: gen.Int(1, 40), Rows: gen.Int(1, 12)}), max = 3)
-places = gen.Of({Lines: gen.Int(1, 40), Rows: gen.Int(1, 14), Margin: gen.Int(0, 6), Top: gen.Int(1, 40), Line: gen.Int(1, 40), Blocks: blocks})
-isFollowSettledAlways() = test.ForAll(isFollowSettled, places, cases = 400)
+defn isScrolledByRows(p)
+  (** The wheel moves the screen by rows, through the blocks as through the lines, from the first row of the file to the last row of its last line. *)
+  b = buffered(p)
+  u = view.Under(b)
+  last = rowsAbove(p.Lines + 1, u) - 1
+  k = p.Line - 20
+  placeOf(view.Scrolled(k, b)) == list.Max(0, list.Min(placeOf(b) + k, last))
+end
+
+defn isWheeledFollows(p)
+  (** After the wheel, the cursor is on a line of the screen that Follow keeps, or on the line of the screen nearest to it when none does; the screen holds
+      only when no line's words are on it. *)
+  b = view.Wheeled(p.Rows, p.Margin, view.Scrolled(p.Line - 20, buffered(p)))
+  u = view.Under(b)
+  first = if view.SkipOf(b, u) > 0 b.Top + 1 else b.Top end
+  shown = list.Range(first, list.Min(p.Lines, view.LineAtRow(p.Rows - 1, b, u)))
+  row = view.RowOf(b.Cursor.Line, b, u)
+  if view.HoldOf(b) == "wheel"
+    value.Len(shown) == 0
+  else
+    onScreen = 0 <= row and row < p.Rows
+    keeps = view.Keeps(b.Cursor.Line, p.Rows, p.Margin, b)
+    onScreen and (keeps or not list.Any([view.Keeps(n, p.Rows, p.Margin, b) for n in shown]))
+  end
+end
+
+blocks = gen.List(gen.Of({Line: gen.Int(1, 40), Rows: gen.Int(1, 16)}), max = 3)
+places = gen.Of({Lines: gen.Int(1, 40), Rows: gen.Int(1, 14), Margin: gen.Int(0, 6), Top: gen.Int(1, 40), Skip: gen.Int(0, 16), Line: gen.Int(1, 40),
+  Blocks: blocks})
+isFollowSettledAlways() = test.ForAll(isFollowSettled, places, cases = 500)
+isScrolledByRowsAlways() = test.ForAll(isScrolledByRows, places, cases = 300)
+isWheeledFollowsAlways() = test.ForAll(isWheeledFollows, places, cases = 300)
 
 defn isFollowStateMoves()
   b = text.Of(manyLines(100), "a.ce")
@@ -397,10 +475,11 @@ defn isViewOfKeepsPlace()
   b = hundredAt(40)
   b.Top = 30
   b.Left = 2
-  b.Pointed = true
+  b.Skip = 2
+  b.Hold = "mouse"
   v = view.ViewOf(b)
   put = view.WithView(v, text.Of(manyLines(100), "a.ce"))
-  put.Cursor == {Line: 40, Column: 0} and put.Top == 30 and put.Left == 2 and put.Pointed and value.IsMissing(put.Mark)
+  put.Cursor == {Line: 40, Column: 0} and put.Top == 30 and put.Skip == 2 and put.Left == 2 and put.Hold == "mouse" and value.IsMissing(put.Mark)
 end
 defn isWithViewClamps()
   v = view.ViewOf(hundredAt(90))
@@ -570,11 +649,12 @@ defn isLineAtRowOfBlock()
 end
 
 defn isFollowCountsBlocks()
-  (** The cursor on line 10 of a screen of 10 rows moves the top when a block of 3 rows is above it: past the block, as a screen starts at a line. *)
+  (** The cursor on line 10 of a screen of 10 rows moves the screen when a block of 3 rows is above it: by rows, so that the screen starts inside the
+      block, its first two rows above. *)
   b = withBlock(2, 3)
   b.Cursor = {Line: 10, Column: 0}
   f = view.Follow(10, 80, 0, b)
-  f.Top == 3 and view.RowOf(10, f, view.Under(f)) == 7
+  f.Top == 2 and f.Skip == 2 and view.RowOf(10, f, view.Under(f)) == 9
 end
 
 defn isBlockDrawnUnderItsLine()

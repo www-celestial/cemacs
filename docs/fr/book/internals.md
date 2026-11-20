@@ -45,10 +45,11 @@ Un buffer, fait par [text.Of], contient `Rope` (son texte), `Cursor`, `Mark`, `O
 `"shift"`, `"mouse"`, ou `""`), `History`, `Version`, `Clock`, `Saved`, `Path`, `Disk` (la taille et l'heure de son fichier
 au moment de la lecture), `Top` et `Left` (la première ligne et la première colonne à l'écran), `Colors`, `Guess` (les
 états des couleurs devinés pour un écran au-delà de ceux qui sont connus, ou `missing`), `Screen` (ce que la vue garde des
-lignes de l'écran d'une frame à la suivante), `Wanted` (la goal column), `Typing`, `Pointed` (true tant que le curseur est
-là où la souris l'a mis, jusqu'à une touche), `Marks` (les erreurs de la vérification) et `MarksNote` (des mots pour la
-mode line quand il n'y en a pas, comme la raison pour laquelle le texte n'a pas été vérifié) ; une liste a aussi `List`, et
-la vérification ajoute `Checked`, la version qu'elle a lue.
+lignes de l'écran d'une frame à la suivante), `Wanted` (la goal column), `Typing`, `Hold` (ce qui tient l'écran jusqu'à une
+touche : `"mouse"`, `"wheel"` ou `""`), `Skip` (les rangées de la ligne du haut au-dessus de l'écran, dans ses blocs),
+`Marks` (les erreurs de la vérification) et `MarksNote` (des mots pour la mode line quand il n'y en a pas, comme la raison
+pour laquelle le texte n'a pas été vérifié) ; une liste a aussi `List`, et la vérification ajoute `Checked`, la version
+qu'elle a lue.
 
 Un buffer est modifié quand sa `Version` diffère de `Saved`. Chaque modification prend un nouveau numéro à `Clock`, qui ne
 recule jamais, si bien que deux textes différents ne partagent jamais un numéro, et l'annulation ramène le numéro de l'état

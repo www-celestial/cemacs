@@ -97,16 +97,23 @@ wheel scrolls the pane under the mouse without making it the one you edit.
 
 ## The screen of a pane
 
-A pane shows the lines from its top line down, as many as fit. It never wraps a line: a line longer than the pane is cut at
-its edge, as Emacs does with `truncate-lines`. The screen follows the cursor, and moves as little as it can, keeping
-[emacs.ScrollMargin] lines, 3, between the cursor and its top or its bottom, as `scroll-margin` does in Emacs: going down,
-the screen moves once only 3 lines are left under the cursor; going up, once only 3 are left above it. The first and the
-last lines of the file still reach the edge, and a pane of few lines keeps at most half of them around the cursor, one line
-on each side in a pane of 3. Sideways, a cursor past the right edge moves the screen to the right.
+A pane shows the lines from its top line down, as many as fit, with the blocks under them, as the graphs of a cell. It
+never wraps a line: a line longer than the pane is cut at its edge, as Emacs does with `truncate-lines`. The screen follows
+the cursor, and moves as little as it can, a row at a time, keeping [emacs.ScrollMargin] rows, 3, between the cursor and
+its top or its bottom, as `scroll-margin` does in Emacs: going down, the screen moves once only 3 rows are left under the
+cursor; going up, once only 3 are left above it. A row is the height of a line of code, and a graph takes many: the margin
+counts the rows, so a graph under the next line doesn't move the screen while the cursor is far from the edge. The first
+and the last rows of the file still reach the edge, and a pane of few rows keeps at most half of them around the cursor,
+one row on each side in a pane of 3. Sideways, a cursor past the right edge moves the screen to the right.
 
-The wheel moves the screen and takes the cursor along, which stays as far from the edge. A click leaves the screen where it
-is, even on a line of the margin, so that the text doesn't move under the mouse; the margin comes back at the next key.
-`ScrollMargin` set to `() -> 0` moves the screen only when the cursor leaves it: see [Settings](customising.md#settings).
+The screen can start inside a graph, which then shows its lower part: moving down past a graph, or up into one, the screen
+slides over it a row at a time, as over the lines, instead of showing or hiding the whole graph at once.
+
+The wheel moves the screen by rows, through the graphs as through the lines, and takes the cursor along, which stays as far
+from the edge. Inside a graph taller than the pane, where no line shows, the cursor stays where it was until the next key,
+which brings the screen back to it. A click leaves the screen where it is, even on a line of the margin, so that the text
+doesn't move under the mouse; the margin comes back at the next key. `ScrollMargin` set to `() -> 0` moves the screen only
+when the cursor leaves it: see [Settings](customising.md#settings).
 
 The column on the left holds the number of each line, 62 pixels wide with its margins. A line with an error or a warning
 has its number in red or in amber, and a breakpoint is a dot of colour before the number: see
