@@ -51,6 +51,26 @@ matrice comme sa forme et ses 10 × 10 premières valeurs, toute autre valeur co
 cell qui n'a rien affiché et ne donne aucune valeur ne dessine rien. Chaque partie est coupée à 40 lignes, la dernière
 disant combien il en reste.
 
+Une cell montre plus que sa dernière valeur avec `cells.Show` de
+[std/cells](https://www-celestial.github.io/cesia-lang/cells.html), comme `display` dans Jupyter : chaque valeur qu'elle
+montre vient à sa place parmi ce que la cell affiche, un graphe, une table, une matrice ou un texte, puis la valeur de la
+dernière expression vient en dernier. Deux graphes et une ligne entre eux :
+
+```cesia norun
+use std/cells
+use std/io
+use std/plot
+
+(* %% Two graphs *)
+cells.Show(plot.Line([1, 2, 3], [1, 4, 9]))
+io.Print("then the other")
+plot.Line([1, 2, 3], [9, 4, 1])
+```
+
+Chaque graphe est dessiné à la largeur du pane et redessiné quand elle change, une animation a sa propre barre et un graphe
+3D tourne seul ; `C-c e f` donne les touches au premier de la cell. `*repl*` les dessine dans le même ordre, et la page de
+`C-c e h` aussi.
+
 Un résultat n'est pas du texte : le curseur n'y entre jamais, il n'est jamais enregistré, et une modification ne peut pas
 le toucher. Il bouge avec les lignes de sa cell quand vous tapez au-dessus ou dedans, et une demi-seconde après la dernière
 touche, il revient sous la dernière ligne de sa cell. L'écran, la souris et le curseur comptent ses rangées : une page

@@ -42,6 +42,8 @@ what a key can lead to, so no key has to be learnt before the start.
 
 - A file of Cesia cut by `(* %% Title *)` runs as a notebook, `C-c e`, in a session of std/cells: results under their
   cells, the cells that read what one defines run again, `*variables*`, `*repl*`, and the page of a file.
+- `cells.Show` of Cesia 1.3 gives a cell more than one result: each graph, table or text it shows under the cell at its
+  place among what the cell printed, each graph drawn and redrawn on its own, in `*repl*` and the page too.
 - A graph of std/plot under its cell, drawn from its scene; sliders under their lines in a cell of sliders, moved by the
   mouse or by `C-c e f` and the arrows, their number written in the buffer; animations played by Space on their bar; 3D
   graphs turned by a drag or by the arrows, each view asked of the session.

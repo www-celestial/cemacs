@@ -432,37 +432,105 @@ defn resultBlock(k, i, line, lines, graph, state)
   dict.Put("Mouse", if isAnimation(graph) (action, point, st) -> barMouse(key, action, point, st) else (action, point, st) -> turnMouse(key, action, point, st) end, made)
 end
 
-defn withBlock(k, i, lines, state, graph = missing, inputs = {}, status = missing)
-  (** The state with the block of cell i of buffer k in place of the one it had, or none for a cell that printed nothing and shows no value. Inputs are
-      the sliders its result was computed with, by name, and their numbers: while the file writes another number, a note says so. A status, a line
-      as waiting or running…, goes above the result, which stays. *)
+(** The state with one block for cell i of buffer k, its lines and its graph, in place of those it had: see withParts. *)
+withBlock(k, i, lines, state, graph = missing, inputs = {}, status = missing) = withParts(k, i, [{Lines: lines, Graph: graph}], state, inputs = inputs, status = status)
+
+defn withParts(k, i, parts, state, inputs = {}, status = missing)
+  (** The state with the blocks of cell i of buffer k in place of those it had: one for each part of its result, {Lines, Graph}, one under the other
+      in their order, each numbered by its Part, or none for a cell that printed nothing and shows no value. Inputs are the sliders its result was
+      computed with, by name, and their numbers: while the file writes another number, a note says so above the first part. A status, a line as waiting
+      or running…, goes there too, above the result, which stays. *)
   b = state.Buffers[k]
   r = runOf(b)
   kept = [x for x in text.BlocksOf(b) if dict.GetOr("Cell", 0, x) != i]
   note = if value.Len(inputs) == 0 missing else staleNote(inputs, r) end
-  shown = list.Concat([x for x in [status, note] if value.IsSome(x)], lines)
-  made = dict.Merge(resultBlock(k, i, anchor(r.Cells[i], b), shown, graph, state), {Base: lines, Inputs: inputs, Status: status})
+  head = [x for x in [status, note] if value.IsSome(x)]
+  at = anchor(r.Cells[i], b)
+  made = []
+  for j in 1..value.Len(parts)
+    lines = if j == 1 list.Concat(head, parts[j].Lines) else parts[j].Lines end
+    if value.Len(lines) > 0 or value.IsSome(parts[j].Graph)
+      first = j == 1
+      made = list.Append(dict.Merge(resultBlock(k, i, at, lines, parts[j].Graph, state), {Base: parts[j].Lines, Inputs: if first inputs else {} end,
+        Status: if first status else missing end, Part: j}), made)
+    end
+  end
   s = state
-  s.Buffers[k] = text.WithBlocks(if value.Len(shown) == 0 and value.IsMissing(graph) kept else list.SortBy(x -> x.Line, list.Append(made, kept)) end, b)
+  s.Buffers[k] = text.WithBlocks(list.SortBy(x -> x.Line, list.Concat(kept, made)), b)
   s
 end
 
+(** The blocks of cell i of buffer k, in the order of their parts. *)
+partsOf(k, i, state) = list.SortBy(x -> dict.GetOr("Part", 1, x), [x for x in text.BlocksOf(state.Buffers[k]) if dict.GetOr("Cell", 0, x) == i])
+
 defn withStatus(k, i, status, state)
-  (** The state with the block of cell i of buffer k showing a status above its result, or none: in a slider's rerun, a cell waits and runs with its
-      last result and its graph in sight, which the new one replaces. *)
-  old = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i, text.BlocksOf(state.Buffers[k]))
-  if value.IsMissing(old)
+  (** The state with the blocks of cell i of buffer k showing a status above its result, or none: in a slider's rerun, a cell waits and runs with its
+      last result and its graphs in sight, which the new ones replace. *)
+  old = partsOf(k, i, state)
+  if value.Len(old) == 0
     return withBlock(k, i, [], state, status = status)
   end
-  withBlock(k, i, dict.GetOr("Base", old.Lines, old), state, graph = dict.GetOr("Graph", missing, old), inputs = dict.GetOr("Inputs", {}, old), status = status)
+  parts = [{Lines: dict.GetOr("Base", x.Lines, x), Graph: dict.GetOr("Graph", missing, x)} for x in old]
+  withParts(k, i, parts, state, inputs = dict.GetOr("Inputs", {}, old[1]), status = status)
+end
+
+(** Are two blocks the same part of the same cell? *)
+samePart(x, y) = dict.GetOr("Cell", 0, x) == dict.GetOr("Cell", 0, y) and dict.GetOr("Part", 1, x) == dict.GetOr("Part", 1, y)
+
+defn rebuilt(k, x, graph, state)
+  (** The state with block x of buffer k drawn again with another graph, in its place among the parts of its cell: its lines, its status and its note
+      as they were. *)
+  b = state.Buffers[k]
+  made = dict.Merge(resultBlock(k, x.Cell, x.Line, x.Lines, graph, state), {Base: dict.GetOr("Base", x.Lines, x), Inputs: dict.GetOr("Inputs", {}, x),
+    Status: dict.GetOr("Status", missing, x), Part: dict.GetOr("Part", 1, x)})
+  s = state
+  s.Buffers[k] = text.WithBlocks([if samePart(y, x) made else y end for y in text.BlocksOf(b)], b)
+  s
 end
 
 (** Does cell i run again for a slider, its last result kept in sight? *)
 keeps(i, r) = i in dict.GetOr("Keeping", [], r)
 
-defn graphOf(ran, state)
-  (** The graph that a run shows, ready for the screen, or missing. *)
-  v = if result.IsOk(ran) ran.Value.Value else missing end
+defn resultParts(ran, state)
+  (** The parts of the result of a run, each {Lines, Graph}, in the order they came: what the cell printed and what cells.Show showed, then its value or
+      its error; each graph ends a part. Each text is cut at MaxLines() lines. A graph that isn't drawn says why on an error line, and a run that
+      failed is its message alone. *)
+  if result.IsErr(ran)
+    return [{Lines: [{Role: "error", Words: ran.Error.Message}], Graph: missing}]
+  end
+  done = ran.Value
+  printed = (first, last) -> capped([{Role: "output", Words: l} for l in done.Output[first..last]])
+  out = []
+  lines = []
+  from = 1
+  for p in dict.GetOr("Shown", [], done)
+    lines = list.Concat(lines, printed(from, p.After))
+    from = list.Max(from, p.After + 1)
+    g = graphFrom(p.Value, state)
+    if p.Value.Kind == "error"
+      lines = list.Concat(lines, [{Role: "error", Words: l} for l in str.Lines(p.Value.Text)])
+    else if value.IsSome(g) and dict.Has("Fault", g)
+      lines = list.Append({Role: "error", Words: g.Fault}, lines)
+    else if value.IsSome(g)
+      out = list.Append({Lines: lines, Graph: g}, out)
+      lines = []
+    else
+      lines = list.Concat(lines, capped(valueLines(p.Value)))
+    end
+  end
+  lines = list.Concat(lines, printed(from, value.Len(done.Output)))
+  if value.IsSome(done.Error)
+    return list.Append({Lines: list.Concat(lines, [{Role: "error", Words: l} for l in str.Lines(done.Error.Text)]), Graph: missing}, out)
+  end
+  g = graphFrom(done.Value, state)
+  if value.IsSome(g) and dict.Has("Fault", g)
+    return list.Append({Lines: list.Append({Role: "error", Words: g.Fault}, lines), Graph: missing}, out)
+  end
+  list.Append({Lines: list.Concat(lines, capped(valueLines(done.Value))), Graph: g}, out)
+end
+
+defn graphFrom(v, state)
+  (** A graph that a run shows, ready for the screen, or missing for a value that is no graph; a scene that isn't sane gives its Fault. *)
   if value.IsMissing(v) or v.Kind != "graph"
     return missing
   end
@@ -567,15 +635,9 @@ defn taken(k, state)
   r.Task = missing
   r.Index = 0
   ran = if result.IsOk(got) got.Value else got end
-  lines = if result.IsOk(ran) resultLines({Errors: [], Output: ran.Value.Output, Value: ran.Value.Value, Error: ran.Value.Error}) else [{Role: "error", Words: ran.Error.Message}] end
-  graph = graphOf(ran, state)
-  if value.IsSome(graph) and dict.Has("Fault", graph)
-    lines = list.Append({Role: "error", Words: graph.Fault}, lines)
-    graph = missing
-  end
   (* A cell queued again while it ran keeps its result in sight for its next run. *)
   r.Keeping = [j for j in dict.GetOr("Keeping", [], r) if j != i or j in r.Queue]
-  s = withBlock(k, i, lines, withRun(k, r, state), graph = graph, inputs = dict.GetOr("Inputs", {}, r))
+  s = withParts(k, i, resultParts(ran, state), withRun(k, r, state), inputs = dict.GetOr("Inputs", {}, r))
   if result.IsErr(ran)
     r = dropped(r)
     r.Session = missing
@@ -709,17 +771,16 @@ defn widened(k, state)
     r.Rescene = missing
     s = withRun(k, r, state)
     scene = if result.IsOk(got) got.Value else got end
-    old = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == pending.Cell, text.BlocksOf(s.Buffers[k]))
-    if value.IsMissing(old) or value.IsMissing(dict.GetOr("Graph", missing, old))
+    old = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == pending.Cell and value.IsSome(dict.GetOr("Graph", missing, x)) and value.Equal(x.Graph.Key, pending.Key),
+      text.BlocksOf(s.Buffers[k]))
+    if value.IsMissing(old)
       return s
     end
     if result.IsErr(scene) or value.IsSome(SceneFault(scene.Value))
       (* A graph the session no longer holds, or a scene that isn't sane, keeps its width. *)
-      return withBlock(k, pending.Cell, dict.GetOr("Base", old.Lines, old), s, graph = dict.Put("Fixed", true, old.Graph), inputs = dict.GetOr("Inputs", {}, old),
-        status = dict.GetOr("Status", missing, old))
+      return rebuilt(k, old, dict.Put("Fixed", true, old.Graph), s)
     end
-    return withBlock(k, pending.Cell, dict.GetOr("Base", old.Lines, old), s, graph = dict.Merge(old.Graph, Prepared(scene.Value, commands.Home(s))),
-      inputs = dict.GetOr("Inputs", {}, old), status = dict.GetOr("Status", missing, old))
+    return rebuilt(k, old, dict.Merge(old.Graph, Prepared(scene.Value, commands.Home(s))), s)
   end
   x = stale(b, state)
   if value.IsMissing(x)
@@ -730,7 +791,7 @@ defn widened(k, state)
   width = GraphWidth(state)
   frame = dict.GetOr("Frame", 1, x.Graph)
   turn = if isTurning(x.Graph) x.Graph.View else missing end
-  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)), Cell: x.Cell}
+  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)), Cell: x.Cell, Key: key}
   withRun(k, r, state)
 end
 
@@ -998,26 +1059,25 @@ defn answered(k, state)
   end
   p.Task = missing
   ran = if result.IsOk(got) got.Value else got end
-  lines = if result.IsOk(ran) resultLines({Errors: [], Output: ran.Value.Output, Value: ran.Value.Value, Error: ran.Value.Error}) else [{Role: "error", Words: ran.Error.Message}] end
-  words = str.Join("", ["$(l.Words)\n" for l in lines])
   b.Repl = p
   s = state
-  after = appended("$words$Prompt", b)
-  graph = graphOf(ran, state)
-  if value.IsSome(graph) and dict.Has("Fault", graph)
-    after = appended("$words$(graph.Fault)\n$Prompt", b)
-    graph = missing
+  after = b
+  for part in resultParts(ran, state)
+    words = str.Join("", ["$(l.Words)\n" for l in part.Lines])
+    graph = part.Graph
+    if isAnimation(graph)
+      (* *repl* shows the first frame of an animation: a cell plays it, with its bar. *)
+      words = "$(words)an animation of $(graph.Frames) frames at $(rateText(graph.Fps)) a second: its first; a cell plays it\n"
+      graph = {Scene: graph.Scene, Font: graph.Font, Key: graph.Key}
+    end
+    after = appended(words, after)
+    if value.IsSome(graph)
+      (* Each graph under the last line of the answer so far, in the order of the parts: a 3D graph turns there too. *)
+      under = rope.LineCount(after.Rope) - 1
+      after = text.WithBlocks(list.Append(resultBlock(k, 0, under, [], graph, state), text.BlocksOf(after)), after)
+    end
   end
-  if isAnimation(graph)
-    (* *repl* shows the first frame of an animation: a cell plays it, with its bar. *)
-    after = appended("$(words)an animation of $(graph.Frames) frames at $(rateText(graph.Fps)) a second: its first; a cell plays it\n$Prompt", b)
-    graph = {Scene: graph.Scene, Font: graph.Font, Key: graph.Key}
-  end
-  if value.IsSome(graph)
-    (* The graph under the last line of the answer, above the new prompt: a 3D graph turns there too. *)
-    under = rope.LineCount(after.Rope) - 1
-    after = text.WithBlocks(list.Append(resultBlock(k, 0, under, [], graph, state), text.BlocksOf(after)), after)
-  end
+  after = appended(Prompt, after)
   s.Buffers[k] = after
   owner = indexOf(p.Owner, s)
   r = if owner == 0 missing else runOf(s.Buffers[owner]) end
@@ -1149,7 +1209,8 @@ defn restaled(k, state)
         out = list.Append(x, out)
       else
         changed = true
-        out = list.Append(dict.Merge(resultBlock(k, x.Cell, x.Line, lines, x.Graph, state), {Base: x.Base, Inputs: inputs, Status: dict.GetOr("Status", missing, x)}), out)
+        out = list.Append(dict.Merge(resultBlock(k, x.Cell, x.Line, lines, x.Graph, state), {Base: x.Base, Inputs: inputs, Status: dict.GetOr("Status", missing, x),
+          Part: dict.GetOr("Part", 1, x)}), out)
       end
     end
   end
@@ -1639,7 +1700,7 @@ barFocused(k, graph, state) = isAnimation(graph) and value.IsSome(commands.Focus
 animOf(k, key, state) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) > 0 and isAnimation(dict.GetOr("Graph", missing, x)) and x.Graph.Key == key, text.BlocksOf(state.Buffers[k]))
 
 (** The state with the block x of buffer k showing a graph, its lines as they were. *)
-withGraph(k, x, graph, state) = withBlock(k, x.Cell, dict.GetOr("Base", x.Lines, x), state, graph = graph, inputs = dict.GetOr("Inputs", {}, x), status = dict.GetOr("Status", missing, x))
+withGraph(k, x, graph, state) = rebuilt(k, x, graph, state)
 
 (** Where the bar of an animation's block starts, in pixels down the block: under its lines and its graph. *)
 barTop(x, cell) = (value.Len(x.Lines) + math.Div(x.Graph.Scene.Height + 8 + cell.Height - 1, cell.Height)) * cell.Height

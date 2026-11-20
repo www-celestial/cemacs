@@ -47,6 +47,26 @@ matrix as its shape and its first 10 × 10 values, any other value as its text. 
 seconds so far; the cells after it in the queue show `waiting`. A cell that printed nothing and gives no value draws
 nothing. Each part is cut at 40 lines, the last one saying how many more there are.
 
+A cell shows more than its last value with `cells.Show` of
+[std/cells](https://www-celestial.github.io/cesia-lang/cells.html), as `display` does in Jupyter: each value it shows comes
+at its place among what the cell prints, a graph, a table, a matrix or a text, then the value of the last expression comes
+last. Two graphs and a line between them:
+
+```cesia norun
+use std/cells
+use std/io
+use std/plot
+
+(* %% Two graphs *)
+cells.Show(plot.Line([1, 2, 3], [1, 4, 9]))
+io.Print("then the other")
+plot.Line([1, 2, 3], [9, 4, 1])
+```
+
+Each graph is drawn at the width of the pane and again when it changes, an animation has its own bar and a 3D graph turns
+on its own; `C-c e f` gives the keys to the first of the cell. `*repl*` draws them in the same order, and so does the page
+of `C-c e h`.
+
 A result is no text: the cursor never goes into it, it is never saved, and an edit can't touch it. It moves with the lines
 of its cell as you type above it or in it, and half a second after the last key, it goes back under the last line of its
 cell. The screen, the mouse and the cursor count its rows: a page shows fewer lines when results take room in it.

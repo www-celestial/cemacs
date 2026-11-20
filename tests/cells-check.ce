@@ -119,7 +119,21 @@ check(notebook.Moving(narrow), "a graph whose pane changed its width asks for ti
 narrowed = settled(narrow)
 again2 = [x for x in text.BlocksOf(narrowed.Buffers[narrowed.Current]) if value.IsSome(dict.GetOr("Graph", missing, x))]
 check(again2[1].Graph.Scene.Width == notebook.GraphWidth(narrowed) and notebook.GraphWidth(narrowed) < notebook.GraphWidth(plotted), "the graph is drawn again at the new width")
-prompt = notebook.OpenRepl(commands.ToBuffer(1, narrowed))
+(* cells.Show: a graph, a text and the value's graph of one cell, in their order, each graph with its key, and both drawn again at a new width. *)
+showing = narrowed
+showing.Buffers[showing.Current] = text.InsertWords("\n(* %% Two *)\nuse std/cells\nio.Print(\"first\")\ncells.Show(plot.Line([1, 2], [2, 1]))\nio.Print(\"then\")\ncells.Show(9)\nplot.Line([1, 2], [1, 2])\n",
+  text.ToFileEnd(narrowed.Buffers[narrowed.Current]))
+showing = settled(notebook.RunCell(showing))
+partsOf = st -> [x for x in text.BlocksOf(st.Buffers[st.Current]) if dict.GetOr("Cell", 0, x) == dict.GetOr("Cell", 0, list.Last(text.BlocksOf(st.Buffers[st.Current])))]
+two = partsOf(showing)
+twoWords = [[str.Trim(c.Text) for c in x.Draw(2000, look) if c.Kind == "text"] for x in two]
+check(value.Len(two) == 2 and value.Equal(twoWords, [["first"], ["then", "9"]]) and value.IsSome(dict.GetOr("Graph", missing, two[1])) and value.IsSome(dict.GetOr("Graph", missing, two[2])) and
+  not value.Equal(two[1].Graph.Key, two[2].Graph.Key), "cells.Show draws its parts in order, each graph with its key: $(twoWords)")
+wide = showing
+wide.Width = 1100
+wide = settled(wide)
+check(list.All([x.Graph.Scene.Width == notebook.GraphWidth(wide) for x in partsOf(wide)]) and notebook.GraphWidth(wide) != notebook.GraphWidth(showing), "both graphs of the cell are drawn again at the new width")
+prompt = notebook.OpenRepl(commands.ToBuffer(1, wide))
 drawing = prompt
 drawing.Buffers[drawing.Current] = text.InsertWords("plot.Of([plot.Line([1, 2], [3, 4])], title = \"In the prompt\")", prompt.Buffers[prompt.Current])
 shownGraph = settled(notebook.Enter(drawing))
