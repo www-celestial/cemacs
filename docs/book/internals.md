@@ -41,11 +41,11 @@ through a `match` with a default, for the reason [Changing Cemacs](customising.m
 
 A buffer, made by [text.Of], holds `Rope` (its text), `Cursor`, `Mark`, `Origin` (what set the mark: `"key"`, `"shift"`,
 `"mouse"`, or `""`), `History`, `Version`, `Clock`, `Saved`, `Path`, `Disk` (the size and time of its file when read),
-`Top` and `Left` (the first line and column on the screen), `Colors`, `Guess` (the states of the colours guessed for a screen
-past those known, or `missing`), `Screen` (what the view keeps of the lines on the screen from one frame to the next),
-`Wanted` (the goal column), `Typing`, `Free` (true after the wheel), `Marks` (the errors of the check) and `MarksNote` (words
-for the mode line when there are none, such as why the text wasn't checked); a list has `List` too, and the check adds
-`Checked`, the version it read.
+`Top` and `Left` (the first line and column on the screen), `Colors`, `Guess` (the states of the colours guessed for a
+screen past those known, or `missing`), `Screen` (what the view keeps of the lines on the screen from one frame to the
+next), `Wanted` (the goal column), `Typing`, `Pointed` (true while the cursor is where the mouse put it, until a key),
+`Marks` (the errors of the check) and `MarksNote` (words for the mode line when there are none, such as why the text wasn't
+checked); a list has `List` too, and the check adds `Checked`, the version it read.
 
 A buffer is modified when its `Version` differs from `Saved`. Each edit takes a new number from `Clock`, which never goes back,
 so two different texts never share a number, and undo brings back the number of the state it returns to: comparing two

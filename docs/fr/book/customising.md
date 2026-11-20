@@ -45,6 +45,7 @@ defn Changed(config)
   c = config
   (* c.FontSize = () -> 17 *)
   (* c.TabText = () -> "    " *)
+  (* c.ScrollMargin = () -> 5 *)
   (* c.Theme = () -> ui.Light *)
   (* c.Window = () -> {Width: 1600, Height: 900} *)
   (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)
@@ -131,7 +132,7 @@ Leurs valeurs aujourd'hui, lues dans le code au moment où cette page a été co
 use src/emacs
 use src/ui
 use std/value
-[emacs.TabText(), emacs.WheelLines(), emacs.DragZone(), emacs.FontSize(), emacs.HintDelay(), emacs.CheckDelay()] --> ["  ", 3.0, 4, 15, 0.5, 0.5]
+[emacs.TabText(), emacs.WheelLines(), emacs.ScrollMargin(), emacs.DragZone(), emacs.FontSize(), emacs.HintDelay(), emacs.CheckDelay()] --> ["  ", 3.0, 3, 4, 15, 0.5, 0.5]
 [value.Equal(emacs.Theme(), ui.Dark), emacs.Window()] --> [true, {Width: 1280, Height: 720}]
 ```
 
@@ -139,6 +140,7 @@ use std/value
 |---|---|---|---|
 | [emacs.TabText] | un texte | ce que tape Tab | à chaque Tab |
 | [emacs.WheelLines] | des lignes, un float (un nombre à virgule) | les lignes dont un cran de la molette déplace l'écran ; un touchpad envoie des morceaux de cran | à chaque tour de molette |
+| [emacs.ScrollMargin] | des lignes | les lignes gardées entre le curseur et le haut ou le bas de l'écran, comme `scroll-margin` dans Emacs ; 0 ne déplace l'écran que quand le curseur en sort | à chaque frame |
 | [emacs.DragZone] | des pixels | jusqu'où la souris peut aller depuis un appui, sur chaque axe, pour que cela reste un clic | à chaque déplacement de la souris |
 | [emacs.FontSize] | des points | la taille des trois polices | une fois, quand la fenêtre s'ouvre |
 | [emacs.HintDelay] | des secondes | l'attente après une prefix key avant que la bande des hints s'affiche | à chaque tick |
@@ -195,7 +197,7 @@ fenêtre :
 | `MouseKeys` | la souris, selon l'action de son événement |
 | `ListKeys` | les touches de chaque liste, devant les touches globales |
 | `CompleteKeys` | les touches de la liste des completions, devant les touches globales |
-| `TabText`, `WheelLines`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `Theme`, `Window` | les réglages |
+| `TabText`, `WheelLines`, `ScrollMargin`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `Theme`, `Window` | les réglages |
 | `Start` | ce que fait l'éditeur une fois, à son démarrage |
 | `Idle`, `Saved`, `Moving` | les hooks, qu'ajoute [check.Hooked] : voir plus bas |
 

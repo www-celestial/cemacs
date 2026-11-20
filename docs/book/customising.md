@@ -45,6 +45,7 @@ defn Changed(config)
   c = config
   (* c.FontSize = () -> 17 *)
   (* c.TabText = () -> "    " *)
+  (* c.ScrollMargin = () -> 5 *)
   (* c.Theme = () -> ui.Light *)
   (* c.Window = () -> {Width: 1600, Height: 900} *)
   (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)
@@ -128,7 +129,7 @@ values today, read from the code as this page was built:
 use src/emacs
 use src/ui
 use std/value
-[emacs.TabText(), emacs.WheelLines(), emacs.DragZone(), emacs.FontSize(), emacs.HintDelay(), emacs.CheckDelay()] --> ["  ", 3.0, 4, 15, 0.5, 0.5]
+[emacs.TabText(), emacs.WheelLines(), emacs.ScrollMargin(), emacs.DragZone(), emacs.FontSize(), emacs.HintDelay(), emacs.CheckDelay()] --> ["  ", 3.0, 3, 4, 15, 0.5, 0.5]
 [value.Equal(emacs.Theme(), ui.Dark), emacs.Window()] --> [true, {Width: 1280, Height: 720}]
 ```
 
@@ -136,6 +137,7 @@ use std/value
 |---|---|---|---|
 | [emacs.TabText] | a text | what Tab types | at each Tab |
 | [emacs.WheelLines] | lines, a float | the lines that one notch of the wheel moves the screen; a touchpad sends parts of a notch | at each turn of the wheel |
+| [emacs.ScrollMargin] | lines | the lines kept between the cursor and the top or the bottom of the screen, as `scroll-margin` in Emacs; 0 moves the screen only when the cursor leaves it | at each frame |
 | [emacs.DragZone] | pixels | how far the mouse may go from a press, on either axis, for it to stay a click | at each move of the mouse |
 | [emacs.FontSize] | points | the size of the three fonts | once, when the window opens |
 | [emacs.HintDelay] | seconds | the wait after a prefix key before the band of hints shows | at each tick |
@@ -191,7 +193,7 @@ The editor runs on a config, a record of functions that [emacs.Config] makes, [c
 | `MouseKeys` | the mouse, by the action of its event |
 | `ListKeys` | the keys of every list, over the global ones |
 | `CompleteKeys` | the keys of the list of completions, over the global ones |
-| `TabText`, `WheelLines`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `Theme`, `Window` | the settings |
+| `TabText`, `WheelLines`, `ScrollMargin`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `Theme`, `Window` | the settings |
 | `Start` | what the editor does once at its start |
 | `Idle`, `Saved`, `Moving` | the hooks, which [check.Hooked] adds: see below |
 

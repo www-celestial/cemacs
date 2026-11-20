@@ -127,9 +127,10 @@ defn isClickAtTopIsInCode()
   s.Current == 1 and here(s).Cursor == {Line: 1, Column: 1}
 end
 defn isWheel()
+  (** The wheel moves the screen, and the cursor with it: 3 lines from the top, as the ScrollMargin of the config says. *)
   s = stateOf(str.Join("\n", list.Map(n -> "word", list.Range(1, 100))))
   s = commands.Update({Kind: "mouse", Action: "wheel", X: 100, Y: 100, Button: 0, Amount: -1.0}, s)
-  here(s).Top == 4 and here(s).Cursor == {Line: 1, Column: 0} and here(s).Free
+  here(s).Top == 4 and here(s).Cursor == {Line: 7, Column: 0}
 end
 defn isWheelUpStaysInFile()
   s = stateOf("a\nb")
@@ -137,20 +138,47 @@ defn isWheelUpStaysInFile()
   here(s).Top == 1
 end
 defn isWheelDownStaysInFile()
-  s = stateOf("a\nb")
-  s = commands.Update({Kind: "mouse", Action: "wheel", X: 100, Y: 100, Button: 0, Amount: -50.0}, s)
-  here(s).Top == 2
+  (** At the end of the file, the screen stops with the last line and the margin above it: the cursor goes to the last line. *)
+  s = stateOf(str.Join("\n", list.Map(n -> "word", list.Range(1, 100))))
+  s = commands.Update({Kind: "mouse", Action: "wheel", X: 100, Y: 100, Button: 0, Amount: -500.0}, s)
+  here(s).Top == 97 and here(s).Cursor.Line == 100
 end
 defn isWheelNotPulledBack()
   s = stateOf(str.Join("\n", list.Map(n -> "word", list.Range(1, 100))))
   s = commands.Update({Kind: "mouse", Action: "wheel", X: 100, Y: 100, Button: 0, Amount: -10.0}, s)
-  here(s).Top == 31
+  here(s).Top == 31 and here(s).Cursor.Line == 34
 end
-defn isKeyAfterWheelFollows()
+defn isWheelUpBringsCursorUp()
+  (** Up, the cursor stays 3 lines over the bottom of the screen, at the column it had, as C-n keeps it. *)
+  s = stateOf(str.Join("\n", list.Map(n -> "words", list.Range(1, 100))))
+  s = press.Press(["M->", "C-a", "C-f", "C-f"], s)
+  top = here(s).Top
+  s = commands.Update({Kind: "mouse", Action: "wheel", X: 100, Y: 100, Button: 0, Amount: 10.0}, s)
+  last = here(s).Top + view.LayoutOf(s).Rows - 1
+  here(s).Top == top - 30 and here(s).Cursor == {Line: last - 3, Column: 2}
+end
+defn isTypingAfterWheelTypesOnScreen()
+  (** After the wheel, a key types where the cursor went, on the screen. *)
   s = stateOf(str.Join("\n", list.Map(n -> "word", list.Range(1, 100))))
   s = commands.Update({Kind: "mouse", Action: "wheel", X: 100, Y: 100, Button: 0, Amount: -10.0}, s)
   s = press.Press(["a"], s)
-  here(s).Top == 1 and not here(s).Free
+  here(s).Top == 31 and rope.Line(34, here(s).Rope) == "aword"
+end
+defn isNextLineKeepsMargin()
+  (** C-n moves the screen once 3 lines are left under the cursor. *)
+  s = stateOf(str.Join("\n", list.Map(n -> "word", list.Range(1, 100))))
+  rows = view.LayoutOf(s).Rows
+  before = press.Press(list.Map(n -> "C-n", list.Range(1, rows - 4)), s)
+  after = press.Press(["C-n"], before)
+  here(before).Top == 1 and here(after).Top == 2
+end
+defn isNoMarginWithoutSetting()
+  (** A config without ScrollMargin, as one that a program makes, keeps no margin; one that sets 0 neither. *)
+  s = stateOf(str.Join("\n", list.Map(n -> "word", list.Range(1, 100))))
+  s.Config = () -> dict.Merge(testConfig(), {ScrollMargin: () -> 0})
+  s = commands.Update({Kind: "mouse", Action: "wheel", X: 100, Y: 100, Button: 0, Amount: -1.0}, s)
+  bare = view.Start([text.Of("", missing)], look, cell, 800, 600)
+  here(s).Cursor.Line == 4 and commands.ScrollMargin(bare) == 0 and commands.ScrollMargin(stateOf("")) == 3
 end
 defn isResize()
   s = commands.Update({Kind: "resize", Width: 500, Height: 300}, stateOf(""))
@@ -395,6 +423,12 @@ defn isClickAboveFirstRowKeepsScreen()
   s.Buffers[1].Top = 10
   s = commands.Update(mouse("down", atChar(0), 1), s)
   here(s).Top == 10 and here(s).Cursor == {Line: 10, Column: 0}
+end
+defn isKeyAfterClickKeepsMargin()
+  (** A click on the last row leaves the screen; the next key brings back the margin of 3 lines under the cursor. *)
+  s = commands.Update(mouse("up", atChar(0), 530), commands.Update(mouse("down", atChar(0), 530), stateOf(hundred)))
+  after = press.Press(["C-n"], s)
+  here(s).Top == 1 and here(s).Cursor.Line == 28 and here(after).Cursor.Line == 29 and here(after).Top == 5
 end
 defn isDragBelowCodeScrolls()
   (** A drag past the bottom of the code area still scrolls: y = 580 is row 30, so line 31, and the last row shown is then that line. *)

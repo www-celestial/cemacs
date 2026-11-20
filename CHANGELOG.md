@@ -20,6 +20,8 @@ what a key can lead to, so no key has to be learnt before the start.
   after the `)` of a call opens a block for Enter and Tab.
 - The prompt keeps the answers to each question, which `M-p` and `M-n` bring back; Tab completes a file's name in Find
   file and Save as.
+- The screen keeps 3 lines between the cursor and its top or its bottom, as `scroll-margin` in Emacs, `ScrollMargin` in the
+  config; the wheel takes the cursor along, so that it stays on the screen, and a click leaves the screen where it is.
 
 ### Cesia in the editor
 

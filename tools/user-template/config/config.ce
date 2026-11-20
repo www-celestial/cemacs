@@ -13,6 +13,7 @@ defn Changed(config)
   c = config
   (* c.FontSize = () -> 17 *)
   (* c.TabText = () -> "    " *)
+  (* c.ScrollMargin = () -> 5 *)
   (* c.Theme = () -> ui.Light *)
   (* c.Window = () -> {Width: 1600, Height: 900} *)
   (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)

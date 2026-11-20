@@ -386,17 +386,18 @@ rien), et ne change rien.
 | appui sur le premier bouton | [commands.Press] | le pane sous la souris devient celui que vous modifiez ; dans son code, le curseur va à la limite entre deux caractères la plus proche de la souris |
 | déplacement bouton tenu | [commands.Drag] | sélectionne de l'appui jusqu'à la souris, dès que la souris a quitté la zone autour de l'appui |
 | relâchement | [commands.Release] | finit le glissement ; un clic qui n'a rien sélectionné ne laisse pas de mark |
-| molette | [commands.Wheel] | fait défiler le pane sous la souris |
+| molette | [commands.Wheel] | fait défiler le pane sous la souris, et son curseur avec |
 
 La zone autour d'un appui est [emacs.DragZone], 4 pixels sur chaque axe : une main qui bouge d'un pixel pendant qu'elle
 clique ne fait pas de sélection. Dès que la souris a quitté la zone, le curseur la suit, même quand elle y revient. Un
 glissement au-delà du bord du code continue de sélectionner, et l'écran suit. Un appui est une commande : il finit donc une
 prefix key, une chaîne de `C-k` et une étape de frappe. Les autres boutons ne font que cela.
 
-Un cran de la molette déplace l'écran de [emacs.WheelLines] lignes, 3, sans déplacer le curseur, et sans faire du pane sous
-la souris celui que vous modifiez. Un touchpad envoie des morceaux de cran : ce qui fait moins d'une ligne est gardé pour
-l'événement suivant, si bien qu'un geste lent fait quand même défiler. Après la molette, l'écran reste où il est, le curseur
-peut-être hors de vue, jusqu'à ce qu'une touche ou un clic le ramène.
+Un cran de la molette déplace l'écran de [emacs.WheelLines] lignes, 3, sans faire du pane sous la souris celui que vous
+modifiez. Le curseur reste à l'écran, comme dans Emacs : quand l'écran le laisserait à moins de [emacs.ScrollMargin]
+lignes, 3, de son haut ou de son bas, il va à la ligne la plus proche au-delà, à la colonne qu'il avait, comme `C-n` la
+garde. Une touche après la molette agit là, à l'écran. Un touchpad envoie des morceaux de cran : ce qui fait moins d'une
+ligne est gardé pour l'événement suivant, si bien qu'un geste lent fait quand même défiler.
 
 Pendant qu'une question est ouverte sur la prompt line, seuls la molette et la fin d'un glissement marchent, pour que le
 texte ne puisse pas changer sous la question.

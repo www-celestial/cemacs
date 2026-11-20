@@ -26,7 +26,7 @@ isOnlyVisibleLines() = isOnlyVisible(stateOf([text.Of(manyLines(20000), "a.ce")]
 
 defn isOnlyVisible(state)
   layout = view.Layout(state.Width, state.Height, state.Cell, false)
-  b = view.Follow(layout.Rows, layout.Columns, state.Buffers[1])
+  b = view.Follow(layout.Rows, layout.Columns, 0, state.Buffers[1])
   s = state
   s.Buffers = [b]
   shown = value.Len(list.Filter(t -> t == "word", textsOf(view.View(s))))
@@ -36,14 +36,14 @@ end
 defn isLongLineFollows()
   b = text.Of(str.Join("", list.Map(n -> "x", list.Range(1, 600))), "a.ce")
   b.Cursor = {Line: 1, Column: 500}
-  f = view.Follow(10, 80, b)
+  f = view.Follow(10, 80, 0, b)
   f.Left <= 500 and 500 < f.Left + 80
 end
 
 defn isFollowScrollsDown()
   b = text.Of(manyLines(100), "a.ce")
   b.Cursor = {Line: 50, Column: 0}
-  f = view.Follow(10, 80, b)
+  f = view.Follow(10, 80, 0, b)
   f.Top <= 50 and 50 < f.Top + 10 and f.Colors.Known >= 50
 end
 
@@ -52,21 +52,21 @@ defn isFollowSkipsColorsOfList()
   b = text.Of(manyLines(100), missing)
   b.List = {Name: "Output"}
   b.Cursor = {Line: 50, Column: 0}
-  f = view.Follow(10, 80, b)
+  f = view.Follow(10, 80, 0, b)
   f.Top <= 50 and 50 < f.Top + 10 and f.Colors.Known == b.Colors.Known
 end
 
 defn isFollowKeepsTop()
   b = text.Of(manyLines(100), "a.ce")
   b.Cursor = {Line: 3, Column: 2}
-  f = view.Follow(10, 80, b)
+  f = view.Follow(10, 80, 0, b)
   f.Top == 1 and f.Left == 0
 end
 
 defn isTinyWindow()
   s = stateOf([text.Of("a\nb", "a.ce")], 10, 10)
   lay = view.Layout(s.Width, s.Height, s.Cell, false)
-  s.Buffers = [view.Follow(lay.Rows, lay.Columns, s.Buffers[1])]
+  s.Buffers = [view.Follow(lay.Rows, lay.Columns, 0, s.Buffers[1])]
   value.IsArray(view.View(s))
 end
 
@@ -123,7 +123,7 @@ isMultibyteText() = value.Equal(codeTexts(shownFrom("ééééé", 2)), ["1", "é
 defn isEmptyFile()
   s = stateOf([text.Of("", "a.ce")], 800, 600)
   lay = view.Layout(s.Width, s.Height, s.Cell, false)
-  s.Buffers = [view.Follow(lay.Rows, lay.Columns, s.Buffers[1])]
+  s.Buffers = [view.Follow(lay.Rows, lay.Columns, 0, s.Buffers[1])]
   value.IsArray(view.View(s)) and s.Buffers[1].Top == 1
 end
 
@@ -132,7 +132,7 @@ defn isCursorOnLastLine()
   b.Cursor = {Line: 3, Column: 0}
   s = stateOf([b], 800, 600)
   lay = view.Layout(s.Width, s.Height, s.Cell, false)
-  s.Buffers = [view.Follow(lay.Rows, lay.Columns, b)]
+  s.Buffers = [view.Follow(lay.Rows, lay.Columns, 0, b)]
   bars = list.Filter(c -> c.Kind == "rect" and c.Width == 2, view.View(s))
   value.Len(bars) == 1 and value.Len(list.Filter(t -> t == "word", textsOf(view.View(s)))) == 3
 end
@@ -140,7 +140,7 @@ end
 defn isFollowWithoutRows()
   b = text.Of(manyLines(10), "a.ce")
   b.Cursor = {Line: 5, Column: 3}
-  f = view.Follow(0, 0, b)
+  f = view.Follow(0, 0, 0, b)
   f.Top <= 5 and f.Left <= 3
 end
 
@@ -148,7 +148,7 @@ defn isCursorBarInsideColumns()
   b = text.Of("abcd", "a.ce")
   b.Cursor = {Line: 1, Column: 4}
   s = stateOf([b], 102, 600)
-  s.Buffers = [view.Follow(4, 4, b)]
+  s.Buffers = [view.Follow(4, 4, 0, b)]
   bars = list.Filter(c -> c.Kind == "rect" and c.Width == 2, view.View(s))
   value.Len(bars) == 1 and bars[1].X < 102
 end
@@ -244,18 +244,71 @@ defn isInCode()
   view.IsInCode(10, 100, s) and view.IsInCode(10, 10, s) and not view.IsInCode(10, 560, s) and not view.IsInCode(10, 590, s)
 end
 
-defn isFollowFreeKeepsTop()
-  b = text.Of(manyLines(100), "a.ce")
-  b.Top = 60
-  b.Free = true
-  f = view.Follow(10, 80, b)
-  f.Top == 60 and f.Colors.Known >= 60
+defn isFollowKeepsMarginBelow()
+  (** Going down, the screen moves while 3 lines are still under the cursor: on line 8 of a screen of 10 rows, lines 9 to 11 must show. *)
+  b = hundredAt(8)
+  f = view.Follow(10, 80, 3, b)
+  f.Top == 2 and view.Follow(10, 80, 3, hundredAt(7)).Top == 1
 end
+
+defn isFollowKeepsMarginAbove()
+  (** Going up, the screen moves while 3 lines are still above the cursor. *)
+  b = hundredAt(52)
+  b.Top = 50
+  view.Follow(10, 80, 3, b).Top == 49
+end
+
+defn isFollowMarginAtFileEdges()
+  (** The cursor goes to the first and the last line, where the file has no line to keep. *)
+  last = hundredAt(100)
+  last.Top = 91
+  view.Follow(10, 80, 3, hundredAt(1)).Top == 1 and view.Follow(10, 80, 3, hundredAt(2)).Top == 1 and view.Follow(10, 80, 3, last).Top == 91
+end
+
+defn isFollowPointedKeepsTop()
+  (** The cursor that the mouse put on the last row keeps the screen: no margin until a key. *)
+  b = hundredAt(10)
+  b.Pointed = true
+  view.Follow(10, 80, 3, b).Top == 1
+end
+
+isFollowMarginOfSmallScreen() = view.Follow(3, 80, 3, hundredAt(3)).Top == 2   (** A screen of 3 rows keeps one line around the cursor. *)
+
+defn isFollowMarginPastBlock()
+  (** A block too high for the margin: the cursor's line shows, and the screen starts at a line. *)
+  b = text.WithBlocks([blockAt(9, 20, "result")], text.Of(manyLines(100), "a.ce"))
+  b.Cursor = {Line: 10, Column: 0}
+  f = view.Follow(10, 80, 3, b)
+  f.Top <= 10 and view.RowOf(10, f, view.Under(f)) < 10
+end
+
+defn isFollowSettled(p)
+  (** For any text, blocks, screen, margin, top and cursor: the screen shows the cursor, keeps the margin where the file and the blocks leave room, stays put
+      when followed again, and keeps its top for the lines that Band gives, and only for them while the margin has room. *)
+  b = text.WithBlocks(list.Map(k -> blockAt(k.Line, k.Rows, "r"), p.Blocks), text.Of(manyLines(p.Lines), missing))
+  b.Top = list.Min(p.Top, p.Lines)
+  b.Cursor = {Line: list.Min(p.Line, p.Lines), Column: 0}
+  f = view.Follow(p.Rows, 80, p.Margin, b)
+  u = view.Under(f)
+  line = b.Cursor.Line
+  shows = f.Top <= line and view.RowOf(line, f, u) < p.Rows
+  m = view.Kept(p.Rows, p.Margin)
+  below = list.Min(p.Lines, line + m)
+  roomy = view.TopFor(below, p.Rows, f) <= list.Max(1, line - m)
+  band = view.Band(p.Rows, p.Margin, b)
+  kept = if band.First <= line and line <= band.Last f.Top == b.Top else not roomy or f.Top != b.Top end
+  margins = not roomy or ((f.Top == 1 or line - f.Top >= m) and view.RowOf(below, f, u) < p.Rows)
+  shows and kept and margins and view.Follow(p.Rows, 80, p.Margin, f).Top == f.Top
+end
+
+blocks = gen.List(gen.Of({Line: gen.Int(1, 40), Rows: gen.Int(1, 12)}), max = 3)
+places = gen.Of({Lines: gen.Int(1, 40), Rows: gen.Int(1, 14), Margin: gen.Int(0, 6), Top: gen.Int(1, 40), Line: gen.Int(1, 40), Blocks: blocks})
+isFollowSettledAlways() = test.ForAll(isFollowSettled, places, cases = 400)
 
 defn isFollowStateMoves()
   b = text.Of(manyLines(100), "a.ce")
   b.Cursor = {Line: 80, Column: 0}
-  s = view.FollowState(stateOf([b], 800, 600))
+  s = view.FollowState(0, stateOf([b], 800, 600))
   s.Buffers[1].Top > 1
 end
 
@@ -344,10 +397,10 @@ defn isViewOfKeepsPlace()
   b = hundredAt(40)
   b.Top = 30
   b.Left = 2
-  b.Free = true
+  b.Pointed = true
   v = view.ViewOf(b)
   put = view.WithView(v, text.Of(manyLines(100), "a.ce"))
-  put.Cursor == {Line: 40, Column: 0} and put.Top == 30 and put.Left == 2 and put.Free and value.IsMissing(put.Mark)
+  put.Cursor == {Line: 40, Column: 0} and put.Top == 30 and put.Left == 2 and put.Pointed and value.IsMissing(put.Mark)
 end
 defn isWithViewClamps()
   v = view.ViewOf(hundredAt(90))
@@ -378,7 +431,7 @@ defn isInactivePaneShowsItsPlace()
   "55" in list.Map(c -> c.Text, shown) and not ("1" in list.Map(c -> c.Text, shown))
 end
 defn isOneBrightBar()
-  bars = barsOf(view.View(view.FollowState(twoPanes("rows", [hundredAt(1)], 1))))
+  bars = barsOf(view.View(view.FollowState(0, twoPanes("rows", [hundredAt(1)], 1))))
   value.Len(bars) == 2 and value.Len(list.Filter(c -> c.Color == look.Theme.Bright, bars)) == 1 and list.Filter(c -> c.Color == look.Theme.Bright, bars)[1].Y < 289
 end
 isDividerBetweenColumns() = value.Len(list.Filter(c -> c.Kind == "rect" and c.X == 400 and c.Width == 1, view.View(twoPanes("columns", [hundredAt(1)], 1)))) == 1
@@ -386,7 +439,7 @@ isNoDividerAlone() = value.Len(list.Filter(c -> c.Kind == "rect" and c.Width == 
 defn isFollowStateFollowsEveryPane()
   s = twoPanes("rows", [hundredAt(1)], 1)
   s.Panes = panes.WithLeaf(2, {Buffer: 1, View: view.ViewOf(hundredAt(80))}, s.Panes)
-  f = view.FollowState(s)
+  f = view.FollowState(0, s)
   leaf = panes.At(2, f.Panes)
   leaf.View.Top > 60 and f.Buffers[1].Top == 1 and f.Buffers[1].Colors.Known >= 80
 end
@@ -456,11 +509,11 @@ end
 
 defn isSameViewAfter(p)
   (** Edits a buffer step by step, in a window of 14 columns, following after some steps only, and compares the view with and without the rows kept. *)
-  s = view.FollowState(stateOf([text.Of(p.Text, "a.ce")], 200, 140))
+  s = view.FollowState(0, stateOf([text.Of(p.Text, "a.ce")], 200, 140))
   for step in p.Steps
     s.Buffers[1] = text.InsertWords(step.Words, text.Place(step.Line, step.Column, s.Buffers[1]))
     if step.Follow
-      s = view.FollowState(s)
+      s = view.FollowState(0, s)
     end
     if not value.Equal(view.View(s), view.View(withoutRows(s)))
       return false
@@ -474,7 +527,7 @@ isKeptRowsSameView() = test.ForAll(isSameViewAfter, gen.Of({Text: gen.Text(max =
 
 defn isRowsKeptByText()
   (** Follow keeps one row per text of the lines on the screen, made for the width and the state at the start of each line. *)
-  b = view.Follow(3, 80, text.Of("a = 1\n(* b\nc *)\nd", "a.ce"))
+  b = view.Follow(3, 80, 0, text.Of("a = 1\n(* b\nc *)\nd", "a.ce"))
   rows = b.Screen
   value.Len(dict.Keys(rows)) == 3 and dict.Get("c *)", rows).State.Comment == 1 and dict.Get("a = 1", rows).Width == 80 and value.IsMissing(dict.Get("d", rows))
 end
@@ -482,7 +535,7 @@ end
 (* ---- A far place is shown at once, with its colors guessed, and exact after the ticks that read the lines before it: a comment that opens at line
    45,000, after the colors that the first follow reads, makes the last line a comment. *)
 farText = str.Join("\n", list.Concat(list.Fill("x", 44999), list.Concat(["(* opened far above"], list.Concat(list.Fill("y", 55000), ["z"]))))
-farState() = view.FollowState(stateOf([text.Place(100001, 0, text.Of(farText, "a.ce"))], 800, 600))
+farState() = view.FollowState(0, stateOf([text.Place(100001, 0, text.Of(farText, "a.ce"))], 800, 600))
 colorOfZ(s) = list.Map(c -> c.Color, list.Filter(c -> c.Kind == "text" and c.Text == "z", view.View(s)))
 
 defn ticked(state)
@@ -490,7 +543,7 @@ defn ticked(state)
   s = state
   k = 0
   while view.Colouring(s) and k < 20
-    s = view.FollowState(s)
+    s = view.FollowState(0, s)
     k += 1
   end
   s
@@ -498,7 +551,7 @@ end
 
 isFarPlaceAtOnce() = farState().Buffers[1].Colors.Known == 1 + view.ColorBatch() and view.Colouring(farState()) and value.Equal(colorOfZ(farState()), [look.Theme.Syntax[color.Plain]])
 isFarColorsExactAfter() = not view.Colouring(ticked(farState())) and value.Equal(colorOfZ(ticked(farState())), [look.Theme.Syntax[color.Comment]]) and value.Equal(view.View(ticked(farState())), view.View(withoutRows(ticked(farState()))))
-isNearPlaceExact() = not view.Colouring(view.FollowState(stateOf([text.Place(view.ColorBatch() - 100, 0, text.Of(farText, "a.ce"))], 800, 600)))
+isNearPlaceExact() = not view.Colouring(view.FollowState(0, stateOf([text.Place(view.ColorBatch() - 100, 0, text.Of(farText, "a.ce"))], 800, 600)))
 
 (* ---- Blocks under lines, as the results of cells: rows that no line holds. *)
 
@@ -520,7 +573,7 @@ defn isFollowCountsBlocks()
   (** The cursor on line 10 of a screen of 10 rows moves the top when a block of 3 rows is above it: past the block, as a screen starts at a line. *)
   b = withBlock(2, 3)
   b.Cursor = {Line: 10, Column: 0}
-  f = view.Follow(10, 80, b)
+  f = view.Follow(10, 80, 0, b)
   f.Top == 3 and view.RowOf(10, f, view.Under(f)) == 7
 end
 
@@ -529,7 +582,7 @@ defn isBlockDrawnUnderItsLine()
   state = stateOf([withBlock(2, 3)], 800, 600)
   layout = view.Layout(state.Width, state.Height, state.Cell, false)
   s = state
-  s.Buffers = [view.Follow(layout.Rows, layout.Columns, state.Buffers[1])]
+  s.Buffers = [view.Follow(layout.Rows, layout.Columns, 0, state.Buffers[1])]
   drawn = view.View(s)
   result = list.Filter(c -> c.Kind == "text" and c.Text == "result", drawn)
   words = value.Len(list.Filter(t -> t == "word", textsOf(drawn)))

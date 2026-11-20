@@ -11,6 +11,11 @@ TabText() = "  "
 (** The lines that one notch of the wheel moves the screen, as a float: a touchpad sends parts of a notch. *)
 WheelLines() = 3.0
 
+(** The lines kept between the cursor and the top or the bottom of the screen, as the scroll-margin of Emacs: the screen moves as soon as the cursor comes
+    nearer to its edge, and the wheel keeps the cursor as far from it. At the start and the end of the file the cursor goes to the edge, and a screen of few
+    lines keeps at most half of them. 0 moves the screen only when the cursor leaves it. *)
+ScrollMargin() = 3
+
 (** How far the mouse can go from the place of a press, in pixels on either axis, for the press to stay a click. *)
 DragZone() = 4
 
@@ -126,5 +131,5 @@ CompleteKeys() = {"C-n": commands.CompleteNext, "down": commands.CompleteNext, "
     gives it the keys of every app. Each field is a function, read at the next key, so that a change applies under --watch; FontSize, Theme and Window are
     read once, when the window opens, and Start runs once, after the files opened. *)
 Config(keys) = {Keys: keys, PromptKeys: PromptKeys, MouseKeys: MouseKeys, PromptMouseKeys: PromptMouseKeys, ListKeys: ListKeys, CompleteKeys: CompleteKeys,
-  TabText: TabText, WheelLines: WheelLines, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay, CheckDelay: CheckDelay, Theme: Theme, Window: Window,
-  Start: Start}
+  TabText: TabText, WheelLines: WheelLines, ScrollMargin: ScrollMargin, DragZone: DragZone, FontSize: FontSize, HintDelay: HintDelay, CheckDelay: CheckDelay,
+  Theme: Theme, Window: Window, Start: Start}

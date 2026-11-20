@@ -486,7 +486,6 @@ defn shownFound(found, forward, state)
   b.Mark = if forward start else stop end
   b.Cursor = if forward stop else start end
   b.Origin = "search"
-  b.Free = false
   b.Wanted = missing
   b.Typing = false
   put(b, state)
@@ -567,7 +566,7 @@ defn searched(forward, state)
   (** C-s and C-r: a search from the cursor, or in a search the next place. In another prompt, nothing. *)
   if value.IsMissing(state.Prompt)
     b = current(state)
-    from = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Left: b.Left, Free: b.Free}
+    from = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Left: b.Left}
     search = {Forward: forward, From: from, Found: missing, Failing: false, Wrapped: false, Steps: []}
     withSearch(search, prompted({Label: "", Answer: "", Done: searchEnded, Choice: false, Search: search}, state))
   else if value.IsMissing(searchOf(state))
@@ -613,7 +612,6 @@ defn searchBack(state)
   b.Cursor = step.Cursor
   b.Mark = step.Mark
   b.Origin = step.Origin
-  b.Free = false
   withSearch(next, withAnswer(step.Answer, put(b, state)))
 end
 
@@ -634,7 +632,6 @@ defn searchCancel(state)
   b.Origin = from.Origin
   b.Top = from.Top
   b.Left = from.Left
-  b.Free = from.Free
   say("Quit", closed(put(b, state)))
 end
 
@@ -1062,6 +1059,15 @@ defn config(state)
   end
 end
 
+defn ScrollMargin(state)
+  (** The lines that the screen keeps between the cursor and its top or its bottom, the ScrollMargin of the config, or 0 for a config without it, as one that a
+      program calling editor.Start itself may make: the screen then moves when the cursor leaves it. *)
+  match config(state)
+    {ScrollMargin: margin} -> list.Max(0, margin())
+    else -> 0
+  end
+end
+
 (** The config of a state that has none: no key, so that nothing runs that nobody bound, and plain settings. *)
 unconfigured() = {Keys: () -> dict.Dict(), PromptKeys: () -> dict.Dict(), MouseKeys: () -> dict.Dict(), PromptMouseKeys: () -> dict.Dict(), ListKeys: () -> dict.Dict(),
   CompleteKeys: () -> dict.Dict(), TabText: () -> "  ",
@@ -1482,7 +1488,7 @@ defn onKey(event, state)
       which ends a step of typing even if it changes nothing. *)
   s = state
   s.Message = if state.Pending != "" "$(state.Pending) -" else "" end
-  s.Buffers[state.Current].Free = false
+  s.Buffers[state.Current].Pointed = false
   s.Second = false
   chord = keys.Chord(event)
   held = event.Ctrl or event.Alt
@@ -1521,7 +1527,7 @@ defn onText(event, state)
   else
     s.Chain = false
     s = Unfocused(s)
-    s.Buffers[state.Current].Free = false
+    s.Buffers[state.Current].Pointed = false
     open = not value.IsMissing(complete.Of(s))
     s.Completion = missing
     if open refined(event.Text, keyed(event.Text, s)) else keyed(event.Text, s) end
@@ -1537,8 +1543,9 @@ defn wheelRest(state)
 end
 
 defn Wheel(event, state)
-  (** The screen of the pane under the mouse moved by the wheel, the WheelLines of the config for each notch, without moving the cursor, and without making that pane
-      the one being edited. What is less than a line stays for the next event, since a touchpad sends many small ones. *)
+  (** The screen of the pane under the mouse moved by the wheel, the WheelLines of the config for each notch, without making that pane the one being edited. The
+      cursor stays on the screen, as in Emacs: past the ScrollMargin of the config from its top or its bottom, it goes to the nearest line inside, at the column
+      it had, as C-n keeps it. What is less than a line stays for the next event, since a touchpad sends many small ones. *)
   i = panes.Active(state)
   j = view.PaneAt(event.X, event.Y, state)
   if j > 0 and j != i
@@ -1549,12 +1556,16 @@ defn Wheel(event, state)
 end
 
 defn wheeled(event, state)
-  (** The screen of the current buffer moved by the wheel. *)
+  (** The screen of the current buffer moved by the wheel, and its cursor brought into the lines of view.Band. *)
   b = current(state)
   wanted = wheelRest(state) - event.Amount * config(state).WheelLines()
   lines = math.Div(math.Floor(wanted + 0.5), 1)
   b.Top = list.Min(list.Max(1, b.Top + lines), rope.LineCount(b.Rope))
-  b.Free = true
+  band = view.Band(rows(state), ScrollMargin(state), b)
+  line = list.Min(list.Max(b.Cursor.Line, band.First), band.Last)
+  if line != b.Cursor.Line
+    b = text.MoveLine(line - b.Cursor.Line, b)
+  end
   s = put(b, state)
   s.Wheel = wanted - lines
   s
@@ -1575,7 +1586,7 @@ defn down(event, state)
     b = text.Place(at.Line, at.Column, current(s))
     b.Mark = b.Cursor
     b.Origin = "mouse"
-    b.Free = false
+    b.Pointed = true
     out = put(b, s)
     out.Dragging = true
     out.Pressed = {X: event.X, Y: event.Y}
@@ -1680,7 +1691,7 @@ end
 defn Settled(state)
   (** The state with a list made again from its rows, the pane being edited on the current buffer, the screen of each pane on its cursor, and the title of the
       window the name of the current buffer. *)
-  s = view.FollowState(synced(refreshed(state)))
+  s = view.FollowState(ScrollMargin(state), synced(refreshed(state)))
   name = view.BufferName(current(s))
   if name != s.Title
     if not value.IsMissing(s.Window)

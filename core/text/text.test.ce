@@ -112,7 +112,7 @@ defn isSelectionEnds()
 end
 
 isLineWidth() = text.LineWidth(1, text.Of("abc\r\nde", missing)) == 3 and text.LineWidth(2, text.Of("abc\r\nde", missing)) == 2
-isOfEditorFields() = text.Of("", missing).Free == false and text.Of("", missing).Origin == ""
+isOfEditorFields() = text.Of("", missing).Origin == ""
 
 (** A \r that ends up just before a line end becomes part of that line end, so the line is shorter than the edit thought: the cursor stops before the \r. *)
 isPasteCrBeforeLineEndCursor() = same(at(text.InsertWords("x\r", atPlace(1, 2, "ab\ncd"))), [1, 3])

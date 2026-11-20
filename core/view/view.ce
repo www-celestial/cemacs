@@ -100,9 +100,17 @@ paneLayoutsIn(lay, state) = list.Map(r -> PaneLayout(r, state.Cell), panes.Rects
 (** The layout of each pane of a state, as PaneLayout gives it, in the order of the panes. *)
 PaneLayouts(state) = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, ShowsOutput(state)), state)
 
-(** The place of a buffer on the screen, which a pane keeps while another one is edited: the cursor, the mark and where it came from, the top and the left of
-    the screen, and free. *)
-ViewOf(b) = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Left: b.Left, Free: b.Free}
+(** The place of a buffer on the screen, which a pane keeps while another one is edited: the cursor, the mark and where it came from, the top and the left
+    of the screen, and whether the mouse put the cursor there. *)
+ViewOf(b) = {Cursor: b.Cursor, Mark: b.Mark, Origin: b.Origin, Top: b.Top, Left: b.Left, Pointed: pointed(b)}
+
+defn pointed(b)
+  (** Did the mouse put the cursor where it is, with no key since? A buffer or a place from before this field says no. *)
+  match b
+    {Pointed: p} -> p
+    else -> false
+  end
+end
 
 defn WithView(v, b)
   (** The buffer at the place v, brought inside its text, which may have changed in another pane, or the buffer as it is for a v that is missing. *)
@@ -114,7 +122,7 @@ defn WithView(v, b)
   out.Origin = v.Origin
   out.Top = list.Min(list.Max(1, v.Top), rope.LineCount(b.Rope))
   out.Left = list.Max(0, v.Left)
-  out.Free = v.Free
+  out.Pointed = pointed(v)
   out
 end
 
@@ -139,30 +147,21 @@ BufferName(b) = bufferName(b)
 (** The label of the mode line: the name, and a star if the text isn't saved. *)
 label(b) = if text.IsModified(b) "$(bufferName(b)) *" else bufferName(b) end
 
-defn Follow(rows, columns, b)
-  (** A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, whose colors are known up to the last line on the screen,
-      but for a list, and whose Screen keeps the tokens of the lines on the screen for the view, and for the next frame. A screen more than ColorBatch()
-      lines past the colors known is shown at once: its states are guessed (Guess) and the colors are read ColorBatch() lines further, then as much at
-      each tick until they reach it, when the screen is drawn again with its exact colors.
-      It is the only place that moves the screen: view only reads. A buffer that is free, after the wheel, keeps its top and left: the cursor may be off the screen.
+defn Follow(rows, columns, margin, b)
+  (** A buffer whose top and left keep the cursor on the screen of rows lines and columns characters, with margin lines between it and the top and the bottom
+      of the screen, whose colors are known up to the last line on the screen, but for a list, and whose Screen keeps the tokens of the lines on the screen for
+      the view, and for the next frame. A screen more than ColorBatch() lines past the colors known is shown at once: its states are guessed (Guess) and the
+      colors are read ColorBatch() lines further, then as much at each tick until they reach it, when the screen is drawn again with its exact colors.
+      It is the only place that moves the screen: view only reads. The wheel moves the top, and the cursor with it into the lines that Band gives. A cursor
+      that the mouse put, with no key since, keeps no margin: a click near the edge leaves the text under the mouse where it is.
 
-        Follow(2, 10, {Rope: rope.Of("a\nb\nc"), Cursor: {Line: 3, Column: 0}, Top: 1, Left: 0, Free: false, Colors: color.BlankColors()}).Top --> 2 *)
+        Follow(2, 10, 0, {Rope: rope.Of("a\nb\nc"), Cursor: {Line: 3, Column: 0}, Top: 1, Left: 0, Colors: color.BlankColors()}).Top --> 2 *)
   line = b.Cursor.Line
   column = b.Cursor.Column
   seenRows = list.Max(1, rows)
   seenColumns = list.Max(1, columns)
-  top = if b.Free
-    b.Top
-  else if line < b.Top
-    line
-  else if line >= b.Top + seenRows or RowOf(line, b, Under(b)) >= seenRows
-    TopFor(line, seenRows, b)
-  else
-    b.Top
-  end
-  left = if b.Free
-    b.Left
-  else if column < b.Left
+  top = topOn(line, seenRows, if pointed(b) 0 else Kept(seenRows, margin) end, b)
+  left = if column < b.Left
     column
   else if column >= b.Left + seenColumns
     column - seenColumns + 1
@@ -266,9 +265,9 @@ defn coloredTo(line, b)
   color.ColoredTo(upTo, n -> lines[n - have + 1], colors)
 end
 
-defn FollowState(state)
-  (** The state with the screen of each pane kept on its cursor, as follow does: the current buffer for the pane being edited, and the place that each other
-      pane keeps. The colors of a buffer are known down to the last line that any pane shows. *)
+defn FollowState(margin, state)
+  (** The state with the screen of each pane kept on its cursor with margin lines around it, as Follow does: the current buffer for the pane being edited, and
+      the place that each other pane keeps. The colors of a buffer are known down to the last line that any pane shows. *)
   layouts = paneLayoutsIn(Layout(state.Width, state.Height, state.Cell, ShowsOutput(state)), state)
   active = panes.Active(state)
   tree = panes.Tree(state)
@@ -277,7 +276,7 @@ defn FollowState(state)
     if j != active
       leaf = panes.At(j, tree)
       k = list.Min(leaf.Buffer, value.Len(s.Buffers))
-      f = Follow(layouts[j].Rows, layouts[j].Columns, WithView(leaf.View, s.Buffers[k]))
+      f = Follow(layouts[j].Rows, layouts[j].Columns, margin, WithView(leaf.View, s.Buffers[k]))
       s.Buffers[k].Colors = f.Colors
       s.Buffers[k].Guess = f.Guess
       s.Buffers[k].Screen = f.Screen
@@ -285,7 +284,7 @@ defn FollowState(state)
     end
   end
   one = layouts[active]
-  s.Buffers[state.Current] = Follow(one.Rows, one.Columns, s.Buffers[state.Current])
+  s.Buffers[state.Current] = Follow(one.Rows, one.Columns, margin, s.Buffers[state.Current])
   s.Panes = tree
   s
 end
@@ -404,6 +403,40 @@ defn LineAtRow(row, b, under)
     n = n + 1
   end
   if r + 1 + extra(n, under) <= row n + row - r - extra(n, under) else n end
+end
+
+(** The margin that a screen of rows rows keeps around the cursor: at most half of the lines beside the cursor's own, so that a small screen keeps one above
+    as many as below.
+
+      [Kept(30, 3), Kept(5, 3), Kept(1, 3)] --> [3, 2, 0] *)
+Kept(rows, margin) = list.Max(0, list.Min(margin, math.Div(rows - 1, 2)))
+
+defn topOn(line, rows, m, b)
+  (** The top of a screen of rows rows that shows line with m lines above and below it, as far as the file has them, moved as little as it can from b.Top:
+      the top is kept while the line is inside the lines that Band gives. Blocks under the lines that leave no room for the margin show the line alone. *)
+  below = list.Min(rope.LineCount(b.Rope), line + m)
+  highest = list.Max(1, line - m)
+  if b.Top <= highest and below < b.Top + rows and RowOf(below, b, Under(b)) < rows
+    return b.Top
+  end
+  lowest = TopFor(below, rows, b)
+  if lowest <= highest
+    return list.Min(list.Max(b.Top, lowest), highest)
+  end
+  list.Min(list.Max(b.Top, TopFor(line, rows, b)), line)
+end
+
+defn Band(rows, margin, b)
+  (** The lines that the cursor can be on while the screen of rows rows keeps its top, b.Top, as Follow keeps it: the lines on the screen but margin ones at its
+      top and its bottom, as Kept gives it, unless the file starts or ends there. {First, Last}, with First past Last when the top shows less than the margin
+      under it, at the end of the file: Follow then moves the top back.
+
+        Band(10, 2, dict.Merge(text.Of(str.Join("\n", list.Map(n -> "x", list.Range(1, 100))), missing), {Top: 21})) --> {First: 23, Last: 28} *)
+  seen = list.Max(1, rows)
+  m = Kept(seen, margin)
+  count = rope.LineCount(b.Rope)
+  shown = list.Min(count, LineAtRow(seen - 1, b, Under(b)))
+  {First: if b.Top == 1 1 else b.Top + m end, Last: if shown >= count count else shown - m end}
 end
 
 defn TopFor(line, rows, b)

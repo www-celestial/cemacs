@@ -361,17 +361,18 @@ A key bound to nothing says so on the prompt line, as `C-t is not bound.` or `C-
 | press of the first button | [commands.Press] | the pane under the mouse becomes the one you edit; in its code, the cursor goes to the edge between two characters nearest to the mouse |
 | move with the button held | [commands.Drag] | selects from the press to the mouse, once the mouse has left the zone around the press |
 | release | [commands.Release] | ends the drag; a click that selected nothing leaves no mark |
-| wheel | [commands.Wheel] | scrolls the pane under the mouse |
+| wheel | [commands.Wheel] | scrolls the pane under the mouse, and its cursor with it |
 
 The zone around a press is [emacs.DragZone], 4 pixels on either axis: a hand that moves a pixel while it clicks makes no
 selection. Once the mouse has left the zone, the cursor follows it, even back into it. A drag past the edge of the code
 keeps selecting, and the screen follows. A press is a command, so it ends a prefix key, a chain of `C-k` and a step of
 typing. The other buttons only do that.
 
-One notch of the wheel moves the screen by [emacs.WheelLines] lines, 3, without moving the cursor, and without making the
-pane under the mouse the one you edit. A touchpad sends parts of a notch: what is less than a line is kept for the next
-event, so a slow stroke still scrolls. After the wheel the screen stays where it is, the cursor maybe out of sight, until a
-key or a click brings it back.
+One notch of the wheel moves the screen by [emacs.WheelLines] lines, 3, without making the pane under the mouse the one you
+edit. The cursor stays on the screen, as in Emacs: when the screen would leave it nearer than [emacs.ScrollMargin] lines,
+3, to its top or its bottom, it goes to the nearest line past them, at the column it had, as `C-n` keeps it. A key after
+the wheel acts there, on the screen. A touchpad sends parts of a notch: what is less than a line is kept for the next
+event, so a slow stroke still scrolls.
 
 While a question is open on the prompt line, only the wheel and the end of a drag work, so that the text can't change under
 the question.

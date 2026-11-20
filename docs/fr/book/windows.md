@@ -100,13 +100,17 @@ fait celui que vous modifiez. La molette fait défiler le pane sous la souris sa
 ## L'écran d'un pane
 
 Un pane montre les lignes à partir de sa ligne du haut, autant qu'il en tient. Il ne renvoie jamais une ligne à la ligne :
-une ligne plus longue que le pane est coupée à son bord, comme le fait Emacs avec `truncate-lines`. L'écran suit le curseur,
-et bouge aussi peu qu'il peut : quand le curseur passe sous la dernière ligne montrée, cette ligne devient la dernière ;
-au-dessus de la première, la première. Il en va de même sur le côté, où un curseur passé au-delà du bord droit déplace
-l'écran vers la droite.
+une ligne plus longue que le pane est coupée à son bord, comme le fait Emacs avec `truncate-lines`. L'écran suit le
+curseur, et bouge aussi peu qu'il peut, en gardant [emacs.ScrollMargin] lignes, 3, entre le curseur et son haut ou son bas,
+comme le fait `scroll-margin` dans Emacs : en descendant, l'écran bouge dès qu'il ne reste plus que 3 lignes sous le
+curseur ; en montant, dès qu'il n'en reste plus que 3 au-dessus. La première et la dernière ligne du fichier vont quand
+même jusqu'au bord, et un pane de peu de lignes en garde au plus la moitié autour du curseur, une ligne de chaque côté dans
+un pane de 3. Sur le côté, un curseur passé au-delà du bord droit déplace l'écran vers la droite.
 
-Après la molette, l'écran reste là où on l'a mis, même avec le curseur hors de vue, jusqu'à ce qu'une touche, un texte tapé
-ou un clic ramène l'écran au curseur.
+La molette déplace l'écran et emmène le curseur, qui reste aussi loin du bord. Un clic laisse l'écran où il est, même sur
+une ligne de la marge, pour que le texte ne bouge pas sous la souris ; la marge revient à la touche suivante.
+`ScrollMargin` mis à `() -> 0` ne déplace l'écran que quand le curseur en sort : voir [Les
+réglages](customising.md#les-réglages).
 
 La colonne de gauche contient le numéro de chaque ligne ; elle fait 62 pixels de large avec ses marges. Une ligne avec une
 erreur ou un warning a son numéro en rouge ou en ambre, et un breakpoint est un point de couleur avant le numéro : voir

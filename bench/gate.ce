@@ -9,6 +9,7 @@ use src/ui
 use core/color
 use core/text
 use core/view
+use src/emacs
 use std/text as str
 use std/io
 use std/list
@@ -53,7 +54,7 @@ end
 defn shown(state, window)
   (** Shows the state of a pass and times its three parts in milliseconds: follow, view and frame. *)
   t0 = sys.Now()
-  s = view.FollowState(state)
+  s = view.FollowState(emacs.ScrollMargin(), state)
   t1 = sys.Now()
   commands = view.View(s)
   t2 = sys.Now()
@@ -120,7 +121,7 @@ defn opening(look, cell, window)
   start = sys.Now()
   words = readFourTimes()?
   state = view.Start([text.Of(words, "std.ce")], look, cell, 1920, 1080)
-  state = view.FollowState(state)
+  state = view.FollowState(emacs.ScrollMargin(), state)
   sdl.Frame(view.View(state), window)
   result.Ok((sys.Now() - start) * 1000.0)
 end
@@ -138,7 +139,7 @@ defn main()
   openMs = opening(look, cell, window)?
   state = stateAt(words, 19000, look, cell)
   start = sys.Now()
-  state = view.FollowState(state)
+  state = view.FollowState(emacs.ScrollMargin(), state)
   jumpMs = (sys.Now() - start) * 1000.0
   window = sdl.Frame(view.View(state), window)
   typing = measure(typed, state, window)
