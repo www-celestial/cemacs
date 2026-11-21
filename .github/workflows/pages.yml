@@ -3,7 +3,7 @@ name: pages
 # The site of Cemacs, its book and the reference of its packages, as cesia doc --site makes them from this commit: built
 # for each pull request, and published on GitHub Pages from main. It runs on the nightly Cesia, which Cemacs follows, as its
 # release gives it. A block of the book that gives another value, or a [Name] that leads nowhere, stops the build, and the
-# site in place stays as it was. Until Cesia has a nightly release, there is nothing to build with, and the build says so.
+# site in place stays as it was, as it does when the nightly Cesia can't be downloaded: the build fails then too.
 on:
   push:
     branches: [main]
@@ -25,24 +25,20 @@ jobs:
     outputs:
       built: ${{ steps.site.outputs.built }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Cesia nightly
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           archive=cesia-linux-x86_64.tar.gz
-          if ! gh release download nightly --repo www-celestial/cesia-lang --pattern "$archive*" --dir download; then
-            echo "Cesia has no nightly release yet: nothing to build the site with."
-            echo "NO_CESIA=1" >> "$GITHUB_ENV"
-            exit 0
-          fi
+          # A failed download fails the check: a green check means the site was built.
+          gh release download nightly --repo www-celestial/cesia-lang --pattern "$archive*" --dir download
           (cd download && [ "$(sha256sum "$archive" | cut -d' ' -f1)" = "$(cut -d' ' -f1 < "$archive.sha256")" ])
           mkdir -p "$HOME/.cesia"
           tar -xzf "download/$archive" -C "$HOME/.cesia"
           echo "$HOME/.cesia/bin" >> "$GITHUB_PATH"
       - name: Site
         id: site
-        if: env.NO_CESIA != '1'
         run: |
           cesia version
           # cesia.toml names user/, the folder of the person, which a clone doesn't have: it gets the template, as at a first start.
@@ -52,10 +48,8 @@ jobs:
       # What the build keeps for itself: the programs of the book's pages and their folders, and what lets the next build
       # skip a page that didn't change.
       - name: Only the pages
-        if: env.NO_CESIA != '1'
         run: rm -rf _site/.run _site/.pages _site/.reference _site/.book
-      - uses: actions/upload-pages-artifact@v5
-        if: env.NO_CESIA != '1'
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: _site
 
@@ -71,4 +65,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
