@@ -1,0 +1,11 @@
+(** Another person of tests/folders-check.ce: makes a folder and removes it, over and over, until a file stop is there or 20 seconds have passed, so
+    that a path is a folder at one moment and nothing the next. Args: the folder, the file stop. *)
+use std/sys
+
+folder = sys.Args[1]
+stop = sys.Args[2]
+start = sys.Now()
+while not sys.Exists(stop) and sys.Now() - start < 20
+  _ = sys.Mkdir(folder)
+  _ = sys.Remove(folder)
+end

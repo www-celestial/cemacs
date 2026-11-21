@@ -12,6 +12,7 @@ use std/dict
 use std/encode
 use std/list
 use std/math
+use std/random
 use std/result
 use std/sys
 use std/text as str
@@ -92,8 +93,11 @@ end
       IsInside("/p/srcs", "/p/src") --> false *)
 IsInside(path, from) = path == from or str.StartsWith("$from/", path)
 
-(** Is a path a folder, through a link too? *)
-isFolder(path) = result.IsOk(sys.Stat(path)) and result.Unwrap(sys.Stat(path)).IsDir
+defn isFolder(path)
+  (** Is a path a folder, through a link too? It is asked once, so that a path that goes in between is no folder, never a failure. *)
+  st = sys.Stat(path)
+  result.IsOk(st) and st.Value.IsDir
+end
 
 (** Is a path a symbolic link, one that points to nothing too? *)
 isLinkPath(path) = result.IsOk(sys.ReadLink(path))
@@ -176,24 +180,59 @@ end
 (** The words of an error of a path. *)
 errorOf(path, e) = if value.IsText(e) "$(BaseName(path)): $e" else "$(BaseName(path)): $(e.Message)" end
 
+(** The digits of a number written in base 16. *)
+hexDigits = str.Chars("0123456789abcdef")
+
+defn Unguessable(uuid)
+  (** 32 characters that no one can guess, for a name: those of the text of a UUID, which Linux draws anew at each read of
+      /proc/sys/kernel/random/uuid from the randomness of its kernel, 122 bits of it, without its dashes and its line end; for a text that isn't 32
+      characters then, or holds a /, as on a system without that file, 32 digits of base 16 drawn from std/random.
+
+        Unguessable("8b9f37be-4b63-490a-ae8f-a21b94c4da86\n") --> "8b9f37be4b63490aae8fa21b94c4da86"
+        value.Len(Unguessable("")) --> 32 *)
+  digits = str.Replace("-", "", str.Trim(uuid))
+  if value.Len(digits) == 32 and not str.Contains("/", digits) digits else str.Join("", [hexDigits[random.Int(1, 16)] for k in 1..32]) end
+end
+
+defn tempIn(dir)
+  (** A name in dir for a new entry that no one else can know before it is made, .#cemacs- and 32 characters that can't be guessed: no one can put a
+      link there first, which sys.Copy, which opens a file there without O_EXCL, would write through. A name that is taken is drawn again, from std/random,
+      so that a file in place of the one of the kernel, which would give the same text each time, can't make it loop. *)
+  temp = "$dir/.#cemacs-$(Unguessable(result.UnwrapOr("", sys.Read("/proc/sys/kernel/random/uuid"))))"
+  while present(temp)
+    temp = "$dir/.#cemacs-$(Unguessable(""))"
+  end
+  temp
+end
+
+defn namedAs(path, temp, failure)
+  (** A failure on the name of its own, as a failure on path: the person never heard of that name. *)
+  e = failure.Error
+  if value.IsText(e)
+    return result.Err(str.Replace(temp, path, e))
+  end
+  e.Message = str.Replace(temp, path, e.Message)
+  result.Err(e)
+end
+
 defn Placed(make, path)
   (** A file or a link that make writes at a path given, made at a name of its own beside path, then renamed over it, so that what was at path stays
-      whole until the new one is, nothing is written through a link there, and a copy of a file onto itself by another path leaves it as it was. A folder
-      at path is an Err, never replaced. Ok(missing) or an Err. *)
+      whole until the new one is, nothing is written through a link there, and a copy of a file onto itself by another path leaves it as it was. The name
+      of its own is one that no one else can know before it is made, as tempIn draws it, and an Err names path, never it. A folder at path is an Err,
+      never replaced. Ok(missing) or an Err. *)
   if isFolder(path) and not isLinkPath(path)
     return result.Err("$(BaseName(path)) is a folder")
   end
-  dir = Parent(path)
-  temp = "$dir/$(FreeName(".#cemacs-$(BaseName(path))", n -> present("$dir/$n")))"
+  temp = tempIn(Parent(path))
   made = make(temp)
   if result.IsErr(made)
     _ = if present(temp) sys.Remove(temp) else result.Ok(missing) end
-    return made
+    return namedAs(path, temp, made)
   end
   moved = sys.Rename(temp, path)
   if result.IsErr(moved)
     _ = sys.Remove(temp)
-    return moved
+    return namedAs(path, temp, moved)
   end
   (* A rename onto another name of the same file does nothing, and leaves the name of its own. *)
   if present(temp) sys.Remove(temp) else result.Ok(missing) end
@@ -250,36 +289,15 @@ defn CopyTree(from, to)
   if value.IsMissing(first) result.Ok(missing) else result.Err(first) end
 end
 
-defn RemoveTree(path)
-  (** Deletes a file, a link or a folder and all it holds for good, never through a link: a link is deleted, not what it points to. Ok(missing), or an Err
-      that names the first entry that failed after the others were deleted. *)
-  if isLinkPath(path) or not isFolder(path)
-    return sys.Remove(path)
-  end
-  first = missing
-  names = sys.List(path)
-  if result.IsErr(names)
-    return names
-  end
-  for n in names.Value
-    done = RemoveTree("$path/$n")
-    if result.IsErr(done) and value.IsMissing(first)
-      first = done
-    end
-  end
-  gone = sys.Remove(path)
-  if value.IsMissing(first) gone else first end
-end
-
 defn MoveTree(from, to)
   (** Moves a file, a link or a folder: a rename, or across disks, where a rename can't go, a copy then a deletion of what was copied, only once the copy
-      is whole. Ok(missing) or an Err. *)
+      is whole, by sys.RemoveTree, which never follows a link. Ok(missing) or an Err. *)
   moved = sys.Rename(from, to)
   if result.IsOk(moved) or not str.Contains("cross-device", value.Text(dict.GetOr("Message", "", moved.Error)))
     return moved
   end
   CopyTree(from, to)?
-  RemoveTree(from)
+  sys.RemoveTree(from)
 end
 
 (* ---- Copy, rename, links *)
@@ -436,7 +454,8 @@ defn foldersAsked(asked, items, state)
 end
 
 defn deletedAll(items, state)
-  (** The items deleted for good, a folder with all it holds, never through a link. *)
+  (** The items deleted for good, a folder with all it holds, by sys.RemoveTree: it never follows a link, and walks by the folders it holds open, so that a
+      folder swapped for a link while it runs never leads it out. *)
   v = viewHere(state)
   if value.Len(items) == 0
     return commands.Say("Nothing deleted.", state)
@@ -444,7 +463,7 @@ defn deletedAll(items, state)
   done = []
   failed = []
   for i in items
-    got = RemoveTree(Within(v.Dir, i.Name))
+    got = sys.RemoveTree(Within(v.Dir, i.Name))
     if result.IsOk(got) done = list.Append(i, done) else failed = list.Append(errorOf(Within(v.Dir, i.Name), got.Error), failed) end
   end
   Summary("Deleted", done, failed, afterward(landing([i.Name for i in done], state), state))

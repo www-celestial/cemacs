@@ -39,7 +39,6 @@ cell = {Width: 8, Height: 19}
 withApps() = folders.Hooked(checker.Hooked(emacs.Config(() -> dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()))))
 here(state) = state.Buffers[state.Current]   (** The current buffer. *)
 nameOf(state) = view.BufferName(here(state))   (** The name of the current buffer. *)
-isLink(path) = result.IsOk(sys.ReadLink(path))   (** Is a path a symbolic link? *)
 
 defn on(name, state)
   (** The state with the cursor of the list on the row of a name. *)
@@ -48,16 +47,6 @@ defn on(name, state)
   s = state
   s.Buffers[s.Current] = text.Place(k, 0, here(state))
   s
-end
-
-defn removed(path)
-  (** Removes a file or a folder and all it holds, never through a link. *)
-  if not isLink(path) and result.Unwrap(sys.Stat(path)).IsDir
-    for name in result.Unwrap(sys.List(path))
-      removed("$path/$name")
-    end
-  end
-  result.Unwrap(sys.Remove(path))
 end
 
 defn made(args, dir, input = "")
@@ -155,5 +144,5 @@ refused = git.Answered({Folder: hostile, Do: "show", Item: top})
 check(not isList(refused), "the hostile clone fetches nothing: $(refused)")
 check(value.Len(pwned()) == 0, "the fetch runs no program of the repository: $(pwned())")
 
-removed(folder)
+result.Unwrap(sys.RemoveTree(folder))
 io.Print("ok")

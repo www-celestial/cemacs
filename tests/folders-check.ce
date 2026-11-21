@@ -56,16 +56,6 @@ defn on(name, state)
   s
 end
 
-defn removed(path)
-  (** Removes a file or a folder and all it holds, never through a link. *)
-  if not isLink(path) and result.Unwrap(sys.Stat(path)).IsDir
-    for name in result.Unwrap(sys.List(path))
-      removed("$path/$name")
-    end
-  end
-  result.Unwrap(sys.Remove(path))
-end
-
 defn ticked(state, done)
   (** The state after ticks, as the window sends them, until done says so, for at most ten seconds. *)
   s = state
@@ -145,6 +135,18 @@ t.Prompt.Answer = "$folder/src/deep"
 t = press.Press(["enter"], t)
 check(str.Contains("into itself", t.Message) and sys.Exists("$folder/src/x.ce"), "a move into itself is refused: $(t.Message)")
 
+(* A path that goes while the folders ask whether it is a folder is no folder, never a failure that ends the editor: tests/blink-folder.ce makes it and
+   removes it over and over while a copy asks, many times, where its file goes. *)
+other = result.Unwrap(sys.Start("cesia", args = ["run", "--allow", "read,write", "tests/blink-folder.ce", "$folder/blink", "$folder/blink-stop"]))
+waited = sys.Now()
+while not sys.Exists("$folder/blink") and sys.Now() - waited < 10
+  sys.Sleep(0.001)
+end
+answers = [result.Unwrap(folders.Destinations([{Name: "a.ce", IsDir: false}], folder, "blink"))[1].To for k in 1..3000]
+check(result.IsOk(sys.Write("$folder/blink-stop", "")) and sys.WaitExit(other) == 0, "the folder stops blinking")
+_ = sys.Remove("$folder/blink")
+check(result.IsOk(sys.Remove("$folder/blink-stop")) and "$folder/blink/a.ce" in answers and "$folder/blink" in answers, "the answer was a folder at times and nothing at others")
+
 (* A file there is replaced only after a yes. *)
 check(result.IsOk(sys.Write("$folder/b.ce", "b")), "b.ce is made")
 s = press.Press(["g"], s)
@@ -166,6 +168,16 @@ check(t.Prompt.Label == "src exists. Replace it? (y or n) ", "the folder there a
 t = press.Press(["y"], t)
 check(read("$folder/dst2/src/x.ce") == "x" and value.Len(result.Unwrap(sys.List("$folder/elsewhere"))) == 0 and isLink("$folder/dst2/src/deep"), "nothing goes through the link: $(t.Message)")
 check(str.Contains("no folder", t.Message), "the link in the way is said: $(t.Message)")
+(* A copy writes first at a name that no one can know before it is made, drawn anew each time, so that no one who can write the folder can put a link
+   there first for the copy to write through; a failure names the file, never that name. *)
+check(result.IsOk(folders.Placed(t -> sys.Write(t, t), "$folder/placed")), "Placed writes a file")
+first = read("$folder/placed")
+check(result.IsOk(folders.Placed(t -> sys.Write(t, t), "$folder/placed")), "Placed writes it again")
+second = read("$folder/placed")
+check(str.StartsWith("$folder/.#cemacs-", first) and value.Len(first) == value.Len("$folder/.#cemacs-") + 32 and first != second, "the name of its own is drawn anew: $first, $second")
+failed = folders.Placed(t -> result.Err({Kind: "io", Message: "Can't write $t: no space left on device."}), "$folder/placed")
+check(failed.Error.Message == "Can't write $folder/placed: no space left on device.", "a failure names the file, not the name of its own: $(value.Text(failed))")
+check(not sys.Exists(first) and not sys.Exists(second) and result.IsOk(sys.Remove("$folder/placed")), "the names of their own are gone")
 (* A file copied onto itself by another path stays whole. *)
 check(result.IsOk(sys.Symlink(folder, "$folder/self")), "a link to the folder itself is made")
 t = press.Press(["C"], on("b.ce", press.Press(["g"], s)))
@@ -179,7 +191,7 @@ t.Prompt.Answer = "$folder/dst4"
 t = press.Press(["enter"], t)
 check(str.Contains("special file", t.Message) and read("$folder/dst4/x.ce") == "x" and not sys.Exists("$folder/dst4/pipe"), "a FIFO is not copied: $(t.Message)")
 for gone in ["dst2", "dst4", "elsewhere", "src/pipe"]
-  removed("$folder/$gone")
+  result.Unwrap(sys.RemoveTree("$folder/$gone"))
 end
 _ = sys.Remove("$folder/self")
 s = press.Press(["g"], s)
@@ -238,6 +250,44 @@ check(t.Prompt.Label == "Delete folder src and everything in it? (yes or no) ", 
 s = press.Press(["yes", "enter"], t)
 check(not sys.Exists("$folder/src") and read("$folder/keep/k.ce") == "k", "src is deleted, and the folder its link pointed to is left: $(s.Message)")
 check(s.Message == "Deleted src.", "D says it deleted: $(s.Message)")
+
+(* A deletion for good walks by the folders it holds open: another person who can write the folder above, who swaps the folder for a link to another
+   while it runs, leads it nowhere, and every file of that other folder is left. tests/swap-folder.ce is that person; a round where it came too late is
+   run again. *)
+raceFiles = 4000
+defn raced()
+  (** One round: {Swapped, Left, Moved, Message}: did the swap land while the deletion ran, how many files the other folder keeps and the folder
+      renamed away still holds, and what D said. *)
+  race = "$folder/race"
+  check(result.IsOk(sys.Mkdir("$race/shared/big")) and result.IsOk(sys.Mkdir("$race/victim")), "the folders of the race are made")
+  for k in 1..raceFiles
+    result.Unwrap(sys.Write("$race/shared/big/f$k", ""))
+    result.Unwrap(sys.Write("$race/victim/f$k", ""))
+  end
+  ready = "$race/ready"
+  other = result.Unwrap(sys.Start("cesia", args = ["run", "--allow", "read,write", "tests/swap-folder.ce", "$race/shared/big", value.Text(raceFiles - 100), "$race/victim", ready]))
+  waited = sys.Now()
+  while not sys.Exists(ready) and sys.Now() - waited < 10
+    sys.Sleep(0.01)
+  end
+  t = press.Press(["enter"], on("shared", press.Press(["enter"], on("race", press.Press(["g"], s)))))
+  t.Config = forGood
+  t = press.Press(["D", "yes", "enter", "yes", "enter"], on("big", t))
+  code = sys.WaitExit(other)
+  left = value.Len(result.UnwrapOr([], sys.List("$race/victim")))
+  moved = value.Len(result.UnwrapOr([], sys.List("$race/shared/big.moved")))
+  result.Unwrap(sys.RemoveTree(race))
+  {Swapped: code == 0, Left: left, Moved: moved, Message: t.Message}
+end
+round = raced()
+for k in 1..2
+  if not round.Swapped
+    round = raced()
+  end
+end
+check(round.Swapped, "the other person swapped the folder for a link while the deletion ran")
+check(round.Left == raceFiles, "the folder the link points to keeps its $raceFiles files: $(round.Left); $(round.Message)")
+check(round.Moved == 0 and str.Contains("Can't remove", round.Message), "what the folder held is deleted, and the link put in its place is said: $(round.Message)")
 s.Config = withApps
 
 (* M gives a mode, in octal or as chmod writes it; T a time. *)
@@ -325,7 +375,7 @@ check(read("$folder/one") == "2" and not sys.Exists("$folder/one.gz"), "Z uncomp
 check(result.IsOk(sys.Mkdir("$folder/pack")) and result.IsOk(sys.Write("$folder/pack.tar.gz", "old")), "a folder and an archive of its name are made")
 t = press.Press(["Z", "y"], on("pack", press.Press(["g"], s)))
 check(read("$folder/pack.tar.gz") == "old" and str.Contains("exists already", t.Message), "Z never replaces an archive: $(t.Message)")
-removed("$folder/pack")
+result.Unwrap(sys.RemoveTree("$folder/pack"))
 _ = sys.Remove("$folder/pack.tar.gz")
 s = press.Press(["g"], s)
 s = press.Press(["c", "both.tar.gz", "enter"], press.Press(["m"], on("one", press.Press(["m"], on("two", press.Press(["U"], s))))))
@@ -415,6 +465,6 @@ edited.Buffers[edited.Current] = text.InsertWords("2", text.Place(kb, value.Len(
 renamed = press.Press(["C-c", "C-c"], edited)
 check(renamed.Message == "Renamed 1 file." and sys.Exists("$odd/back\\slash2") and not sys.Exists("$odd/back\\slash"), "a backslash name is renamed as written: $(renamed.Message)")
 
-removed(folder)
+result.Unwrap(sys.RemoveTree(folder))
 check(not sys.Exists(folder), "the folder is gone")
 io.Print("ok")

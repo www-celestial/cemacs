@@ -387,11 +387,16 @@ itself. Each file is copied as `cp -p` does, with its mode and its times; a fold
 holds is in, the deepest first; and a symbolic link is made again with the same target, never followed, a link to nothing
 too. A file or a link is written at a name of its own beside its place, then renamed over what was there, as
 [folders.Placed] does: what was there stays whole until the new one is, nothing is ever written through a link at the
-target, and a file copied onto itself by another path stays as it was. Where the copy has a folder and the target a file or
-a link, that entry fails and nothing goes under it; a special file, as a FIFO or a device, is named and left, since reading
-one can wait for ever. A move, [folders.MoveTree], is a rename; across disks, where a rename can't go, it copies, then deletes what it copied,
-only once the copy is whole. The buffers of the files moved, and of those inside the folders moved, take their new path, so
-that a save goes where the file is now.
+target, and a file copied onto itself by another path stays as it was. That name of its own is `.#cemacs-` and 32 digits
+that can't be known before the file is made, [folders.Unguessable]: on Linux, those of the randomness of the kernel, read
+from `/proc/sys/kernel/random/uuid`, so no one who can write the folder can put a link there first for the copy to write
+through; elsewhere, those of `std/random`. Where the copy has a folder and the target a file or a link, that entry fails
+and nothing goes under it; a special file, as a FIFO or a device, is named and left, since reading one can wait for ever.
+A copy still walks the folders by their paths: a folder that someone else swaps for a link while it runs, in the tree
+copied or in the target, leads it into the folder the link points to, so copy into and out of folders that only you can
+write. A move, [folders.MoveTree], is a rename; across disks, where a rename can't go, it copies, then deletes what it
+copied, only once the copy is whole, as a deletion for good does. The buffers of the files moved, and of
+those inside the folders moved, take their new path, so that a save goes where the file is now.
 
 The mode of `M` is in octal, as `644` or `0755`, or as `chmod` writes it, [folders.ParseMode]: clauses apart by commas, each
 who, of `u` the owner, `g` the group, `o` the others and `a` all of them, none for `a`, then `+` to add, `-` to take away or
@@ -425,7 +430,10 @@ Every deletion asks first. The setting [emacs.DeleteToTrash], true unless you ch
 - False: for good, after `Delete NAME for good? (yes or no)`, which takes the word `yes`, typed, and Enter; each folder that
   holds something then asks once more, by its name: `Delete folder NAME and everything in it? (yes or no)`. A no leaves that
   folder, and the others go. The prompt line then says `Deleted NAME.`. A symbolic link is deleted, never what it points to,
-  inside a folder too: [folders.RemoveTree] never follows one.
+  inside a folder too: the deletion is Cesia's [sys.RemoveTree], which never follows one. It walks by the folders it holds
+  open, never by their paths made again, so that someone who can write the folder above, as in `/tmp` or a shared folder,
+  and swaps the folder for a link while it runs can't lead it out: nothing out of the folder is touched. The first file
+  that can't be deleted stops it, and is named: `Deleted 0 of 1; big: Can't remove /tmp/big/f12: permission denied.`
 
 [Changing Cemacs](customising.md#settings) tells how to set it in your `Changed`: `c.DeleteToTrash = () -> false`. After a
 deletion, the cursor goes to the row that took the place of the first one gone.
