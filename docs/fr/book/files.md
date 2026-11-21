@@ -451,7 +451,7 @@ Chaque effacement demande d'abord. Le réglage [emacs.DeleteToTrash], vrai tant 
   Enter ; chaque dossier qui contient quelque chose demande alors une fois de plus, par son nom :
   `Delete folder NAME and everything in it? (yes or no)` (effacer le dossier NAME et tout ce qu'il contient ?). Un non laisse
   ce dossier, et les autres s'en vont. La prompt line dit ensuite `Deleted NAME.` (NAME effacé). Un lien symbolique est
-  effacé, jamais ce vers quoi il pointe, dans un dossier aussi : [folders.RemoveTree] n'en suit jamais aucun.
+  effacé, jamais ce vers quoi il pointe, dans un dossier aussi : [sys.RemoveTree], de Cesia, n'en suit jamais aucun.
 
 [Changer Cemacs](customising.md#les-réglages) dit comment le régler dans votre `Changed` : `c.DeleteToTrash = () -> false`.
 Après un effacement, le curseur va à la rangée qui a pris la place de la première partie.
