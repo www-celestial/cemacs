@@ -72,7 +72,9 @@ same command, and so is `M-S-.`. A move stops at the ends of the file: `C-p` on 
 
 A word is a run of letters, digits and underscores, `_`. A character that isn't ASCII, the 128 characters of plain English
 text, counts as a letter, so `été` is one word: Cesia knows the case of ASCII letters only, and treating the others as
-letters keeps every alphabet in words. `M-f` first skips what is not a word, then the word:
+letters keeps every alphabet in words. `M-f` first skips what is not a word, then the word. It reads each line it crosses
+once, a byte at a time, so a word of a million letters, as a minified file or a data URI holds, is crossed in a few tenths
+of a second:
 
 ```cesia
 cursorOf(press.Press(["one two", "C-a", "M-f"], editor(""))) --> {Line: 1, Column: 3}

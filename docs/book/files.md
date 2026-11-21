@@ -114,13 +114,16 @@ Saving is built so that no failure loses text, neither the text on disk nor the 
 
 1. The new text goes to a new file beside the old one, named `PATH.cemacs-` and the time in microseconds, with `-1`, `-2` and
    so on up to `-20` when that name is taken, after which the save stops with `No free name next to PATH for a new file.`
-   The new file is the only one Cemacs ever removes.
-2. The new file is written with `sys.Write(..., sync = true)`, which gives its answer only once the system has put the file
-   on the disk, and then its folder, with `fsync`: the call that asks the system to write what it holds in its caches, so
-   that a loss of power can't take it back.
-3. Once it is on the disk in full, a rename puts it in place of the old file. On Linux, a rename within one file system, as
-   here, is atomic: at every instant the name leads to the whole old file or to the whole new one, never to a part of
-   either.
+   The new file is the only one Cemacs ever removes. When PATH is a symbolic link, a file that only points to another one,
+   PATH here is the file it points to, its links followed one after the other, as Emacs's `file-truename` does: the link
+   stays a link, and the file it leads to gets the text.
+2. The new file is written with `sys.Write(..., sync = true, private = true)`, which makes it with `O_EXCL`, so that no file
+   or link put at its name first takes the text, and yours alone, `rw-------`, so that no one can open it while it holds
+   the text; and which gives its answer only once the system has put the file on the disk, and then its folder, with
+   `fsync`: the call that asks the system to write what it holds in its caches, so that a loss of power can't take it back.
+3. The new file gets the mode of the old one, its rights to read, write and run, then, once it is on the disk in full, a
+   rename puts it in place of the old file. On Linux, a rename within one file system, as here, is atomic: at every instant
+   the name leads to the whole old file or to the whole new one, never to a part of either.
 4. If writing or renaming fails, the new file is removed, the old one stays whole, the buffer keeps its text and its star,
    and the prompt line tells the reason, naming your file, not the new one.
 
@@ -130,11 +133,12 @@ instant of the rename before the system wrote the folder again, under the new fi
 file, which is then whole. Vim and Neovim do the same by default (their option `'fsync'`); GNU Emacs 31 doesn't, as its
 `write-region-inhibit-fsync` is on. The cost is the time the disk takes: [Speed](performance.md#paste-undo-and-save) has it.
 
-Since the saved file is a new one, it doesn't keep what belonged to the old one: its permissions are those of a new file,
-`rw-r--r--` with the usual `umask`, the mask by which the system takes rights away from every new file, so a script loses its
-right to run and a read-only file becomes writable; a symbolic link, a file that only points to another one, is replaced by a
-plain file, its target left as it was; and a hard link, a second name of the same file, no longer shares the text. The folder must let you
-write in it, for the new file.
+The saved file is a new one with the mode of the old one: a private file stays `rw-------`, a script keeps its right to run,
+a read-only file stays read-only. Its setuid and setgid bits don't pass, as the new file is yours, not the old one's
+owner's, and its group is the one a new file gets in that folder. A file that wasn't there gets what the system gives a new
+file, `rw-rw-rw-` less the `umask`, the mask by which the system takes rights away from every new file, as Linux tells it in
+`/proc/self/status`; `rw-------` where it doesn't. A hard link, a second name of the same file, no longer shares the text.
+The folder must let you write in it, for the new file.
 
 ### A file changed by another program
 
@@ -160,7 +164,8 @@ it a new file. Cemacs looks only when it saves: it doesn't reload a file that ch
 
 A file of Cesia, a `.ce` file, is saved as [`cesia fmt`](https://www-celestial.github.io/cesia-lang/commands.html) writes it:
 each line at the indent of its blocks, no spaces at the end of a line, no two blank lines in a row. The text goes to a file
-of its own in `.cesia/fmt/` of the folder of Cemacs, `cesia fmt` formats it, and the formatted text is what is saved; the
+of its own in `.cesia/fmt/` of the folder of Cemacs, yours alone, `rwx------`, as the copy is, `rw-------`, since the file
+may be a private one, `cesia fmt` formats it, and the formatted text is what is saved; the
 buffer takes it too, as one step of undo, so that `C-/` gives back what you typed, the cursor on its line. The file in
 `.cesia/fmt/` is removed at once. A text that doesn't read, as one with a bracket left open, is saved as typed, and the
 prompt line says `Saved PATH as typed:` and why `cesia fmt` left it. A save of a file of 2,000 lines takes 60 ms through
@@ -240,6 +245,13 @@ for each of the owner, the group and the others, `r` to read, `w` to write and `
 stand for the bits of set-id and of the sticky folder. A link shows `lrwxrwxrwx`, as Linux gives every link, then the size
 and the age of what it points to, and its name ends with `->` and its target. A mode is a number from 0 to 4095, which
 Cesia writes in decimal: 420 is `644` in octal, `rw-r--r--`.
+
+A name, and the target of a link, is written as `ls -b` writes it, by [folders.NameText]: a backslash doubled, and each
+control character, a byte from 1 to 31 or 127, escaped as C writes it in a text, `\n`, `\t`, `\r`, or by its number in octal,
+`\033` for ESC. Anyone who can write in a folder can make a name with a line end in it, and a row that broke there would
+show the next file on the line of the cursor while a key acted on the one above: here a row is always one file, the one it
+shows. The prompt line writes the control characters of what it shows in the same way, by [lists.Escaped], and so does
+every list for a row that holds a line end.
 
 ```cesia
 folders.PermissionText(420) --> "rw-r--r--"
@@ -424,7 +436,8 @@ Cemacs follows the Trash specification of freedesktop.org, version 1.0, for the 
 file manager of your desktop can restore a file:
 
 - The trash is `$XDG_DATA_HOME/Trash`, or `~/.local/share/Trash` when `XDG_DATA_HOME` isn't set. Without `HOME` either, it
-  says `There is no trash: HOME is not set.`
+  says `There is no trash: HOME is not set.` The trash, its `files/` and its `info/` are yours alone, `rwx------`, as GIO
+  makes them, and so is each info, `rw-------`: what you deleted, and from where, is no one else's business.
 - The file or folder goes into `files/`, under its own name, or `NAME.2`, `NAME.3` and so on when that one is taken.
 - Its info goes into `info/NAME.trashinfo` first, as the specification asks: its path from the root, each part
   percent-encoded, as URLs write a space `%20`, and the date it was trashed. If the move then fails, the info is removed.
@@ -456,7 +469,10 @@ This is Emacs's Wdired. Every key of the editor edits the text: `C-s` searches i
 line and `C-/` undoes. The three keys above are the buffer's own, which come over the global ones while it is the current
 buffer. Before anything is renamed, [folders.NamesPlan] checks the lines: as many as the names, none empty, none
 with a `/`, since a name changes here and not its folder, none twice, and none a name that is there already, unless another
-line renames that one away. One that fails says why on the prompt line, and the text stays to be fixed:
+line renames that one away. Each name is written as its row writes it, by [folders.NameText]: a line left as it was keeps
+its name byte for byte, the line of a name with a control character can't be edited, `R` renames it, and an edited line is
+read by [folders.NameOf], `\\` standing for one backslash. One that fails says why on the prompt line, and the text stays to
+be fixed:
 
 ```cesia
 folders.NamesPlan(["a", "b"], ["b", "a"], n -> true) --> result.Ok([{From: "a", To: "b"}, {From: "b", To: "a"}])
@@ -496,7 +512,10 @@ folders.Quoted("-rf") --> "'./-rf'"
 
 `!` waits for its command at most 60 seconds, [folders.CommandLimit], and ends it after; `&` has no limit, and the editor
 goes on meanwhile. What a command wrote shows on the prompt line when it is one line, or else in the buffer
-`*Shell Command Output*`, in the other pane, the list staying where you are. The shell is the one of `$SHELL`, or `/bin/sh`.
+`*Shell Command Output*`, in the other pane, the list staying where you are. The shell is `/bin/sh`, whatever `$SHELL` says:
+[folders.Quoted] writes the names for a POSIX shell, and fish, for one, reads `\'` and `\\` inside single quotes, so a name
+that ends with a backslash would close no quote there, and the name after it would run as a command. The shell buffer,
+[`C-c o t`](shell.md), is the one of `$SHELL`.
 
 `Z` does what Dired's table of suffixes says, [folders.CompressPlan]: a folder becomes a `.tar.gz`, by `tar`; a `.tar.gz`,
 `.tgz`, `.tar.xz`, `.tar.bz2` or `.zip` opens in this folder, a `.zip` in a folder of its name; a file compressed by `gzip`,
@@ -505,7 +524,9 @@ there, `-k`, so does `unzip`, `-n`, the others refuse, and a folder whose `.tar.
 already`. `c` makes a `.tar.gz` or `.tgz`, a
 `.tar.xz`, a `.tar.bz2` or a `.tar` by `tar`, or a `.zip` by `zip`, as [folders.ArchivePlan] says; an archive that is there
 goes first, after a yes. Each waits at most 600 seconds, [folders.ArchiveLimit]. `=` runs
-`git diff --no-index --no-color -- A B`, the names after `--`, so that none becomes an option, and shows its lines as
+`git --git-dir=/dev/null diff --no-index --no-ext-diff --no-textconv --no-color -- A B`, the names after `--`, so that none
+becomes an option, out of any repository, so that no `.git/` of the folder or above gives git a program to run (see
+[Git](git.md#security)), and shows its lines as
 [Git](git.md) shows a diff, the new lines in the colour of texts, the old ones in that of keywords; its answer starts with
 the other file marked, or else the backup `NAME~`, or else the folder of the other pane.
 

@@ -126,7 +126,8 @@ steps, from the min to the max, and is written with the decimals of the min and 
 A move runs again only the cells that read the slider's name, directly or through other cells: the session of the file
 gets the new number with [cells.Set](https://www-celestial.github.io/cesia-lang/cells.html), *in place*, so that a function
 of another cell that reads it sees it at once, and the slider's own cell, which holds nothing else, doesn't run. Without a
-session yet, one starts and every cell runs, from the top. The thumb and the number follow the pointer at once; the
+session yet, the number is written and nothing runs, and the prompt line says that `C-c e a` runs the cells with it: the
+code of a file, which may come from elsewhere, runs only when you ask, never from a press of the mouse. The thumb and the number follow the pointer at once; the
 results follow as fast as the cells run, and keep showing until the new ones come, with `waiting` or `running…` above
 them. After the slider, the time of its last rerun shows, as `rerun 104 ms`, so that you see why a graph lags.
 
@@ -235,7 +236,10 @@ plays it. A 3D graph turns there as under a cell.
 
 ## The page
 
-`C-c e h` runs every cell of the file, as saved, in a new session, and writes `name.html` beside it: each cell's title, its
+`C-c e h` runs every cell of the file, as saved, in a new session, and writes `name.html` beside it, as a save writes a file,
+through a new file and a rename [files.Replace]; a file there already is asked about first, `name.html exists. Replace it?
+(y or n)`, and a symbolic link there, which a folder from elsewhere can bring, is replaced by the page, never written
+through, so the file it points to stays as it was. The page holds each cell's title, its
 code coloured as Cesia's docs colour it, what it printed and its value, as a table or a text, or its error. The page needs
 no other file and no script, and shows what `cesia run` computes, not the state of the window. An animation starts paused
 on its first frame under a box *Play*, which plays it by CSS alone. A 3D graph shows at the view of its code, not at the
@@ -243,7 +247,8 @@ view it was turned to in the window.
 
 ## Security
 
-A slider writes only the number of its own value, on its own line: before the edit, Cemacs checks that this line still lies
+A slider runs code only in a session that `C-c e e` or `C-c e a` started: a press on a slider of a file just opened writes
+its number and runs nothing. A slider writes only the number of its own value, on its own line: before the edit, Cemacs checks that this line still lies
 in the slider's cell and still holds the number it read there, and refuses the move otherwise; the text is read again at
 the next key. The number written is one of the slider's steps, between its min and its max, made by
 [cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html), and the session takes it only for a name that holds a

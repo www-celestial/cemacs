@@ -7,6 +7,8 @@
     commands opens and runs lists. *)
 use std/dict
 use std/list
+use std/math
+use std/regex
 use std/text as str
 use std/value
 
@@ -220,9 +222,9 @@ defn IsRanked(l)
 end
 
 defn PartsOf(row)
-  (** The colored parts of a row, or missing for a row of one plain color. *)
+  (** The colored parts of a row, or missing for a row of one plain color; Escaped as its words are, for a row that holds a line end. *)
   match row
-    {Parts: p} -> p
+    {Parts: p} -> if str.Contains("\n", row.Words) [[part[1], Escaped(part[2])] for part in p] else p end
     else -> missing
   end
 end
@@ -267,7 +269,45 @@ defn FreeKeys(l)
   end
 end
 
-Words(rows) = str.Join("\n", list.Map(r -> r.Words, rows))   (** The text of the rows, one per line. *)
+(** The control characters, as a class of std/regex: each but the zero byte, which a pattern can't hold, and which no name holds. *)
+controls() = "[$(str.FromBytes([1]))-$(str.FromBytes([31, 127]))]"
+
+(** The letter that C writes after a backslash for the control characters 7 to 13: \a, \b, \t, \n, \v, \f and \r. *)
+letters() = "abtnvfr"
+
+defn Escaped(words)
+  (** The words with each control character written as C writes it in a text, \t, \n or \r, or by its number in octal, \033 for ESC, as ls -b writes
+      a name: a line end in a name or an answer stays on one line, and no character that the screen can't show hides in it. Words with none are given
+      back as they are, from one search of std/regex; bytes that aren't UTF-8 stay as they are.
+
+        Escaped("a$(str.FromBytes([10]))b") --> "a\\nb"
+        Escaped("bell$(str.FromBytes([7, 27]))") --> "bell\\a\\033"
+        Escaped("plain é") --> "plain é" *)
+  if not regex.Test(controls(), words)
+    return words
+  end
+  out = []
+  for v in str.Bytes(words)
+    if v >= 7 and v <= 13
+      out = list.Concat(out, [92, str.Byte(v - 6, letters())])
+    else if v < 32 or v == 127
+      out = list.Concat(out, [92, 48 + math.Div(v, 64), 48 + math.Mod(math.Div(v, 8), 8), 48 + math.Mod(v, 8)])
+    else
+      out = list.Append(v, out)
+    end
+  end
+  str.FromBytes(out)
+end
+
+defn Words(rows)
+  (** The text of the rows, one per line. A row whose words hold a line end is Escaped, so that each row stays one line, and the item of each line is the
+      one of its row: a name of a file can hold a line end. *)
+  joined = str.Join("\n", list.Map(r -> r.Words, rows))
+  if str.Count("\n", joined) < value.Len(rows)
+    return joined
+  end
+  str.Join("\n", [if str.Contains("\n", r.Words) Escaped(r.Words) else r.Words end for r in rows])
+end
 
 defn LineOf(item, items, line)
   (** The line of an item among the items shown, or else the line given, brought inside them. *)

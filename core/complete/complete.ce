@@ -26,7 +26,7 @@ defn Prefix(b)
         Prefix(text.Place(1, 4, text.Of("io.P", missing))) --> "P"
         Prefix(text.Place(1, 2, text.Of("abc", missing))) --> "" *)
   line = rope.Line(b.Cursor.Line, b.Rope)
-  words = str.Join("", list.Take(b.Cursor.Column, str.Chars(line)))
+  words = str.Slice(1, list.Min(b.Cursor.Column, value.Len(line)), line)
   n = str.ByteLength(words)
   if n < str.ByteLength(line) and nameByte(str.Byte(n + 1, line))
     return ""

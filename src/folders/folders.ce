@@ -86,8 +86,19 @@ field(name, otherwise, e) = dict.GetOr(name, otherwise, e)
 
 isLink(e) = field("IsLink", false, e) == true   (** Is the entry a symbolic link? *)
 
-(** The name of an entry as a row shows it: a folder ends with a slash. *)
-shownName(e) = if e.IsDir "$(e.Name)/" else e.Name end
+(** The name of an entry as a row shows it, by NameText: a folder ends with a slash. *)
+shownName(e) = if e.IsDir "$(NameText(e.Name))/" else NameText(e.Name) end
+
+defn NameText(name)
+  (** A name as the rows of a folder and the names to edit show it, on one line whatever it holds, as ls -b writes it: each backslash doubled and each
+      control character escaped, \n, \t or \033, by lists.Escaped, so that a name with a line end stays one row, the commands of a row act on the file it
+      shows, and no name looks like another. A name with neither is as it is.
+
+        NameText("a.ce") --> "a.ce"
+        NameText("a$(str.FromBytes([10]))b") --> "a\\nb"
+        NameText("a\\nb") --> "a\\\\nb" *)
+  lists.Escaped(if str.Contains("\\", name) str.Replace("\\", "\\\\", name) else name end)
+end
 
 (* ---- The view: what a folder list shows, and how *)
 
@@ -193,7 +204,7 @@ defn rowOf(e, facts)
   name = shownName(e)
   role = RoleOf(e)
   link = field("IsLink", false, e) == true
-  target = if link " -> $(field("Target", "?", e))" else "" end
+  target = if link " -> $(NameText(field("Target", "?", e)))" else "" end
   body = if value.Len(facts) == 0 "$name$target" else "$(facts[1][2])$(facts[2][2])$(facts[3][2])$name$target" end
   parts = if value.Len(facts) == 0 [noMark, [role, name]] else [noMark, facts[1], facts[2], facts[3], [role, name]] end
   if link

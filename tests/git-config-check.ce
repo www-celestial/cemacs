@@ -1,0 +1,159 @@
+(** Checks that the config of a Git repository runs no program of its own on the keys that run git: = in a folder, C-x p f, and what tools/git.ce and
+    tools/grep.ce answer for C-x g, C-c g d, C-c g l, C-c g b, Enter on a commit and C-x p g. A folder can bring its .git/ from an archive: each program of
+    its config here is a script that leaves a file behind, PWNED-NAME. The repositories are made in a new folder under /tmp. It is a script, not a test
+    file: it needs permissions. tests/run.sh runs it with cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=SHELL. It prints ok at the
+    end and stops at the first failure. *)
+use src/buffers
+use src/check as checker
+use core/commands
+use src/emacs
+use src/folders
+use src/git
+use src/grep
+use src/project
+use core/lists
+use core/press
+use src/rope
+use core/text
+use src/ui
+use core/view
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+(** The keys as src/cemacs.ce merges them, with the hooks of the check and of &. *)
+withApps() = folders.Hooked(checker.Hooked(emacs.Config(() -> dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()))))
+here(state) = state.Buffers[state.Current]   (** The current buffer. *)
+nameOf(state) = view.BufferName(here(state))   (** The name of the current buffer. *)
+isLink(path) = result.IsOk(sys.ReadLink(path))   (** Is a path a symbolic link? *)
+
+defn on(name, state)
+  (** The state with the cursor of the list on the row of a name. *)
+  k = list.IndexOf(name, [i.Name for i in lists.Of(here(state)).Items])
+  check(not value.IsMissing(k), "$name is shown")
+  s = state
+  s.Buffers[s.Current] = text.Place(k, 0, here(state))
+  s
+end
+
+defn removed(path)
+  (** Removes a file or a folder and all it holds, never through a link. *)
+  if not isLink(path) and result.Unwrap(sys.Stat(path)).IsDir
+    for name in result.Unwrap(sys.List(path))
+      removed("$path/$name")
+    end
+  end
+  result.Unwrap(sys.Remove(path))
+end
+
+defn made(args, dir, input = "")
+  (** Runs git in the folder dir, as the person would, and stops the script if it fails: its output. *)
+  ran = result.Unwrap(sys.Run("git", args = list.Concat(["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"], args), input = input))
+  check(ran.Code == 0, "git $(str.Join(" ", args)): $(ran.Err)")
+  ran.Out
+end
+
+folder = "/tmp/cemacs-git-config-check-$(value.Text(sys.Now()))"
+repo = "$folder/repo"
+check(result.IsOk(sys.Mkdir(repo)) and result.IsOk(sys.Mkdir("$folder/bin")), "the folders are made")
+
+defn script(name)
+  (** A program that leaves PWNED-NAME in the folder, then writes its input or its files as a filter or a textconv does: its path. *)
+  path = "$folder/bin/$name"
+  check(result.IsOk(sys.Write(path, "#!/bin/sh\ntouch '$folder/PWNED-$name'\ncat \"$@\" 2>/dev/null\nexit 0\n")) and result.IsOk(sys.Chmod(path, 493)), "$name is made")
+  path
+end
+
+(** The programs that ran: the PWNED files left in the folder. *)
+pwned() = [n for n in result.Unwrap(sys.List(folder)) if str.StartsWith("PWNED", n)]
+
+(* A repository with two commits, the last one signed, and a change not staged; its config is written last, as an archive brings it. *)
+check(result.IsOk(sys.Write("$repo/a.txt", "one\n")) and result.IsOk(sys.Write("$repo/b.txt", "two\n")) and result.IsOk(sys.Write("$repo/.gitattributes", "* filter=evil diff=evil\n")), "the files are made")
+_ = made(["init", "-q"], repo)
+_ = made(["add", "a.txt", "b.txt", ".gitattributes"], repo)
+_ = made(["commit", "-q", "-m", "first"], repo)
+check(result.IsOk(sys.Write("$repo/a.txt", "one\nsecond\n")), "a.txt changes")
+_ = made(["commit", "-q", "-a", "-m", "second"], repo)
+body = made(["cat-file", "commit", "HEAD"], repo)
+cut = str.Find("\n\n", body)
+signedBody = "$(str.Slice(1, cut - 1, body))\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEzBAABCAAdFiEE\n -----END PGP SIGNATURE-----$(str.Slice(cut, value.Len(body), body))"
+signed = str.Trim(made(["hash-object", "-t", "commit", "-w", "--stdin"], repo, input = signedBody))
+_ = made(["update-ref", "HEAD", signed], repo)
+check(result.IsOk(sys.Write("$repo/a.txt", "one\nsecond\nthird\n")), "a.txt changes again")
+for pair in [["core.fsmonitor", "fsmonitor"], ["diff.external", "external"], ["filter.evil.clean", "clean"], ["filter.evil.smudge", "smudge"],
+    ["filter.evil.required", ""], ["diff.evil.textconv", "textconv"], ["diff.evil.command", "command"], ["log.showSignature", ""], ["gpg.program", "gpg"]]
+  _ = made(["config", pair[1], if pair[2] == "" "true" else script(pair[2]) end], repo)
+end
+hook = script("hook")
+check(result.IsOk(sys.Write("$repo/.git/hooks/post-index-change", result.Unwrap(sys.Read(hook)))) and result.IsOk(sys.Chmod("$repo/.git/hooks/post-index-change", 493)), "the hook is made")
+check(value.Len(pwned()) == 0, "nothing ran while the repository was made: $(pwned())")
+
+(* = on two files of the folder compares them out of any repository: no external diff, no textconv, no filter. *)
+start = view.Start([text.Of("a", "$repo/a.txt")], look, cell, 800, 600)
+start.Config = withApps
+s = press.Press(["C-x", "d"], start)
+s = press.Press(["m"], on("b.txt", s))
+s = press.Press(["="], on("a.txt", s))
+s = press.Press(["enter"], s)
+check(nameOf(s) == "Diff a.txt b.txt" and str.Contains("+two", rope.Text(here(s).Rope)), "= lists the diff: $(s.Message) $(rope.Text(here(s).Rope))")
+check(value.Len(pwned()) == 0, "= runs no program of the repository: $(pwned())")
+
+(* C-x p f lists the files: no fsmonitor, no hook at the refresh of the index. *)
+listed = press.Press(["C-x", "p", "f"], start)
+check(lists.IsList(here(listed)) and "a.txt" in str.Lines(rope.Text(here(listed).Rope)), "C-x p f lists the files: $(listed.Message)")
+check(value.Len(pwned()) == 0, "C-x p f runs no program of the repository: $(pwned())")
+
+(* What tools/git.ce answers: the state, the diff of the file, the log, a signed commit, a blame; and tools/grep.ce, the search. *)
+isList(answer) = value.IsDict(answer) and dict.Has("List", answer)
+answered(q) = git.Answered(dict.Merge({Folder: repo}, q))
+st = answered({Do: "status"})
+check(isList(st) and list.Any([str.Contains("a.txt", r.Words) for r in st.List.Rows]), "C-x g lists the state: $(st)")
+d = answered({Do: "diff", Path: "$repo/a.txt"})
+check(isList(d) and list.Any([str.Contains("third", r.Words) for r in d.List.Rows]), "C-c g d lists the diff: $(d)")
+l = answered({Do: "log"})
+check(isList(l) and value.Len(l.List.Rows) == 2, "C-c g l lists the log: $(l)")
+c = answered({Do: "show", Item: str.Slice(1, 12, signed)})
+check(isList(c) and list.Any([str.Contains("second", r.Words) for r in c.List.Rows]), "Enter shows the signed commit: $(c)")
+b = answered({Do: "blame", Path: "$repo/a.txt", Text: "one\nsecond\nthird\n", Line: 1})
+check(isList(b) and value.Len(b.List.Rows) == 3, "C-c g b lists the blame: $(b)")
+g = grep.Answered({Do: "search", Folder: repo, Answer: "second"})
+check(isList(g) and value.Len(g.List.Rows) >= 1, "C-x p g finds the words: $(g)")
+check(value.Len(pwned()) == 0, "the keys of git run no program of the repository: $(pwned())")
+
+(* A partial clone gets the objects it lacks from its remote at a read: a remote whose config names a program for that fetch fetches nothing, and one
+   whose config doesn't still fetches. *)
+source = "$folder/source"
+check(result.IsOk(sys.Mkdir(source)) and result.IsOk(sys.Write("$source/f.txt", "hello\n")), "the source is made")
+_ = made(["init", "-q"], source)
+_ = made(["add", "f.txt"], source)
+_ = made(["commit", "-q", "-m", "one"], source)
+_ = made(["config", "uploadpack.allowFilter", "true"], source)
+top = str.Trim(made(["rev-parse", "HEAD"], source))
+for name in ["partial", "hostile"]
+  _ = made(["clone", "-q", "--filter=blob:none", "--no-checkout", "file://$source", name], folder)
+end
+hostile = "$folder/hostile"
+check(result.IsOk(sys.Mkdir("$hostile/git-remote-x")) and result.IsOk(sys.Write("$hostile/evil", result.Unwrap(sys.Read(script("vcs"))))) and result.IsOk(sys.Chmod("$hostile/evil", 493)), "the helper is made")
+_ = made(["config", "remote.origin.vcs", "x/../evil"], hostile)
+fetched = git.Answered({Folder: "$folder/partial", Do: "show", Item: top})
+check(isList(fetched) and list.Any([str.Contains("+hello", r.Words) for r in fetched.List.Rows]), "a partial clone still fetches what it lacks: $(fetched)")
+refused = git.Answered({Folder: hostile, Do: "show", Item: top})
+check(not isList(refused), "the hostile clone fetches nothing: $(refused)")
+check(value.Len(pwned()) == 0, "the fetch runs no program of the repository: $(pwned())")
+
+removed(folder)
+io.Print("ok")

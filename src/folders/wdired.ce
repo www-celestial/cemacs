@@ -1,6 +1,7 @@
 (* The names of a folder as a text to edit, as Emacs's Wdired: C-x C-q in a folder list makes a buffer of the names it shows, one a line, which every key
    of the editor edits; C-c C-c, or C-x C-s, renames each file whose line changed, and C-c C-k or C-g leaves with no change. These keys are the buffer's
-   own, its OwnKeys, over those of the editor while it is the current one. *)
+   own, its OwnKeys, over those of the editor while it is the current one. A name is written as the rows write it, by NameText, so that a name with a line
+   end stays one line: a line left as it was keeps its name byte for byte, and the line of a name with a control character can't be edited. *)
 use core/commands
 use core/lists
 use core/text
@@ -21,7 +22,7 @@ defn EditNames(state)
   if value.Len(names) == 0
     return commands.Say("No name to edit.", state)
   end
-  t = text.Place(b.Cursor.Line, 0, text.Of(str.Join("\n", names), missing))
+  t = text.Place(b.Cursor.Line, 0, text.Of(str.Join("\n", [NameText(n) for n in names]), missing))
   t.Name = "*Wdired $(Slashed(v.Dir))*"
   t.OwnKeys = {"C-c C-c": FinishNames, "C-x C-s": FinishNames, "C-c C-k": AbortNames, "C-g": AbortNames}
   t.Wdired = {List: b, Names: names}
@@ -59,19 +60,53 @@ defn lineList(state)
   s
 end
 
+defn NameOf(line)
+  (** The name that an edited line gives, read as NameText writes it, in an Ok: \\ is one backslash. A lone backslash, which NameText never writes,
+      and a control character, which no name typed here holds, are an Err of the words to say.
+
+        NameOf("a\\\\b.ce") --> result.Ok("a\\b.ce")
+        NameOf("x.ce") --> result.Ok("x.ce")
+        result.IsErr(NameOf("a\\nb")) --> true *)
+  if lists.Escaped(line) != line
+    return result.Err("holds a control character, which a name typed here can't hold")
+  end
+  parts = str.Split("\\\\", line)
+  if list.Any([str.Contains("\\", part) for part in parts])
+    return result.Err("holds a lone backslash: \\\\ stands for one, as the names show it")
+  end
+  result.Ok(str.Join("\\", parts))
+end
+
 defn NamesPlan(old, new, taken)
   (** The renames that the names edited ask for, [{From, To}], in an Ok, or an Err of the words to say: the lines are as many as the names, none empty,
-      none with a /, none twice, and none a name that is there already, which taken tells, but one that another line renames away.
+      none with a /, none twice, and none a name that is there already, which taken tells, but one that another line renames away. A line read as NameText
+      wrote it keeps its name, byte for byte; a line edited is read by NameOf, but that of a name with a control character, which can't be edited here.
 
         NamesPlan(["a", "b"], ["b", "a"], n -> false) --> result.Ok([{From: "a", To: "b"}, {From: "b", To: "a"}])
         result.IsErr(NamesPlan(["a", "b"], ["c", "c"], n -> false)) --> true
-        result.IsErr(NamesPlan(["a"], ["x"], n -> n == "x")) --> true *)
+        result.IsErr(NamesPlan(["a"], ["x"], n -> n == "x")) --> true
+        NamesPlan(["zz$(str.FromBytes([10]))"], ["zz\\n", ""], n -> false) --> result.Ok([])
+        result.IsErr(NamesPlan(["a$(str.FromBytes([10]))b"], ["a\\nc"], n -> false)) --> true *)
   lines = if value.Len(new) == value.Len(old) + 1 and list.Last(new) == "" list.DropLast(1, new) else new end
   if value.Len(lines) != value.Len(old)
     return result.Err("The names are $(value.Len(old)) lines, and the text has $(value.Len(lines)): each line is the new name of the file of its line.")
   end
+  names = []
   for k in 1..value.Len(lines)
-    n = lines[k]
+    if lines[k] == NameText(old[k])
+      names = list.Append(old[k], names)
+    else if lists.Escaped(old[k]) != old[k]
+      return result.Err("Line $k: $(NameText(old[k])) holds a control character, which can't be edited here: R renames it.")
+    else
+      got = NameOf(lines[k])
+      if result.IsErr(got)
+        return result.Err("Line $k $(got.Error).")
+      end
+      names = list.Append(got.Value, names)
+    end
+  end
+  for k in 1..value.Len(names)
+    n = names[k]
     if n == "" or n == "." or n == ".."
       return result.Err("Line $k has no name.")
     end
@@ -80,17 +115,17 @@ defn NamesPlan(old, new, taken)
     end
   end
   seen = dict.Dict()
-  for n in lines
+  for n in names
     if dict.Has(n, seen)
-      return result.Err("Two lines are named $n.")
+      return result.Err("Two lines are named $(NameText(n)).")
     end
     seen = dict.Put(n, true, seen)
   end
-  moving = dict.Dict([{Key: old[k], Value: true} for k in 1..value.Len(old) if old[k] != lines[k]])
-  plan = [{From: old[k], To: lines[k]} for k in 1..value.Len(old) if old[k] != lines[k]]
+  moving = dict.Dict([{Key: old[k], Value: true} for k in 1..value.Len(old) if old[k] != names[k]])
+  plan = [{From: old[k], To: names[k]} for k in 1..value.Len(old) if old[k] != names[k]]
   for p in plan
     if taken(p.To) and not dict.Has(p.To, moving)
-      return result.Err("$(p.To) exists already.")
+      return result.Err("$(NameText(p.To)) exists already.")
     end
   end
   result.Ok(plan)

@@ -71,3 +71,29 @@ Measured on the same machine as the rest, in the book's chapter on performance:
 - A still window sleeps until the next event: 0.0 % of a core at rest instead of 1.4 %, a key read 0.7 ms after it was
   sent instead of 3.1.
 - The start, to the first frame: 51.3 ms with Cesia 1.2 against 57.4 with Cesia 1.1.0; Emacs 89.1, Neovim 13.8, Vim 9.3.
+
+### Fixes
+
+- The config of a Git repository runs no program of its own on `=`, `C-x p f`, `C-x g`, `C-c g d`, the log, a commit shown,
+  the blame or `C-x p g`: no fsmonitor, external diff, textconv, filter, hook, signature program or fetch helper of a
+  `.git/` that came with a folder; `=` runs out of any repository.
+- A save keeps the mode of the file, a private one private and a script one to run, through a new file that is the
+  person's alone until it gets that mode; a symbolic link stays a link and the file it points to is saved, as in Emacs;
+  the copy of a file of Cesia that `cesia fmt` formats is the person's alone.
+- A zero byte in the output of a program or of a cell, or in any text drawn, is shown as `␀`, and copied so, instead of
+  ending the editor and losing every buffer not saved.
+- `C-c e h` asks before it replaces a page that is there, and writes the page as a save does, through a new file and a
+  rename, so a symbolic link named as the page is replaced, never written through.
+- `M-f` and `M-b` read each line they cross once, so a word of 32,000 letters is crossed in 25 ms instead of 36 s, and one
+  of a million in under a second instead of never; Tab, typing and backspace at the start of a line of a megabyte take 7
+  to 16 ms instead of 220, as the screen and the completion take a slice of the line instead of all its characters.
+- A name with a line end or another control character is written as `ls -b` writes it, `a\nb`, in the rows of a folder,
+  in the names to edit and on the prompt line, so that a row is always the file it shows: the row of the cursor could
+  take the file under it; and `C-x C-q` then `C-c C-c` with no edit keeps each name byte for byte, where a name that ended
+  with a line end lost it.
+- `!` and `&` run their command in `/bin/sh`, whose quoting the names get, instead of `$SHELL`: in fish, a name that ended
+  with a backslash closed no quote, and the next name could run as a command.
+- The trash, its `files/` and its `info/` are made the person's alone, 700, and each `.trashinfo` 600, as GIO makes
+  them, instead of 755 and 644.
+- A press on a slider runs cells only in a session that `C-c e e` or `C-c e a` started: in a file just opened, it writes
+  its number and runs nothing, where it started a session and ran every cell.

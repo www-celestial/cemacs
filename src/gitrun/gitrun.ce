@@ -1,0 +1,105 @@
+(** git as Cemacs runs it: no folder can make it run a program of its own. A folder can bring its .git/ from an archive, a USB stick or a shared folder,
+    and git reads the config of that .git/ at each call, where a key can name a program: core.fsmonitor runs at each read of the index, diff.external
+    and the textconv of a diff driver at each diff, a filter's clean and smudge at each read of a changed file, a hook at each write of the index, the
+    program of log.showSignature at each signed commit, and, when git fetches an object a partial clone lacks, core.sshCommand, an upload-pack, the helper
+    of remote.NAME.vcs, a credential helper, the command of core.alternateRefsCommand, and the gc that follows. So each git of Cemacs gets options that
+    turn them off, and those of git itself that read only, the state, the diffs, the log, a blame, the files and the search, get more: no hook, no
+    signature, no submodule searched or diffed by a git of its own, no gc, each filter that the repository's own config defines turned off, or given back
+    the program of the person's own config, and no fetch when that config sets a key a fetch reads. A commit and the stage of a file run the hooks and the
+    filters of the repository, as git does from a terminal: they are its own, git-lfs among them. *)
+use std/dict
+use std/list
+use std/regex
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The options of every git of Cemacs: no fsmonitor, and no external diff, which git can't run from an empty name, so a diff that forgot
+    --no-ext-diff fails instead of running one. *)
+Always() = ["-c", "core.fsmonitor=false", "-c", "diff.external="]
+
+(** The options of a git that reads only: those of Always, then no hook, which a refresh of the index would run, no signature checked by a program, no
+    submodule searched by grep or diffed by a git run in it, which would read the config of the submodule, and no gc after a fetch. *)
+Reading() = list.Concat(Always(), ["-c", "core.hooksPath=/dev/null", "-c", "log.showSignature=false", "-c", "submodule.recurse=false", "-c", "diff.submodule=short",
+  "-c", "gc.auto=0", "-c", "maintenance.auto=false"])
+
+(** The keys of a config that name a program for git to run at a read, as git config --get-regexp takes them: those of a filter, and those a fetch reads,
+    the programs it runs and the files it writes, which the person's own config sets and a repository's doesn't need to.
+
+      regex.Test(Risky(), "remote.origin.vcs") --> true
+      regex.Test(Risky(), "http.https://x.org/.cookiefile") --> true
+      regex.Test(Risky(), "remote.origin.url") --> false *)
+Risky() = "^(filter\\..+\\.(clean|smudge|process|required)|core\\.(sshcommand|gitproxy|askpass|alternaterefscommand)|remote\\..+\\.(uploadpack|vcs)|credential\\..+|http\\..+|protocol\\..+)$"
+
+(** Does a scope of git config --show-scope belong to the person: the config of the system, their own, or that of the command line? *)
+trusted(scope) = scope in ["system", "global", "command"]
+
+defn Entries(listed)
+  (** The entries that git config --show-scope -z --get-regexp wrote, {Scope, Key, Value}, in its order, the last of a key the one git takes; a key with no
+      value, as a bare required, is true.
+
+        Entries("local$(str.FromBytes([0]))filter.x.clean\nrm -rf$(str.FromBytes([0]))") --> [{Scope: "local", Key: "filter.x.clean", Value: "rm -rf"}] *)
+  parts = str.Split(str.FromBytes([0]), listed)
+  out = []
+  k = 1
+  while k < value.Len(parts)
+    pair = parts[k + 1]
+    cut = str.Find("\n", pair)
+    out = list.Append(if value.IsMissing(cut) {Scope: parts[k], Key: pair, Value: "true"} else {Scope: parts[k], Key: str.Slice(1, cut - 1, pair), Value: str.Slice(cut + 1, value.Len(pair), pair)} end, out)
+    k += 2
+  end
+  out
+end
+
+(** The value that turns a key of a filter off: no program, and not required, so that git takes the file as it is. *)
+off(key) = if str.EndsWith(".required", key) "false" else "" end
+
+defn Overrides(entries)
+  (** The -c options, after Reading, that undo what the repository's own config says of the risky keys, in an Ok: each key of a filter set there is given
+      the person's own value back, or turned off; and when it sets a key that a fetch reads, no protocol is allowed, so git fetches nothing. A key with = in
+      its name can't be given by -c, as git cuts there: an Err of the words to say, and git doesn't run.
+
+        Overrides([{Scope: "local", Key: "filter.x.clean", Value: "evil"}]) --> result.Ok(["-c", "filter.x.clean="])
+        Overrides([{Scope: "global", Key: "filter.lfs.clean", Value: "git-lfs clean -- %f"}]) --> result.Ok([])
+        Overrides([{Scope: "global", Key: "filter.lfs.clean", Value: "git-lfs clean -- %f"}, {Scope: "local", Key: "filter.lfs.clean", Value: "evil"}]) --> result.Ok(["-c", "filter.lfs.clean=git-lfs clean -- %f"])
+        Overrides([{Scope: "local", Key: "remote.origin.vcs", Value: "x/../evil"}]) --> result.Ok(["-c", "protocol.allow=never"])
+        Overrides([{Scope: "global", Key: "protocol.file.allow", Value: "always"}, {Scope: "local", Key: "http.cookiefile", Value: "/x"}]) --> result.Ok(["-c", "protocol.allow=never", "-c", "protocol.file.allow=never"])
+        Overrides([{Scope: "local", Key: "filter.a=b.clean", Value: "evil"}]) --> result.Err("The Git config of this folder names a program under a key git can't be told to leave: git doesn't run here.") *)
+  theirs = [e for e in entries if not trusted(e.Scope)]
+  if list.Any([str.Contains("=", e.Key) for e in theirs])
+    return result.Err("The Git config of this folder names a program under a key git can't be told to leave: git doesn't run here.")
+  end
+  out = []
+  done = dict.Dict()
+  for e in theirs
+    if str.StartsWith("filter.", e.Key) and not dict.Has(e.Key, done)
+      done = dict.Put(e.Key, true, done)
+      mine = [m.Value for m in entries if trusted(m.Scope) and m.Key == e.Key]
+      out = list.Concat(out, ["-c", "$(e.Key)=$(if value.Len(mine) > 0 list.Last(mine) else off(e.Key) end)"])
+    end
+  end
+  if list.Any([not str.StartsWith("filter.", e.Key) for e in theirs])
+    protocols = list.Unique([e.Key for e in entries if regex.Test("^protocol\\..+\\.allow$", e.Key)])
+    out = list.Concat(out, list.Concat(["-c", "protocol.allow=never"], list.Flatten([["-c", "$p=never"] for p in protocols])))
+  end
+  result.Ok(out)
+end
+
+defn Run(dir, args, input = "", timeout = 0, writes = false)
+  (** git with args in the folder dir, as sys.Run gives it: an Ok of {Code, Out, Err}, or an Err of the words to say. A git that reads only gets Reading and
+      the Overrides of the config of dir, which git config lists first; one that writes, writes = true, Always alone, so that the hooks and filters of the
+      repository run, as git add and git commit run them from a terminal. *)
+  if writes
+    return said(sys.Run("git", list.Concat(list.Concat(["-C", dir], Always()), args), input = input, timeout = timeout))
+  end
+  listed = said(sys.Run("git", list.Concat(["-C", dir], ["config", "--show-scope", "-z", "--get-regexp", Risky()]), timeout = timeout))?
+  if listed.Code != 0 and listed.Code != 1
+    return result.Err("git config failed: $(str.Trim(listed.Err))")
+  end
+  extra = Overrides(Entries(listed.Out))?
+  said(sys.Run("git", list.Concat(list.Concat(list.Concat(["-C", dir], Reading()), extra), args), input = input, timeout = timeout))
+end
+
+(** A run of sys.Run with the words of its failure to start: git can't run. *)
+said(ran) = if result.IsErr(ran) result.Err("git can't run: $(ran.Error.Message)") else ran end

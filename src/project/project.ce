@@ -4,7 +4,7 @@
 use core/commands
 use core/lists
 use src/folders
-use std/list
+use src/gitrun
 use std/result
 use std/sys
 use std/text as str
@@ -22,13 +22,11 @@ defn Files(state)
   end
 end
 
-defn git(args, dir)
-  (** Git run with args in the folder dir, to its end: {Code, Out, Err} in an Ok, or an Err with the words to say when it can't start. *)
-  match sys.Run("git", args = list.Concat(["-C", dir], args))
-    result.Ok(ran) -> result.Ok(ran)
-    result.Err(e) -> result.Err(e.Message)
-  end
-end
+(** The seconds git may take before it is ended. *)
+GitLimit() = 20
+
+(** Git run with args in the folder dir by src/gitrun, to its end: {Code, Out, Err} in an Ok, or an Err with the words to say. *)
+git(args, dir) = gitrun.Run(dir, args, timeout = GitLimit())
 
 defn Listed(dir)
   (** The root of the Git repository that holds the folder dir, and the paths of its files from that root, as {Root, Paths} in an Ok; or an Err with the

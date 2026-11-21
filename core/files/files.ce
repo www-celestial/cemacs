@@ -1,6 +1,7 @@
 (** The files of the editor. Saving never loses text: the new words go to a file next to the old one, which a rename then replaces, so a
-    failure at any step leaves the old file whole. A disk is what the file looked like when it was read: {Modified, Size}, or missing for a
-    file that didn't exist. *)
+    failure at any step leaves the old file whole. The new file is made the person's alone, then given the mode of the old one, and a symbolic
+    link is saved to the file it points to. A disk is what the file looked like when it was read: {Modified, Size}, or missing for a file that
+    didn't exist. *)
 use std/sys
 use std/text as str
 use std/list
@@ -106,20 +107,73 @@ end
 (** A failure on the new file, as a failure on path: the person never heard of the new one. *)
 named(path, fresh, failure) = result.Err({Kind: failure.Error.Kind, Message: str.Replace(fresh, path, failure.Error.Message)})
 
-defn replace(path, words)
-  (** Writes the words to path through a new file next to it, then renames it over the file. The new file has a name that nothing used, and the
-      cleanup removes only it. On any failure the old file stays whole. The new file is on the disk, and its folder too, before the rename: after a
-      power cut, the whole new text is under one of the two names, and the old one, until the rename, under path. Gives Ok of the new disk. If only
-      the stat after the rename fails, the file is saved and the Err has the kind "saved". *)
+defn FolderOf(path)
+  (** The part of a path up to its last /, which a link that doesn't start with / is read from: "" for a bare name.
+
+        FolderOf("/home/me/.bashrc") --> "/home/me/"
+        FolderOf("/a") --> "/"
+        FolderOf("a.ce") --> "" *)
+  parts = str.Split("/", path)
+  if value.Len(parts) == 1 "" else "$(str.Join("/", list.Take(value.Len(parts) - 1, parts)))/" end
+end
+
+defn Truename(path)
+  (** The file that a save of path writes, in an Ok: path, its symbolic links followed one after the other, as Emacs's file-truename does, so that a
+      link stays a link and the file it points to gets the words. A link that doesn't start with / is read from the folder of the link, and one to a
+      file that isn't there gives that file. More than 40 links in a row, as a loop makes, is an Err of kind "io", as the system says ELOOP. *)
+  p = path
+  for n in 1..40
+    link = sys.ReadLink(p)
+    if result.IsErr(link)
+      return result.Ok(p)
+    end
+    p = if str.StartsWith("/", link.Value) link.Value else "$(FolderOf(p))$(link.Value)" end
+  end
+  result.Err({Kind: "io", Message: "$path is a loop of symbolic links."})
+end
+
+defn Umasked(status)
+  (** The mode of a new file from the text of /proc/self/status: 666 in octal less the Umask it names, as the system makes a file; 600, the
+      person's alone, when it names none.
+
+        Umasked("Name:\tcesia\nUmask:\t0022\n") --> 420
+        Umasked("Umask:\t0077\n") --> 384
+        Umasked("") --> 384 *)
+  line = list.First([l for l in str.Lines(status) if str.StartsWith("Umask:", l)])
+  digits = if value.IsMissing(line) [] else str.Chars(str.Trim(str.Slice(7, value.Len(line), line))) end
+  if value.Len(digits) == 0 or not list.All([c >= "0" and c <= "7" for c in digits])
+    return 384
+  end
+  math.BitAnd(438, math.BitNot(list.Reduce((mask, c) -> mask * 8 + str.Code(c) - 48, 0, digits)))
+end
+
+defn modeFor(target)
+  (** The mode the file written gets, in an Ok: the permission bits of the file there, read, write and run for each, not its setuid and setgid, which
+      were its owner's; or that of a new file, for none, or for a link, which the new file replaces. *)
+  if result.IsOk(sys.ReadLink(target)) or not sys.Exists(target)
+    return result.Ok(Umasked(result.UnwrapOr("", sys.Read("/proc/self/status"))))
+  end
+  result.Ok(math.BitAnd(sys.Stat(target)?.Mode, 511))
+end
+
+defn Replace(path, words)
+  (** Writes the words to path through a new file next to it, then renames it over the file, as a save does but for its links: a symbolic link at path
+      is replaced by the file, what it points to left as it was, for a file that Cemacs makes beside another, as the page of a file of cells. The new
+      file has a name that nothing used, is made with O_EXCL, so no link or file put there first takes the words, and the person's alone, 600 in octal,
+      then gets the mode of the old file before the rename: a private file stays private, a script stays one to run. The cleanup removes only it. On
+      any failure the old file stays whole. The new file is on the disk, and its folder too, before the rename: after a power cut, the whole new text is
+      under one of the two names, and the old one, until the rename, under path. Gives Ok of the new disk. If only the stat after the rename fails, the
+      file is saved and the Err has the kind "saved". *)
+  mode = modeFor(path)?
   fresh = isFresh(path)?
-  written = sys.Write(fresh, words, sync = true)
+  written = sys.Write(fresh, words, sync = true, private = true)
   if result.IsErr(written)
-    sys.Remove(fresh)
     return named(path, fresh, written)
   end
-  moved = sys.Rename(fresh, path)
+  moded = if mode == 384 result.Ok(missing) else sys.Chmod(fresh, mode) end
+  moved = if result.IsErr(moded) moded else sys.Rename(fresh, path) end
   if result.IsErr(moved)
-    sys.Remove(fresh)
+    _ = sys.Remove(fresh)
     return named(path, fresh, moved)
   end
   match current(path)
@@ -128,12 +182,23 @@ defn replace(path, words)
   end
 end
 
+defn replace(path, words)
+  (** A save of the words to the file that path names, its links followed: Replace on that file, so that a link stays a link. Errors name path, the
+      file the person opened. *)
+  target = Truename(path)?
+  done = Replace(target, words)
+  if result.IsOk(done) or target == path
+    return done
+  end
+  result.Err({Kind: done.Error.Kind, Message: str.Replace(target, path, done.Error.Message)})
+end
+
 defn SaveFile(path, words, disk)
   (** Saves the words to path if the file is still the one that was read, that is if its disk is the given one. A file that appeared since a
       read of a missing one counts as changed too. Gives Ok of the new disk, an Err of kind "changed" if the file is not the one that was
       read (nothing is written), or another Err for a failure (the old file is whole). An Err of kind "saved" means the file was saved but its
-      time couldn't be read: a caller treats it as a save, with disk missing, so that the next save will ask. The file saved is a new one, so a
-      read-only file becomes writable, and a symbolic link is replaced by a file. *)
+      time couldn't be read: a caller treats it as a save, with disk missing, so that the next save will ask. The file saved is a new one with the mode
+      of the old one, and a symbolic link stays one, the file it points to saved. *)
   now = current(path)?
   if now != disk
     return changed(path)

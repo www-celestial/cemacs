@@ -53,5 +53,17 @@ the line.
 git runs as `sys.Run("git", ["-C", ROOT, ...])`: no shell reads the line, each word is one argument, a path comes after `--`
 and a message after `-m`, so a file named `--oops.ce` stays a file and a message `--amend` stays a message, as the check of
 this app tests. A hash given back to git, from the log or a blame, is checked to be one, letters `0` to `9` and `a` to `f`,
-before it is. A git that runs more than 20 seconds is ended, and a list holds 20,000 rows at most. A commit runs the hooks of
-the repository, as `git commit` does from a terminal: they are its own.
+before it is. A git that runs more than 20 seconds is ended, and a list holds 20,000 rows at most.
+
+A folder can bring its `.git/` with it, from an archive, a USB stick or a shared folder, and git reads the config of that
+`.git/` at each run, where a key can name a program: `core.fsmonitor` runs at each read of the index, `diff.external` and a
+diff driver's `textconv` at each diff, a filter's `clean` at each read of a changed file, a hook at each write of the index,
+`gpg.program` for a signed commit, and a fetch, which a partial clone makes for an object it lacks, runs `core.sshCommand`,
+the helper of `remote.NAME.vcs` and more. So [src/gitrun] runs each git of Cemacs with `-c core.fsmonitor=false -c
+diff.external=`, each diff with `--no-ext-diff --no-textconv`, and each git that only reads, the state, the diffs, the log,
+`show`, the blame, `ls-files` and `grep`, also with no hook, no signature checked, no submodule diffed or searched by a git of
+its own, and no gc. It first asks `git config --show-scope` which filters and keys of a fetch the repository's own config
+sets: each such filter gets the value of your own config back, git-lfs's for one, or none; and a key of a fetch there means
+that this git fetches nothing, so a partial clone whose config is plain still fetches what it lacks. `s` and `c` stage and
+commit as `git add` and `git commit` do from a terminal: the hooks and the filters of the repository run, as they are its
+own.

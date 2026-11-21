@@ -1,4 +1,4 @@
 drawn
-This text has a zero byte, which C would read as its end.
+no panic
 Ok(missing)
 exit 0

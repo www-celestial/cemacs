@@ -143,10 +143,14 @@ check(value.Equal(sliderWords("rho", undone), ["rho", "10.0", sliderWords("rho",
 redone = settled(notebook.Moved(1, "rho", {Value: 20.0, Text: "20.0"}, "keys", undone))
 check(shownIn("Slow", redone)[1] == "40.0", "the note goes once the cell runs again")
 
-(* A move with no session yet: one starts, and every cell runs from the top, with the number of the file. *)
+(* A move with no session yet writes its number and runs nothing: a file opened from elsewhere runs its code only after C-c e e or C-c e a, never from a
+   press of the mouse. C-c e a then runs every cell with the number of the text. *)
 fresh = commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720))
 fresh = notebook.Hooked({}).Idle(fresh)
 cold = settled(notebook.Moved(1, "n", {Value: 5, Text: "5"}, "keys", fresh))
-check(line(cold, 7) == "n = cells.Slider(5, 0, 10)" and shownIn("Count", cold)[2] == "50", "with no session, every cell runs with n = 5: $(shownIn("Count", cold))")
+check(line(cold, 7) == "n = cells.Slider(5, 0, 10)" and value.IsMissing(runIn(cold).Session) and not notebook.Moving(cold), "with no session, the number is written and nothing runs: $(cold.Message)")
+check(cold.Message == "n is 5 in the text: C-c e a runs the cells with it.", "the prompt line says how to run them: $(cold.Message)")
+warm = settled(notebook.RunAll(cold))
+check(shownIn("Count", warm)[2] == "50", "C-c e a runs every cell with n = 5: $(shownIn("Count", warm))")
 _ = result.Unwrap(sys.Run("rm", ["-r", folder]))
 io.Print("ok")

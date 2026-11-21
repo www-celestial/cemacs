@@ -20,6 +20,7 @@ tools/indent-corpus.sh --std bench core src tests tools
 [ "$(sed -n '/^(\*\* Your changes to Cemacs/,/^```$/p' docs/book/customising.md | sed '$d')" = "$(cat tools/user-template/config/config.ce)" ]
 tests/sdl/run.sh
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/files-check.ce
+timeout -s KILL 60 cesia run tests/long-line-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/commands-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia tests/check-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm,env=PWD tests/run-check.ce
@@ -28,6 +29,7 @@ timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --al
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/anim-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/rotate-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=git,env=PWD tests/project-check.ce
+timeout -s KILL 90 cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=SHELL tests/git-config-check.ce
 # C-c c r in a project of its own, made in a new folder, where cesia do finds its cesia.toml.
 root="$PWD"
 project=$(mktemp -d)

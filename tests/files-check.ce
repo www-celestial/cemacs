@@ -24,6 +24,7 @@ names(folder) = str.Join(",", result.Unwrap(sys.List(folder)))
 folderAt(path) = sys.Exists(path) and result.Unwrap(sys.Stat(path)).IsDir
 
 byteText(words) = str.Join(",", [value.Text(b) for b in str.Bytes(words)])   (** The bytes of a text, in one text. *)
+isLink(path) = result.IsOk(sys.ReadLink(path))   (** Is a path a symbolic link? *)
 
 folder = "/tmp/cemacs-files-check-$(value.Text(sys.Now()))"
 check(result.IsOk(sys.Mkdir(folder)), "the folder is made")
@@ -102,6 +103,53 @@ result.Unwrap(sys.Mkdir(oldName))
 check(result.IsOk(files.ForceSave(target, "again2")), "an empty folder named like the old temporary file is no obstacle")
 check(folderAt(oldName), "the empty folder is still there")
 result.Unwrap(sys.Remove(oldName))
+
+(* A save keeps the mode of the file: a private one stays private, a script stays one to run; the new file is the person's alone until it has that
+   mode, so no one reads the words of a private file through it. setuid and setgid don't pass to the new file, which is the person's. A new file gets
+   the mode the system gives a new file. *)
+modeOf(path) = result.Unwrap(sys.Stat(path)).Mode   (** The mode of a file. *)
+for pair in [[".netrc", 384], ["deploy.sh", 493], ["shared.txt", 436], ["locked.txt", 292]]
+  path = "$folder/$(pair[1])"
+  result.Unwrap(sys.Write(path, "old\n"))
+  result.Unwrap(sys.Chmod(path, pair[2]))
+  check(result.IsOk(files.SaveFile(path, "new\n", result.Unwrap(files.ReadFile(path)).Disk)), "$(pair[1]) is saved")
+  check(modeOf(path) == pair[2] and result.Unwrap(sys.Read(path)) == "new\n", "$(pair[1]) keeps its mode $(pair[2]): $(modeOf(path))")
+  result.Unwrap(sys.Remove(path))
+end
+setuid = "$folder/setuid"
+result.Unwrap(sys.Write(setuid, "old\n"))
+result.Unwrap(sys.Chmod(setuid, 2541))
+result.Unwrap(files.ForceSave(setuid, "new\n"))
+check(modeOf(setuid) == 493, "setuid and setgid don't pass to the new file: $(modeOf(setuid))")
+result.Unwrap(sys.Remove(setuid))
+born = "$folder/born.txt"
+result.Unwrap(files.ForceSave(born, "new\n"))
+check(modeOf(born) == files.Umasked(result.Unwrap(sys.Read("/proc/self/status"))), "a new file gets 666 less the umask: $(modeOf(born))")
+result.Unwrap(sys.Remove(born))
+check(names(folder) == "a.ce,b.ce", "the saves leave no other file")
+
+(* A save through a symbolic link writes the file it points to and keeps the link, as Emacs does, a link to a link and a link from another folder too;
+   a link to a file not there yet makes that file; a loop of links is an Err, and nothing is written. *)
+result.Unwrap(sys.Mkdir("$folder/dotfiles"))
+result.Unwrap(sys.Write("$folder/dotfiles/bashrc", "export A=1\n"))
+result.Unwrap(sys.Chmod("$folder/dotfiles/bashrc", 384))
+result.Unwrap(sys.Symlink("dotfiles/bashrc", "$folder/.bashrc"))
+result.Unwrap(sys.Symlink("../.bashrc", "$folder/dotfiles/again"))
+check(result.IsOk(files.SaveFile("$folder/.bashrc", "export A=2\n", result.Unwrap(files.ReadFile("$folder/.bashrc")).Disk)), "a link is saved")
+check(isLink("$folder/.bashrc") and result.Unwrap(sys.Read("$folder/dotfiles/bashrc")) == "export A=2\n", "the link stays one and its file gets the words")
+check(modeOf("$folder/dotfiles/bashrc") == 384, "the file of the link keeps its mode")
+result.Unwrap(files.ForceSave("$folder/dotfiles/again", "export A=3\n"))
+check(isLink("$folder/dotfiles/again") and isLink("$folder/.bashrc") and result.Unwrap(sys.Read("$folder/dotfiles/bashrc")) == "export A=3\n", "a link to a link")
+result.Unwrap(sys.Symlink("$folder/dotfiles/later", "$folder/later"))
+result.Unwrap(files.ForceSave("$folder/later", "made\n"))
+check(isLink("$folder/later") and result.Unwrap(sys.Read("$folder/dotfiles/later")) == "made\n", "a link to a file not there makes it")
+result.Unwrap(sys.Symlink("loop2", "$folder/loop1"))
+result.Unwrap(sys.Symlink("loop1", "$folder/loop2"))
+check(kindOf(files.ForceSave("$folder/loop1", "x")) == "io" and isLink("$folder/loop1") and isLink("$folder/loop2"), "a loop of links is an Err")
+for name in ["dotfiles/bashrc", "dotfiles/again", "dotfiles/later", "dotfiles", ".bashrc", "later", "loop1", "loop2"]
+  result.Unwrap(sys.Remove("$folder/$name"))
+end
+check(names(folder) == "a.ce,b.ce", "the saves through links leave no other file")
 
 (* CRLF: read then save gives the same bytes. *)
 crlf = "a\r\nb\r\n"
