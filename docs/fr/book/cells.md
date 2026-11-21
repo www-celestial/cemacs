@@ -134,11 +134,12 @@ step, `0.3` et jamais `0.30000000000000004`.
 Un mouvement ne relance que les cells qui lisent le nom du slider, directement ou par d'autres cells : la session du
 fichier reçoit le nouveau nombre par [cells.Set](https://www-celestial.github.io/cesia-lang/cells.html), *en place* (le
 nom garde sa place, sans être défini de nouveau), si bien qu'une fonction d'une autre cell qui le lit le voit tout de
-suite, et la cell du slider, qui ne contient rien d'autre, ne tourne pas. Sans session encore, une session démarre et
-toutes les cells tournent, depuis le haut. Le bouton et le nombre suivent le pointeur tout de suite ; les résultats
-suivent aussi vite que les cells tournent, et restent affichés jusqu'à ce que les nouveaux arrivent, avec `waiting` ou
-`running…` au-dessus d'eux. Après le slider s'affiche le temps de son dernier rerun (sa dernière relance), comme
-`rerun 104 ms`, pour que vous voyiez pourquoi un graphe est en retard.
+suite, et la cell du slider, qui ne contient rien d'autre, ne tourne pas. Sans session encore, le nombre est écrit et rien
+ne tourne, et la prompt line dit que `C-c e a` lance les cells avec lui : le code d'un fichier, qui peut venir d'ailleurs, ne
+tourne que quand vous le demandez, jamais sur un clic de la souris. Le bouton et le nombre suivent le pointeur tout de
+suite ; les résultats suivent aussi vite que les cells tournent, et restent affichés jusqu'à ce que les nouveaux arrivent,
+avec `waiting` ou `running…` au-dessus d'eux. Après le slider s'affiche le temps de son dernier rerun (sa dernière
+relance), comme `rerun 104 ms`, pour que vous voyiez pourquoi un graphe est en retard.
 
 **Le dernier nombre gagne.** Pendant que les cells d'un mouvement tournent, le slider ne garde que le dernier nombre vers
 lequel on l'a bougé ; quand elles finissent, ce nombre est donné à la session et elles tournent une fois de plus. Deux
@@ -260,7 +261,11 @@ joue. Un graphe 3D y tourne comme sous une cell.
 ## La page
 
 `C-c e h` lance toutes les cells du fichier, tel qu'il est enregistré, dans une nouvelle session, et écrit `name.html` à
-côté de lui : le titre de chaque cell, son code coloré comme les docs de Cesia le colorent, ce qu'elle a affiché et sa
+côté de lui, comme un enregistrement écrit un fichier, par un nouveau fichier et un renommage [files.Replace] ; pour un
+fichier déjà là, il demande d'abord `name.html exists. Replace it? (y or n)` (name.html existe, le remplacer ?), et un lien
+symbolique (un fichier qui ne fait que pointer vers un autre) à cette place, qu'un dossier venu d'ailleurs peut apporter, est
+remplacé par la page, jamais écrit à travers, si bien que le fichier vers lequel il pointe reste tel qu'il était. La page
+contient le titre de chaque cell, son code coloré comme les docs de Cesia le colorent, ce qu'elle a affiché et sa
 valeur, en table ou en texte, ou son erreur. La page n'a besoin d'aucun autre fichier ni d'aucun script, et montre ce que
 `cesia run` calcule, pas l'état de la fenêtre. Une animation démarre en pause sur sa première image sous une case *Play*,
 qui la joue par le CSS (les règles de style de la page) seul. Un graphe 3D se montre à la vue de son code, pas à celle où
@@ -268,13 +273,14 @@ on l'a tourné dans la fenêtre.
 
 ## Sécurité
 
-Un slider n'écrit que le nombre de sa propre valeur, sur sa propre ligne : avant la modification, Cemacs vérifie que cette
-ligne est toujours dans la cell du slider et contient toujours le nombre qu'il y a lu, et refuse le mouvement sinon ; le
-texte est relu à la touche suivante. Le nombre écrit est l'un des steps du slider, entre son min et son max, fait par
-[cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html), et la session ne l'accepte que pour un nom qui tient
-déjà un nombre. Le fichier lui-même est écrit quand vous l'enregistrez, comme tout buffer : par un nouveau fichier à côté
-de lui qu'un rename (un renommage) met à sa place, et jamais par-dessus un fichier qui a changé sur le disque depuis qu'il
-a été lu.
+Un slider ne lance du code que dans une session que `C-c e e` ou `C-c e a` a démarrée : un clic sur un slider d'un fichier
+qu'on vient d'ouvrir écrit son nombre et ne lance rien. Un slider n'écrit que le nombre de sa propre valeur, sur sa propre
+ligne : avant la modification, Cemacs vérifie que cette ligne est toujours dans la cell du slider et contient toujours le
+nombre qu'il y a lu, et refuse le mouvement sinon ; le texte est relu à la touche suivante. Le nombre écrit est l'un des
+steps du slider, entre son min et son max, fait par [cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html), et
+la session ne l'accepte que pour un nom qui tient déjà un nombre. Le fichier lui-même est écrit quand vous l'enregistrez,
+comme tout buffer : par un nouveau fichier à côté de lui qu'un rename (un renommage) met à sa place, et jamais par-dessus un
+fichier qui a changé sur le disque depuis qu'il a été lu.
 
 Une scene vient de la session, un autre processus, et Cemacs la lit comme une entrée : avant que quoi que ce soit en soit
 fait, sa taille, la sorte et les champs de chaque élément, et les sommets (les points des formes) que tous feraient sont

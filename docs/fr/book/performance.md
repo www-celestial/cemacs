@@ -670,3 +670,7 @@ dès que la touche arrive, là où il pouvait dormir jusqu'à 5 ms avant. Le buf
   dessinent les frames suivantes.
 - Un buffer Cesia de plus de 1 000 000 octets n'est pas vérifié : voir [Les erreurs dans les lignes](check.md#quand-elle-tourne).
 - Une seule vérification tourne à la fois, pour un seul buffer.
+- Une touche à l'extrémité d'une ligne d'un mégaoctet prend environ une demi-seconde : les couleurs d'une ligne sont lues
+  depuis son début jusqu'au bord droit de l'écran, car un commentaire ou un texte ouvert avant les change. À son début,
+  une touche prend ce qu'elle prend sur une ligne courte, moins de 20 ms avec la frame, et `M-f` traverse un mot de
+  32 000 lettres en 25 ms au lieu de 36 s.

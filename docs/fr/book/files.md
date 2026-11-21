@@ -126,13 +126,18 @@ L'enregistrement est construit pour qu'aucun échec ne perde de texte, ni le tex
 1. Le nouveau texte va dans un nouveau fichier à côté de l'ancien, nommé `PATH.cemacs-` suivi de l'heure en microsecondes,
    avec `-1`, `-2` et ainsi de suite jusqu'à `-20` quand ce nom est pris ; après quoi l'enregistrement s'arrête avec
    `No free name next to PATH for a new file.` (pas de nom libre à côté de PATH pour un nouveau fichier). Le nouveau fichier
-   est le seul que Cemacs enlève jamais.
-2. Le nouveau fichier est écrit avec `sys.Write(..., sync = true)`, qui ne répond qu'une fois que le système a mis le
-   fichier sur le disque, puis son dossier, avec `fsync` : l'appel qui demande au système d'écrire ce qu'il garde dans ses
-   caches, pour qu'une coupure de courant ne puisse pas le reprendre.
-3. Une fois qu'il est sur le disque en entier, un renommage le met à la place de l'ancien fichier. Sous Linux, un renommage
-   à l'intérieur d'un même système de fichiers, comme ici, est atomique : à chaque instant, le nom mène à tout l'ancien
-   fichier ou à tout le nouveau, jamais à une partie de l'un ou de l'autre.
+   est le seul que Cemacs enlève jamais. Quand PATH est un lien symbolique, un fichier qui ne fait que pointer vers un autre,
+   PATH est ici le fichier vers lequel il pointe, ses liens suivis l'un après l'autre, comme le fait le `file-truename`
+   d'Emacs : le lien reste un lien, et le fichier où il mène reçoit le texte.
+2. Le nouveau fichier est écrit avec `sys.Write(..., sync = true, private = true)`, qui le crée avec `O_EXCL` (une création
+   qui échoue quand quelque chose existe déjà à ce nom), pour qu'aucun fichier ni aucun lien mis à son nom avant lui ne
+   prenne le texte, et à vous seul, `rw-------`, pour que personne ne puisse l'ouvrir pendant qu'il contient le texte ; et
+   qui ne répond qu'une fois que le système a mis le fichier sur le disque, puis son dossier, avec `fsync` : l'appel qui
+   demande au système d'écrire ce qu'il garde dans ses caches, pour qu'une coupure de courant ne puisse pas le reprendre.
+3. Le nouveau fichier reçoit le mode de l'ancien, ses droits de lecture, d'écriture et de lancement, puis, une fois qu'il est
+   sur le disque en entier, un renommage le met à la place de l'ancien fichier. Sous Linux, un renommage à l'intérieur d'un
+   même système de fichiers, comme ici, est atomique : à chaque instant, le nom mène à tout l'ancien fichier ou à tout le
+   nouveau, jamais à une partie de l'un ou de l'autre.
 4. Si l'écriture ou le renommage échoue, le nouveau fichier est enlevé, l'ancien reste entier, le buffer garde son texte et
    son étoile, et la prompt line dit la raison, en nommant votre fichier, pas le nouveau.
 
@@ -143,12 +148,13 @@ que la prompt line dit `Saved`, tout le nouveau texte est sur le disque, sous le
 `'fsync'`) ; GNU Emacs 31 non, car son `write-region-inhibit-fsync` est activé. Le coût est le temps que prend le disque :
 [Vitesse](performance.md#coller-annuler-et-enregistrer) le donne.
 
-Comme le fichier enregistré est un nouveau fichier, il ne garde pas ce qui appartenait à l'ancien : ses permissions sont
-celles d'un nouveau fichier, `rw-r--r--` avec l'`umask` habituel (le masque par lequel le système retire des droits à
-chaque nouveau fichier), si bien qu'un script perd son droit d'être exécuté et qu'un fichier en lecture seule devient
-modifiable ; un lien symbolique (un fichier qui ne fait que pointer vers un autre) est remplacé par un fichier ordinaire, sa
-cible laissée telle qu'elle était ; et un hard link (un second nom du même fichier) ne partage plus le texte. Le dossier doit
-vous permettre d'y écrire, pour le nouveau fichier.
+Le fichier enregistré est un nouveau fichier qui a le mode de l'ancien : un fichier privé reste `rw-------`, un script garde
+son droit d'être lancé, un fichier en lecture seule reste en lecture seule. Ses bits setuid et setgid (lancer avec les
+droits du propriétaire ou du groupe) ne passent pas, car le nouveau fichier est à vous, pas au propriétaire de l'ancien, et
+son groupe est celui qu'un nouveau fichier reçoit dans ce dossier. Un fichier qui n'était pas là reçoit ce que le système
+donne à un nouveau fichier, `rw-rw-rw-` moins l'`umask` (le masque par lequel le système retire des droits à chaque nouveau
+fichier), tel que Linux le dit dans `/proc/self/status` ; `rw-------` là où il ne le dit pas. Un hard link (un second nom du
+même fichier) ne partage plus le texte. Le dossier doit vous permettre d'y écrire, pour le nouveau fichier.
 
 ### Un fichier changé par un autre programme
 
@@ -176,7 +182,8 @@ change pendant qu'il est ouvert, comme le ferait l'`auto-revert-mode` d'Emacs, e
 Un fichier de Cesia, un fichier `.ce`, est enregistré comme
 [`cesia fmt`](https://www-celestial.github.io/cesia-lang/commands.html) l'écrit : chaque ligne à l'indentation de ses blocs,
 pas d'espace en fin de ligne, pas deux lignes vides de suite. Le texte va dans un fichier à lui dans `.cesia/fmt/` du
-dossier de Cemacs, `cesia fmt` le met en forme, et c'est le texte mis en forme qui est enregistré ; le buffer le prend
+dossier de Cemacs, à vous seul, `rwx------`, comme l'est la copie, `rw-------`, car le fichier peut être un fichier privé,
+`cesia fmt` le met en forme, et c'est le texte mis en forme qui est enregistré ; le buffer le prend
 aussi, en une étape d'annulation, si bien que `C-/` rend ce que vous avez tapé, le curseur sur sa ligne. Le fichier de
 `.cesia/fmt/` est effacé aussitôt. Un texte qui ne se lit pas, comme un texte où un crochet reste ouvert, est enregistré tel
 qu'il est tapé, et la prompt line dit `Saved PATH as typed:` et pourquoi `cesia fmt` l'a laissé. L'enregistrement d'un
@@ -265,6 +272,14 @@ droits du propriétaire ou du groupe) et sticky (dans un dossier partagé, seul 
 Un lien montre `lrwxrwxrwx`, comme Linux le donne à tout lien, puis la taille et l'âge de ce vers quoi il pointe, et son nom
 finit par `->` et sa cible. Un mode est un nombre de 0 à 4095, que Cesia écrit en décimal : 420 est `644` en octal,
 `rw-r--r--`.
+
+Un nom, et la cible d'un lien, s'écrit comme `ls -b` l'écrit, par [folders.NameText] : une barre oblique inverse doublée, et
+chaque caractère de contrôle (un caractère qui ne s'affiche pas mais commande le terminal), un octet de 1 à 31 ou 127,
+échappé (écrit en caractères visibles) comme C l'écrit dans un texte, `\n`, `\t`, `\r`, ou par son nombre en octal, `\033`
+pour ESC. Quiconque peut écrire dans un dossier peut y créer un nom qui contient une fin de ligne, et une rangée coupée là
+montrerait le fichier suivant sur la ligne du curseur pendant qu'une touche agirait sur celui du dessus : ici une rangée est
+toujours un seul fichier, celui qu'elle montre. La prompt line écrit de la même façon les caractères de contrôle de ce
+qu'elle montre, par [lists.Escaped], et toute liste fait de même pour une rangée qui contient une fin de ligne.
 
 ```cesia
 folders.PermissionText(420) --> "rw-r--r--"
@@ -408,12 +423,18 @@ son mode et son heure une fois ce qu'il contient en place, le plus profond d'abo
 même cible, jamais suivi, un lien vers rien aussi. Un fichier ou un lien est écrit à un nom à lui à côté de sa place, puis
 renommé par-dessus ce qui était là, comme le fait [folders.Placed] : ce qui était là reste entier jusqu'à ce que le nouveau
 le soit, rien n'est jamais écrit à travers un lien de la cible, et un fichier copié sur lui-même par un autre chemin reste
-tel qu'il était. Là où la copie a un dossier et la cible un fichier ou un lien, cette entrée échoue et rien ne va dessous ;
-un fichier spécial, comme une FIFO (un tube nommé) ou un périphérique, est nommé et laissé, car en lire un peut attendre
-sans fin. Un déplacement, [folders.MoveTree], est un renommage ; d'un disque à
-l'autre, où un renommage ne peut pas aller, il copie, puis efface ce qu'il a copié, seulement une fois la copie entière. Les
-buffers des fichiers déplacés, et de ceux qui sont dans les dossiers déplacés, prennent leur nouveau chemin, pour qu'un
-enregistrement aille là où le fichier est maintenant.
+tel qu'il était. Ce nom à lui est `.#cemacs-` et 32 chiffres qu'on ne peut pas connaître avant que le fichier soit créé,
+[folders.Unguessable] : sous Linux, ceux du hasard du kernel (le cœur du système), lus dans
+`/proc/sys/kernel/random/uuid`, si bien que personne qui peut écrire dans le dossier ne peut y mettre un lien d'abord pour
+que la copie écrive à travers lui ; ailleurs, ceux de `std/random`. Là où la copie a un dossier et la cible un fichier ou un
+lien, cette entrée échoue et rien ne va dessous ; un fichier spécial, comme une FIFO (un tube nommé) ou un périphérique, est
+nommé et laissé, car en lire un peut attendre sans fin. Une copie parcourt toujours les dossiers par leurs chemins : un
+dossier que quelqu'un d'autre remplace par un lien pendant qu'elle tourne, dans l'arbre copié ou dans la cible, la mène dans
+le dossier vers lequel pointe le lien ; copiez donc vers et depuis des dossiers que vous seul pouvez écrire. Un
+déplacement, [folders.MoveTree], est un renommage ; d'un disque à l'autre, où un renommage ne peut pas aller, il copie, puis
+efface ce qu'il a copié, seulement une fois la copie entière, comme le fait un effacement pour de bon. Les buffers des
+fichiers déplacés, et de ceux qui sont dans les dossiers déplacés, prennent leur nouveau chemin, pour qu'un enregistrement
+aille là où le fichier est maintenant.
 
 Le mode de `M` est en octal, comme `644` ou `0755`, ou écrit comme `chmod` l'écrit, [folders.ParseMode] : des clauses
 séparées par des virgules, chacune avec qui, parmi `u` le propriétaire, `g` le groupe, `o` les autres et `a` tous, rien
@@ -451,7 +472,12 @@ Chaque effacement demande d'abord. Le réglage [emacs.DeleteToTrash], vrai tant 
   Enter ; chaque dossier qui contient quelque chose demande alors une fois de plus, par son nom :
   `Delete folder NAME and everything in it? (yes or no)` (effacer le dossier NAME et tout ce qu'il contient ?). Un non laisse
   ce dossier, et les autres s'en vont. La prompt line dit ensuite `Deleted NAME.` (NAME effacé). Un lien symbolique est
-  effacé, jamais ce vers quoi il pointe, dans un dossier aussi : [sys.RemoveTree], de Cesia, n'en suit jamais aucun.
+  effacé, jamais ce vers quoi il pointe, dans un dossier aussi : l'effacement est le [sys.RemoveTree] de Cesia, qui n'en
+  suit jamais aucun. Il va de dossier en dossier par ceux qu'il tient ouverts, jamais en refaisant leurs chemins, si bien que
+  quelqu'un qui peut écrire dans le dossier du dessus, comme dans `/tmp` ou un dossier partagé, et qui remplace le dossier
+  par un lien pendant qu'il tourne ne peut pas l'en faire sortir : rien hors du dossier n'est touché. Le premier fichier qui
+  ne peut pas être effacé l'arrête, et il est nommé : `Deleted 0 of 1; big: Can't remove /tmp/big/f12: permission denied.`
+  (0 effacé sur 1 ; big : impossible d'enlever /tmp/big/f12 : permission refusée)
 
 [Changer Cemacs](customising.md#les-réglages) dit comment le régler dans votre `Changed` : `c.DeleteToTrash = () -> false`.
 Après un effacement, le curseur va à la rangée qui a pris la place de la première partie.
@@ -462,7 +488,9 @@ Cemacs suit la Trash specification de freedesktop.org, version 1.0, pour la corb
 d'où le gestionnaire de fichiers de votre bureau peut restaurer un fichier :
 
 - La corbeille est `$XDG_DATA_HOME/Trash`, ou `~/.local/share/Trash` quand `XDG_DATA_HOME` n'a pas de valeur. Sans `HOME`
-  non plus, elle dit `There is no trash: HOME is not set.` (il n'y a pas de corbeille : HOME n'a pas de valeur)
+  non plus, elle dit `There is no trash: HOME is not set.` (il n'y a pas de corbeille : HOME n'a pas de valeur). La
+  corbeille, son `files/` et son `info/` sont à vous seul, `rwx------`, comme GIO (la bibliothèque de fichiers de GNOME) les
+  crée, et chaque fichier d'informations aussi, `rw-------` : ce que vous avez effacé, et d'où, ne regarde personne d'autre.
 - Le fichier ou le dossier va dans `files/`, sous son propre nom, ou `NAME.2`, `NAME.3` et ainsi de suite quand celui-ci est
   pris.
 - Ses informations vont d'abord dans `info/NAME.trashinfo`, comme le demande la spécification : son chemin depuis la racine,
@@ -498,8 +526,11 @@ C'est le Wdired d'Emacs (Dired qu'on peut écrire). Chaque touche de l'éditeur 
 [Recherche](search.md), `C-k` coupe une ligne et `C-/` annule. Les trois touches ci-dessus sont celles du buffer, qui passent
 avant les touches globales tant qu'il est le buffer courant. Avant que rien ne soit renommé, [folders.NamesPlan] vérifie les
 lignes : autant que de noms, aucune vide, aucune avec un `/`, car c'est un nom qui change ici, pas son dossier, aucune deux
-fois, et aucune qui soit un nom déjà là, sauf si une autre ligne renomme celui-là ailleurs. Une ligne qui échoue dit pourquoi
-sur la prompt line, et le texte reste à corriger :
+fois, et aucune qui soit un nom déjà là, sauf si une autre ligne renomme celui-là ailleurs. Chaque nom s'écrit comme sa
+rangée l'écrit, par [folders.NameText] : une ligne laissée telle qu'elle était garde son nom octet pour octet, la ligne d'un
+nom qui a un caractère de contrôle ne peut pas être modifiée, `R` le renomme, et une ligne modifiée est lue par
+[folders.NameOf], `\\` tenant la place d'une seule barre oblique inverse. Une ligne qui échoue dit pourquoi sur la prompt
+line, et le texte reste à corriger :
 
 ```cesia
 folders.NamesPlan(["a", "b"], ["b", "a"], n -> true) --> result.Ok([{From: "a", To: "b"}, {From: "b", To: "a"}])
@@ -540,8 +571,11 @@ folders.Quoted("-rf") --> "'./-rf'"
 
 `!` attend sa commande 60 secondes au plus, [folders.CommandLimit], et l'arrête ensuite ; `&` n'a pas de limite, et l'éditeur
 continue pendant ce temps. Ce qu'une commande a écrit se montre sur la prompt line quand c'est une ligne, ou sinon dans le
-buffer `*Shell Command Output*`, dans l'autre pane, la liste restant là où vous êtes. Le shell est celui de `$SHELL`, ou
-`/bin/sh`.
+buffer `*Shell Command Output*`, dans l'autre pane, la liste restant là où vous êtes. Le shell est `/bin/sh`, quoi que dise
+`$SHELL` : [folders.Quoted] écrit les noms pour un shell POSIX (un shell qui suit la norme d'Unix, comme `sh` et `bash`), et
+fish, par exemple, lit `\'` et `\\` entre des guillemets simples, si bien qu'un nom qui finit par une barre oblique inverse
+n'y fermerait aucun guillemet, et que le nom qui le suit tournerait comme une commande. Le buffer du shell,
+[`C-c o t`](shell.md), est celui de `$SHELL`.
 
 `Z` fait ce que dit la table des suffixes de Dired, [folders.CompressPlan] : un dossier devient un `.tar.gz`, par `tar` ; un
 `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2` ou `.zip` s'ouvre dans ce dossier, un `.zip` dans un dossier de son nom ; un fichier
@@ -550,10 +584,12 @@ remplace un fichier : `tar` garde ceux qui sont là, `-k`, `unzip` aussi, `-n`, 
 `.tar.gz` est là dit `NAME.tar.gz exists already` (NAME.tar.gz existe déjà). `c` crée un
 `.tar.gz` ou `.tgz`, un `.tar.xz`, un `.tar.bz2` ou un `.tar` par `tar`, ou un `.zip` par `zip`, comme le dit
 [folders.ArchivePlan] ; une archive déjà là s'en va d'abord, après un oui. Chacun attend 600 secondes au plus,
-[folders.ArchiveLimit]. `=` lance `git diff --no-index --no-color -- A B`, les noms après `--`, pour qu'aucun ne devienne une
-option, et montre ses lignes comme [Git](git.md) montre un diff, les lignes nouvelles de la couleur des textes, les anciennes
-de celle des mots-clés ; sa réponse commence par l'autre fichier marqué, sinon par la copie de sauvegarde `NAME~`, sinon par
-le dossier de l'autre pane.
+[folders.ArchiveLimit]. `=` lance
+`git --git-dir=/dev/null diff --no-index --no-ext-diff --no-textconv --no-color -- A B`, les noms après `--`, pour qu'aucun
+ne devienne une option, hors de tout dépôt, pour qu'aucun `.git/` du dossier ou d'au-dessus ne donne à git un programme à
+lancer (voir [Git](git.md#sécurité)), et montre ses lignes comme [Git](git.md) montre un diff, les lignes nouvelles de la
+couleur des textes, les anciennes de celle des mots-clés ; sa réponse commence par l'autre fichier marqué, sinon par la
+copie de sauvegarde `NAME~`, sinon par le dossier de l'autre pane.
 
 `A` liste ses endroits comme le fait [la recherche dans un projet](search.md#chercher-dans-un-projet),
 `PATH:LINE:COLUMN` puis la ligne, le chemin depuis le dossier montré, 10 000 endroits au plus dans 20 000 fichiers, chacun de

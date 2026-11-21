@@ -58,5 +58,21 @@ git tourne par `sys.Run("git", ["-C", ROOT, ...])` : aucun shell (l'interpréteu
 est un argument, un chemin vient après `--` et un message après `-m`, si bien qu'un fichier nommé `--oops.ce` reste un
 fichier et un message `--amend` reste un message, comme le teste la vérification de cette app. Un hash rendu à git, venu du
 log ou d'un blame, est d'abord vérifié comme en étant un, des lettres `0` à `9` et `a` à `f`. Un git qui tourne plus de 20
-secondes est terminé, et une liste contient au plus 20 000 rangées. Un commit lance les hooks du dépôt (les programmes que
-Git lance à certains moments), comme le fait `git commit` depuis un terminal : ce sont les siens.
+secondes est terminé, et une liste contient au plus 20 000 rangées.
+
+Un dossier peut apporter son `.git/` avec lui, depuis une archive, une clé USB ou un dossier partagé, et git lit la config
+(les réglages) de ce `.git/` à chaque lancement, où une clé peut nommer un programme : `core.fsmonitor` tourne à chaque
+lecture de l'index, `diff.external` et le `textconv` d'un diff driver (un programme qui montre un genre de fichier comme du
+texte) à chaque diff, le `clean` d'un filter (un programme par lequel passe un fichier qui entre dans l'index) à chaque
+lecture d'un fichier modifié, un hook (un programme que Git lance à certains moments) à chaque écriture de l'index,
+`gpg.program` pour un commit signé, et un fetch (la copie d'objets depuis un autre dépôt), qu'un partial clone (un clone à
+qui des objets manquent) fait pour un objet qui lui manque, lance `core.sshCommand`, le helper de `remote.NAME.vcs` (le
+programme qui parle à un dépôt d'un autre genre) et d'autres encore. Alors [src/gitrun] lance chaque git de Cemacs avec
+`-c core.fsmonitor=false -c diff.external=`, chaque diff avec `--no-ext-diff --no-textconv`, et chaque git qui ne fait que
+lire, l'état, les diffs, le log, `show`, le blame, `ls-files` et `grep`, aussi sans hook, sans signature vérifiée, sans
+submodule (un dépôt rangé dans un autre) diffé ou cherché par un git à lui, et sans gc (le ménage que git fait seul dans ses
+objets). Il demande d'abord à `git config --show-scope` quels filters et quelles clés d'un fetch la config propre du dépôt
+fixe : chacun de ces filters reprend la valeur de votre propre config, celle de git-lfs par exemple, ou aucune ; et une clé
+d'un fetch là veut dire que ce git ne fetch rien, si bien qu'un partial clone dont la config est ordinaire fetch toujours ce
+qui lui manque. `s` et `c` stagent et commitent comme le font `git add` et `git commit` depuis un terminal : les hooks et les
+filters du dépôt tournent, car ce sont les siens.

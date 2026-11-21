@@ -15,9 +15,12 @@ Cemacs est une valeur et deux fonctions :
 - [view.View], qui prend l'état et donne la frame : un array (une liste) de commandes de dessin, chacune une map comme
   `{Kind: "text", X, Y, Text, Color, Font}`.
 
-La boucle de la fenêtre, [sdl.Run], lit les événements, appelle la mise à jour sur chacun, et dessine la vue. Rien d'autre
-ne contient l'état de l'éditeur : pas de variable globale, pas d'objet qui change. C'est la forme que le langage Elm a fait
-connaître sous le nom d'Elm architecture : un modèle, une mise à jour et une vue.
+La boucle de la fenêtre, [sdl.Run], lit les événements, appelle la mise à jour sur chacun, et dessine la vue. Un texte va à
+SDL, une bibliothèque en C, qui lit un octet nul comme la fin d'un texte : [sdl.Shown] donne donc à chaque texte dessiné,
+mesuré, copié ou mis dans le titre un octet nul sous la forme `␀`, U+2400, le signe qui le montre, car la sortie d'un
+programme ou d'une cell peut contenir n'importe quel octet. Rien d'autre ne contient l'état de l'éditeur : pas de variable
+globale, pas d'objet qui change. C'est la forme que le langage Elm a fait connaître sous le nom d'Elm architecture : un
+modèle, une mise à jour et une vue.
 
 Le core, dans `core/`, est pur là où il peut l'être : [core/text], [core/color], [core/keys], [core/view], [core/lists] et
 [core/panes] prennent des valeurs et donnent des valeurs, et ne touchent à aucun fichier ni à aucune fenêtre. Une fonction
