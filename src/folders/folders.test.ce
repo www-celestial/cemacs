@@ -122,7 +122,7 @@ isExpandedAppended() = folders.Expanded("gzip -k", ["a"]) == "gzip -k 'a'"
 isCompressPlans() = value.Equal(folders.CompressPlan("x.tgz", false).Args, ["-x", "-k", "-z", "-f", "./x.tgz"]) and value.Equal(folders.CompressPlan("x.zip", false).Args, ["-n", "./x.zip", "-d", "./x"]) and
   value.Equal(folders.CompressPlan("-x", false).Args, ["./-x"])
 isArchivePlans() = folders.ArchivePlan("y.tar", ["a"]) == {Program: "tar", Args: ["-cf", "./y.tar", "./a"]} and folders.ArchivePlan("Y.TAR.GZ", ["a"]).Args[1] == "-czf"
-isDiffArgsAfterDashes() = value.Equal(folders.DiffArgs("/p/-a", "/p/b", "/p").Args, ["diff", "--no-index", "--no-color", "--", "-a", "b"])
+isDiffArgsAfterDashes() = value.Equal(list.TakeLast(2, folders.DiffArgs("/p/-a", "/p/b", "/p").Args), ["-a", "b"]) and list.TakeLast(3, folders.DiffArgs("/p/-a", "/p/b", "/p").Args)[1] == "--"
 none(path) = false
 isDestinationsOne() = value.Equal(result.Unwrap(folders.Destinations([{Name: "a", IsDir: false}], "/p", "b", isDir = none)), [{From: "/p/a", To: "/p/b", Item: {Name: "a", IsDir: false}}])
 isDestinationsInto() = result.Unwrap(folders.Destinations([{Name: "a", IsDir: false}], "/p", "/q/", isDir = none))[1].To == "/q/a" and

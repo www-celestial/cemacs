@@ -1,7 +1,9 @@
 (** The search of a whole project, for src/ide: the lines of the Git repository that hold some words, as git grep finds them, and the edits that replace the
     words in some of those lines. tools/grep.ce runs it for each question, with the permissions to read and to run git, so that none of it loads at the
-    start of the editor. git runs with each word one argument, never through a shell, and the words are fixed text, never a pattern. *)
+    start of the editor. git runs with each word one argument, never through a shell, and the words are fixed text, never a pattern; and through
+    src/gitrun, so that the config of the repository runs no program of its own. *)
 use core/color
+use src/gitrun
 use std/dict
 use std/list
 use std/result
@@ -23,18 +25,18 @@ Folds(words) = str.Lower(words) == words
 
 defn Root(folder)
   (** The root of the Git repository that holds a folder, in an Ok, or an Err of the words to say. *)
-  top = sys.Run("git", ["-C", folder, "rev-parse", "--show-toplevel"], timeout = GitLimit())
+  top = gitrun.Run(folder, ["rev-parse", "--show-toplevel"], timeout = GitLimit())
   if result.IsErr(top)
-    return result.Err("git can't run: $(top.Error.Message)")
+    return top
   end
   if top.Value.Code != 0 result.Err("$folder/ is in no Git repository.") else result.Ok(str.Trim(top.Value.Out)) end
 end
 
-(** The arguments of git grep for words, from the root: line, column, no binary file, the paths ended by a 0 byte, fixed text, the case folded when the
-    words hold no capital.
+(** The arguments of git grep for words, run at the root by src/gitrun: line, column, no binary file, no textconv, the paths ended by a 0 byte, fixed
+    text, the case folded when the words hold no capital.
 
-      Args("/p", "total") --> ["-C", "/p", "grep", "-n", "--column", "-I", "-z", "--no-color", "-F", "-i", "-e", "total"] *)
-Args(root, words) = list.Concat(["-C", root, "grep", "-n", "--column", "-I", "-z", "--no-color", "-F"], list.Concat(if Folds(words) ["-i"] else [] end, ["-e", words]))
+      Args("total") --> ["grep", "-n", "--column", "-I", "--no-textconv", "-z", "--no-color", "-F", "-i", "-e", "total"] *)
+Args(words) = list.Concat(["grep", "-n", "--column", "-I", "--no-textconv", "-z", "--no-color", "-F"], list.Concat(if Folds(words) ["-i"] else [] end, ["-e", words]))
 
 defn Places(root, out)
   (** The places in what git grep -n --column -z wrote, each {Path, Shown, Line, Column, Words}: the path from the root and from the repository, the line from
@@ -146,9 +148,9 @@ defn searched(words, folder)
   if result.IsErr(root)
     return {Error: root.Error}
   end
-  ran = sys.Run("git", Args(root.Value, words), timeout = GitLimit())
+  ran = gitrun.Run(root.Value, Args(words), timeout = GitLimit())
   if result.IsErr(ran) or ran.Value.Code > 1
-    return {Error: if result.IsErr(ran) "git can't run: $(ran.Error.Message)" else "git grep failed: $(str.Trim(ran.Value.Err))" end}
+    return {Error: if result.IsErr(ran) ran.Error else "git grep failed: $(str.Trim(ran.Value.Err))" end}
   end
   places = Places(root.Value, ran.Value.Out)
   if value.Len(places) == 0

@@ -505,7 +505,9 @@ there, `-k`, so does `unzip`, `-n`, the others refuse, and a folder whose `.tar.
 already`. `c` makes a `.tar.gz` or `.tgz`, a
 `.tar.xz`, a `.tar.bz2` or a `.tar` by `tar`, or a `.zip` by `zip`, as [folders.ArchivePlan] says; an archive that is there
 goes first, after a yes. Each waits at most 600 seconds, [folders.ArchiveLimit]. `=` runs
-`git diff --no-index --no-color -- A B`, the names after `--`, so that none becomes an option, and shows its lines as
+`git --git-dir=/dev/null diff --no-index --no-ext-diff --no-textconv --no-color -- A B`, the names after `--`, so that none
+becomes an option, out of any repository, so that no `.git/` of the folder or above gives git a program to run (see
+[Git](git.md#security)), and shows its lines as
 [Git](git.md) shows a diff, the new lines in the colour of texts, the old ones in that of keywords; its answer starts with
 the other file marked, or else the backup `NAME~`, or else the folder of the other pane.
 

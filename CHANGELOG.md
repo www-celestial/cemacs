@@ -71,3 +71,9 @@ Measured on the same machine as the rest, in the book's chapter on performance:
 - A still window sleeps until the next event: 0.0 % of a core at rest instead of 1.4 %, a key read 0.7 ms after it was
   sent instead of 3.1.
 - The start, to the first frame: 51.3 ms with Cesia 1.2 against 57.4 with Cesia 1.1.0; Emacs 89.1, Neovim 13.8, Vim 9.3.
+
+### Fixes
+
+- The config of a Git repository runs no program of its own on `=`, `C-x p f`, `C-x g`, `C-c g d`, the log, a commit shown,
+  the blame or `C-x p g`: no fsmonitor, external diff, textconv, filter, hook, signature program or fetch helper of a
+  `.git/` that came with a folder; `=` runs out of any repository.
