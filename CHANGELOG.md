@@ -77,3 +77,6 @@ Measured on the same machine as the rest, in the book's chapter on performance:
 - The config of a Git repository runs no program of its own on `=`, `C-x p f`, `C-x g`, `C-c g d`, the log, a commit shown,
   the blame or `C-x p g`: no fsmonitor, external diff, textconv, filter, hook, signature program or fetch helper of a
   `.git/` that came with a folder; `=` runs out of any repository.
+- A save keeps the mode of the file, a private one private and a script one to run, through a new file that is the
+  person's alone until it gets that mode; a symbolic link stays a link and the file it points to is saved, as in Emacs;
+  the copy of a file of Cesia that `cesia fmt` formats is the person's alone.

@@ -723,15 +723,15 @@ shellMoving(state) = not value.IsMissing(shellOf(state)) and not shellOf(state).
 
 defn Formatted(path, words, state)
   (** The words of a file to save, as cesia fmt writes them, {Words, Error}: the words go to a file of their own in .cesia/fmt/ of the folder of Cemacs,
-      cesia fmt formats it, and the formatted words come back, the file removed. A text that doesn't read is saved as typed, Error saying why; so is a file
-      that isn't one of Cesia, or one over TextLimit() bytes. *)
+      the person's alone, as the folder is, since the file saved may be private, cesia fmt formats it, and the formatted words come back, the file
+      removed. A text that doesn't read is saved as typed, Error saying why; so is a file that isn't one of Cesia, or one over TextLimit() bytes. *)
   if not str.EndsWith(".ce", path) or str.ByteLength(words) > TextLimit()
     return {Words: words, Error: missing}
   end
   dir = "$(commands.Home(state))/.cesia/fmt"
   name = "$dir/$(math.Div(math.Floor(sys.Now() * 1000000.0), 1))-$(folders.BaseName(path))"
-  made = sys.Mkdir(dir)
-  wrote = if result.IsOk(made) sys.Write(name, words) else made end
+  made = sys.Mkdir(dir, private = true)
+  wrote = if result.IsOk(made) sys.Write(name, words, private = true) else made end
   if result.IsErr(wrote)
     return {Words: words, Error: "cesia fmt has no place to write: $(wrote.Error.Message)"}
   end

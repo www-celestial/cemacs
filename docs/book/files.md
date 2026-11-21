@@ -114,13 +114,16 @@ Saving is built so that no failure loses text, neither the text on disk nor the 
 
 1. The new text goes to a new file beside the old one, named `PATH.cemacs-` and the time in microseconds, with `-1`, `-2` and
    so on up to `-20` when that name is taken, after which the save stops with `No free name next to PATH for a new file.`
-   The new file is the only one Cemacs ever removes.
-2. The new file is written with `sys.Write(..., sync = true)`, which gives its answer only once the system has put the file
-   on the disk, and then its folder, with `fsync`: the call that asks the system to write what it holds in its caches, so
-   that a loss of power can't take it back.
-3. Once it is on the disk in full, a rename puts it in place of the old file. On Linux, a rename within one file system, as
-   here, is atomic: at every instant the name leads to the whole old file or to the whole new one, never to a part of
-   either.
+   The new file is the only one Cemacs ever removes. When PATH is a symbolic link, a file that only points to another one,
+   PATH here is the file it points to, its links followed one after the other, as Emacs's `file-truename` does: the link
+   stays a link, and the file it leads to gets the text.
+2. The new file is written with `sys.Write(..., sync = true, private = true)`, which makes it with `O_EXCL`, so that no file
+   or link put at its name first takes the text, and yours alone, `rw-------`, so that no one can open it while it holds
+   the text; and which gives its answer only once the system has put the file on the disk, and then its folder, with
+   `fsync`: the call that asks the system to write what it holds in its caches, so that a loss of power can't take it back.
+3. The new file gets the mode of the old one, its rights to read, write and run, then, once it is on the disk in full, a
+   rename puts it in place of the old file. On Linux, a rename within one file system, as here, is atomic: at every instant
+   the name leads to the whole old file or to the whole new one, never to a part of either.
 4. If writing or renaming fails, the new file is removed, the old one stays whole, the buffer keeps its text and its star,
    and the prompt line tells the reason, naming your file, not the new one.
 
@@ -130,11 +133,12 @@ instant of the rename before the system wrote the folder again, under the new fi
 file, which is then whole. Vim and Neovim do the same by default (their option `'fsync'`); GNU Emacs 31 doesn't, as its
 `write-region-inhibit-fsync` is on. The cost is the time the disk takes: [Speed](performance.md#paste-undo-and-save) has it.
 
-Since the saved file is a new one, it doesn't keep what belonged to the old one: its permissions are those of a new file,
-`rw-r--r--` with the usual `umask`, the mask by which the system takes rights away from every new file, so a script loses its
-right to run and a read-only file becomes writable; a symbolic link, a file that only points to another one, is replaced by a
-plain file, its target left as it was; and a hard link, a second name of the same file, no longer shares the text. The folder must let you
-write in it, for the new file.
+The saved file is a new one with the mode of the old one: a private file stays `rw-------`, a script keeps its right to run,
+a read-only file stays read-only. Its setuid and setgid bits don't pass, as the new file is yours, not the old one's
+owner's, and its group is the one a new file gets in that folder. A file that wasn't there gets what the system gives a new
+file, `rw-rw-rw-` less the `umask`, the mask by which the system takes rights away from every new file, as Linux tells it in
+`/proc/self/status`; `rw-------` where it doesn't. A hard link, a second name of the same file, no longer shares the text.
+The folder must let you write in it, for the new file.
 
 ### A file changed by another program
 
@@ -160,7 +164,8 @@ it a new file. Cemacs looks only when it saves: it doesn't reload a file that ch
 
 A file of Cesia, a `.ce` file, is saved as [`cesia fmt`](https://www-celestial.github.io/cesia-lang/commands.html) writes it:
 each line at the indent of its blocks, no spaces at the end of a line, no two blank lines in a row. The text goes to a file
-of its own in `.cesia/fmt/` of the folder of Cemacs, `cesia fmt` formats it, and the formatted text is what is saved; the
+of its own in `.cesia/fmt/` of the folder of Cemacs, yours alone, `rwx------`, as the copy is, `rw-------`, since the file
+may be a private one, `cesia fmt` formats it, and the formatted text is what is saved; the
 buffer takes it too, as one step of undo, so that `C-/` gives back what you typed, the cursor on its line. The file in
 `.cesia/fmt/` is removed at once. A text that doesn't read, as one with a bracket left open, is saved as typed, and the
 prompt line says `Saved PATH as typed:` and why `cesia fmt` left it. A save of a file of 2,000 lines takes 60 ms through
