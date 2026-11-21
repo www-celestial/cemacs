@@ -93,3 +93,5 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   with a line end lost it.
 - `!` and `&` run their command in `/bin/sh`, whose quoting the names get, instead of `$SHELL`: in fish, a name that ended
   with a backslash closed no quote, and the next name could run as a command.
+- The trash, its `files/` and its `info/` are made the person's alone, 700, and each `.trashinfo` 600, as GIO makes
+  them, instead of 755 and 644.

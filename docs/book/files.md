@@ -436,7 +436,8 @@ Cemacs follows the Trash specification of freedesktop.org, version 1.0, for the 
 file manager of your desktop can restore a file:
 
 - The trash is `$XDG_DATA_HOME/Trash`, or `~/.local/share/Trash` when `XDG_DATA_HOME` isn't set. Without `HOME` either, it
-  says `There is no trash: HOME is not set.`
+  says `There is no trash: HOME is not set.` The trash, its `files/` and its `info/` are yours alone, `rwx------`, as GIO
+  makes them, and so is each info, `rw-------`: what you deleted, and from where, is no one else's business.
 - The file or folder goes into `files/`, under its own name, or `NAME.2`, `NAME.3` and so on when that one is taken.
 - Its info goes into `info/NAME.trashinfo` first, as the specification asks: its path from the root, each part
   percent-encoded, as URLs write a space `%20`, and the date it was trashed. If the move then fails, the info is removed.

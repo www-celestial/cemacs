@@ -568,12 +568,15 @@ end
 defn ToTrash(path, root, now)
   (** Moves a file or a folder to the trash in root: the entry into files/, and into info/ a .trashinfo with its path and the date on this machine's clock
       at now, in seconds since 1970. The info is written first, and removed if the move fails, as for an entry on another disk, which can't be moved there:
-      Ok(its name in the trash) or an Err. *)
-  sys.Mkdir("$root/files")?
-  sys.Mkdir("$root/info")?
+      Ok(its name in the trash) or an Err. The trash and its two folders are the person's alone, 700 in octal, as GIO makes them, and each info 600: what
+      was deleted, and from where, is no one else's business; the folders above it are made as any folder. *)
+  sys.Mkdir(Parent(root))?
+  sys.Mkdir(root, private = true)?
+  sys.Mkdir("$root/files", private = true)?
+  sys.Mkdir("$root/info", private = true)?
   name = FreeName(BaseName(path), n -> present("$root/files/$n") or sys.Exists("$root/info/$n.trashinfo"))
   info = "$root/info/$name.trashinfo"
-  sys.Write(info, TrashInfo(path, date.Local(now)))?
+  sys.Write(info, TrashInfo(path, date.Local(now)), private = true)?
   moved = sys.Rename(path, "$root/files/$name")
   if result.IsErr(moved)
     _ = sys.Remove(info)
