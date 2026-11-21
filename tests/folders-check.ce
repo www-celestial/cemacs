@@ -56,16 +56,6 @@ defn on(name, state)
   s
 end
 
-defn removed(path)
-  (** Removes a file or a folder and all it holds, never through a link. *)
-  if not isLink(path) and result.Unwrap(sys.Stat(path)).IsDir
-    for name in result.Unwrap(sys.List(path))
-      removed("$path/$name")
-    end
-  end
-  result.Unwrap(sys.Remove(path))
-end
-
 defn ticked(state, done)
   (** The state after ticks, as the window sends them, until done says so, for at most ten seconds. *)
   s = state
@@ -179,7 +169,7 @@ t.Prompt.Answer = "$folder/dst4"
 t = press.Press(["enter"], t)
 check(str.Contains("special file", t.Message) and read("$folder/dst4/x.ce") == "x" and not sys.Exists("$folder/dst4/pipe"), "a FIFO is not copied: $(t.Message)")
 for gone in ["dst2", "dst4", "elsewhere", "src/pipe"]
-  removed("$folder/$gone")
+  result.Unwrap(sys.RemoveTree("$folder/$gone"))
 end
 _ = sys.Remove("$folder/self")
 s = press.Press(["g"], s)
@@ -363,7 +353,7 @@ check(read("$folder/one") == "2" and not sys.Exists("$folder/one.gz"), "Z uncomp
 check(result.IsOk(sys.Mkdir("$folder/pack")) and result.IsOk(sys.Write("$folder/pack.tar.gz", "old")), "a folder and an archive of its name are made")
 t = press.Press(["Z", "y"], on("pack", press.Press(["g"], s)))
 check(read("$folder/pack.tar.gz") == "old" and str.Contains("exists already", t.Message), "Z never replaces an archive: $(t.Message)")
-removed("$folder/pack")
+result.Unwrap(sys.RemoveTree("$folder/pack"))
 _ = sys.Remove("$folder/pack.tar.gz")
 s = press.Press(["g"], s)
 s = press.Press(["c", "both.tar.gz", "enter"], press.Press(["m"], on("one", press.Press(["m"], on("two", press.Press(["U"], s))))))
@@ -453,6 +443,6 @@ edited.Buffers[edited.Current] = text.InsertWords("2", text.Place(kb, value.Len(
 renamed = press.Press(["C-c", "C-c"], edited)
 check(renamed.Message == "Renamed 1 file." and sys.Exists("$odd/back\\slash2") and not sys.Exists("$odd/back\\slash"), "a backslash name is renamed as written: $(renamed.Message)")
 
-removed(folder)
+result.Unwrap(sys.RemoveTree(folder))
 check(not sys.Exists(folder), "the folder is gone")
 io.Print("ok")

@@ -32,16 +32,6 @@ withApps() = emacs.Config(() -> dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), b
 here(state) = state.Buffers[state.Current]   (** The current buffer. *)
 rows(state) = str.Lines(rope.Text(here(state).Rope))   (** The rows of the list, as shown. *)
 
-defn removed(path)
-  (** Removes a file or a folder and all it holds. *)
-  if result.Unwrap(sys.Stat(path)).IsDir
-    for name in result.Unwrap(sys.List(path))
-      removed("$path/$name")
-    end
-  end
-  result.Unwrap(sys.Remove(path))
-end
-
 defn git(args, dir)
   (** Runs git in the folder dir, and stops the script if it fails. *)
   ran = result.Unwrap(sys.Run("git", args = list.Concat(["-C", dir], args)))
@@ -80,6 +70,6 @@ away.Config = withApps
 lost = press.Press(["C-x", "p", "f"], away)
 check(lost.Message == "$outside/ is in no Git repository." and not lists.IsList(here(lost)), "out of a repository: $(lost.Message)")
 
-removed(folder)
-removed(outside)
+result.Unwrap(sys.RemoveTree(folder))
+result.Unwrap(sys.RemoveTree(outside))
 io.Print("ok")
