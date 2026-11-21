@@ -91,3 +91,5 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   in the names to edit and on the prompt line, so that a row is always the file it shows: the row of the cursor could
   take the file under it; and `C-x C-q` then `C-c C-c` with no edit keeps each name byte for byte, where a name that ended
   with a line end lost it.
+- `!` and `&` run their command in `/bin/sh`, whose quoting the names get, instead of `$SHELL`: in fish, a name that ended
+  with a backslash closed no quote, and the next name could run as a command.

@@ -301,6 +301,7 @@ t = press.Press(["!", "cat", "enter"], on("it's.txt", s))
 check(t.Message == "q", "! cat on it's.txt: $(t.Message)")
 t = press.Press(["!", "echo * done", "enter"], press.Press(["m"], on("one", press.Press(["m"], on("two", s)))))
 check(t.Message == "one two done", "! with * runs once on the marked: $(t.Message)")
+check(press.Press(["!", "echo $0", "enter"], on("one", s)).Message == "/bin/sh one", "! runs in /bin/sh, whose quoting Quoted writes, whatever SHELL says")
 t = press.Press(["!", "printf '%s\\n' x y z", "enter"], on("one", s))
 check(str.Contains("lines in *Shell Command Output*", t.Message) and lists.IsList(here(t)), "a longer output goes beside the list: $(t.Message)")
 out = [b for b in t.Buffers if dict.GetOr("Name", "", b) == "*Shell Command Output*"]

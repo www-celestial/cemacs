@@ -60,11 +60,9 @@ end
 CommandLimit() = 60
 ArchiveLimit() = 600   (** The seconds that Z and c wait for their archives before the program is ended. *)
 
-defn ShellPath()
-  (** The shell of ! and &: $SHELL when it is a path from the root, as /bin/bash, else /bin/sh. *)
-  given = sys.Env("SHELL")
-  if value.IsText(given) and str.StartsWith("/", given) and not str.Contains(",", given) given else "/bin/sh" end
-end
+(** The shell of ! and &: /bin/sh, whatever $SHELL says, as Quoted writes the names for a POSIX shell. fish reads \' and \\ inside single quotes, so a
+    name that ends with a backslash would close no quote there, and the next name would run as a command. The shell buffer, C-c o t, is the person's own. *)
+ShellPath() = "/bin/sh"
 
 (** The question for tools/folders.ce: the program, its arguments, the folder it runs in, and its limit in seconds, 0 for none. *)
 question(program, args, dir, limit, diff = false) = json.Text({Program: program, Args: args, Dir: dir, Limit: limit, Diff: diff})

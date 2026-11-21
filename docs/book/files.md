@@ -511,7 +511,10 @@ folders.Quoted("-rf") --> "'./-rf'"
 
 `!` waits for its command at most 60 seconds, [folders.CommandLimit], and ends it after; `&` has no limit, and the editor
 goes on meanwhile. What a command wrote shows on the prompt line when it is one line, or else in the buffer
-`*Shell Command Output*`, in the other pane, the list staying where you are. The shell is the one of `$SHELL`, or `/bin/sh`.
+`*Shell Command Output*`, in the other pane, the list staying where you are. The shell is `/bin/sh`, whatever `$SHELL` says:
+[folders.Quoted] writes the names for a POSIX shell, and fish, for one, reads `\'` and `\\` inside single quotes, so a name
+that ends with a backslash would close no quote there, and the name after it would run as a command. The shell buffer,
+[`C-c o t`](shell.md), is the one of `$SHELL`.
 
 `Z` does what Dired's table of suffixes says, [folders.CompressPlan]: a folder becomes a `.tar.gz`, by `tar`; a `.tar.gz`,
 `.tgz`, `.tar.xz`, `.tar.bz2` or `.zip` opens in this folder, a `.zip` in a folder of its name; a file compressed by `gzip`,
