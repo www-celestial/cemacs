@@ -135,6 +135,18 @@ t.Prompt.Answer = "$folder/src/deep"
 t = press.Press(["enter"], t)
 check(str.Contains("into itself", t.Message) and sys.Exists("$folder/src/x.ce"), "a move into itself is refused: $(t.Message)")
 
+(* A path that goes while the folders ask whether it is a folder is no folder, never a failure that ends the editor: tests/blink-folder.ce makes it and
+   removes it over and over while a copy asks, many times, where its file goes. *)
+other = result.Unwrap(sys.Start("cesia", args = ["run", "--allow", "read,write", "tests/blink-folder.ce", "$folder/blink", "$folder/blink-stop"]))
+waited = sys.Now()
+while not sys.Exists("$folder/blink") and sys.Now() - waited < 10
+  sys.Sleep(0.001)
+end
+answers = [result.Unwrap(folders.Destinations([{Name: "a.ce", IsDir: false}], folder, "blink"))[1].To for k in 1..3000]
+check(result.IsOk(sys.Write("$folder/blink-stop", "")) and sys.WaitExit(other) == 0, "the folder stops blinking")
+_ = sys.Remove("$folder/blink")
+check(result.IsOk(sys.Remove("$folder/blink-stop")) and "$folder/blink/a.ce" in answers and "$folder/blink" in answers, "the answer was a folder at times and nothing at others")
+
 (* A file there is replaced only after a yes. *)
 check(result.IsOk(sys.Write("$folder/b.ce", "b")), "b.ce is made")
 s = press.Press(["g"], s)

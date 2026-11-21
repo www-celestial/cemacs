@@ -104,3 +104,5 @@ Measured on the same machine as the rest, in the book's chapter on performance:
 - A copy, a move across disks and the links of `S`, `Y` and `H` write first at a name that no one can know before it is
   made, `.#cemacs-` and 32 digits of the randomness of the kernel, instead of `.#cemacs-NAME`, where someone who could
   write the folder could put a link in time for the copy to write through it; a failure names the file, never that name.
+- A path that goes while the folders ask whether it is a folder, as one that someone else removes from a shared folder
+  during a copy, a move or a deletion, is taken for no folder, instead of a failure that ended the editor.

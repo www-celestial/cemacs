@@ -93,8 +93,11 @@ end
       IsInside("/p/srcs", "/p/src") --> false *)
 IsInside(path, from) = path == from or str.StartsWith("$from/", path)
 
-(** Is a path a folder, through a link too? *)
-isFolder(path) = result.IsOk(sys.Stat(path)) and result.Unwrap(sys.Stat(path)).IsDir
+defn isFolder(path)
+  (** Is a path a folder, through a link too? It is asked once, so that a path that goes in between is no folder, never a failure. *)
+  st = sys.Stat(path)
+  result.IsOk(st) and st.Value.IsDir
+end
 
 (** Is a path a symbolic link, one that points to nothing too? *)
 isLinkPath(path) = result.IsOk(sys.ReadLink(path))
