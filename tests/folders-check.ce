@@ -238,6 +238,44 @@ check(t.Prompt.Label == "Delete folder src and everything in it? (yes or no) ", 
 s = press.Press(["yes", "enter"], t)
 check(not sys.Exists("$folder/src") and read("$folder/keep/k.ce") == "k", "src is deleted, and the folder its link pointed to is left: $(s.Message)")
 check(s.Message == "Deleted src.", "D says it deleted: $(s.Message)")
+
+(* A deletion for good walks by the folders it holds open: another person who can write the folder above, who swaps the folder for a link to another
+   while it runs, leads it nowhere, and every file of that other folder is left. tests/swap-folder.ce is that person; a round where it came too late is
+   run again. *)
+raceFiles = 4000
+defn raced()
+  (** One round: {Swapped, Left, Moved, Message}: did the swap land while the deletion ran, how many files the other folder keeps and the folder
+      renamed away still holds, and what D said. *)
+  race = "$folder/race"
+  check(result.IsOk(sys.Mkdir("$race/shared/big")) and result.IsOk(sys.Mkdir("$race/victim")), "the folders of the race are made")
+  for k in 1..raceFiles
+    result.Unwrap(sys.Write("$race/shared/big/f$k", ""))
+    result.Unwrap(sys.Write("$race/victim/f$k", ""))
+  end
+  ready = "$race/ready"
+  other = result.Unwrap(sys.Start("cesia", args = ["run", "--allow", "read,write", "tests/swap-folder.ce", "$race/shared/big", value.Text(raceFiles - 100), "$race/victim", ready]))
+  waited = sys.Now()
+  while not sys.Exists(ready) and sys.Now() - waited < 10
+    sys.Sleep(0.01)
+  end
+  t = press.Press(["enter"], on("shared", press.Press(["enter"], on("race", press.Press(["g"], s)))))
+  t.Config = forGood
+  t = press.Press(["D", "yes", "enter", "yes", "enter"], on("big", t))
+  code = sys.WaitExit(other)
+  left = value.Len(result.UnwrapOr([], sys.List("$race/victim")))
+  moved = value.Len(result.UnwrapOr([], sys.List("$race/shared/big.moved")))
+  result.Unwrap(sys.RemoveTree(race))
+  {Swapped: code == 0, Left: left, Moved: moved, Message: t.Message}
+end
+round = raced()
+for k in 1..2
+  if not round.Swapped
+    round = raced()
+  end
+end
+check(round.Swapped, "the other person swapped the folder for a link while the deletion ran")
+check(round.Left == raceFiles, "the folder the link points to keeps its $raceFiles files: $(round.Left); $(round.Message)")
+check(round.Moved == 0 and str.Contains("Can't remove", round.Message), "what the folder held is deleted, and the link put in its place is said: $(round.Message)")
 s.Config = withApps
 
 (* M gives a mode, in octal or as chmod writes it; T a time. *)

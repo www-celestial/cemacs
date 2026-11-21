@@ -250,36 +250,15 @@ defn CopyTree(from, to)
   if value.IsMissing(first) result.Ok(missing) else result.Err(first) end
 end
 
-defn RemoveTree(path)
-  (** Deletes a file, a link or a folder and all it holds for good, never through a link: a link is deleted, not what it points to. Ok(missing), or an Err
-      that names the first entry that failed after the others were deleted. *)
-  if isLinkPath(path) or not isFolder(path)
-    return sys.Remove(path)
-  end
-  first = missing
-  names = sys.List(path)
-  if result.IsErr(names)
-    return names
-  end
-  for n in names.Value
-    done = RemoveTree("$path/$n")
-    if result.IsErr(done) and value.IsMissing(first)
-      first = done
-    end
-  end
-  gone = sys.Remove(path)
-  if value.IsMissing(first) gone else first end
-end
-
 defn MoveTree(from, to)
   (** Moves a file, a link or a folder: a rename, or across disks, where a rename can't go, a copy then a deletion of what was copied, only once the copy
-      is whole. Ok(missing) or an Err. *)
+      is whole, by sys.RemoveTree, which never follows a link. Ok(missing) or an Err. *)
   moved = sys.Rename(from, to)
   if result.IsOk(moved) or not str.Contains("cross-device", value.Text(dict.GetOr("Message", "", moved.Error)))
     return moved
   end
   CopyTree(from, to)?
-  RemoveTree(from)
+  sys.RemoveTree(from)
 end
 
 (* ---- Copy, rename, links *)
@@ -436,7 +415,8 @@ defn foldersAsked(asked, items, state)
 end
 
 defn deletedAll(items, state)
-  (** The items deleted for good, a folder with all it holds, never through a link. *)
+  (** The items deleted for good, a folder with all it holds, by sys.RemoveTree: it never follows a link, and walks by the folders it holds open, so that a
+      folder swapped for a link while it runs never leads it out. *)
   v = viewHere(state)
   if value.Len(items) == 0
     return commands.Say("Nothing deleted.", state)
@@ -444,7 +424,7 @@ defn deletedAll(items, state)
   done = []
   failed = []
   for i in items
-    got = RemoveTree(Within(v.Dir, i.Name))
+    got = sys.RemoveTree(Within(v.Dir, i.Name))
     if result.IsOk(got) done = list.Append(i, done) else failed = list.Append(errorOf(Within(v.Dir, i.Name), got.Error), failed) end
   end
   Summary("Deleted", done, failed, afterward(landing([i.Name for i in done], state), state))

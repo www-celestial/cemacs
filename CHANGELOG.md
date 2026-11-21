@@ -97,3 +97,7 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   them, instead of 755 and 644.
 - A press on a slider runs cells only in a session that `C-c e e` or `C-c e a` started: in a file just opened, it writes
   its number and runs nothing, where it started a session and ran every cell.
+- A deletion for good, `D` and `x` with `DeleteToTrash` false, and the end of a move across disks are Cesia's
+  `sys.RemoveTree`, which walks by the folders it holds open: someone who can write the folder above, as in `/tmp` or a
+  shared folder, and swaps the folder for a link while it runs no longer leads it into the folder the link points to,
+  where it deleted what that one held; the first file that can't be deleted stops it.
