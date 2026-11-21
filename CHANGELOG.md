@@ -95,3 +95,5 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   with a backslash closed no quote, and the next name could run as a command.
 - The trash, its `files/` and its `info/` are made the person's alone, 700, and each `.trashinfo` 600, as GIO makes
   them, instead of 755 and 644.
+- A press on a slider runs cells only in a session that `C-c e e` or `C-c e a` started: in a file just opened, it writes
+  its number and runs nothing, where it started a session and ran every cell.

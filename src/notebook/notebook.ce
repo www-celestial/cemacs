@@ -1533,22 +1533,13 @@ end
 
 defn pushed(k, name, number, state)
   (** The state once a slider moved to a number: its Set started if none of its own runs, else the number kept as Pending, the latest winning. Without
-      a session, one starts and every cell runs, from the top, as C-c e a runs them. *)
+      a session, the number stays written in the buffer and nothing runs: the code of a file runs only after C-c e e or C-c e a, which the person asks
+      for, never from a press of the mouse on a file opened from elsewhere. *)
   r = runOf(state.Buffers[k])
-  m = moveOf(name, r)
-  if value.IsMissing(r.Session)
-    got = session(k, state)
-    if result.IsErr(got)
-      return commands.Say("No session for $(state.Buffers[k].Path): $(got.Error.Message)", state)
-    end
-    r = got.Value
-    order = [i for i in 1..value.Len(r.Cells)]
-    m.Busy = true
-    m.Left = order
-    m.Since = sys.Now()
-    m.Pending = missing
-    return queued(k, order, withRun(k, withMove(name, m, r), state))
+  if value.IsMissing(r) or value.IsMissing(r.Session)
+    return commands.Say("$name is $number in the text: C-c e a runs the cells with it.", state)
   end
+  m = moveOf(name, r)
   if m.Busy or asking(r)
     m.Pending = number
     return withRun(k, withMove(name, m, r), state)
