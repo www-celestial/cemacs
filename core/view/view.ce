@@ -235,8 +235,9 @@ end
 (** The lines from first to last of a buffer, without their line ends, read with one slice of the rope. *)
 screenLines(first, last, b) = str.Split("\n", rope.Slice(rope.LineStart(first, b.Rope), rope.LineEnd(last, b.Rope), b.Rope))
 
-(** The first width characters of a line, as the screen shows them: sdl has no clipping, and the tail would not be seen. *)
-cutTo(width, full) = if value.Len(full) > width str.Join("", list.Take(width, str.Chars(full))) else full end
+(** The first width characters of a line, as the screen shows them: sdl has no clipping, and the tail would not be seen. A slice reads the line once, where
+    its characters, one text each, would take 0.2 s on a line of a megabyte. *)
+cutTo(width, full) = if value.Len(full) > width str.Slice(1, width, full) else full end
 
 defn tokensOf(full, width, state, kept)
   (** The row of a line of this text, cut to width characters, from this state: the one kept if it was made for the same, else read now. *)
@@ -299,7 +300,7 @@ defn visible(tokens, left)
     size = value.Len(token[2])
     if column + size > left
       skipped = list.Max(0, left - column)
-      words = if skipped > 0 str.Join("", list.Skip(skipped, str.Chars(token[2]))) else token[2] end
+      words = if skipped > 0 str.Slice(skipped + 1, size, token[2]) else token[2] end
       out = list.Append([token[1], words, column + skipped], out)
     end
     column = column + size

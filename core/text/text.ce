@@ -30,8 +30,15 @@ defn Of(words, path)
     Layout: missing}
 end
 
-(** Does line n end with a CRLF? Then its \r belongs to the line end. A \r anywhere else, or at the end of the last line, is an ordinary character. *)
-hasCr(n, b) = n < rope.LineCount(b.Rope) and str.EndsWith("\r", rope.Line(n, b.Rope))
+(** Does line n end with a CRLF? Then its \r belongs to the line end. A \r anywhere else, or at the end of the last line, is an ordinary character. Only
+    the byte before the line end is read, so a long line costs no more than a short one. *)
+defn hasCr(n, b)
+  if n >= rope.LineCount(b.Rope)
+    return false
+  end
+  stop = rope.LineEnd(n, b.Rope)
+  stop > rope.LineStart(n, b.Rope) and rope.Slice(stop - 1, stop, b.Rope) == "\r"
+end
 
 defn line(n, b)
   (** The text of line n, without its line end: a \r before the line end is not part of it. *)
@@ -39,7 +46,7 @@ defn line(n, b)
   if hasCr(n, b) withoutLast(s) else s end
 end
 
-withoutLast(s) = str.Join("", list.Take(value.Len(s) - 1, str.Chars(s)))   (** A text without its last character. *)
+withoutLast(s) = str.ByteSlice(1, str.ByteLength(s) - 1, s)   (** A text without its last byte, the \r of its CRLF. *)
 
 defn eol(n, b)
   (** The line end of line n: \r\n or \n. The last line has none, so it takes the one of the line above, or \n if it is alone. *)
@@ -112,37 +119,64 @@ defn moved(cursor, b)
   b
 end
 
-(** A letter, a digit or an underscore. Cesia knows the case of the ASCII letters only, so any character of more than one byte counts as a letter,
-    as in color.ce: accents and other alphabets are in words, and so are the rare symbols outside ASCII. *)
-isWord(c) = c == "_" or (c >= "0" and c <= "9") or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or str.ByteLength(c) > 1
+(** Is a byte one of a word: a letter, a digit or an underscore, or a byte of a character outside ASCII? Cesia knows the case of the ASCII letters only,
+    so any character of more than one byte counts as a letter, as in color.ce: accents and other alphabets are in words, and so are the rare symbols
+    outside ASCII. Each of its bytes is 128 or more, so a byte tells for its character. *)
+wordByte(v) = v == 95 or (v >= 48 and v <= 57) or (v >= 97 and v <= 122) or (v >= 65 and v <= 90) or v >= 128
 
-defn charAfter(pos, b)
-  (** The character after a position, or a line end at the end of a line. *)
-  if pos.Column >= width(pos.Line, b)
-    "\n"
-  else
-    str.Slice(pos.Column + 1, pos.Column + 1, line(pos.Line, b))
-  end
-end
+(** Is a character one of a word, as wordByte tells from its first byte? *)
+isWord(c) = c != "" and wordByte(str.Byte(1, c))
 
-defn skip(forward, test, pos, b)
-  (** Moves one position while a test holds for the character that would be crossed, forward or back. *)
-  p = pos
-  go = true
-  while go
-    next = if forward forwardFrom(p, b) else back(p, b) end
-    if value.IsMissing(next)
-      go = false
-    else
-      c = if forward charAfter(p, b) else charAfter(next, b) end
-      if test(c)
-        p = next
-      else
-        go = false
+(** Does a byte continue a character, 10xxxxxx in UTF-8, instead of starting one? *)
+continues(v) = v >= 128 and v < 192
+
+defn skip(forward, word, pos, b)
+  (** The position after moving from pos, forward or back, across the characters that are of a word, word true, or that are not, word false; a line end
+      is a character of no word. The text of each line is taken once, and walked a byte at a time: a move costs the length of the lines it reads, not
+      their square, so a word of a million letters, as a minified file holds, is crossed in a few tenths of a second. *)
+  n = pos.Line
+  column = pos.Column
+  atEnd = false
+  while true
+    l = line(n, b)
+    size = str.ByteLength(l)
+    column = if atEnd value.Len(l) else list.Min(column, value.Len(l)) end
+    i = if atEnd size else str.ByteLength(str.Slice(1, column, l)) end
+    if forward
+      while i < size
+        if wordByte(str.Byte(i + 1, l)) != word
+          return {Line: n, Column: column}
+        end
+        i += 1
+        while i < size and continues(str.Byte(i + 1, l))
+          i += 1
+        end
+        column += 1
       end
+      if word or n >= rope.LineCount(b.Rope)
+        return {Line: n, Column: column}
+      end
+      n += 1
+      column = 0
+    else
+      while i > 0
+        j = i
+        while j > 1 and continues(str.Byte(j, l))
+          j -= 1
+        end
+        if wordByte(str.Byte(j, l)) != word
+          return {Line: n, Column: column}
+        end
+        i = j - 1
+        column -= 1
+      end
+      if word or n == 1
+        return {Line: n, Column: column}
+      end
+      n -= 1
+      atEnd = true
     end
   end
-  p
 end
 
 defn MoveChar(by, b)
@@ -170,11 +204,7 @@ defn MoveWord(by, b)
         MoveWord(1, Of("foo bar", missing)).Cursor.Column --> 3 *)
   p = b.Cursor
   for i in list.Range(1, math.Abs(by))
-    if by > 0
-      p = skip(true, isWord, skip(true, c -> not isWord(c), p, b), b)
-    else
-      p = skip(false, isWord, skip(false, c -> not isWord(c), p, b), b)
-    end
+    p = skip(by > 0, true, skip(by > 0, false, p, b), b)
   end
   moved(p, b)
 end
@@ -329,9 +359,13 @@ defn edit(r, cursor, line, continues, typing, b)
 end
 
 defn leadingOf(n, column, b)
-  (** The leading spaces and tabs of line n, up to the column. *)
-  cs = list.Take(column, str.Chars(line(n, b)))
-  str.Join("", list.TakeWhile(c -> c == " " or c == "\t", cs))
+  (** The leading spaces and tabs of line n, up to the column: each is one byte, so the line is read only as far as they go. *)
+  words = line(n, b)
+  k = 0
+  while k < column and k < str.ByteLength(words) and (str.Byte(k + 1, words) == 32 or str.Byte(k + 1, words) == 9)
+    k += 1
+  end
+  str.ByteSlice(1, k, words)
 end
 
 defn insert(words, continues, b)

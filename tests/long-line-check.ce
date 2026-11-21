@@ -1,0 +1,67 @@
+(** Checks of the keys on a very long line, as a minified file or a data URI holds one: M-f and M-b cross a word of 200,000 letters in well under a
+    second, where each letter used to take the line again, and the time grew with the square of the word, 36 s for 32,000 letters; Tab, typing and
+    backspace at the start of a line of a megabyte take no more than on a short one. It is a script, not a test file: it times. tests/run.sh runs it with
+    cesia run tests/long-line-check.ce. It prints ok at the end and stops at the first failure. *)
+use src/buffers
+use src/emacs
+use core/press
+use core/text
+use core/view
+use src/rope
+use src/ui
+use std/bug
+use std/dict
+use std/io
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
+cell = {Width: 8, Height: 19}
+withApps() = emacs.Config(() -> dict.Merge(emacs.Keys(), buffers.Keys()))   (** The keys of Emacs. *)
+here(state) = state.Buffers[state.Current]   (** The current buffer. *)
+at(state) = [here(state).Cursor.Line, here(state).Cursor.Column]   (** The place of the cursor. *)
+
+defn timed(keys, state)
+  (** The state after the keys, and the seconds they took, the screen followed as each key does. *)
+  t = sys.Now()
+  s = press.Press(keys, state)
+  {State: s, Seconds: sys.Now() - t}
+end
+
+(* A word of 200,000 letters, half of them of two bytes, on a line that ends with a CRLF: M-f goes to its end, M-b back to its start. *)
+n = 200000
+word = "$(str.Repeat(n / 2, "a"))$(str.Repeat(n / 2, "é"))"
+start = view.Start([text.Of("$word b\r\nnext", "/nowhere/long.txt")], look, cell, 800, 600)
+start.Config = withApps
+forward = timed(["M-f"], start)
+check(value.Equal(at(forward.State), [1, n]), "M-f goes to the end of the word: $(at(forward.State))")
+check(forward.Seconds < 5.0, "M-f crosses 200,000 letters in $(forward.Seconds) s")
+second = timed(["M-f"], forward.State)
+check(value.Equal(at(second.State), [1, n + 2]), "M-f goes to the end of the next word: $(at(second.State))")
+third = timed(["M-f"], second.State)
+check(value.Equal(at(third.State), [2, 4]), "M-f crosses the CRLF to the word of the next line: $(at(third.State))")
+backward = timed(["M-b", "M-b", "M-b"], third.State)
+check(value.Equal(at(backward.State), [1, 0]), "M-b goes back to the start of the long word: $(at(backward.State))")
+check(backward.Seconds < 5.0, "M-b crosses 200,000 letters in $(backward.Seconds) s")
+
+(* A line of a megabyte: Tab, a letter and backspace at its start cost what they cost on a short line, as the screen reads only what it shows. *)
+big = view.Start([text.Of("$(str.Repeat(1000000, "a")) b", "/nowhere/big.txt")], look, cell, 800, 600)
+big.Config = withApps
+s = press.Press(["C-g"], big)
+tabbed = ""
+for keys in [["tab"], ["x"], ["backspace"]]
+  t = timed(keys, s)
+  check(t.Seconds < 1.0, "$(keys[1]) at the start of a line of a megabyte takes $(t.Seconds) s")
+  s = t.State
+  tabbed = if keys[1] == "tab" rope.Text(here(s).Rope) else tabbed end
+end
+check(rope.Text(here(s).Rope) == tabbed, "x then backspace leave the line as Tab left it")
+io.Print("ok")

@@ -614,3 +614,6 @@ then takes SDL's renderer, as in [Typing and scrolling](#typing-and-scrolling).
 - SDL keeps at most 8,192 shaped texts; past that, it forgets them all and shapes again what the next frames draw.
 - A Cesia buffer over 1,000,000 bytes is not checked: see [Errors in the lines](check.md#when-it-runs).
 - One check runs at a time, for one buffer.
+- A key at the far end of a line of a megabyte takes about half a second: the colours of a line are read from its start to
+  the right edge of the screen, as a comment or a text opened before changes them. At its start, a key takes what it takes
+  on a short line, under 20 ms with the frame, and `M-f` crosses a word of 32,000 letters in 25 ms instead of 36 s.

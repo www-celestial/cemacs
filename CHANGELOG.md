@@ -84,3 +84,6 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   ending the editor and losing every buffer not saved.
 - `C-c e h` asks before it replaces a page that is there, and writes the page as a save does, through a new file and a
   rename, so a symbolic link named as the page is replaced, never written through.
+- `M-f` and `M-b` read each line they cross once, so a word of 32,000 letters is crossed in 25 ms instead of 36 s, and one
+  of a million in under a second instead of never; Tab, typing and backspace at the start of a line of a megabyte take 7
+  to 16 ms instead of 220, as the screen and the completion take a slice of the line instead of all its characters.

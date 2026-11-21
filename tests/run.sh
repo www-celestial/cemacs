@@ -20,6 +20,7 @@ tools/indent-corpus.sh --std bench core src tests tools
 [ "$(sed -n '/^(\*\* Your changes to Cemacs/,/^```$/p' docs/book/customising.md | sed '$d')" = "$(cat tools/user-template/config/config.ce)" ]
 tests/sdl/run.sh
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/files-check.ce
+timeout -s KILL 60 cesia run tests/long-line-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/commands-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia tests/check-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mktemp,exec=rm,env=PWD tests/run-check.ce
