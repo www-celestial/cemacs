@@ -217,8 +217,8 @@ defn fontNamed(name, window)
 end
 
 defn Copy(words, window)
-  (** The clipboard, shared with the other programs. *)
-  checked(window.Sdl.SetClipboard(words), window)
+  (** The clipboard, shared with the other programs, which takes a text of C: a zero byte goes there as U+2400, as Shown makes it. *)
+  checked(window.Sdl.SetClipboard(Shown(words)), window)
   missing
 end
 
@@ -233,7 +233,7 @@ defn Paste(window)
   words
 end
 
-SetTitle(title, window) = window.Sdl.SetTitle(window.Window, title)   (** Changes the title of the window. *)
+SetTitle(title, window) = window.Sdl.SetTitle(window.Window, Shown(title))   (** Changes the title of the window. *)
 
 Red(color) = math.Div(color, 65536)   (** The red part, from 0 to 255, of a color written as 0xRRGGBB. *)
 Green(color) = math.Mod(math.Div(color, 256), 256)   (** The green part, from 0 to 255, of a color written as 0xRRGGBB. *)
@@ -290,6 +290,15 @@ alphaOf(one) = match one   (** The alpha of a command, which may not give one. *
   else -> 255
 end
 
+defn Shown(words)
+  (** A text as C can take it: each zero byte, which C would read as the end of the text, becomes U+2400, the sign that shows it. A program's output, a
+      cell's result or a file name brings any byte, and the call of C would refuse the whole text, so each text given to SDL comes here first.
+
+        Shown("a$(text.FromBytes([0]))b") --> "a␀b"
+        Shown("plain") --> "plain" *)
+  if text.Contains(text.FromBytes([0]), words) text.Replace(text.FromBytes([0]), "␀", words) else words end
+end
+
 defn DrawText(one, window)
   (** Draws a text: a command {Kind: "text", Text, X, Y, Color}, with a font and an alpha if it wants. A text object is kept by its font and its
       words: shaped once, never changed after, and drawn wherever and as often as a frame has those words, so a line that moves on the screen is not
@@ -306,7 +315,7 @@ defn DrawText(one, window)
     w.Made = w.Made + 1
     object = objectAt(w.Made, w)
     checked(w.Ttf.SetFont(object, fontNamed(name, w)), w)
-    checked(w.Ttf.SetText(object, one.Text, 0), w)
+    checked(w.Ttf.SetText(object, Shown(one.Text), 0), w)
     w.Shaped = dict.Put(key, object, w.Shaped)
   end
   color = one.Color
@@ -768,7 +777,7 @@ end
 
 defn TextSize(words, window, font = "body")
   (** The size of a text in pixels, as {Width, Height}. *)
-  checked(window.Ttf.StringSize(fontNamed(font, window), words, 0, window.OutWidth, window.OutHeight), window)
+  checked(window.Ttf.StringSize(fontNamed(font, window), Shown(words), 0, window.OutWidth, window.OutHeight), window)
   {Width: c.Get("i32", 0, window.OutWidth), Height: c.Get("i32", 0, window.OutHeight)}
 end
 

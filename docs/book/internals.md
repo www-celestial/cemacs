@@ -15,7 +15,9 @@ Cemacs is one value and two functions:
 - [view.View], which takes the state and gives the frame: an array of drawing commands, each a map such as
   `{Kind: "text", X, Y, Text, Color, Font}`.
 
-The window's loop, [sdl.Run], reads the events, calls the update on each, and draws the view. Nothing else holds the editor's
+The window's loop, [sdl.Run], reads the events, calls the update on each, and draws the view. A text goes to SDL, a library of
+C, which reads a zero byte as the end of a text, so [sdl.Shown] gives each text drawn, measured, copied or put in the title a
+zero byte as `␀`, U+2400, the sign that shows it: the output of a program or of a cell can hold any byte. Nothing else holds the editor's
 state: no global variable, no object that changes. This is the shape that the Elm language made known as the Elm
 architecture: a model, an update and a view.
 

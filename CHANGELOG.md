@@ -80,3 +80,5 @@ Measured on the same machine as the rest, in the book's chapter on performance:
 - A save keeps the mode of the file, a private one private and a script one to run, through a new file that is the
   person's alone until it gets that mode; a symbolic link stays a link and the file it points to is saved, as in Emacs;
   the copy of a file of Cesia that `cesia fmt` formats is the person's alone.
+- A zero byte in the output of a program or of a cell, or in any text drawn, is shown as `␀`, and copied so, instead of
+  ending the editor and losing every buffer not saved.

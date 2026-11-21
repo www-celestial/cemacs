@@ -156,6 +156,17 @@ push(0x100, [])
 last = sdl.Run(state, commands.Update, view.View, window, moving = commands.Moving)
 check(wordsOf(last) == "aézqalphaéz\n", "run took the events: $(wordsOf(last))")
 check(last.Width == 640 and last.Height == 480, "run took the resize")
+
+(* A zero byte, as the output of cat on a binary file or a cell brings it, is drawn, measured, copied and put in the title as U+2400: C reads a zero byte
+   as the end of a text, and SDL's call refused the whole text, which ended the editor and lost every buffer not saved. *)
+zero = "before$(str.FromBytes([0]))after"
+shown = view.Start([text.Of(zero, missing)], look, cell, 800, 600)
+window = sdl.Frame(view.View(shown), window)
+window = sdl.Frame([{Kind: "text", Text: zero, X: 10, Y: 10, Color: 0xffffff}], window)
+check(sdl.TextSize(zero, window).Width == sdl.TextSize("before␀after", window).Width and sdl.TextSize(zero, window).Width > sdl.TextSize("beforeafter", window).Width, "a zero byte is measured as the sign that shows it")
+sdl.Copy(zero, window)
+check(sdl.Paste(window) == "before␀after", "a zero byte goes to the clipboard as the sign that shows it: $(sdl.Paste(window))")
+sdl.SetTitle(zero, window)
 sdl.Close(window)
 (* Clean up: the folder and what the checks wrote in it. *)
 for name in result.Unwrap(sys.List(folder))
