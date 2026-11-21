@@ -235,7 +235,10 @@ plays it. A 3D graph turns there as under a cell.
 
 ## The page
 
-`C-c e h` runs every cell of the file, as saved, in a new session, and writes `name.html` beside it: each cell's title, its
+`C-c e h` runs every cell of the file, as saved, in a new session, and writes `name.html` beside it, as a save writes a file,
+through a new file and a rename [files.Replace]; a file there already is asked about first, `name.html exists. Replace it?
+(y or n)`, and a symbolic link there, which a folder from elsewhere can bring, is replaced by the page, never written
+through, so the file it points to stays as it was. The page holds each cell's title, its
 code coloured as Cesia's docs colour it, what it printed and its value, as a table or a text, or its error. The page needs
 no other file and no script, and shows what `cesia run` computes, not the state of the window. An animation starts paused
 on its first frame under a box *Play*, which plays it by CSS alone. A 3D graph shows at the view of its code, not at the

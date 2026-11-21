@@ -815,12 +815,23 @@ end
 (* ---- The page of a file. *)
 
 defn WriteHtml(state)
-  (** C-c e h: runs every cell of the file as saved in a new session, and writes its page beside it, the same name ending in .html. *)
+  (** C-c e h: runs every cell of the file as saved in a new session, and writes its page beside it, the same name ending in .html; a file or a link
+      there already is asked about first, as a copy asks, since a folder from elsewhere can bring one. *)
   k = state.Current
   b = state.Buffers[k]
   if not IsCells(b)
     return commands.Say("This buffer has no cell to export.", state)
   end
+  page = HtmlPath(b.Path)
+  if sys.Exists(page) or result.IsOk(sys.ReadLink(page))
+    return commands.Confirm("$(list.Last(str.Split("/", page))) exists. Replace it? (y or n) ", (yes, s) -> if yes == "y" exporting(k, s) else commands.Say("Nothing done.", s) end, state)
+  end
+  exporting(k, state)
+end
+
+defn exporting(k, state)
+  (** The run of every cell of the file of buffer k, as saved, in a new session, for its page. *)
+  b = state.Buffers[k]
   path = b.Path
   allow = allowOf(path)
   r = runOf(b)
@@ -852,8 +863,8 @@ defn exported(k, state)
     return commands.Say("No page: $(page.Error.Message)", s)
   end
   path = HtmlPath(state.Buffers[k].Path)
-  wrote = sys.Write(path, page.Value)
-  commands.Say(if result.IsOk(wrote) "Wrote $path." else "Can't write $path." end, s)
+  wrote = files.Replace(path, page.Value)
+  commands.Say(if result.IsErr(wrote) and wrote.Error.Kind != "saved" "Can't write $path: $(wrote.Error.Message)" else "Wrote $path." end, s)
 end
 
 (* ---- `*variables*`: the names of the session beside the file; Enter on one shows its rows. *)

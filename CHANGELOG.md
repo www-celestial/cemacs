@@ -82,3 +82,5 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   the copy of a file of Cesia that `cesia fmt` formats is the person's alone.
 - A zero byte in the output of a program or of a cell, or in any text drawn, is shown as `␀`, and copied so, instead of
   ending the editor and losing every buffer not saved.
+- `C-c e h` asks before it replaces a page that is there, and writes the page as a save does, through a new file and a
+  rename, so a symbolic link named as the page is replaced, never written through.

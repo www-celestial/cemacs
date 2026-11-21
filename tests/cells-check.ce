@@ -5,6 +5,7 @@
     stops at the first failure. *)
 use core/commands
 use core/lists
+use core/press
 use core/text
 use core/view
 use src/notebook
@@ -149,5 +150,18 @@ check(value.Len([x for x in text.BlocksOf(shownGraph.Buffers[shownGraph.Current]
 page = settled(notebook.WriteHtml(again))
 html = result.Unwrap(sys.Read("$folder/nb.html"))
 check(str.Contains("<h2>Sum</h2>", html) and str.Contains("<pre class=\"output\">sum</pre>", html), "the page has the cells and what they printed")
+
+(* A page there already is asked about first, and n leaves it; a link there, as a folder from elsewhere can bring one, is replaced by the page after y,
+   never written through: the file it pointed to stays as it was. *)
+asked = notebook.WriteHtml(again)
+check(not value.IsMissing(asked.Prompt) and asked.Prompt.Label == "nb.html exists. Replace it? (y or n) ", "a page there is asked about: $(asked.Message)")
+check(press.Press(["n"], asked).Message == "Nothing done." and result.Unwrap(sys.Read("$folder/nb.html")) == html, "n leaves the page")
+decoy = "$folder/decoy"
+_ = result.Unwrap(sys.Write(decoy, "my precious file\n"))
+_ = result.Unwrap(sys.Remove("$folder/nb.html"))
+_ = result.Unwrap(sys.Symlink(decoy, "$folder/nb.html"))
+linked = settled(press.Press(["y"], notebook.WriteHtml(again)))
+check(result.Unwrap(sys.Read(decoy)) == "my precious file\n", "the file the link pointed to is left as it was: $(linked.Message)")
+check(result.IsErr(sys.ReadLink("$folder/nb.html")) and result.Unwrap(sys.Read("$folder/nb.html")) == html, "the page takes the place of the link")
 _ = result.Unwrap(sys.Run("rm", ["-r", folder]))
 io.Print("ok")
