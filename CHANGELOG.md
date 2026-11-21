@@ -101,3 +101,6 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   `sys.RemoveTree`, which walks by the folders it holds open: someone who can write the folder above, as in `/tmp` or a
   shared folder, and swaps the folder for a link while it runs no longer leads it into the folder the link points to,
   where it deleted what that one held; the first file that can't be deleted stops it.
+- A copy, a move across disks and the links of `S`, `Y` and `H` write first at a name that no one can know before it is
+  made, `.#cemacs-` and 32 digits of the randomness of the kernel, instead of `.#cemacs-NAME`, where someone who could
+  write the folder could put a link in time for the copy to write through it; a failure names the file, never that name.

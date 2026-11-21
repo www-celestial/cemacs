@@ -387,10 +387,15 @@ itself. Each file is copied as `cp -p` does, with its mode and its times; a fold
 holds is in, the deepest first; and a symbolic link is made again with the same target, never followed, a link to nothing
 too. A file or a link is written at a name of its own beside its place, then renamed over what was there, as
 [folders.Placed] does: what was there stays whole until the new one is, nothing is ever written through a link at the
-target, and a file copied onto itself by another path stays as it was. Where the copy has a folder and the target a file or
-a link, that entry fails and nothing goes under it; a special file, as a FIFO or a device, is named and left, since reading
-one can wait for ever. A move, [folders.MoveTree], is a rename; across disks, where a rename can't go, it copies, then
-deletes what it copied, only once the copy is whole, as a deletion for good does. The buffers of the files moved, and of
+target, and a file copied onto itself by another path stays as it was. That name of its own is `.#cemacs-` and 32 digits
+that can't be known before the file is made, [folders.Unguessable]: on Linux, those of the randomness of the kernel, read
+from `/proc/sys/kernel/random/uuid`, so no one who can write the folder can put a link there first for the copy to write
+through; elsewhere, those of `std/random`. Where the copy has a folder and the target a file or a link, that entry fails
+and nothing goes under it; a special file, as a FIFO or a device, is named and left, since reading one can wait for ever.
+A copy still walks the folders by their paths: a folder that someone else swaps for a link while it runs, in the tree
+copied or in the target, leads it into the folder the link points to, so copy into and out of folders that only you can
+write. A move, [folders.MoveTree], is a rename; across disks, where a rename can't go, it copies, then deletes what it
+copied, only once the copy is whole, as a deletion for good does. The buffers of the files moved, and of
 those inside the folders moved, take their new path, so that a save goes where the file is now.
 
 The mode of `M` is in octal, as `644` or `0755`, or as `chmod` writes it, [folders.ParseMode]: clauses apart by commas, each
