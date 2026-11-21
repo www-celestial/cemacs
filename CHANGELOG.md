@@ -87,3 +87,7 @@ Measured on the same machine as the rest, in the book's chapter on performance:
 - `M-f` and `M-b` read each line they cross once, so a word of 32,000 letters is crossed in 25 ms instead of 36 s, and one
   of a million in under a second instead of never; Tab, typing and backspace at the start of a line of a megabyte take 7
   to 16 ms instead of 220, as the screen and the completion take a slice of the line instead of all its characters.
+- A name with a line end or another control character is written as `ls -b` writes it, `a\nb`, in the rows of a folder,
+  in the names to edit and on the prompt line, so that a row is always the file it shows: the row of the cursor could
+  take the file under it; and `C-x C-q` then `C-c C-c` with no edit keeps each name byte for byte, where a name that ended
+  with a line end lost it.

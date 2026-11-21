@@ -881,7 +881,8 @@ defn mode(b, lay, look, focused)
 end
 
 defn prompt(state, lay, look)
-  (** The prompt line: the question and the answer being typed, or else the last message, or else in a list its filter. *)
+  (** The prompt line: the question and the answer being typed, or else the last message, or else in a list its filter; each control character of
+      them Escaped, as a name with a line end brings one, so that the line stays one line and shows each character. *)
   th = look.Theme
   rect = lay.Prompt
   y = rect.Y + math.Div(rect.Height - look.Height, 2)
@@ -889,10 +890,10 @@ defn prompt(state, lay, look)
   filtering = value.IsMissing(state.Prompt) and state.Message == "" and lists.IsList(b)
   (* With nothing else to say, the line tells the mark under the cursor, or else the first one of its line, with its hint. *)
   here = if value.IsMissing(state.Prompt) and state.Message == "" and not filtering underCursor(b) else [] end
-  words = if not value.IsMissing(state.Prompt) "$(state.Prompt.Label)$(state.Prompt.Answer)" else if filtering "$(lists.LabelOf(lists.Of(b)))$(lists.Of(b).Filter)" else if value.Len(here) > 0 markText(here[1]) else state.Message end
+  words = lists.Escaped(if not value.IsMissing(state.Prompt) "$(state.Prompt.Label)$(state.Prompt.Answer)" else if filtering "$(lists.LabelOf(lists.Of(b)))$(lists.Of(b).Filter)" else if value.Len(here) > 0 markText(here[1]) else state.Message end)
   bar = if value.IsMissing(state.Prompt) and not filtering [] else [rectCommand(rect.X + 12 + look.Width(words, "body"), y, 2, look.Height, th.Bright)] end
   (* The names that Tab left, after the answer of a prompt for a file. *)
-  hint = if value.IsMissing(state.Prompt) "" else dict.GetOr("Hint", "", state.Prompt) end
+  hint = if value.IsMissing(state.Prompt) "" else lists.Escaped(dict.GetOr("Hint", "", state.Prompt)) end
   after = if hint == "" [] else [textCommand(rect.X + 24 + look.Width(words, "body"), y, hint, th.Muted)] end
   list.Concat(list.Concat([rectCommand(rect.X, rect.Y, rect.Width, rect.Height, th.Panel), textCommand(rect.X + 12, y, words, if value.Len(here) > 0 markColor(here[1]) else th.Ink end)], bar), after)
 end

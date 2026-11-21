@@ -246,6 +246,13 @@ stand for the bits of set-id and of the sticky folder. A link shows `lrwxrwxrwx`
 and the age of what it points to, and its name ends with `->` and its target. A mode is a number from 0 to 4095, which
 Cesia writes in decimal: 420 is `644` in octal, `rw-r--r--`.
 
+A name, and the target of a link, is written as `ls -b` writes it, by [folders.NameText]: a backslash doubled, and each
+control character, a byte from 1 to 31 or 127, escaped as C writes it in a text, `\n`, `\t`, `\r`, or by its number in octal,
+`\033` for ESC. Anyone who can write in a folder can make a name with a line end in it, and a row that broke there would
+show the next file on the line of the cursor while a key acted on the one above: here a row is always one file, the one it
+shows. The prompt line writes the control characters of what it shows in the same way, by [lists.Escaped], and so does
+every list for a row that holds a line end.
+
 ```cesia
 folders.PermissionText(420) --> "rw-r--r--"
 folders.OctalText(493) --> "755"
@@ -461,7 +468,10 @@ This is Emacs's Wdired. Every key of the editor edits the text: `C-s` searches i
 line and `C-/` undoes. The three keys above are the buffer's own, which come over the global ones while it is the current
 buffer. Before anything is renamed, [folders.NamesPlan] checks the lines: as many as the names, none empty, none
 with a `/`, since a name changes here and not its folder, none twice, and none a name that is there already, unless another
-line renames that one away. One that fails says why on the prompt line, and the text stays to be fixed:
+line renames that one away. Each name is written as its row writes it, by [folders.NameText]: a line left as it was keeps
+its name byte for byte, the line of a name with a control character can't be edited, `R` renames it, and an edited line is
+read by [folders.NameOf], `\\` standing for one backslash. One that fails says why on the prompt line, and the text stays to
+be fixed:
 
 ```cesia
 folders.NamesPlan(["a", "b"], ["b", "a"], n -> true) --> result.Ok([{From: "a", To: "b"}, {From: "b", To: "a"}])

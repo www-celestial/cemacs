@@ -368,6 +368,51 @@ check(value.Len(list.Filter(b -> lists.IsList(b), s.Buffers)) == 0, "the list is
 s = press.Press(["C-x", "d", "q"], s)
 check(value.Len(list.Filter(b -> lists.IsList(b), s.Buffers)) == 0 and here(s).Path == "$folder/f.ce", "q goes back")
 
+(* A name with a line end, as anyone who can write a folder can make one, stays one row, escaped as ls -b writes it, so that the row under the cursor is
+   the file a command takes: the row of keep.txt deletes keep.txt, not the file under it. The prompt line shows such a name escaped too. *)
+odd = "$folder/odd"
+nl = str.FromBytes([10])
+check(result.IsOk(sys.Mkdir(odd)) and result.IsOk(sys.Write("$odd/a$(nl)b", "x")) and result.IsOk(sys.Write("$odd/back\\slash", "s")), "the odd names are made")
+for n in ["junk.txt", "keep.txt", "thesis.txt"]
+  check(result.IsOk(sys.Write("$odd/$n", n)), "$n is made")
+end
+o = press.Press(["C-x", "d"], commands.OpenFile("$odd/junk.txt", start))
+rows = str.Lines(rope.Text(here(o).Rope))
+check(value.Len(rows) == 5 and value.Len(lists.Of(here(o)).Items) == 5, "five names, five rows: $(rows)")
+check(list.Any([str.EndsWith("a\\nb", r) for r in rows]) and list.Any([str.EndsWith("back\\\\slash", r) for r in rows]), "the line end and the backslash are written as ls -b writes them: $(rows)")
+for k in 1..value.Len(rows)
+  check(str.EndsWith(folders.NameText(lists.Of(here(o)).Items[k].Name), rows[k]), "row $k is the name it takes: $(rows[k])")
+end
+k = list.IndexOf(true, [str.EndsWith("keep.txt", r) for r in rows])
+o.Buffers[o.Current] = text.Place(k, 0, here(o))
+asked = press.Press(["d", "x"], o)
+check(asked.Prompt.Label == "Move keep.txt to the trash? (y or n) ", "the row of keep.txt asks for keep.txt: $(asked.Prompt.Label)")
+gone = press.Press(["y"], asked)
+check(not sys.Exists("$odd/keep.txt") and sys.Exists("$odd/thesis.txt") and sys.Exists("$odd/a$(nl)b"), "keep.txt goes, and only it: $(gone.Message)")
+renaming = press.Press(["R"], on("a$(nl)b", gone))
+check(list.Any([c.Kind == "text" and str.StartsWith("Rename a\\nb to: ", c.Text) for c in view.View(renaming)]), "the prompt line shows the name escaped")
+
+(* The names to edit are written as the rows write them: a name with a line end last, as Wdired lost its line end, keeps it byte for byte after C-c C-c
+   with no edit, and its line can't be edited; a backslash name is edited as written, \\ for one backslash. *)
+check(result.IsOk(sys.Write("$odd/zz$(nl)", "z")), "a name that ends with a line end is made")
+w = press.Press(["C-x", "C-q"], press.Press(["g"], gone))
+done = press.Press(["C-c", "C-c"], w)
+check(done.Message == "No name changed." and sys.Exists("$odd/zz$(nl)") and sys.Exists("$odd/a$(nl)b"), "no edit renames nothing: $(done.Message)")
+w = press.Press(["C-x", "C-q"], done)
+edits = str.Lines(rope.Text(here(w).Rope))
+kz = list.IndexOf("zz\\n", edits)
+kb = list.IndexOf("back\\\\slash", edits)
+check(not value.IsMissing(kz) and not value.IsMissing(kb), "the names to edit are escaped: $(edits)")
+edited = w
+edited.Buffers[edited.Current] = text.InsertWords("x", text.Place(kz, 4, here(w)))
+refused = press.Press(["C-c", "C-c"], edited)
+check(str.Contains("holds a control character", refused.Message) and sys.Exists("$odd/zz$(nl)"), "a name with a control character can't be edited: $(refused.Message)")
+w = press.Press(["C-x", "C-q"], done)
+edited = w
+edited.Buffers[edited.Current] = text.InsertWords("2", text.Place(kb, value.Len(edits[kb]), here(w)))
+renamed = press.Press(["C-c", "C-c"], edited)
+check(renamed.Message == "Renamed 1 file." and sys.Exists("$odd/back\\slash2") and not sys.Exists("$odd/back\\slash"), "a backslash name is renamed as written: $(renamed.Message)")
+
 removed(folder)
 check(not sys.Exists(folder), "the folder is gone")
 io.Print("ok")
