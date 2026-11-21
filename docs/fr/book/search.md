@@ -174,8 +174,10 @@ chemins semblables, le plus court. [lists.Ranked] donne cet ordre ;
 `C-x p g` est la touche du `project-find-regexp` d'Emacs, et `C-c s p` la place de la recherche dans un projet de Doom
 Emacs, `SPC s p`. Le projet est le dépôt Git qui contient le fichier du buffer courant, ou sinon le dossier où Cemacs a
 démarré, comme pour `C-x p f` : voir [Fichiers et buffers](files.md#les-fichiers-dun-projet). La recherche est faite par
-[src/grep], que [src/ide] demande par `tools/grep.ce` : il lance `git grep -n --column -I -z --no-color -F -e WORDS` depuis
-la racine du dépôt, dans une fiber, pour que l'éditeur continue pendant que git lit, et liste chaque ligne trouvée, 10 000 au
+[src/grep], que [src/ide] demande par `tools/grep.ce` : il lance
+`git grep -n --column -I --no-textconv -z --no-color -F -e WORDS` depuis la racine du dépôt, comme [src/gitrun] lance un git
+qui lit, pour que la config du dépôt (ses réglages) ne lance aucun programme (voir [Git](git.md#sécurité)), dans une fiber,
+pour que l'éditeur continue pendant que git lit, et liste chaque ligne trouvée, 10 000 au
 plus, comme `path:line:column  the line`, la colonne étant la première place des mots dans la ligne. Les mots sont du texte
 fixe, `-F`, jamais un motif (pattern), et quand ils n'ont pas de capitale, la casse des lettres est mise de côté, `-i`,
 comme le fait `C-s`. Les fichiers sont ceux que git connaît : les fichiers suivis, sans les fichiers binaires, `-I`. Taper
