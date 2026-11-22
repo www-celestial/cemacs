@@ -124,21 +124,19 @@ buffer Cesia est vérifié à nouveau, puisqu'un autre fichier peut employer cel
 L'enregistrement est construit pour qu'aucun échec ne perde de texte, ni le texte sur le disque, ni celui du buffer :
 
 1. Le nouveau texte va dans un nouveau fichier à côté de l'ancien, dans son dossier, nommé `.#cemacs-` suivi de 32
-   caractères tirés à nouveau à chaque fois, [files.FreshName]. Là où d'autres que le propriétaire du dossier peuvent y
-   créer une entrée, comme dans `/tmp` ou le dossier d'une équipe, ce sont ceux du hasard du kernel (le cœur du système),
-   lus sous Linux dans `/proc/sys/kernel/random/uuid`, [files.Unguessable], pour que personne ne puisse connaître le nom
-   avant que le fichier soit créé et y mettre d'abord un lien à travers lequel le texte irait. Dans un dossier que seul son
-   propriétaire peut écrire, ce sont ceux de `std/random`, et le kernel n'est pas lu : seul ce propriétaire pourrait y
-   mettre un lien, vous, ou un autre à qui est le dossier et qui pourrait aussi bien faire de votre fichier lui-même un
-   lien, qu'un enregistrement suit. Le nom fait 41 octets, si bien qu'un fichier de n'importe quel nom peut être
-   enregistré. Le nouveau fichier est le seul que Cemacs enlève jamais. Quand PATH est un lien symbolique, un fichier qui
-   ne fait que pointer vers un autre, PATH est ici le fichier vers lequel il pointe, ses liens suivis l'un après l'autre,
-   comme le fait le `file-truename` d'Emacs : le lien reste un lien, et le fichier où il mène reçoit le texte.
-2. Le nouveau fichier est écrit avec `sys.Write(..., sync = true, mode = MODE, group = GROUP)`, le mode et le groupe de
-   l'ancien fichier, que Cesia donne au fichier qu'il a ouvert avant que le texte y soit, pour que le texte ne soit jamais
-   dans un fichier aux autres droits ; et qui ne répond qu'une fois que le système a mis le fichier sur le disque, puis
-   son dossier, avec `fsync` : l'appel qui demande au système d'écrire ce qu'il garde dans ses caches, pour qu'une coupure
-   de courant ne puisse pas le reprendre.
+   chiffres tirés à nouveau de `std/random`, [files.FreshName] : 41 octets, si bien qu'un fichier de n'importe quel nom
+   peut être enregistré. Le nouveau fichier est le seul que Cemacs enlève jamais. Quand PATH est un lien symbolique, un
+   fichier qui ne fait que pointer vers un autre, PATH est ici le fichier vers lequel il pointe, ses liens suivis l'un
+   après l'autre, comme le fait le `file-truename` d'Emacs : le lien reste un lien, et le fichier où il mène reçoit le
+   texte.
+2. Le nouveau fichier est écrit avec `sys.Write(..., sync = true, mode = MODE, group = GROUP, new = true)`, le mode et le
+   groupe de l'ancien fichier. Avec `new = true`, il n'est créé que neuf, [files.MakeFresh] : un lien ou un fichier que
+   quelqu'un a mis à son nom d'abord, comme dans `/tmp`, n'est jamais écrit à travers et reste tel qu'il était, et un
+   autre nom est tiré, 8 au plus, si bien que le nom n'a pas besoin d'être impossible à deviner. Cesia crée le fichier à
+   vous seul, `rw-------`, lui donne le groupe, puis le mode, avant que le texte y soit, pour que le texte ne soit jamais
+   dans un fichier aux autres droits ; et il ne répond qu'une fois que le système a mis le fichier sur le disque, puis son
+   dossier, avec `fsync` : l'appel qui demande au système d'écrire ce qu'il garde dans ses caches, pour qu'une coupure de
+   courant ne puisse pas le reprendre.
 3. Une fois qu'il est sur le disque en entier, un renommage le met à la place de l'ancien fichier, sans que rien ne lui
    soit fait par son nom entre les deux. Sous Linux, un renommage à l'intérieur d'un même système de fichiers, comme ici,
    est atomique : à chaque instant, le nom mène à tout l'ancien fichier ou à tout le nouveau, jamais à une partie de l'un
@@ -441,13 +439,13 @@ rien n'allant dessous, et pour un fichier spécial, comme une FIFO (un tube nomm
 lu, car en lire un peut attendre sans fin : Cesia dit `operation not supported` (opération non prise en charge). Un
 fichier ou un lien copié seul est écrit à un nom à lui à côté de sa place, puis renommé par-dessus ce qui était là,
 comme le fait [folders.Placed] : ce qui était là reste entier jusqu'à ce que le nouveau le soit, et un fichier copié sur
-lui-même par un autre chemin reste tel qu'il était. Ce nom est celui que tire un enregistrement, [files.FreshName], et
-la copie ne le crée que neuf, [folders.FreshCopy], avec `sys.Copy(..., new = true)` : quelque chose à ce nom, un lien
-aussi, est une erreur, jamais écrit à travers. Un fichier spécial seul est nommé et laissé. Un déplacement,
-[folders.MoveTree], est un renommage ; d'un disque à l'autre, où un renommage ne peut pas aller, il copie, puis efface
-ce qu'il a copié, seulement une fois la copie entière, comme le fait un effacement pour de bon. Les buffers des fichiers
-déplacés, et de ceux qui sont dans les dossiers déplacés, prennent leur nouveau chemin, pour qu'un enregistrement aille
-là où le fichier est maintenant.
+lui-même par un autre chemin reste tel qu'il était. Ce nom n'est créé que neuf, comme celui d'un enregistrement,
+[files.MakeFresh], avec `sys.Copy(..., new = true)` : un lien ou un fichier mis à ce nom d'abord n'est jamais écrit à
+travers, et un autre nom est tiré. Un fichier spécial seul est nommé et laissé. Un déplacement, [folders.MoveTree], est
+un renommage ; d'un disque à l'autre, où un renommage ne peut pas aller, il copie, puis efface ce qu'il a copié,
+seulement une fois la copie entière, comme le fait un effacement pour de bon. Les buffers des fichiers déplacés, et de
+ceux qui sont dans les dossiers déplacés, prennent leur nouveau chemin, pour qu'un enregistrement aille là où le fichier
+est maintenant.
 
 Le mode de `M` est en octal, comme `644` ou `0755`, ou écrit comme `chmod` l'écrit, [folders.ParseMode] : des clauses
 séparées par des virgules, chacune avec qui, parmi `u` le propriétaire, `g` le groupe, `o` les autres et `a` tous, rien

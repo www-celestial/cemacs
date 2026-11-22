@@ -179,18 +179,23 @@ check(str.StartsWith("$folder/.#cemacs-", first) and value.Len(first) == value.L
 failed = folders.Placed(t -> result.Err({Kind: "io", Message: "Can't write $t: no space left on device."}), "$folder/placed")
 check(failed.Error.Message == "Can't write $folder/placed: no space left on device.", "a failure names the file, not the name of its own: $(value.Text(failed))")
 check(not sys.Exists(first) and not sys.Exists(second) and result.IsOk(sys.Remove("$folder/placed")), "the names of their own are gone")
-(* The copy of a file makes its name of its own only new: a link put there first, as by someone who could know the name, is an Err, never written through,
-   and the file it points to stays as it was. *)
+(* The copy of a file makes its name of its own only new, as a save does: a link or a file put there first, as by someone who could know the name, is
+   never written through and stays as it was, and another name is drawn. cesia run --seed gives the names a run draws: tests/fresh-act.ce, with the
+   seed 7, tells them, then copies, its first two names taken. *)
 check(result.IsOk(sys.Write("$folder/victim.txt", "victim")), "the file of another is made")
-defn plantedCopy(t)
-  (** The copy of a.ce that folders.FreshCopy makes, at a name where someone put a link to the file of another first. *)
-  result.Unwrap(sys.Symlink("$folder/victim.txt", t))
-  make = folders.FreshCopy("$folder/a.ce")
-  make(t)
+defn acted(args)
+  (** tests/fresh-act.ce run with the seed 7: {Code, Out}. *)
+  r = result.Unwrap(sys.Run("cesia", list.Concat(["run", "--seed", "7", "--allow", "read,write", "tests/fresh-act.ce"], args)))
+  {Code: r.Code, Out: "$(r.Out)$(r.Err)"}
 end
-planted = folders.Placed(plantedCopy, "$folder/out.ce")
-check(result.IsErr(planted) and read("$folder/victim.txt") == "victim" and not sys.Exists("$folder/out.ce"), "a link at the name of its own is never written through: $(value.Text(planted))")
-check(value.Len([n for n in result.Unwrap(sys.List(folder)) if str.StartsWith(".#cemacs", n)]) == 0 and result.IsOk(sys.Remove("$folder/victim.txt")), "the link put there is gone")
+taken = str.Lines(acted(["names", "$folder/out.ce", "2"]).Out)
+check(result.IsOk(sys.Symlink("$folder/victim.txt", taken[1])) and result.IsOk(sys.Write(taken[2], "planted")), "a link and a file are put at the names")
+copied = acted(["copy", "$folder/a.ce", "$folder/out.ce"])
+check(copied.Code == 0 and read("$folder/out.ce") == "a" and read("$folder/victim.txt") == "victim", "the copy goes to another name, never through the link: $(copied.Out)")
+check(isLink(taken[1]) and read(taken[2]) == "planted", "the link and the file at the names stay as they were")
+for gone in [taken[1], taken[2], "$folder/victim.txt", "$folder/out.ce"]
+  result.Unwrap(sys.Remove(gone))
+end
 (* A file copied onto itself by another path stays whole. *)
 check(result.IsOk(sys.Symlink(folder, "$folder/self")), "a link to the folder itself is made")
 t = press.Press(["C"], on("b.ce", press.Press(["g"], s)))

@@ -112,20 +112,18 @@ since another file may use the one just saved: see [Errors in the lines](check.m
 
 Saving is built so that no failure loses text, neither the text on disk nor the one in the buffer:
 
-1. The new text goes to a new file beside the old one, in its folder, named `.#cemacs-` and 32 characters drawn anew,
-   [files.FreshName]. Where others than the folder's owner can make an entry in it, as in `/tmp` or a folder of a team,
-   they are those of the randomness of the kernel, read on Linux from `/proc/sys/kernel/random/uuid`, [files.Unguessable],
-   so that no one can know the name before the file is made and put a link there first for the text to go through. In a
-   folder that only its owner can write, they are those of `std/random`, and the kernel isn't read: only that owner could
-   put a link there, you, or another who owns the folder and could as well make your file itself a link, which a save
-   follows. The name is 41 bytes long, so a file of any name can be saved. The new file is the only one Cemacs ever
-   removes. When PATH is a symbolic link, a file that only points to
-   another one, PATH here is the file it points to, its links followed one after the other, as Emacs's `file-truename`
-   does: the link stays a link, and the file it leads to gets the text.
-2. The new file is written with `sys.Write(..., sync = true, mode = MODE, group = GROUP)`, the mode and the group of the old
-   file, which Cesia gives the file it opened before the text is in, so that the text is never in a file with other rights;
-   and which gives its answer only once the system has put the file on the disk, and then its folder, with `fsync`: the
-   call that asks the system to write what it holds in its caches, so that a loss of power can't take it back.
+1. The new text goes to a new file beside the old one, in its folder, named `.#cemacs-` and 32 digits drawn anew from
+   `std/random`, [files.FreshName]: 41 bytes, so a file of any name can be saved. The new file is the only one Cemacs ever
+   removes. When PATH is a symbolic link, a file that only points to another one, PATH here is the file it points to, its
+   links followed one after the other, as Emacs's `file-truename` does: the link stays a link, and the file it leads to
+   gets the text.
+2. The new file is written with `sys.Write(..., sync = true, mode = MODE, group = GROUP, new = true)`, the mode and the
+   group of the old file. With `new = true` it is made only new, [files.MakeFresh]: a link or a file that someone put at
+   its name first, as in `/tmp`, is never written through and stays as it was, and another name is drawn, 8 at most, so
+   the name need not be one that no one can guess. Cesia makes the file yours alone, `rw-------`, gives it the group, then
+   the mode, before the text is in, so that the text is never in a file with other rights; and it gives its answer only
+   once the system has put the file on the disk, and then its folder, with `fsync`: the call that asks the system to
+   write what it holds in its caches, so that a loss of power can't take it back.
 3. Once it is on the disk in full, a rename puts it in place of the old file, with nothing done to it by its name in
    between. On Linux, a rename within one file system, as here, is atomic: at every instant the name leads to the whole old
    file or to the whole new one, never to a part of either.
@@ -402,12 +400,12 @@ the folders it made and didn't finish stay yours alone. That is so where the cop
 a file, nothing going under it, and for a special file, as a FIFO or a device, which is never read, since reading one
 can wait for ever: Cesia says `operation not supported`. A file or a link copied alone is written at a name of its own
 beside its place, then renamed over what was there, as [folders.Placed] does: what was there stays whole until the new
-one is, and a file copied onto itself by another path stays as it was. That name is the one a save draws,
-[files.FreshName], and the copy makes it only new, [folders.FreshCopy], with `sys.Copy(..., new = true)`: something at
-the name, a link too, is an error, never written through. A special file alone is named and left. A move,
-[folders.MoveTree], is a rename; across disks, where a rename can't go, it copies, then deletes what it copied, only
-once the copy is whole, as a deletion for good does. The buffers of the files moved, and of those inside the folders
-moved, take their new path, so that a save goes where the file is now.
+one is, and a file copied onto itself by another path stays as it was. That name is made only new, as a save's is,
+[files.MakeFresh], with `sys.Copy(..., new = true)`: a link or a file put at it first is never written through, and
+another name is drawn. A special file alone is named and left. A move, [folders.MoveTree], is a rename; across disks,
+where a rename can't go, it copies, then deletes what it copied, only once the copy is whole, as a deletion for good
+does. The buffers of the files moved, and of those inside the folders moved, take their new path, so that a save goes
+where the file is now.
 
 The mode of `M` is in octal, as `644` or `0755`, or as `chmod` writes it, [folders.ParseMode]: clauses apart by commas, each
 who, of `u` the owner, `g` the group, `o` the others and `a` all of them, none for `a`, then `+` to add, `-` to take away or

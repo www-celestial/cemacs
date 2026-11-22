@@ -1,8 +1,0 @@
-(** Prints the name files.FreshName draws for a file in the folder given, for tests/files-check.ce, which runs it twice with one seed: in a folder that
-    only its owner can write, std/random gives it, the same each time; where others can write, the kernel's randomness, another each time. Arg: the
-    folder. *)
-use core/files
-use std/io
-use std/sys
-
-io.Print(files.FreshName("$(sys.Args[1])/a.ce"))

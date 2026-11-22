@@ -149,19 +149,13 @@ end
 defn Placed(make, path)
   (** A file or a link that make makes at a name given, made at a name of its own beside path, then renamed over it, so that what was at path stays
       whole until the new one is, nothing is written through a link there, and a copy of a file onto itself by another path leaves it as it was. make
-      makes only a new entry, as sys.Copy with new = true, sys.Symlink and sys.Link do: something at the name, a link too, is an Err, never written
-      through. The name of its own is the one files.FreshName draws, which no one else can know before it is made where others can write the folder,
-      so no one can take it first and make the act fail, and an Err names path, never it. A folder at path is an Err, never replaced. Ok(missing) or an
-      Err. *)
+      makes only a new entry, as sys.Copy with new = true, sys.Symlink and sys.Link do, at the name files.MakeFresh draws, as a save does: something
+      put at that name first, a link or a file, is never written through and stays as it was, and another name is drawn. An Err names path, never the
+      name of its own. A folder at path is an Err, never replaced. Ok(missing) or an Err. *)
   if isFolder(path) and not isLinkPath(path)
     return result.Err("$(BaseName(path)) is a folder")
   end
-  temp = files.FreshName(path)
-  made = make(temp)
-  if result.IsErr(made)
-    _ = if present(temp) sys.Remove(temp) else result.Ok(missing) end
-    return namedAs(path, temp, made)
-  end
+  temp = files.MakeFresh(path, make)?
   moved = sys.Rename(temp, path)
   if result.IsErr(moved)
     _ = sys.Remove(temp)
@@ -170,10 +164,6 @@ defn Placed(make, path)
   (* A rename onto another name of the same file does nothing, and leaves the name of its own. *)
   if present(temp) sys.Remove(temp) else result.Ok(missing) end
 end
-
-(** The make of Placed for a file: a copy of the file from at the name given, as cp -p makes it, with its mode and its times, made only new, so that
-    something put at that name first, a link too, is an Err, never written through. *)
-FreshCopy(from) = t -> sys.Copy(from, t, new = true)
 
 defn CopyTree(from, to)
   (** Copies a file, a link or a folder and all it holds from a path to another, never through a link: Ok(missing), or an Err. A folder goes to
@@ -198,7 +188,7 @@ defn CopyTree(from, to)
   if not st.IsFile
     return result.Err("$(BaseName(from)) is a special file, as a FIFO or a device, which is not copied")
   end
-  Placed(FreshCopy(from), to)
+  Placed(t -> sys.Copy(from, t, new = true), to)
 end
 
 defn MoveTree(from, to)

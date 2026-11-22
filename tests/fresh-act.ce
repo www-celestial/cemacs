@@ -1,0 +1,23 @@
+(** The acts on names of their own, for tests/files-check.ce and tests/folders-check.ce, which run it with cesia run --seed 7, so that it draws the same
+    names each time: names PATH N prints the first N names that files.FreshName draws beside PATH, one a line; save PATH WORDS saves the words to PATH,
+    as files.ForceSave does; copy FROM TO copies as folders.CopyTree does. An act exits with 0 once it is done, else prints its error and exits with 1. *)
+use core/files
+use src/folders
+use std/io
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+verb = sys.Args[1]
+if verb == "names"
+  for k in 1..str.Number(sys.Args[3])
+    io.Print(files.FreshName(sys.Args[2]))
+  end
+  sys.Exit(0)
+end
+done = if verb == "save" files.ForceSave(sys.Args[2], sys.Args[3]) else folders.CopyTree(sys.Args[2], sys.Args[3]) end
+if result.IsErr(done)
+  io.Print(value.Text(done.Error))
+  sys.Exit(1)
+end

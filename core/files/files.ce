@@ -95,39 +95,44 @@ end
 (** The digits of a number written in base 16. *)
 hexDigits = str.Chars("0123456789abcdef")
 
-defn Unguessable(uuid)
-  (** 32 characters that no one can guess, for a name: those of the text of a UUID, which Linux draws anew at each read of
-      /proc/sys/kernel/random/uuid from the randomness of its kernel, 122 bits of it, without its dashes and its line end; for a text that isn't 32
-      characters then, or holds a /, as on a system without that file, 32 digits of base 16 drawn from std/random.
-
-        Unguessable("8b9f37be-4b63-490a-ae8f-a21b94c4da86\n") --> "8b9f37be4b63490aae8fa21b94c4da86"
-        value.Len(Unguessable("")) --> 32 *)
-  digits = str.Replace("-", "", str.Trim(uuid))
-  if value.Len(digits) == 32 and not str.Contains("/", digits) digits else str.Join("", [hexDigits[random.Int(1, 16)] for k in 1..32]) end
-end
-
 (** Is there something at a path, a symbolic link that points to nothing too? *)
 present(path) = sys.Exists(path) or result.IsOk(sys.ReadLink(path))
 
-defn FreshName(path)
-  (** A name beside path, in its folder, for a new file or link: .#cemacs- and 32 characters, 41 bytes, which fit in a folder whatever the length of
-      the name of path. Where others than the owner of the folder can make an entry in it, as in one that lets its group or the others write, /tmp
-      among them, the characters are those of the randomness of the kernel, as Unguessable draws them, so that no one can know the name before it is
-      made and put a link there first for a write to go through. In a folder that only its owner can write, they are drawn from std/random, and the
-      kernel isn't read: only that owner could put a link there, you, or another who owns the folder and could as well make the file itself a link,
-      which a save follows. A name that is taken is drawn again, from std/random, so that a file in place of the one of the kernel, which would give
-      the same text each time, can't make it loop. *)
-  folder = sys.Stat(if FolderOf(path) == "" "." else FolderOf(path) end)
-  shared = result.IsErr(folder) or math.BitAnd(folder.Value.Mode, 18) != 0
-  fresh = "$(FolderOf(path)).#cemacs-$(Unguessable(if shared result.UnwrapOr("", sys.Read("/proc/sys/kernel/random/uuid")) else "" end))"
-  while present(fresh)
-    fresh = "$(FolderOf(path)).#cemacs-$(Unguessable(""))"
+(** A name beside path, in its folder, for a new file or link: .#cemacs- and 32 digits of base 16 drawn from std/random, 41 bytes, which fit in a
+    folder whatever the length of the name of path. No one needs to be unable to guess it: MakeFresh makes only a new entry there, never through
+    what is at the name; it is drawn so that a file left there, by a power cut or by someone else, doesn't stand in the way. *)
+FreshName(path) = "$(FolderOf(path)).#cemacs-$(str.Join("", [hexDigits[random.Int(1, 16)] for k in 1..32]))"
+
+(** Does a failure say that something is at the name, as an act that makes only a new entry says it? *)
+isTaken(failure) = str.EndsWith(": file exists.", if value.IsText(failure.Error) failure.Error else failure.Error.Message end)
+
+defn MakeFresh(path, make)
+  (** A new entry beside path, at a name that FreshName draws, which make makes, in an Ok of that name. make makes only a new entry, as sys.Write and
+      sys.Copy with new = true, sys.Symlink and sys.Link do: something at the name, a link too, is an Err, never written through, and stays as it was;
+      another name is drawn then, 8 at most. Another Err of make is given back, its words naming path, never the name of its own, and what make left
+      at that name, its own, is removed. *)
+  for k in 1..8
+    fresh = FreshName(path)
+    made = make(fresh)
+    if result.IsOk(made)
+      return result.Ok(fresh)
+    end
+    if not isTaken(made) or k == 8
+      _ = if not isTaken(made) and present(fresh) sys.Remove(fresh) else result.Ok(missing) end
+      return named(path, fresh, made)
+    end
   end
-  fresh
 end
 
-(** A failure on the new file, as a failure on path: the person never heard of the new one. *)
-named(path, fresh, failure) = result.Err({Kind: failure.Error.Kind, Message: str.Replace(fresh, path, failure.Error.Message)})
+defn named(path, fresh, failure)
+  (** A failure on the new entry, as a failure on path: the person never heard of the new one. *)
+  e = failure.Error
+  if value.IsText(e)
+    return result.Err(str.Replace(fresh, path, e))
+  end
+  e.Message = str.Replace(fresh, path, e.Message)
+  result.Err(e)
+end
 
 defn FolderOf(path)
   (** The part of a path up to its last /, which a link that doesn't start with / is read from: "" for a bare name.
@@ -181,25 +186,19 @@ defn keptOf(target)
 end
 
 defn written(path, words, kept)
-  (** The words in a new file beside path, at a name that FreshName draws, on the disk with its folder, with the mode and the group kept, which
-      sys.Write gives the file it opened before the words are in: Ok of its name, or an Err that names path, the new file removed. A group that the
-      system refuses, as one the person isn't in, is left, and the words go to another new file: it has the group a new file gets in that folder, as
-      every save gave before Cemacs kept the group. *)
-  fresh = FreshName(path)
-  done = sys.Write(fresh, words, sync = true, mode = kept.Mode, group = kept.Group)
-  if result.IsOk(done)
-    return result.Ok(fresh)
-  end
-  _ = if present(fresh) sys.Remove(fresh) else result.Ok(missing) end
-  if value.IsMissing(kept.Group) named(path, fresh, done) else written(path, words, {Mode: kept.Mode, Group: missing}) end
+  (** The words in a new file beside path, as MakeFresh makes it, on the disk with its folder, with the mode and the group kept, which sys.Write gives
+      the file it made, its owner's alone until then, before the words are in: Ok of its name, or an Err that names path. A group that the system
+      refuses, as one the person isn't in, is left, and the words go to another new file: it has the group a new file gets in that folder, as every
+      save gave before Cemacs kept the group. *)
+  made = MakeFresh(path, t -> sys.Write(t, words, sync = true, mode = kept.Mode, group = kept.Group, new = true))
+  if result.IsOk(made) or value.IsMissing(kept.Group) or isTaken(made) made else written(path, words, {Mode: kept.Mode, Group: missing}) end
 end
 
 defn Replace(path, words)
   (** Writes the words to path through a new file next to it, then renames it over the file, as a save does but for its links: a symbolic link at path
       is replaced by the file, what it points to left as it was, for a file that Cemacs makes beside another, as the page of a file of cells. The new
-      file has the name FreshName draws, which no one else can know before it is made where others can write the folder, so no link put there first
-      takes the words, and the mode and the group of the old file from the moment it is opened, before the words are in, with nothing done to it by
-      its name between the write and the rename: a private file stays private, a script stays one to run, a file of a group stays the group's. The
+      file is made only new, as MakeFresh makes it, so no link or file put at its name first takes the words, and has the mode and the group of the
+      old file from the moment it is made, before the words are in, with nothing done to it by its name between the write and the rename: a private file stays private, a script stays one to run, a file of a group stays the group's. The
       cleanup removes only it. On any failure the old file stays whole. The new file is on the disk, and its folder too, before the rename: after a
       power cut, the whole new text is under one of the two names, and the old one, until the rename, under path. Gives Ok of the new disk. If only
       the stat after the rename fails, the file is saved and the Err has the kind "saved". *)

@@ -129,26 +129,45 @@ check(modeOf(born) == files.Umasked(result.Unwrap(sys.Read("/proc/self/status"))
 result.Unwrap(sys.Remove(born))
 check(names(folder) == "a.ce,b.ce", "the saves leave no other file")
 
-(* A save writes first at a name of its own, .#cemacs- and 32 characters drawn anew each time: where others can write the folder, as in /tmp, those of the
-   kernel's randomness, so that no one can know it before it is made and put a link there first for the words to go through; where only its owner can,
-   those of std/random, which the same seed gives again, as cesia run --seed shows. It is 41 bytes long, so a file of a name of 250 bytes is saved too,
+(* A save writes first at a name of its own, .#cemacs- and 32 characters drawn anew each time, 41 bytes, so a file of a name of 250 bytes is saved too,
    where the name of the file and a time were too long for the system. *)
 fresh = [files.FreshName(target) for k in 1..2]
 check(list.All([str.StartsWith("$folder/.#cemacs-", f) and value.Len(f) == value.Len("$folder/.#cemacs-") + 32 for f in fresh]) and fresh[1] != fresh[2], "the new name is drawn anew: $(value.Text(fresh))")
-result.Unwrap(sys.Mkdir("$folder/own"))
-result.Unwrap(sys.Chmod("$folder/own", 448))
-result.Unwrap(sys.Mkdir("$folder/shared"))
-result.Unwrap(sys.Chmod("$folder/shared", 1023))
-defn seeded(dir)
-  (** The name FreshName draws in dir, in a run of the seed 7. *)
-  r = result.Unwrap(sys.Run("cesia", ["run", "--seed", "7", "--allow", "read", "tests/fresh-name.ce", dir]))
-  check(r.Code == 0, "tests/fresh-name.ce runs: $(r.Err)")
-  r.Out
+
+(* The save makes that file only new, with sys.Write(..., new = true): a link or a file that someone put at its name first, as one who could know it, is
+   never written through, stays as it was, and another name is drawn, 8 at most; once all are taken, the save fails and names the file, which stays
+   whole. cesia run --seed gives the names a run draws: tests/fresh-act.ce, with the seed 7, tells them, then saves, its first names taken, in a folder
+   that everyone can write, 1777 as /tmp. It runs with read and write, then with a grant of the folder alone, read= and write=, where a save reads nothing
+   out of it. *)
+defn acted(args, allow)
+  (** tests/fresh-act.ce run with the seed 7 and the permissions given: {Code, Out}. *)
+  r = result.Unwrap(sys.Run("cesia", list.Concat(["run", "--seed", "7", "--allow", allow, "tests/fresh-act.ce"], args)))
+  {Code: r.Code, Out: "$(r.Out)$(r.Err)"}
 end
-check(seeded("$folder/own") == seeded("$folder/own"), "in a folder of its owner alone, std/random gives the name: $(seeded("$folder/own"))")
-check(seeded("$folder/shared") != seeded("$folder/shared"), "in a folder that others can write, the kernel gives it: $(seeded("$folder/shared"))")
-result.Unwrap(sys.Remove("$folder/own"))
-result.Unwrap(sys.Remove("$folder/shared"))
+planted = "$folder/planted"
+notes = "$planted/notes.txt"
+result.Unwrap(sys.Mkdir(planted))
+result.Unwrap(sys.Chmod(planted, 1023))
+result.Unwrap(sys.Write("$planted/victim.txt", "victim"))
+result.Unwrap(sys.Write(notes, "old\n"))
+taken = str.Lines(acted(["names", notes, "8"], "read").Out)
+check(value.Len(taken) == 8 and taken[1] != taken[2] and str.StartsWith("$planted/.#cemacs-", taken[1]), "the seed gives the names: $(value.Text(taken))")
+for grant in ["read,write", "read=$planted,write=$planted"]
+  result.Unwrap(sys.Symlink("$planted/victim.txt", taken[1]))
+  result.Unwrap(sys.Write(taken[2], "planted"))
+  saved = acted(["save", notes, "$grant\n"], grant)
+  check(saved.Code == 0 and result.Unwrap(sys.Read(notes)) == "$grant\n", "the save goes to another name, under $grant: $(saved.Out)")
+  check(result.Unwrap(sys.Read("$planted/victim.txt")) == "victim" and isLink(taken[1]) and result.Unwrap(sys.Read(taken[2])) == "planted", "the link and the file at the names are left, never written through, under $grant")
+  result.Unwrap(sys.Remove(taken[1]))
+  result.Unwrap(sys.Remove(taken[2]))
+end
+for name in taken
+  result.Unwrap(sys.Write(name, "planted"))
+end
+lost = acted(["save", notes, "lost\n"], "read,write")
+check(lost.Code == 1 and str.Contains("Can't write $notes: file exists.", lost.Out) and not str.Contains(".#cemacs-", lost.Out), "the save fails once all the names are taken, and names the file: $(lost.Out)")
+check(result.Unwrap(sys.Read(notes)) == "read=$planted,write=$planted\n" and list.All([result.Unwrap(sys.Read(n)) == "planted" for n in taken]), "the file and the names stay as they were")
+result.Unwrap(sys.RemoveTree(planted))
 long = "$folder/$(str.Join("", ["n" for k in 1..250]))"
 check(result.IsOk(files.ForceSave(long, "long\n")) and result.Unwrap(sys.Read(long)) == "long\n", "a file of a long name is saved")
 result.Unwrap(sys.Remove(long))
@@ -182,7 +201,7 @@ else
   if result.IsErr(probe) or probe.Value.Code != 0
     io.Print("files-check: no user namespace here, so a group the system refuses is not checked: $(value.Text(probe))")
   else
-    refused = result.Unwrap(sys.Run("unshare", ["-r", "cesia", "run", "--allow", "read,write", "tests/save-as.ce", team, "theirs\n"]))
+    refused = result.Unwrap(sys.Run("unshare", ["-r", "cesia", "run", "--allow", "read,write", "tests/fresh-act.ce", "save", team, "theirs\n"]))
     check(refused.Code == 0, "the save in the user namespace works: $(refused.Out)$(refused.Err)")
     check(result.Unwrap(sys.Read(team)) == "theirs\n" and groupOf(team) == own and modeOf(team) == 432, "the group refused is left, the mode kept: $(groupOf(team)), $(modeOf(team))")
   end

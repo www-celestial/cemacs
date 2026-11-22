@@ -124,11 +124,13 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   2,837 files of the other folder, or wrote over 2,856; it copies 2,000 files in 120 ms instead of 240. The first entry
   that fails stops the copy, as Emacs's `copy-directory` does, and the prompt line says what was copied before stays,
   where the copy went on after a failure; a special file in the tree stops it, where it was left out.
-- The copy of a file through a name of its own makes that name only new, with `sys.Copy(..., new = true)`, so a link put
-  there first is never written through, whoever could know the name.
+- The copy of a file through a name of its own makes that name only new, with `sys.Copy(..., new = true)`, as a save
+  does: a link or a file put there first is never written through, stays as it was, and another name is drawn.
 - A save gives the new file the mode and the group of the old one as soon as it is open, before the words are in, with
   nothing done to it by its name before the rename, where it set the mode by the name after the words, and the group of a
   file was lost: a file of a team, `rw-rw----`, stays the team's. A group the person can't give is left, and the save works
-  as before. The new file is `.#cemacs-` and 32 characters, as a copy's, those of the kernel's randomness where others can
-  write the folder, so that no one can put a link there first, and a file of a name of 250 bytes is saved too, where
-  `PATH.cemacs-` and a time was too long for the system.
+  as before. The new file is made only new, with `sys.Write(..., new = true)`, its owner's alone until it has its group
+  and its mode: a link or a file put at its name first is never written through, stays as it was, and another name is
+  drawn, so the name, `.#cemacs-` and 32 digits as a copy's, needs no randomness of the kernel, and a save under a grant
+  of its folder alone, as the blocks of the book run, reads nothing out of it. A file of a name of 250 bytes is saved
+  too, where `PATH.cemacs-` and a time was too long for the system.
