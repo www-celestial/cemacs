@@ -1,7 +1,8 @@
-(** The other person of the check of a deletion for good in tests/folders-check.ce, one who can write the folder above the one deleted: it writes the
-    file ready, waits until the folder holds fewer names than the count given, then renames it away and puts a link to another folder in its place. It
-    exits with 0 once it swapped, with 2 when the folder went before, and with 3 when it stayed whole for 20 seconds. Args: the folder, the count, the
-    folder the link points to, the file ready. *)
+(** The other person of the checks of a deletion for good and of a copy in tests/folders-check.ce, one who can write the folder above the one swapped:
+    it writes the file ready, waits until the folder holds fewer names than the count given, as a deletion empties it, or, given a folder to watch, until
+    that one holds the count or more, as a copy fills it, then renames the folder away and puts a link to another folder in its place. It exits with 0
+    once it swapped, with 2 when the folder went before, and with 3 when it waited 20 seconds. Args: the folder, the count, the folder the link points
+    to, the file ready, and the folder to watch, if any. *)
 use std/result
 use std/sys
 use std/text as str
@@ -10,14 +11,16 @@ use std/value
 folder = sys.Args[1]
 count = str.Number(sys.Args[2])
 target = sys.Args[3]
+watched = if value.Len(sys.Args) >= 5 sys.Args[5] else missing end
 result.Unwrap(sys.Write(sys.Args[4], ""))
 start = sys.Now()
 while sys.Now() - start < 20
-  names = sys.List(folder)
-  if result.IsErr(names)
+  names = sys.List(if value.IsMissing(watched) folder else watched end)
+  if result.IsErr(names) and value.IsMissing(watched)
     sys.Exit(2)
   end
-  if value.Len(names.Value) < count
+  n = if result.IsErr(names) 0 else value.Len(names.Value) end
+  if (value.IsMissing(watched) and n < count) or (not value.IsMissing(watched) and n >= count)
     if result.IsErr(sys.Rename(folder, "$folder.moved"))
       sys.Exit(2)
     end

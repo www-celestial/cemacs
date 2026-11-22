@@ -159,17 +159,18 @@ check(read("$folder/b.ce") == "b" and press.Press(["n"], t).Message == "Nothing 
 press.Press(["y"], t)
 check(read("$folder/b.ce") == "a", "y replaces b.ce")
 
-(* A copy never writes through a link at its target: where the copy has a folder and the target a link to another folder, nothing goes under it. *)
+(* A copy never writes through a link at its target: where the copy has a folder and the target a link to another folder, nothing goes under it, and the
+   copy stops there, as Emacs's copy-directory stops at the first failure, and says so. *)
 check(result.IsOk(sys.Mkdir("$folder/elsewhere")) and result.IsOk(sys.Mkdir("$folder/dst2/src")) and result.IsOk(sys.Symlink("$folder/elsewhere", "$folder/dst2/src/deep")), "a link in the target is made")
 t = press.Press(["C"], on("src", press.Press(["g"], s)))
 t.Prompt.Answer = "$folder/dst2/"
 t = press.Press(["enter"], t)
 check(t.Prompt.Label == "src exists. Replace it? (y or n) ", "the folder there asks first: $(value.Text(t.Prompt))")
 t = press.Press(["y"], t)
-check(read("$folder/dst2/src/x.ce") == "x" and value.Len(result.Unwrap(sys.List("$folder/elsewhere"))) == 0 and isLink("$folder/dst2/src/deep"), "nothing goes through the link: $(t.Message)")
-check(str.Contains("no folder", t.Message), "the link in the way is said: $(t.Message)")
-(* A copy writes first at a name that no one can know before it is made, drawn anew each time, so that no one who can write the folder can put a link
-   there first for the copy to write through; a failure names the file, never that name. *)
+check(value.Len(result.Unwrap(sys.List("$folder/elsewhere"))) == 0 and isLink("$folder/dst2/src/deep"), "nothing goes through the link: $(t.Message)")
+check(str.StartsWith("Copied 0 of 1; src: Can't copy $folder/src/deep to $folder/dst2/src/deep: ", t.Message) and str.EndsWith("The copy stopped there; what it copied before stays.", t.Message), "the link in the way is said, and the copy stopped: $(t.Message)")
+(* A copy writes first at a name that no one can know before it is made, drawn anew each time, so that no one who can write the folder can take it first;
+   a failure names the file, never that name. *)
 check(result.IsOk(folders.Placed(t -> sys.Write(t, t), "$folder/placed")), "Placed writes a file")
 first = read("$folder/placed")
 check(result.IsOk(folders.Placed(t -> sys.Write(t, t), "$folder/placed")), "Placed writes it again")
@@ -178,19 +179,35 @@ check(str.StartsWith("$folder/.#cemacs-", first) and value.Len(first) == value.L
 failed = folders.Placed(t -> result.Err({Kind: "io", Message: "Can't write $t: no space left on device."}), "$folder/placed")
 check(failed.Error.Message == "Can't write $folder/placed: no space left on device.", "a failure names the file, not the name of its own: $(value.Text(failed))")
 check(not sys.Exists(first) and not sys.Exists(second) and result.IsOk(sys.Remove("$folder/placed")), "the names of their own are gone")
+(* The copy of a file makes its name of its own only new: a link put there first, as by someone who could know the name, is an Err, never written through,
+   and the file it points to stays as it was. *)
+check(result.IsOk(sys.Write("$folder/victim.txt", "victim")), "the file of another is made")
+defn plantedCopy(t)
+  (** The copy of a.ce that folders.FreshCopy makes, at a name where someone put a link to the file of another first. *)
+  result.Unwrap(sys.Symlink("$folder/victim.txt", t))
+  make = folders.FreshCopy("$folder/a.ce")
+  make(t)
+end
+planted = folders.Placed(plantedCopy, "$folder/out.ce")
+check(result.IsErr(planted) and read("$folder/victim.txt") == "victim" and not sys.Exists("$folder/out.ce"), "a link at the name of its own is never written through: $(value.Text(planted))")
+check(value.Len([n for n in result.Unwrap(sys.List(folder)) if str.StartsWith(".#cemacs", n)]) == 0 and result.IsOk(sys.Remove("$folder/victim.txt")), "the link put there is gone")
 (* A file copied onto itself by another path stays whole. *)
 check(result.IsOk(sys.Symlink(folder, "$folder/self")), "a link to the folder itself is made")
 t = press.Press(["C"], on("b.ce", press.Press(["g"], s)))
 t.Prompt.Answer = "$folder/self/b.ce"
 t = press.Press(["enter", "y"], t)
 check(read("$folder/b.ce") == "a" and value.Len([n for n in result.Unwrap(sys.List(folder)) if str.StartsWith(".#cemacs", n)]) == 0, "b.ce onto itself is still a: $(t.Message)")
-(* A special file in a tree is named and left, never read. *)
+(* A special file is never read, since reading one can wait for ever: in a tree, it stops the copy, which names it; alone, it is named and left. *)
 check(result.IsOk(sys.Run("mkfifo", ["$folder/src/pipe"])), "a FIFO is made")
 t = press.Press(["C"], on("src", press.Press(["g"], s)))
 t.Prompt.Answer = "$folder/dst4"
 t = press.Press(["enter"], t)
-check(str.Contains("special file", t.Message) and read("$folder/dst4/x.ce") == "x" and not sys.Exists("$folder/dst4/pipe"), "a FIFO is not copied: $(t.Message)")
-for gone in ["dst2", "dst4", "elsewhere", "src/pipe"]
+check(str.Contains("Can't copy $folder/src/pipe to $folder/dst4/pipe: ", t.Message) and str.Contains("The copy stopped there", t.Message) and not sys.Exists("$folder/dst4/pipe"), "a FIFO is not copied: $(t.Message)")
+alone = folders.CopyTree("$folder/src/pipe", "$folder/pipe2")
+check(result.IsErr(alone) and alone.Error == "pipe is a special file, as a FIFO or a device, which is not copied" and not sys.Exists("$folder/pipe2"), "a FIFO alone is not copied: $(value.Text(alone))")
+(* A folder copied to a place whose folders aren't there yet gets them, as mkdir -p makes them. *)
+check(result.IsOk(folders.CopyTree("$folder/src/deep", "$folder/dst5/a/b/deep")) and read("$folder/dst5/a/b/deep/y.ce") == "y", "the folders above the copy are made")
+for gone in ["dst2", "dst4", "dst5", "elsewhere", "src/pipe"]
   result.Unwrap(sys.RemoveTree("$folder/$gone"))
 end
 _ = sys.Remove("$folder/self")
@@ -289,6 +306,52 @@ check(round.Swapped, "the other person swapped the folder for a link while the d
 check(round.Left == raceFiles, "the folder the link points to keeps its $raceFiles files: $(round.Left); $(round.Message)")
 check(round.Moved == 0 and str.Contains("Can't remove", round.Message), "what the folder held is deleted, and the link put in its place is said: $(round.Message)")
 s.Config = withApps
+
+(* A copy walks both trees by the folders it holds open: another person who can write the folder above, who swaps a folder of the tree copied for a link to
+   a folder of secrets, or the copy for a link to a folder of their victim, while it runs, leads no read and no write there. The copy goes on in the folder
+   renamed away, whole, and every file of the other folder is left; a copy by paths took the secrets, or wrote over the victim's files. tests/swap-folder.ce
+   is that person; a round where it came too late is run again. *)
+copyFiles = 3000
+defn copyRaced(side)
+  (** One round, the tree copied swapped for side "from", the copy for "to": {Swapped, Leaked, Kept, Copied, Message}: did the swap land, how many
+      files of the copy hold a secret, how many of the other folder's files still hold theirs, how many the copy made where it started, and what C said. *)
+  race = "$folder/crace"
+  check(result.IsOk(sys.Mkdir("$race/shared/tree/sub")) and result.IsOk(sys.Mkdir("$race/src/sub")) and result.IsOk(sys.Mkdir("$race/victim/sub")), "the folders of the copy race are made")
+  for k in 1..copyFiles
+    result.Unwrap(sys.Write("$race/shared/tree/sub/f$k", "x"))
+    result.Unwrap(sys.Write("$race/src/sub/f$k", "x"))
+    result.Unwrap(sys.Write("$race/victim/sub/f$k", "secret"))
+  end
+  ready = "$race/ready"
+  swapped = if side == "from" ["$race/shared/tree/sub", "$race/victim/sub", "$race/out/tree/sub"] else ["$race/shared/out", "$race/victim", "$race/shared/out/sub"] end
+  other = result.Unwrap(sys.Start("cesia", args = ["run", "--allow", "read,write", "tests/swap-folder.ce", swapped[1], "100", swapped[2], ready, swapped[3]]))
+  waited = sys.Now()
+  while not sys.Exists(ready) and sys.Now() - waited < 10
+    sys.Sleep(0.01)
+  end
+  t = press.Press(["enter"], on("crace", press.Press(["g"], s)))
+  t = if side == "from" press.Press(["C"], on("tree", press.Press(["enter"], on("shared", t)))) else press.Press(["C"], on("src", t)) end
+  t.Prompt.Answer = if side == "from" "$race/out/tree" else "$race/shared/out" end
+  t = press.Press(["enter"], t)
+  code = sys.WaitExit(other)
+  made = if side == "from" "$race/out/tree/sub" else "$race/shared/out.moved/sub" end
+  copies = result.UnwrapOr([], sys.List(made))
+  leaked = value.Len([n for n in copies if read("$made/$n") == "secret"])
+  kept = value.Len([n for n in result.UnwrapOr([], sys.List("$race/victim/sub")) if read("$race/victim/sub/$n") == "secret"])
+  result.Unwrap(sys.RemoveTree(race))
+  {Swapped: code == 0, Leaked: leaked, Kept: kept, Copied: value.Len(copies), Message: t.Message}
+end
+for side in ["from", "to"]
+  round = copyRaced(side)
+  for k in 1..2
+    if not round.Swapped
+      round = copyRaced(side)
+    end
+  end
+  check(round.Swapped, "the other person swapped the folder for a link while the copy ran, on the side $side")
+  check(round.Leaked == 0 and round.Kept == copyFiles, "the copy took no secret and wrote over no file of the other folder, on the side $side: $(round.Leaked) taken, $(round.Kept) kept; $(round.Message)")
+  check(round.Copied == copyFiles and str.StartsWith("Copied ", round.Message), "the copy went on whole where it started, on the side $side: $(round.Copied) files; $(round.Message)")
+end
 
 (* M gives a mode, in octal or as chmod writes it; T a time. *)
 check(result.IsOk(sys.Write("$folder/run.sh", "")) and result.IsOk(sys.Chmod("$folder/run.sh", 420)), "run.sh is made")

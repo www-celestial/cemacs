@@ -425,24 +425,29 @@ copié ni déplacé dans lui-même : `Can't copy src into itself.` (impossible d
 Après chaque commande, le dossier est relu, et la liste de l'autre pane aussi ; la prompt line dit ce qui a été fait, comme
 `Copied 3 files.` (3 fichiers copiés).
 
-Une copie, [folders.CopyTree], lit tout l'arbre d'abord, puis l'écrit, pour qu'une copie dans un lien vers lui-même ne puisse
-pas se nourrir d'elle-même. Chaque fichier est copié comme le fait `cp -p`, avec son mode et ses heures ; un dossier reçoit
-son mode et son heure une fois ce qu'il contient en place, le plus profond d'abord ; et un lien symbolique est refait avec la
-même cible, jamais suivi, un lien vers rien aussi. Un fichier ou un lien est écrit à un nom à lui à côté de sa place, puis
-renommé par-dessus ce qui était là, comme le fait [folders.Placed] : ce qui était là reste entier jusqu'à ce que le nouveau
-le soit, rien n'est jamais écrit à travers un lien de la cible, et un fichier copié sur lui-même par un autre chemin reste
-tel qu'il était. Ce nom à lui est `.#cemacs-` et 32 chiffres qu'on ne peut pas connaître avant que le fichier soit créé,
-[folders.Unguessable] : sous Linux, ceux du hasard du kernel (le cœur du système), lus dans
-`/proc/sys/kernel/random/uuid`, si bien que personne qui peut écrire dans le dossier ne peut y mettre un lien d'abord pour
-que la copie écrive à travers lui ; ailleurs, ceux de `std/random`. Là où la copie a un dossier et la cible un fichier ou un
-lien, cette entrée échoue et rien ne va dessous ; un fichier spécial, comme une FIFO (un tube nommé) ou un périphérique, est
-nommé et laissé, car en lire un peut attendre sans fin. Une copie parcourt toujours les dossiers par leurs chemins : un
-dossier que quelqu'un d'autre remplace par un lien pendant qu'elle tourne, dans l'arbre copié ou dans la cible, la mène dans
-le dossier vers lequel pointe le lien ; copiez donc vers et depuis des dossiers que vous seul pouvez écrire. Un
-déplacement, [folders.MoveTree], est un renommage ; d'un disque à l'autre, où un renommage ne peut pas aller, il copie, puis
-efface ce qu'il a copié, seulement une fois la copie entière, comme le fait un effacement pour de bon. Les buffers des
-fichiers déplacés, et de ceux qui sont dans les dossiers déplacés, prennent leur nouveau chemin, pour qu'un enregistrement
-aille là où le fichier est maintenant.
+Une copie d'un dossier, [folders.CopyTree], est le [sys.CopyTree] de Cesia, qui parcourt les deux arbres par les
+dossiers qu'il tient ouverts, jamais par des chemins refaits : un dossier que quelqu'un d'autre remplace par un lien
+pendant qu'elle tourne, dans l'arbre copié ou dans la copie, ne mène aucune lecture ni aucune écriture hors d'eux, et la
+copie continue, entière, là où elle a commencé. Chaque fichier est copié comme le fait `cp -p`, avec son mode et ses
+heures ; un dossier reçoit son mode et ses heures une fois tout ce qu'il contient en place, le plus profond d'abord, et
+celui qu'elle crée est à vous seul, `rwx------`, jusque-là ; un lien symbolique est refait avec la même cible, jamais
+suivi, un lien vers rien aussi. Les dossiers au-dessus de la copie sont créés là où ils manquent, comme `mkdir -p` les
+crée, et une copie dans elle-même est refusée, à travers un lien aussi. La première entrée qui échoue arrête la copie,
+comme s'arrête le `copy-directory` d'Emacs : la prompt line la nomme, dans les deux arbres, comme `Copied 0 of 1; src:
+Can't copy /p/src/deep to /q/src/deep: not a directory. The copy stopped there; what it copied before stays.` (la copie
+s'est arrêtée là ; ce qu'elle a copié avant reste), et les autres fichiers marqués continuent ; les dossiers qu'elle a
+créés sans les finir restent à vous seul. C'est le cas là où la copie a un dossier et la cible un lien ou un fichier,
+rien n'allant dessous, et pour un fichier spécial, comme une FIFO (un tube nommé) ou un périphérique, qui n'est jamais
+lu, car en lire un peut attendre sans fin : Cesia dit `operation not supported` (opération non prise en charge). Un
+fichier ou un lien copié seul est écrit à un nom à lui à côté de sa place, puis renommé par-dessus ce qui était là,
+comme le fait [folders.Placed] : ce qui était là reste entier jusqu'à ce que le nouveau le soit, et un fichier copié sur
+lui-même par un autre chemin reste tel qu'il était. Ce nom est celui que tire un enregistrement, [files.FreshName], et
+la copie ne le crée que neuf, [folders.FreshCopy], avec `sys.Copy(..., new = true)` : quelque chose à ce nom, un lien
+aussi, est une erreur, jamais écrit à travers. Un fichier spécial seul est nommé et laissé. Un déplacement,
+[folders.MoveTree], est un renommage ; d'un disque à l'autre, où un renommage ne peut pas aller, il copie, puis efface
+ce qu'il a copié, seulement une fois la copie entière, comme le fait un effacement pour de bon. Les buffers des fichiers
+déplacés, et de ceux qui sont dans les dossiers déplacés, prennent leur nouveau chemin, pour qu'un enregistrement aille
+là où le fichier est maintenant.
 
 Le mode de `M` est en octal, comme `644` ou `0755`, ou écrit comme `chmod` l'écrit, [folders.ParseMode] : des clauses
 séparées par des virgules, chacune avec qui, parmi `u` le propriétaire, `g` le groupe, `o` les autres et `a` tous, rien

@@ -118,6 +118,14 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   tokens at each word, and makes only the words of the screen, crossing the line before them by its comments and texts;
   the state at the end of a line of code no longer looks again from each text for a backslash it doesn't hold, 63 ms for
   a megabyte instead of 6.9 s.
+- `C` and a move across disks copy a folder with Cesia's `sys.CopyTree`, which walks both trees by the folders it holds
+  open: someone who can write the folder above, who swaps a folder of the tree copied for a link, or the copy for one,
+  while it runs, no longer leads it to copy their files or to write over another's, where a copy of 3,000 files took
+  2,837 files of the other folder, or wrote over 2,856; it copies 2,000 files in 120 ms instead of 240. The first entry
+  that fails stops the copy, as Emacs's `copy-directory` does, and the prompt line says what was copied before stays,
+  where the copy went on after a failure; a special file in the tree stops it, where it was left out.
+- The copy of a file through a name of its own makes that name only new, with `sys.Copy(..., new = true)`, so a link put
+  there first is never written through, whoever could know the name.
 - A save gives the new file the mode and the group of the old one as soon as it is open, before the words are in, with
   nothing done to it by its name before the rename, where it set the mode by the name after the words, and the group of a
   file was lost: a file of a team, `rw-rw----`, stays the team's. A group the person can't give is left, and the save works

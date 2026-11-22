@@ -85,7 +85,8 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `There is no trash: HOME is not set.` | neither `XDG_DATA_HOME` nor `HOME` is set, so there is no trash to move to |
 | `can't move NAME to the trash: REASON` | most often a file on another disk than your home: see [Files and buffers](files.md#the-trash). The file stays where it was |
 | `Copied 2 of 3; NAME: REASON` | a command that failed on some files, the first named, as for a permission refused; the others are done |
-| `NAME is a special file, as a FIFO or a device, which is not copied` | a copy of a tree that holds one: the rest is copied |
+| `NAME is a special file, as a FIFO or a device, which is not copied` | a copy of a special file alone: it is never read, since reading one can wait for ever |
+| `Can't copy FROM to TO: REASON. The copy stopped there; what it copied before stays.` | a copy of a folder stops at the first entry that fails, named in both trees, as Emacs's `copy-directory` does: `not a directory` where the target has a link or a file in place of a folder, `operation not supported` for a special file, as a FIFO or a device |
 | `NAME.tar.gz exists already` | `Z` on a folder whose archive is there: it is never replaced |
 | `PROGRAM can't run: REASON` | `!`, `&`, `Z`, `c` or `=` with a program missing from the `PATH`: see [Running programs](files.md#running-programs) |
 | `Two lines are named NAME.`, `NAME exists already.` | the names of `C-x C-q` would clash: nothing is renamed, and the text stays to fix |

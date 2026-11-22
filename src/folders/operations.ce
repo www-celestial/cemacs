@@ -12,7 +12,6 @@ use std/dict
 use std/encode
 use std/list
 use std/math
-use std/random
 use std/result
 use std/sys
 use std/text as str
@@ -134,76 +133,8 @@ end
 
 (* ---- The trees of files *)
 
-defn nodeOf(path, rel)
-  (** One entry of a tree, never followed through a link: {Rel, Kind, Target, Mode, Modified}, of kind dir, file, link or error, with its Message. A
-      special file, as a FIFO or a device, is an error: reading one can wait for ever. *)
-  st = sys.Stat(path)
-  if result.IsOk(st) and not st.Value.IsLink
-    if not st.Value.IsDir and not st.Value.IsFile
-      return {Rel: rel, Kind: "error", Message: "$(BaseName(path)) is a special file, as a FIFO or a device, which is not copied"}
-    end
-    return {Rel: rel, Kind: if st.Value.IsDir "dir" else "file" end, Target: missing, Mode: st.Value.Mode, Modified: st.Value.Modified}
-  end
-  link = sys.ReadLink(path)
-  if result.IsOk(link)
-    return {Rel: rel, Kind: "link", Target: link.Value, Mode: missing, Modified: missing}
-  end
-  {Rel: rel, Kind: "error", Message: st.Error.Message}
-end
-
-defn TreeOf(path)
-  (** Every entry of a tree, the path itself first and each folder before what it holds, a level after the other, read whole before anything is written,
-      so that a copy into it can't feed itself; a link is an entry, never entered. *)
-  out = []
-  todo = [""]
-  at = 1
-  while at <= value.Len(todo)
-    rel = todo[at]
-    at += 1
-    full = if rel == "" path else "$path/$rel" end
-    node = nodeOf(full, rel)
-    out = list.Append(node, out)
-    if node.Kind == "dir"
-      names = sys.List(full)
-      if result.IsErr(names)
-        out = list.Append({Rel: rel, Kind: "error", Message: names.Error.Message}, out)
-      else
-        for n in names.Value
-          todo = list.Append(if rel == "" n else "$rel/$n" end, todo)
-        end
-      end
-    end
-  end
-  out
-end
-
 (** The words of an error of a path. *)
 errorOf(path, e) = if value.IsText(e) "$(BaseName(path)): $e" else "$(BaseName(path)): $(e.Message)" end
-
-(** The digits of a number written in base 16. *)
-hexDigits = str.Chars("0123456789abcdef")
-
-defn Unguessable(uuid)
-  (** 32 characters that no one can guess, for a name: those of the text of a UUID, which Linux draws anew at each read of
-      /proc/sys/kernel/random/uuid from the randomness of its kernel, 122 bits of it, without its dashes and its line end; for a text that isn't 32
-      characters then, or holds a /, as on a system without that file, 32 digits of base 16 drawn from std/random.
-
-        Unguessable("8b9f37be-4b63-490a-ae8f-a21b94c4da86\n") --> "8b9f37be4b63490aae8fa21b94c4da86"
-        value.Len(Unguessable("")) --> 32 *)
-  digits = str.Replace("-", "", str.Trim(uuid))
-  if value.Len(digits) == 32 and not str.Contains("/", digits) digits else str.Join("", [hexDigits[random.Int(1, 16)] for k in 1..32]) end
-end
-
-defn tempIn(dir)
-  (** A name in dir for a new entry that no one else can know before it is made, .#cemacs- and 32 characters that can't be guessed: no one can put a
-      link there first, which sys.Copy, which opens a file there without O_EXCL, would write through. A name that is taken is drawn again, from std/random,
-      so that a file in place of the one of the kernel, which would give the same text each time, can't make it loop. *)
-  temp = "$dir/.#cemacs-$(Unguessable(result.UnwrapOr("", sys.Read("/proc/sys/kernel/random/uuid"))))"
-  while present(temp)
-    temp = "$dir/.#cemacs-$(Unguessable(""))"
-  end
-  temp
-end
 
 defn namedAs(path, temp, failure)
   (** A failure on the name of its own, as a failure on path: the person never heard of that name. *)
@@ -216,14 +147,16 @@ defn namedAs(path, temp, failure)
 end
 
 defn Placed(make, path)
-  (** A file or a link that make writes at a path given, made at a name of its own beside path, then renamed over it, so that what was at path stays
-      whole until the new one is, nothing is written through a link there, and a copy of a file onto itself by another path leaves it as it was. The name
-      of its own is one that no one else can know before it is made, as tempIn draws it, and an Err names path, never it. A folder at path is an Err,
-      never replaced. Ok(missing) or an Err. *)
+  (** A file or a link that make makes at a name given, made at a name of its own beside path, then renamed over it, so that what was at path stays
+      whole until the new one is, nothing is written through a link there, and a copy of a file onto itself by another path leaves it as it was. make
+      makes only a new entry, as sys.Copy with new = true, sys.Symlink and sys.Link do: something at the name, a link too, is an Err, never written
+      through. The name of its own is the one files.FreshName draws, which no one else can know before it is made where others can write the folder,
+      so no one can take it first and make the act fail, and an Err names path, never it. A folder at path is an Err, never replaced. Ok(missing) or an
+      Err. *)
   if isFolder(path) and not isLinkPath(path)
     return result.Err("$(BaseName(path)) is a folder")
   end
-  temp = tempIn(Parent(path))
+  temp = files.FreshName(path)
   made = make(temp)
   if result.IsErr(made)
     _ = if present(temp) sys.Remove(temp) else result.Ok(missing) end
@@ -238,55 +171,34 @@ defn Placed(make, path)
   if present(temp) sys.Remove(temp) else result.Ok(missing) end
 end
 
-defn copyNode(node, from, to)
-  (** One entry of a tree copied from the tree at from to the one at to: a folder made, a file copied as cp -p does, a link made again with the same
-      target, each of the last two through Placed. *)
-  a = if node.Rel == "" from else "$from/$(node.Rel)" end
-  b = if node.Rel == "" to else "$to/$(node.Rel)" end
-  if node.Kind == "dir"
-    if isFolder(b) and not isLinkPath(b)
-      return result.Ok(missing)
-    end
-    if present(b) result.Err("$(BaseName(b)) is there and is no folder") else sys.Mkdir(b) end
-  else if node.Kind == "file"
-    Placed(t -> sys.Copy(a, t), b)
-  else if node.Kind == "link"
-    Placed(t -> sys.Symlink(node.Target, t), b)
-  else
-    result.Err(node.Message)
-  end
-end
-
-(** Is a relative path inside one of the folders that failed? Nothing is written under a folder that couldn't be made, as a link there. *)
-underFailed(rel, failed) = list.Any([rel != "" and str.StartsWith(if f == "" "" else "$f/" end, rel) for f in failed])
+(** The make of Placed for a file: a copy of the file from at the name given, as cp -p makes it, with its mode and its times, made only new, so that
+    something put at that name first, a link too, is an Err, never written through. *)
+FreshCopy(from) = t -> sys.Copy(from, t, new = true)
 
 defn CopyTree(from, to)
-  (** Copies a file, a link or a folder and all it holds from a path to another, never through a link: Ok(missing), or an Err that names the first entry
-      that failed after the others were copied. A folder at to takes what from holds, its files replaced. Nothing goes under a folder that couldn't be
-      made, as where a link or a file is in its place: a link there is never written through. The modes and times of the folders are set last, the
-      deepest first, so that a folder that can't be written is written into first. *)
-  tree = TreeOf(from)
-  first = missing
-  failed = []
-  for node in tree
-    if not underFailed(node.Rel, failed)
-      done = copyNode(node, from, to)
-      if result.IsErr(done)
-        if node.Kind == "dir"
-          failed = list.Append(node.Rel, failed)
-        end
-        if value.IsMissing(first)
-          first = errorOf(if node.Rel == "" from else "$from/$(node.Rel)" end, done.Error)
-        end
-      end
+  (** Copies a file, a link or a folder and all it holds from a path to another, never through a link: Ok(missing), or an Err. A folder goes to
+      sys.CopyTree, the folders above to made first where they are missing, as mkdir -p does: it walks both trees by the folders it holds open, so that
+      a folder swapped for a link while it runs, in either tree, leads no read and no write out of them; a folder at to takes what from holds, its files
+      replaced, and each folder gets its mode and its times once all it holds is in. The first entry that fails stops it, as Emacs's copy-directory
+      stops: the Err names it, in both trees, and says that what was copied before stays. A file is copied as cp -p does, and a link made again with the
+      same target, each through Placed; a special file, as a FIFO or a device, is an Err, since reading one can wait for ever. *)
+  link = sys.ReadLink(from)
+  if result.IsOk(link)
+    return Placed(t -> sys.Symlink(link.Value, t), to)
+  end
+  st = sys.Stat(from)?
+  if st.IsDir
+    _ = if present(Parent(to)) result.Ok(missing) else sys.Mkdir(Parent(to))? end
+    copied = sys.CopyTree(from, to)
+    if result.IsErr(copied)
+      return result.Err({Kind: copied.Error.Kind, Message: "$(copied.Error.Message) The copy stopped there; what it copied before stays."})
     end
+    return copied
   end
-  for node in list.Reverse([n for n in tree if n.Kind == "dir" and not (n.Rel in failed) and not underFailed(n.Rel, failed)])
-    b = if node.Rel == "" to else "$to/$(node.Rel)" end
-    _ = sys.Chmod(b, node.Mode)
-    _ = sys.SetModified(b, node.Modified)
+  if not st.IsFile
+    return result.Err("$(BaseName(from)) is a special file, as a FIFO or a device, which is not copied")
   end
-  if value.IsMissing(first) result.Ok(missing) else result.Err(first) end
+  Placed(FreshCopy(from), to)
 end
 
 defn MoveTree(from, to)

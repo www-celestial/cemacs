@@ -389,21 +389,25 @@ that is there gives it what it holds, the files of the same name replaced. A fol
 `Can't copy src into itself.`, and nothing is made. After each command, the folder is read again, and so is the list of the
 other pane; the prompt line says what was done, as `Copied 3 files.`.
 
-A copy, [folders.CopyTree], reads the whole tree first, then writes it, so that a copy into a link to itself can't feed
-itself. Each file is copied as `cp -p` does, with its mode and its times; a folder gets its mode and its time once what it
-holds is in, the deepest first; and a symbolic link is made again with the same target, never followed, a link to nothing
-too. A file or a link is written at a name of its own beside its place, then renamed over what was there, as
-[folders.Placed] does: what was there stays whole until the new one is, nothing is ever written through a link at the
-target, and a file copied onto itself by another path stays as it was. That name of its own is `.#cemacs-` and 32 digits
-that can't be known before the file is made, [folders.Unguessable]: on Linux, those of the randomness of the kernel, read
-from `/proc/sys/kernel/random/uuid`, so no one who can write the folder can put a link there first for the copy to write
-through; elsewhere, those of `std/random`. Where the copy has a folder and the target a file or a link, that entry fails
-and nothing goes under it; a special file, as a FIFO or a device, is named and left, since reading one can wait for ever.
-A copy still walks the folders by their paths: a folder that someone else swaps for a link while it runs, in the tree
-copied or in the target, leads it into the folder the link points to, so copy into and out of folders that only you can
-write. A move, [folders.MoveTree], is a rename; across disks, where a rename can't go, it copies, then deletes what it
-copied, only once the copy is whole, as a deletion for good does. The buffers of the files moved, and of
-those inside the folders moved, take their new path, so that a save goes where the file is now.
+A copy of a folder, [folders.CopyTree], is Cesia's [sys.CopyTree], which walks both trees by the folders it holds open,
+never by paths made again: a folder that someone else swaps for a link while it runs, in the tree copied or in the copy,
+leads no read and no write out of them, and the copy goes on whole where it started. Each file is copied as `cp -p`
+does, with its mode and its times; a folder gets its mode and its times once all it holds is in, the deepest first, and
+one it makes is yours alone, `rwx------`, until then; a symbolic link is made again with the same target, never
+followed, a link to nothing too. The folders above the copy are made where they are missing, as `mkdir -p` makes them,
+and a copy into itself is refused, through a link too. The first entry that fails stops the copy, as Emacs's
+`copy-directory` stops: the prompt line names it, in both trees, as `Copied 0 of 1; src: Can't copy /p/src/deep to
+/q/src/deep: not a directory. The copy stopped there; what it copied before stays.`, and the other marked files go on;
+the folders it made and didn't finish stay yours alone. That is so where the copy has a folder and the target a link or
+a file, nothing going under it, and for a special file, as a FIFO or a device, which is never read, since reading one
+can wait for ever: Cesia says `operation not supported`. A file or a link copied alone is written at a name of its own
+beside its place, then renamed over what was there, as [folders.Placed] does: what was there stays whole until the new
+one is, and a file copied onto itself by another path stays as it was. That name is the one a save draws,
+[files.FreshName], and the copy makes it only new, [folders.FreshCopy], with `sys.Copy(..., new = true)`: something at
+the name, a link too, is an error, never written through. A special file alone is named and left. A move,
+[folders.MoveTree], is a rename; across disks, where a rename can't go, it copies, then deletes what it copied, only
+once the copy is whole, as a deletion for good does. The buffers of the files moved, and of those inside the folders
+moved, take their new path, so that a save goes where the file is now.
 
 The mode of `M` is in octal, as `644` or `0755`, or as `chmod` writes it, [folders.ParseMode]: clauses apart by commas, each
 who, of `u` the owner, `g` the group, `o` the others and `a` all of them, none for `a`, then `+` to add, `-` to take away or
