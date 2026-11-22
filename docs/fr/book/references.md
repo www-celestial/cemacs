@@ -86,7 +86,8 @@ comparé. Les titres des travaux restent dans leur langue.
 - F. Yergeau. *UTF-8, a transformation format of ISO 10646.* RFC 3629, STD 63, IETF, novembre 2003.
   https://www.rfc-editor.org/rfc/rfc3629.
   Ce que Cemacs en a pris : ce qu'est l'UTF-8 valide, que vérifie [files.IsText] : pas d'overlong form, pas de surrogate,
-  rien au-dessus de U+10FFFF.
+  rien au-dessus de U+10FFFF ; et les octets qui continuent un caractère, `10xxxxxx`, par lesquels les couleurs découpent une
+  ligne en caractères sans la diviser. Voir [À l'intérieur de Cemacs](internals.md#les-couleurs).
 - The Open Group. *The Open Group Base Specifications Issue 8*, IEEE Std 1003.1-2024 (POSIX), `rename`.
   https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html.
   Ce que Cemacs en a pris : la garantie qu'un renommage par-dessus un nom qui existe garde le nom menant à l'ancien fichier ou

@@ -190,6 +190,26 @@ il est et s'il est dans un texte, et donne l'état à sa fin. Un éditeur doit c
 d'être écrit : ce lexer ne s'arrête jamais sur une erreur, et un texte ou un commentaire pas fini ne fait que porter son état
 jusqu'à la ligne suivante.
 
+Le lexer parcourt les octets de la ligne avec [text.Byte], jamais une liste de ses caractères : sur une ligne d'un
+mégaoctet, faire un texte de chaque caractère prenait 0,2 s avant le premier token. Un caractère est ce que compte
+[value.Len] : un octet qui n'en continue pas un autre, `10xxxxxx` en [UTF-8](references.md#normes), avec les octets qui le
+continuent, si bien qu'un fichier qui n'est pas de l'UTF-8 est découpé comme Cesia le découpe partout ; tout caractère de
+plus d'un octet est une lettre. Dans un commentaire ou un texte, il saute de marque en marque, chacune cherchée en code
+natif avec [text.ByteFind], et chaque recherche reprend là où la précédente s'est arrêtée. Un property-based test (un test
+qui vérifie une règle sur des cas tirés au hasard) le compare à une lecture d'un caractère à la fois, telle qu'elle était
+écrite avant, sur des lignes au hasard qui contiennent aussi des octets qui ne sont pas de l'UTF-8.
+
+L'écran ne demande que les mots qu'il montre : `from` est l'octet où commence sa première colonne, et le mot qui commence
+avant lui y est coupé. Pour y arriver, le lexer traverse les commentaires et les textes d'avant `from` par leurs marques, et
+ne lit pas le code entre eux : dans du code, seul un guillemet ou un `(*` change l'état, et chacun commence un mot. Il
+commence à lire juste après le dernier caractère avant `from` qui est toujours un mot à lui seul, un octet d'ASCII qui n'est
+ni une lettre, ni un chiffre, ni un souligné, ni une espace, ni un point, comme `,` ou `;`, cherché au plus 4 096 octets en
+arrière. À la fin d'une ligne d'un mégaoctet de code, une touche lit donc ses commentaires et ses textes, pas ses mots :
+
+```cesia
+color.Tokens("defn f() (* a", color.FirstState, from = 8).Tokens --> [[6, ") "], [5, "(* a"]]
+```
+
 Chaque buffer garde l'état au début de chaque ligne, connu jusqu'à une certaine ligne, [color.StartOf]. Une modification à
 la ligne n oublie les états après n ; le dessin ne les relit que jusqu'à la dernière ligne de l'écran, et une ligne sans
 guillemet et sans marque de commentaire n'est même pas lue, puisqu'elle ne peut pas changer l'état. Taper à la ligne
@@ -208,8 +228,11 @@ Cette lecture n'a besoin que de l'état, pas des mots : elle ne passe donc pas p
 la fin d'une ligne en sautant de marque en marque, chacune cherchée en code natif avec [text.ByteFind]. Dans un commentaire,
 il cherche le prochain `(*` ou `*)`, car les commentaires s'emboîtent ; dans un texte, le prochain guillemet, un guillemet
 doublé `""` et le caractère après une barre oblique inverse faisant partie du texte ; ailleurs, le prochain guillemet ou
-`(*`. Les lignes viennent 100 000 à la fois, une seule slice de la rope coupée à ses fins de ligne. L'état est celui que donne
-le lexer, et un test le vérifie sur 2 000 lignes au hasard, à partir de chaque sorte d'état :
+`(*`. Une marque trouvée est gardée tant qu'elle est devant, et une marque absente n'est pas cherchée à nouveau : la
+recherche d'une barre oblique inverse depuis chaque texte d'une ligne qui n'en a pas relisait le reste de la ligne à chaque
+texte, 6,9 s pour un mégaoctet de code, 63 ms maintenant. Les lignes viennent 100 000 à la fois, une seule slice de la
+rope coupée à ses fins de ligne. L'état est celui que donne le lexer, et un test le vérifie sur 2 000 lignes au hasard, à
+partir de chaque sorte d'état :
 
 ```cesia
 color.StateAfter("x = \"a (* b", color.FirstState) --> {Comment: 0, Text: true}

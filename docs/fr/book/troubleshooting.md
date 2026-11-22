@@ -63,7 +63,6 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `PATH is open in another buffer.` | `Save as` vers un fichier déjà ouvert : enregistrez ce buffer, ou fermez-le d'abord |
 | `A list has no file.` | un enregistrement dans une liste |
 | `Not saved.` | vous avez répondu `n` à `File changed on disk. Overwrite?` : les deux textes sont tels qu'ils étaient |
-| `No free name next to PATH for a new file.` | 21 noms pour le nouveau fichier d'un enregistrement étaient pris : enlevez les fichiers `PATH.cemacs-...` laissés à côté de lui |
 | `PATH was saved, but its time couldn't be read: REASON` | le texte est sur le disque, mais le prochain enregistrement de ce buffer demandera avant d'écrire |
 | une raison donnée par le système, comme une permission refusée | la lecture ou l'enregistrement a échoué ; après un enregistrement qui a échoué, l'ancien fichier est entier et le buffer garde son texte et son étoile |
 
@@ -87,7 +86,8 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `There is no trash: HOME is not set.` | ni `XDG_DATA_HOME` ni `HOME` n'a de valeur : il n'y a donc pas de corbeille où mettre le fichier |
 | `can't move NAME to the trash: REASON` | le plus souvent un fichier sur un autre disque que votre dossier personnel : voir [Fichiers et buffers](files.md#la-corbeille). Le fichier reste là où il était |
 | `Copied 2 of 3; NAME: REASON` | une commande qui a échoué sur certains fichiers, le premier nommé, comme pour une permission refusée ; les autres sont faits |
-| `NAME is a special file, as a FIFO or a device, which is not copied` | une copie d'un arbre qui en contient un : le reste est copié |
+| `NAME is a special file, as a FIFO or a device, which is not copied` | une copie d'un fichier spécial seul : il n'est jamais lu, car en lire un peut attendre sans fin |
+| `Can't copy FROM to TO: REASON. The copy stopped there; what it copied before stays.` | une copie d'un dossier s'arrête à la première entrée qui échoue, nommée dans les deux arbres, comme le fait `copy-directory` d'Emacs : `not a directory` là où la cible a un lien ou un fichier à la place d'un dossier, `operation not supported` pour un fichier spécial, comme une FIFO (un tube nommé) ou un périphérique |
 | `NAME.tar.gz exists already` | `Z` sur un dossier dont l'archive est là : elle n'est jamais remplacée |
 | `PROGRAM can't run: REASON` | `!`, `&`, `Z`, `c` ou `=` avec un programme absent du `PATH` : voir [Lancer des programmes](files.md#lancer-des-programmes) |
 | `Two lines are named NAME.`, `NAME exists already.` | les noms de `C-x C-q` se heurteraient : rien n'est renommé, et le texte reste à corriger |
