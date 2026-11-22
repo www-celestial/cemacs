@@ -108,3 +108,7 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   during a copy, a move or a deletion, is taken for no folder, instead of a failure that ended the editor.
 - A letter typed at the start of a line of a megabyte of a file of Cesia takes 20 ms instead of 1.3 s: to know whether
   its first word moves the line, as `end` typed there does, only the start of the line is split into characters.
+- After a pause in a file of Cesia, the tick that asks whether a signature can be shown slices the line of the cursor,
+  9 ms instead of 238 on a line of a megabyte, and the rows of a list, the lines of the output and the value of an eval
+  are cut to the screen with a slice, 10 ms for the frame of a row of a megabyte instead of 217, where all their characters
+  were split.

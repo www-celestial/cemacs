@@ -236,7 +236,8 @@ end
 screenLines(first, last, b) = str.Split("\n", rope.Slice(rope.LineStart(first, b.Rope), rope.LineEnd(last, b.Rope), b.Rope))
 
 (** The first width characters of a line, as the screen shows them: sdl has no clipping, and the tail would not be seen. A slice reads the line once, where
-    its characters, one text each, would take 0.2 s on a line of a megabyte. *)
+    its characters, one text each, would take 0.2 s on a line of a megabyte: the lines of code, the rows of a list, the lines of the output and the value
+    of an eval are all cut so. *)
 cutTo(width, full) = if value.Len(full) > width str.Slice(1, width, full) else full end
 
 defn tokensOf(full, width, state, kept)
@@ -317,10 +318,8 @@ defn rowTokens(parts, words)
   left = value.Len(words)
   for part in parts
     if left > 0
-      cs = str.Chars(part[2])
-      taken = if value.Len(cs) > left str.Join("", list.Take(left, cs)) else part[2] end
-      out = list.Append([part[1], taken], out)
-      left = left - value.Len(cs)
+      out = list.Append([part[1], cutTo(left, part[2])], out)
+      left = left - value.Len(part[2])
     end
   end
   out
@@ -990,12 +989,12 @@ defn answer(b, n, r, y, columns, rect, cell, th)
     return []
   end
   shown = run.ValueAt(b.Path, n, r)
-  at = value.Len(str.Chars(rope.Line(n, b.Rope))) + 2 - b.Left
+  at = value.Len(rope.Line(n, b.Rope)) + 2 - b.Left
   if value.IsMissing(shown) or at < 0 or at >= columns
     []
   else
     room = columns - at - 2
-    words = str.Join("", list.Take(list.Max(0, room), str.Chars(str.Replace("\n", " ", "= $shown"))))
+    words = cutTo(list.Max(0, room), str.Replace("\n", " ", "= $shown"))
     [textCommand(columnX(at, rect, cell), y, words, th.Faint)]
   end
 end
@@ -1028,7 +1027,7 @@ defn output(state, lay, look)
     shown = outputLines(r)
     last = list.Skip(list.Max(0, value.Len(shown) - rows), shown)
     for k in 1..value.Len(last)
-      out = list.Append(inside("code", rect.X + 12, y + 24 + (k - 1) * lay.Cell.Height, str.Join("", list.Take(columns, str.Chars(last[k]))), th.Ink), out)
+      out = list.Append(inside("code", rect.X + 12, y + 24 + (k - 1) * lay.Cell.Height, cutTo(columns, last[k]), th.Ink), out)
     end
     out
   end

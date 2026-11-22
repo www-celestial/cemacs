@@ -4,6 +4,8 @@
     cesia run tests/long-line-check.ce. It prints ok at the end and stops at the first failure. *)
 use src/buffers
 use src/emacs
+use src/ide
+use core/color
 use core/press
 use core/text
 use core/view
@@ -73,4 +75,22 @@ typed = timed(["x"], press.Press(["C-g"], cesiaFile))
 check(typed.Seconds < 0.5, "x at the start of a line of a megabyte of a file of Cesia takes $(typed.Seconds) s")
 check(str.StartsWith("xaaa", rope.Text(here(typed.State).Rope)), "x is typed at the start")
 
+(* After a pause in a file of Cesia, each tick asks whether a signature can be asked, from the line of the cursor: a slice of it, where all its
+   characters, one text each, took a quarter of a second at each tick on a line of a megabyte. *)
+paused = press.Press(["C-g", "C-e", " "], cesiaFile)
+paused.Still = 10.0
+t = sys.Now()
+ide.Idle(0.5, paused)
+check(sys.Now() - t < 0.1, "a tick after a pause at the end of a line of a megabyte takes $(sys.Now() - t) s")
+
+(* A row of a list of a megabyte, as an output can hold, is cut to the screen with a slice, as the lines of the output pane and the value of an eval are:
+   its characters, one text each, took a fifth of a second at each frame. *)
+row = str.Repeat(1000000, "é")
+rows = text.Of("$row\nshort", missing)
+rows.List = {Name: "Rows", Rows: s -> [], Keys: () -> {}, Filter: "", Items: [1, 2], Back: 1, Parts: [[[color.Number, row]], missing]}
+listed = view.Start([rows], look, cell, 800, 600)
+t = sys.Now()
+frame = view.View(listed)
+check(sys.Now() - t < 0.1, "a frame of a row of a megabyte takes $(sys.Now() - t) s")
+check(value.Len([c for c in frame if c.Kind == "text" and str.StartsWith("ééé", c.Text)]) == 1, "the row is drawn")
 io.Print("ok")

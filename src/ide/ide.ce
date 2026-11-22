@@ -378,9 +378,21 @@ defn signable(state)
   if not value.IsMissing(at) and at.Path == b.Path and at.Version == b.Version and at.Line == c.Line and at.Column == c.Column
     return false
   end
-  chars = str.Chars(rope.Line(c.Line, b.Rope))
-  touches = (c.Column >= 1 and c.Column <= value.Len(chars) and isNameChar(chars[c.Column])) or (c.Column < value.Len(chars) and isNameChar(chars[c.Column + 1]))
-  value.Len([m for m in text.MarksOf(b) if m.Line == c.Line]) == 0 and ("(" in list.Take(c.Column, chars) or touches)
+  (* The line is sliced, never split into its characters: a tick on a line of a megabyte reads it natively. *)
+  line = rope.Line(c.Line, b.Rope)
+  count = value.Len(line)
+  touches = (c.Column >= 1 and c.Column <= count and isNameChar(str.Slice(c.Column, c.Column, line))) or (c.Column < count and isNameChar(str.Slice(c.Column + 1, c.Column + 1, line)))
+  value.Len([m for m in text.MarksOf(b) if m.Line == c.Line]) == 0 and (opens(str.Slice(1, list.Min(c.Column, count), line)) or touches)
+end
+
+defn opens(words)
+  (** Is ( one of the characters of a text: a ( that no byte continues, as a character of more than one byte holds? Each ( is found natively. *)
+  n = str.ByteLength(words)
+  at = str.ByteFind("(", 1, words)
+  while not value.IsMissing(at) and at < n and str.Byte(at + 1, words) >= 128 and str.Byte(at + 1, words) < 192
+    at = str.ByteFind("(", at + 1, words)
+  end
+  not value.IsMissing(at)
 end
 
 (** Can a character be part of a name? *)
