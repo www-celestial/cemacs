@@ -64,4 +64,13 @@ for keys in [["tab"], ["x"], ["backspace"]]
   tabbed = if keys[1] == "tab" rope.Text(here(s).Rope) else tabbed end
 end
 check(rope.Text(here(s).Rope) == tabbed, "x then backspace leave the line as Tab left it")
+
+(* In a file of Cesia, a letter at the start of a line of a megabyte reads only the start of the line to know whether it moves it, where all its
+   characters took 1.3 s. *)
+cesiaFile = view.Start([text.Of("$(str.Repeat(1000000, "a")) b", "/nowhere/big.ce")], look, cell, 800, 600)
+cesiaFile.Config = withApps
+typed = timed(["x"], press.Press(["C-g"], cesiaFile))
+check(typed.Seconds < 0.5, "x at the start of a line of a megabyte of a file of Cesia takes $(typed.Seconds) s")
+check(str.StartsWith("xaaa", rope.Text(here(typed.State).Rope)), "x is typed at the start")
+
 io.Print("ok")

@@ -106,3 +106,5 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   write the folder could put a link in time for the copy to write through it; a failure names the file, never that name.
 - A path that goes while the folders ask whether it is a folder, as one that someone else removes from a shared folder
   during a copy, a move or a deletion, is taken for no folder, instead of a failure that ended the editor.
+- A letter typed at the start of a line of a megabyte of a file of Cesia takes 20 ms instead of 1.3 s: to know whether
+  its first word moves the line, as `end` typed there does, only the start of the line is split into characters.
