@@ -62,7 +62,6 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `PATH is open in another buffer.` | `Save as` to a file already open: save that buffer, or close it first |
 | `A list has no file.` | a save in a list |
 | `Not saved.` | you answered `n` to `File changed on disk. Overwrite?`: both texts are as they were |
-| `No free name next to PATH for a new file.` | 21 names for the new file of a save were taken: remove the files `PATH.cemacs-...` left beside it |
 | `PATH was saved, but its time couldn't be read: REASON` | the text is on disk, but the next save of this buffer will ask before writing |
 | a reason from the system, such as a permission refused | reading or saving failed; on a failed save, the old file is whole and the buffer keeps its text and its star |
 

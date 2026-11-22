@@ -19,7 +19,7 @@ tools/indent-corpus.sh --std bench core src tests tools
 # The template that Changing Cemacs shows is the one that user/ is made from.
 [ "$(sed -n '/^(\*\* Your changes to Cemacs/,/^```$/p' docs/book/customising.md | sed '$d')" = "$(cat tools/user-template/config/config.ce)" ]
 tests/sdl/run.sh
-timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/files-check.ce
+timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mkfifo,exec=truncate,exec=unshare tests/files-check.ce
 timeout -s KILL 60 cesia run tests/long-line-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mkfifo,exec=truncate tests/commands-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=cesia tests/check-check.ce

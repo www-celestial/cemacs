@@ -1,11 +1,12 @@
 (** The files of the editor. Saving never loses text: the new words go to a file next to the old one, which a rename then replaces, so a
-    failure at any step leaves the old file whole. The new file is made the person's alone, then given the mode of the old one, and a symbolic
-    link is saved to the file it points to. A disk is what the file looked like when it was read: {Modified, Size}, or missing for a file that
-    didn't exist. *)
+    failure at any step leaves the old file whole. The new file gets the mode and the group of the old one on the file it opened, before the words
+    are in, and a symbolic link is saved to the file it points to. A disk is what the file looked like when it was read: {Modified, Size}, or missing
+    for a file that didn't exist. *)
 use std/sys
 use std/text as str
 use std/list
 use std/math
+use std/random
 use std/result
 use std/value
 
@@ -91,17 +92,38 @@ defn ReadFile(path)
   result.Ok({Words: words, Disk: disk})
 end
 
-defn isFresh(path)
-  (** A name next to path that nothing uses yet: it holds the time, and a counter if that name is taken. Gives Ok of the name, or an Err of kind
-      "io" after a few tries. Nothing at the name is touched. *)
-  stamp = value.Text(math.Floor(sys.Now() * 1000000))
-  for n in list.Range(0, 20)
-    name = if n == 0 "$path.cemacs-$stamp" else "$path.cemacs-$stamp-$n" end
-    if not sys.Exists(name)
-      return result.Ok(name)
-    end
+(** The digits of a number written in base 16. *)
+hexDigits = str.Chars("0123456789abcdef")
+
+defn Unguessable(uuid)
+  (** 32 characters that no one can guess, for a name: those of the text of a UUID, which Linux draws anew at each read of
+      /proc/sys/kernel/random/uuid from the randomness of its kernel, 122 bits of it, without its dashes and its line end; for a text that isn't 32
+      characters then, or holds a /, as on a system without that file, 32 digits of base 16 drawn from std/random.
+
+        Unguessable("8b9f37be-4b63-490a-ae8f-a21b94c4da86\n") --> "8b9f37be4b63490aae8fa21b94c4da86"
+        value.Len(Unguessable("")) --> 32 *)
+  digits = str.Replace("-", "", str.Trim(uuid))
+  if value.Len(digits) == 32 and not str.Contains("/", digits) digits else str.Join("", [hexDigits[random.Int(1, 16)] for k in 1..32]) end
+end
+
+(** Is there something at a path, a symbolic link that points to nothing too? *)
+present(path) = sys.Exists(path) or result.IsOk(sys.ReadLink(path))
+
+defn FreshName(path)
+  (** A name beside path, in its folder, for a new file or link: .#cemacs- and 32 characters, 41 bytes, which fit in a folder whatever the length of
+      the name of path. Where others than the owner of the folder can make an entry in it, as in one that lets its group or the others write, /tmp
+      among them, the characters are those of the randomness of the kernel, as Unguessable draws them, so that no one can know the name before it is
+      made and put a link there first for a write to go through. In a folder that only its owner can write, they are drawn from std/random, and the
+      kernel isn't read: only that owner could put a link there, you, or another who owns the folder and could as well make the file itself a link,
+      which a save follows. A name that is taken is drawn again, from std/random, so that a file in place of the one of the kernel, which would give
+      the same text each time, can't make it loop. *)
+  folder = sys.Stat(if FolderOf(path) == "" "." else FolderOf(path) end)
+  shared = result.IsErr(folder) or math.BitAnd(folder.Value.Mode, 18) != 0
+  fresh = "$(FolderOf(path)).#cemacs-$(Unguessable(if shared result.UnwrapOr("", sys.Read("/proc/sys/kernel/random/uuid")) else "" end))"
+  while present(fresh)
+    fresh = "$(FolderOf(path)).#cemacs-$(Unguessable(""))"
   end
-  result.Err({Kind: "io", Message: "No free name next to $path for a new file."})
+  fresh
 end
 
 (** A failure on the new file, as a failure on path: the person never heard of the new one. *)
@@ -147,31 +169,42 @@ defn Umasked(status)
   math.BitAnd(438, math.BitNot(list.Reduce((mask, c) -> mask * 8 + str.Code(c) - 48, 0, digits)))
 end
 
-defn modeFor(target)
-  (** The mode the file written gets, in an Ok: the permission bits of the file there, read, write and run for each, not its setuid and setgid, which
-      were its owner's; or that of a new file, for none, or for a link, which the new file replaces. *)
+defn keptOf(target)
+  (** What the file written keeps of the file there, in an Ok of {Mode, Group}: its permission bits, read, write and run for each, not its setuid and
+      setgid, which were its owner's, and its group, as sys.Stat gives them; or, for none, or for a link, which the new file replaces, the mode of a new
+      file and no group, so the one a new file gets. *)
   if result.IsOk(sys.ReadLink(target)) or not sys.Exists(target)
-    return result.Ok(Umasked(result.UnwrapOr("", sys.Read("/proc/self/status"))))
+    return result.Ok({Mode: Umasked(result.UnwrapOr("", sys.Read("/proc/self/status"))), Group: missing})
   end
-  result.Ok(math.BitAnd(sys.Stat(target)?.Mode, 511))
+  info = sys.Stat(target)?
+  result.Ok({Mode: math.BitAnd(info.Mode, 511), Group: info.Group})
+end
+
+defn written(path, words, kept)
+  (** The words in a new file beside path, at a name that FreshName draws, on the disk with its folder, with the mode and the group kept, which
+      sys.Write gives the file it opened before the words are in: Ok of its name, or an Err that names path, the new file removed. A group that the
+      system refuses, as one the person isn't in, is left, and the words go to another new file: it has the group a new file gets in that folder, as
+      every save gave before Cemacs kept the group. *)
+  fresh = FreshName(path)
+  done = sys.Write(fresh, words, sync = true, mode = kept.Mode, group = kept.Group)
+  if result.IsOk(done)
+    return result.Ok(fresh)
+  end
+  _ = if present(fresh) sys.Remove(fresh) else result.Ok(missing) end
+  if value.IsMissing(kept.Group) named(path, fresh, done) else written(path, words, {Mode: kept.Mode, Group: missing}) end
 end
 
 defn Replace(path, words)
   (** Writes the words to path through a new file next to it, then renames it over the file, as a save does but for its links: a symbolic link at path
       is replaced by the file, what it points to left as it was, for a file that Cemacs makes beside another, as the page of a file of cells. The new
-      file has a name that nothing used, is made with O_EXCL, so no link or file put there first takes the words, and the person's alone, 600 in octal,
-      then gets the mode of the old file before the rename: a private file stays private, a script stays one to run. The cleanup removes only it. On
-      any failure the old file stays whole. The new file is on the disk, and its folder too, before the rename: after a power cut, the whole new text is
-      under one of the two names, and the old one, until the rename, under path. Gives Ok of the new disk. If only the stat after the rename fails, the
-      file is saved and the Err has the kind "saved". *)
-  mode = modeFor(path)?
-  fresh = isFresh(path)?
-  written = sys.Write(fresh, words, sync = true, private = true)
-  if result.IsErr(written)
-    return named(path, fresh, written)
-  end
-  moded = if mode == 384 result.Ok(missing) else sys.Chmod(fresh, mode) end
-  moved = if result.IsErr(moded) moded else sys.Rename(fresh, path) end
+      file has the name FreshName draws, which no one else can know before it is made where others can write the folder, so no link put there first
+      takes the words, and the mode and the group of the old file from the moment it is opened, before the words are in, with nothing done to it by
+      its name between the write and the rename: a private file stays private, a script stays one to run, a file of a group stays the group's. The
+      cleanup removes only it. On any failure the old file stays whole. The new file is on the disk, and its folder too, before the rename: after a
+      power cut, the whole new text is under one of the two names, and the old one, until the rename, under path. Gives Ok of the new disk. If only
+      the stat after the rename fails, the file is saved and the Err has the kind "saved". *)
+  fresh = written(path, words, keptOf(path)?)?
+  moved = sys.Rename(fresh, path)
   if result.IsErr(moved)
     _ = sys.Remove(fresh)
     return named(path, fresh, moved)

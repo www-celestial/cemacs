@@ -1,10 +1,11 @@
 (** Checks of files.ce against real files, in a new folder under /tmp. It is a script, not a test file: it needs permissions.
-    Run it with cesia run --allow read,write,exec=mkfifo,exec=truncate tests/files-check.ce. It prints ok at the end and stops at the first failure. *)
+    Run it with cesia run --allow read,write,exec=cesia,exec=mkfifo,exec=truncate,exec=unshare tests/files-check.ce. It prints ok at the end and stops at the first failure. *)
 use std/sys
 use core/files
 use std/text as str
 use std/bug
 use std/io
+use std/list
 use std/result
 use std/value
 
@@ -73,13 +74,13 @@ bad = "$folder/nodir/c.ce"
 check(result.IsErr(files.SaveFile(bad, "x", missing)), "saving in a folder that doesn't exist fails")
 check(result.IsErr(files.ForceSave(bad, "x")), "force_save in a folder that doesn't exist fails")
 noFolder = files.ForceSave(bad, "x").Error.Message
-check(str.Contains(bad, noFolder) and not str.Contains(".cemacs-", noFolder), "a failed write names the file, not the new one: $noFolder")
+check(str.Contains(bad, noFolder) and not str.Contains(".#cemacs-", noFolder), "a failed write names the file, not the new one: $noFolder")
 check(names(folder) == "a.ce,b.ce", "a failed save leaves nothing behind")
 
 result.Unwrap(sys.Mkdir("$folder/sub"))   (** A failed rename leaves the old file whole: the target is a folder. *)
 check(result.IsErr(files.ForceSave("$folder/sub", "x")), "saving over a folder fails")
 overFolder = files.ForceSave("$folder/sub", "x").Error.Message
-check(str.Contains("$folder/sub", overFolder) and not str.Contains(".cemacs-", overFolder), "a failed rename names the file, not the new one: $overFolder")
+check(str.Contains("$folder/sub", overFolder) and not str.Contains(".#cemacs-", overFolder), "a failed rename names the file, not the new one: $overFolder")
 check(names(folder) == "a.ce,b.ce,sub", "a failed rename removes the new file")
 check(result.IsErr(files.ReadFile("$folder/sub")), "reading a folder fails")
 check(result.IsErr(files.SaveFile("$folder/sub", "x", missing)), "saving over a folder with disk missing fails")
@@ -127,6 +128,69 @@ result.Unwrap(files.ForceSave(born, "new\n"))
 check(modeOf(born) == files.Umasked(result.Unwrap(sys.Read("/proc/self/status"))), "a new file gets 666 less the umask: $(modeOf(born))")
 result.Unwrap(sys.Remove(born))
 check(names(folder) == "a.ce,b.ce", "the saves leave no other file")
+
+(* A save writes first at a name of its own, .#cemacs- and 32 characters drawn anew each time: where others can write the folder, as in /tmp, those of the
+   kernel's randomness, so that no one can know it before it is made and put a link there first for the words to go through; where only its owner can,
+   those of std/random, which the same seed gives again, as cesia run --seed shows. It is 41 bytes long, so a file of a name of 250 bytes is saved too,
+   where the name of the file and a time were too long for the system. *)
+fresh = [files.FreshName(target) for k in 1..2]
+check(list.All([str.StartsWith("$folder/.#cemacs-", f) and value.Len(f) == value.Len("$folder/.#cemacs-") + 32 for f in fresh]) and fresh[1] != fresh[2], "the new name is drawn anew: $(value.Text(fresh))")
+result.Unwrap(sys.Mkdir("$folder/own"))
+result.Unwrap(sys.Chmod("$folder/own", 448))
+result.Unwrap(sys.Mkdir("$folder/shared"))
+result.Unwrap(sys.Chmod("$folder/shared", 1023))
+defn seeded(dir)
+  (** The name FreshName draws in dir, in a run of the seed 7. *)
+  r = result.Unwrap(sys.Run("cesia", ["run", "--seed", "7", "--allow", "read", "tests/fresh-name.ce", dir]))
+  check(r.Code == 0, "tests/fresh-name.ce runs: $(r.Err)")
+  r.Out
+end
+check(seeded("$folder/own") == seeded("$folder/own"), "in a folder of its owner alone, std/random gives the name: $(seeded("$folder/own"))")
+check(seeded("$folder/shared") != seeded("$folder/shared"), "in a folder that others can write, the kernel gives it: $(seeded("$folder/shared"))")
+result.Unwrap(sys.Remove("$folder/own"))
+result.Unwrap(sys.Remove("$folder/shared"))
+long = "$folder/$(str.Join("", ["n" for k in 1..250]))"
+check(result.IsOk(files.ForceSave(long, "long\n")) and result.Unwrap(sys.Read(long)) == "long\n", "a file of a long name is saved")
+result.Unwrap(sys.Remove(long))
+
+(* A save keeps the group of the file with its mode, both given to the new file as soon as it is open, before the words are in, and nothing done to it by
+   its name before the rename: a file of a group the person is in, rw-rw---- or rw-r-----, stays the group's, and a script of the group stays one to
+   run. A group that the system refuses, as one the person isn't in, is left, and the save works as before: the file has the group that a new file gets.
+   A user namespace of unshare -r shows that: the groups it doesn't map, as one there that the person can't give. It needs a person in two groups, and a
+   system that lets one make a user namespace; without them, the check says so and goes on. *)
+groupOf(path) = result.Unwrap(sys.Stat(path)).Group   (** The group of a file. *)
+defn numbersOf(key, status)
+  (** The numbers of the line of /proc/self/status that starts with key, as Gid: or Groups:. *)
+  line = list.First([l for l in str.Lines(status) if str.StartsWith(key, l)])
+  if value.IsMissing(line) [] else [str.Number(w) for w in str.Split(" ", str.Replace("\t", " ", str.Slice(value.Len(key) + 1, value.Len(line), line))) if w != ""] end
+end
+status = result.UnwrapOr("", sys.Read("/proc/self/status"))
+own = list.First(numbersOf("Gid:", status))
+others = [g for g in numbersOf("Groups:", status) if g != own]
+if value.Len(others) == 0
+  io.Print("files-check: the person is in one group only, so the group a save keeps is not checked")
+else
+  for pair in [["team.txt", 432], ["notes.txt", 416], ["build.sh", 488]]
+    path = "$folder/$(pair[1])"
+    result.Unwrap(sys.Write(path, "old\n", mode = pair[2], group = others[1]))
+    check(groupOf(path) == others[1] and modeOf(path) == pair[2], "$(pair[1]) is made in the group $(others[1])")
+    check(result.IsOk(files.SaveFile(path, "new\n", result.Unwrap(files.ReadFile(path)).Disk)), "$(pair[1]) is saved")
+    check(groupOf(path) == others[1] and modeOf(path) == pair[2] and result.Unwrap(sys.Read(path)) == "new\n", "$(pair[1]) keeps its group and its mode: $(groupOf(path)), $(modeOf(path))")
+  end
+  team = "$folder/team.txt"
+  probe = sys.Run("unshare", ["-r", "true"])
+  if result.IsErr(probe) or probe.Value.Code != 0
+    io.Print("files-check: no user namespace here, so a group the system refuses is not checked: $(value.Text(probe))")
+  else
+    refused = result.Unwrap(sys.Run("unshare", ["-r", "cesia", "run", "--allow", "read,write", "tests/save-as.ce", team, "theirs\n"]))
+    check(refused.Code == 0, "the save in the user namespace works: $(refused.Out)$(refused.Err)")
+    check(result.Unwrap(sys.Read(team)) == "theirs\n" and groupOf(team) == own and modeOf(team) == 432, "the group refused is left, the mode kept: $(groupOf(team)), $(modeOf(team))")
+  end
+  for pair in ["team.txt", "notes.txt", "build.sh"]
+    result.Unwrap(sys.Remove("$folder/$pair"))
+  end
+end
+check(names(folder) == "a.ce,b.ce", "the saves of groups leave no other file")
 
 (* A save through a symbolic link writes the file it points to and keeps the link, as Emacs does, a link to a link and a link from another folder too;
    a link to a file not there yet makes that file; a loop of links is an Err, and nothing is written. *)

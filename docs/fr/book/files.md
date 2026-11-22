@@ -123,38 +123,46 @@ buffer Cesia est vérifié à nouveau, puisqu'un autre fichier peut employer cel
 
 L'enregistrement est construit pour qu'aucun échec ne perde de texte, ni le texte sur le disque, ni celui du buffer :
 
-1. Le nouveau texte va dans un nouveau fichier à côté de l'ancien, nommé `PATH.cemacs-` suivi de l'heure en microsecondes,
-   avec `-1`, `-2` et ainsi de suite jusqu'à `-20` quand ce nom est pris ; après quoi l'enregistrement s'arrête avec
-   `No free name next to PATH for a new file.` (pas de nom libre à côté de PATH pour un nouveau fichier). Le nouveau fichier
-   est le seul que Cemacs enlève jamais. Quand PATH est un lien symbolique, un fichier qui ne fait que pointer vers un autre,
-   PATH est ici le fichier vers lequel il pointe, ses liens suivis l'un après l'autre, comme le fait le `file-truename`
-   d'Emacs : le lien reste un lien, et le fichier où il mène reçoit le texte.
-2. Le nouveau fichier est écrit avec `sys.Write(..., sync = true, private = true)`, qui le crée avec `O_EXCL` (une création
-   qui échoue quand quelque chose existe déjà à ce nom), pour qu'aucun fichier ni aucun lien mis à son nom avant lui ne
-   prenne le texte, et à vous seul, `rw-------`, pour que personne ne puisse l'ouvrir pendant qu'il contient le texte ; et
-   qui ne répond qu'une fois que le système a mis le fichier sur le disque, puis son dossier, avec `fsync` : l'appel qui
-   demande au système d'écrire ce qu'il garde dans ses caches, pour qu'une coupure de courant ne puisse pas le reprendre.
-3. Le nouveau fichier reçoit le mode de l'ancien, ses droits de lecture, d'écriture et de lancement, puis, une fois qu'il est
-   sur le disque en entier, un renommage le met à la place de l'ancien fichier. Sous Linux, un renommage à l'intérieur d'un
-   même système de fichiers, comme ici, est atomique : à chaque instant, le nom mène à tout l'ancien fichier ou à tout le
-   nouveau, jamais à une partie de l'un ou de l'autre.
+1. Le nouveau texte va dans un nouveau fichier à côté de l'ancien, dans son dossier, nommé `.#cemacs-` suivi de 32
+   caractères tirés à nouveau à chaque fois, [files.FreshName]. Là où d'autres que le propriétaire du dossier peuvent y
+   créer une entrée, comme dans `/tmp` ou le dossier d'une équipe, ce sont ceux du hasard du kernel (le cœur du système),
+   lus sous Linux dans `/proc/sys/kernel/random/uuid`, [files.Unguessable], pour que personne ne puisse connaître le nom
+   avant que le fichier soit créé et y mettre d'abord un lien à travers lequel le texte irait. Dans un dossier que seul son
+   propriétaire peut écrire, ce sont ceux de `std/random`, et le kernel n'est pas lu : seul ce propriétaire pourrait y
+   mettre un lien, vous, ou un autre à qui est le dossier et qui pourrait aussi bien faire de votre fichier lui-même un
+   lien, qu'un enregistrement suit. Le nom fait 41 octets, si bien qu'un fichier de n'importe quel nom peut être
+   enregistré. Le nouveau fichier est le seul que Cemacs enlève jamais. Quand PATH est un lien symbolique, un fichier qui
+   ne fait que pointer vers un autre, PATH est ici le fichier vers lequel il pointe, ses liens suivis l'un après l'autre,
+   comme le fait le `file-truename` d'Emacs : le lien reste un lien, et le fichier où il mène reçoit le texte.
+2. Le nouveau fichier est écrit avec `sys.Write(..., sync = true, mode = MODE, group = GROUP)`, le mode et le groupe de
+   l'ancien fichier, que Cesia donne au fichier qu'il a ouvert avant que le texte y soit, pour que le texte ne soit jamais
+   dans un fichier aux autres droits ; et qui ne répond qu'une fois que le système a mis le fichier sur le disque, puis
+   son dossier, avec `fsync` : l'appel qui demande au système d'écrire ce qu'il garde dans ses caches, pour qu'une coupure
+   de courant ne puisse pas le reprendre.
+3. Une fois qu'il est sur le disque en entier, un renommage le met à la place de l'ancien fichier, sans que rien ne lui
+   soit fait par son nom entre les deux. Sous Linux, un renommage à l'intérieur d'un même système de fichiers, comme ici,
+   est atomique : à chaque instant, le nom mène à tout l'ancien fichier ou à tout le nouveau, jamais à une partie de l'un
+   ou de l'autre.
 4. Si l'écriture ou le renommage échoue, le nouveau fichier est enlevé, l'ancien reste entier, le buffer garde son texte et
    son étoile, et la prompt line dit la raison, en nommant votre fichier, pas le nouveau.
 
 Cela protège le fichier d'un échec de Cemacs, d'un disque plein, d'une permission, et d'une coupure de courant : une fois
 que la prompt line dit `Saved`, tout le nouveau texte est sur le disque, sous le nom de votre fichier, ou, si le courant a
 été coupé à l'instant du renommage avant que le système ait réécrit le dossier, sous le nom du nouveau fichier
-`PATH.cemacs-...`, à côté de l'ancien fichier, qui est alors entier. Vim et Neovim font de même par défaut (leur option
+`.#cemacs-...`, à côté de l'ancien fichier, qui est alors entier. Vim et Neovim font de même par défaut (leur option
 `'fsync'`) ; GNU Emacs 31 non, car son `write-region-inhibit-fsync` est activé. Le coût est le temps que prend le disque :
 [Vitesse](performance.md#coller-annuler-et-enregistrer) le donne.
 
-Le fichier enregistré est un nouveau fichier qui a le mode de l'ancien : un fichier privé reste `rw-------`, un script garde
-son droit d'être lancé, un fichier en lecture seule reste en lecture seule. Ses bits setuid et setgid (lancer avec les
-droits du propriétaire ou du groupe) ne passent pas, car le nouveau fichier est à vous, pas au propriétaire de l'ancien, et
-son groupe est celui qu'un nouveau fichier reçoit dans ce dossier. Un fichier qui n'était pas là reçoit ce que le système
-donne à un nouveau fichier, `rw-rw-rw-` moins l'`umask` (le masque par lequel le système retire des droits à chaque nouveau
-fichier), tel que Linux le dit dans `/proc/self/status` ; `rw-------` là où il ne le dit pas. Un hard link (un second nom du
-même fichier) ne partage plus le texte. Le dossier doit vous permettre d'y écrire, pour le nouveau fichier.
+Le fichier enregistré est un nouveau fichier qui a le mode et le groupe de l'ancien : un fichier privé reste `rw-------`,
+un script garde son droit d'être lancé, un fichier en lecture seule reste en lecture seule, et un fichier d'un groupe, comme
+`rw-rw----` pour une équipe, reste au groupe. Ses bits setuid et setgid (lancer avec les droits du propriétaire ou du
+groupe) ne passent pas, car le nouveau fichier est à vous, pas au propriétaire de l'ancien. Un groupe que le système ne vous
+laisse pas donner, comme un groupe dont vous n'êtes pas, est laissé : le texte va alors dans un autre nouveau fichier, qui a
+le groupe qu'un nouveau fichier reçoit dans ce dossier, comme le donnait chaque enregistrement avant que Cemacs garde le
+groupe, et l'enregistrement marche. Un fichier qui n'était pas là reçoit ce que le système donne à un nouveau fichier,
+`rw-rw-rw-` moins l'`umask` (le masque par lequel le système retire des droits à chaque nouveau fichier), tel que Linux le
+dit dans `/proc/self/status` ; `rw-------` là où il ne le dit pas. Un hard link (un second nom du même fichier) ne partage
+plus le texte. Le dossier doit vous permettre d'y écrire, pour le nouveau fichier.
 
 ### Un fichier changé par un autre programme
 

@@ -112,33 +112,40 @@ since another file may use the one just saved: see [Errors in the lines](check.m
 
 Saving is built so that no failure loses text, neither the text on disk nor the one in the buffer:
 
-1. The new text goes to a new file beside the old one, named `PATH.cemacs-` and the time in microseconds, with `-1`, `-2` and
-   so on up to `-20` when that name is taken, after which the save stops with `No free name next to PATH for a new file.`
-   The new file is the only one Cemacs ever removes. When PATH is a symbolic link, a file that only points to another one,
-   PATH here is the file it points to, its links followed one after the other, as Emacs's `file-truename` does: the link
-   stays a link, and the file it leads to gets the text.
-2. The new file is written with `sys.Write(..., sync = true, private = true)`, which makes it with `O_EXCL`, so that no file
-   or link put at its name first takes the text, and yours alone, `rw-------`, so that no one can open it while it holds
-   the text; and which gives its answer only once the system has put the file on the disk, and then its folder, with
-   `fsync`: the call that asks the system to write what it holds in its caches, so that a loss of power can't take it back.
-3. The new file gets the mode of the old one, its rights to read, write and run, then, once it is on the disk in full, a
-   rename puts it in place of the old file. On Linux, a rename within one file system, as here, is atomic: at every instant
-   the name leads to the whole old file or to the whole new one, never to a part of either.
+1. The new text goes to a new file beside the old one, in its folder, named `.#cemacs-` and 32 characters drawn anew,
+   [files.FreshName]. Where others than the folder's owner can make an entry in it, as in `/tmp` or a folder of a team,
+   they are those of the randomness of the kernel, read on Linux from `/proc/sys/kernel/random/uuid`, [files.Unguessable],
+   so that no one can know the name before the file is made and put a link there first for the text to go through. In a
+   folder that only its owner can write, they are those of `std/random`, and the kernel isn't read: only that owner could
+   put a link there, you, or another who owns the folder and could as well make your file itself a link, which a save
+   follows. The name is 41 bytes long, so a file of any name can be saved. The new file is the only one Cemacs ever
+   removes. When PATH is a symbolic link, a file that only points to
+   another one, PATH here is the file it points to, its links followed one after the other, as Emacs's `file-truename`
+   does: the link stays a link, and the file it leads to gets the text.
+2. The new file is written with `sys.Write(..., sync = true, mode = MODE, group = GROUP)`, the mode and the group of the old
+   file, which Cesia gives the file it opened before the text is in, so that the text is never in a file with other rights;
+   and which gives its answer only once the system has put the file on the disk, and then its folder, with `fsync`: the
+   call that asks the system to write what it holds in its caches, so that a loss of power can't take it back.
+3. Once it is on the disk in full, a rename puts it in place of the old file, with nothing done to it by its name in
+   between. On Linux, a rename within one file system, as here, is atomic: at every instant the name leads to the whole old
+   file or to the whole new one, never to a part of either.
 4. If writing or renaming fails, the new file is removed, the old one stays whole, the buffer keeps its text and its star,
    and the prompt line tells the reason, naming your file, not the new one.
 
 This protects the file from a failure of Cemacs, of the disk being full, of a permission, and of a loss of power: once the
 prompt line says `Saved`, the whole new text is on the disk, under the name of your file, or, if the power went in the
-instant of the rename before the system wrote the folder again, under the new file's name `PATH.cemacs-...` beside the old
+instant of the rename before the system wrote the folder again, under the new file's name `.#cemacs-...` beside the old
 file, which is then whole. Vim and Neovim do the same by default (their option `'fsync'`); GNU Emacs 31 doesn't, as its
 `write-region-inhibit-fsync` is on. The cost is the time the disk takes: [Speed](performance.md#paste-undo-and-save) has it.
 
-The saved file is a new one with the mode of the old one: a private file stays `rw-------`, a script keeps its right to run,
-a read-only file stays read-only. Its setuid and setgid bits don't pass, as the new file is yours, not the old one's
-owner's, and its group is the one a new file gets in that folder. A file that wasn't there gets what the system gives a new
-file, `rw-rw-rw-` less the `umask`, the mask by which the system takes rights away from every new file, as Linux tells it in
-`/proc/self/status`; `rw-------` where it doesn't. A hard link, a second name of the same file, no longer shares the text.
-The folder must let you write in it, for the new file.
+The saved file is a new one with the mode and the group of the old one: a private file stays `rw-------`, a script keeps
+its right to run, a read-only file stays read-only, and a file of a group, as `rw-rw----` for a team, stays the group's.
+Its setuid and setgid bits don't pass, as the new file is yours, not the old one's owner's. A group that the system
+doesn't let you give, as one you aren't in, is left: the text then goes to another new file, which has the group a new
+file gets in that folder, as every save gave before Cemacs kept the group, and the save works. A file that wasn't there
+gets what the system gives a new file, `rw-rw-rw-` less the `umask`, the mask by which the system takes rights away from
+every new file, as Linux tells it in `/proc/self/status`; `rw-------` where it doesn't. A hard link, a second name of the
+same file, no longer shares the text. The folder must let you write in it, for the new file.
 
 ### A file changed by another program
 

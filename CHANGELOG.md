@@ -118,3 +118,9 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   tokens at each word, and makes only the words of the screen, crossing the line before them by its comments and texts;
   the state at the end of a line of code no longer looks again from each text for a backslash it doesn't hold, 63 ms for
   a megabyte instead of 6.9 s.
+- A save gives the new file the mode and the group of the old one as soon as it is open, before the words are in, with
+  nothing done to it by its name before the rename, where it set the mode by the name after the words, and the group of a
+  file was lost: a file of a team, `rw-rw----`, stays the team's. A group the person can't give is left, and the save works
+  as before. The new file is `.#cemacs-` and 32 characters, as a copy's, those of the kernel's randomness where others can
+  write the folder, so that no one can put a link there first, and a file of a name of 250 bytes is saved too, where
+  `PATH.cemacs-` and a time was too long for the system.
