@@ -25,165 +25,313 @@ FirstState = {Comment: 0, Text: false}
 
 keywords = ["if", "else", "end", "for", "in", "while", "break", "return", "defn", "match", "struct", "and", "or", "not", "then", "use", "true", "false", "missing"]
 
-isDigit(c) = c >= "0" and c <= "9"
-isNameStart(c) = c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or str.ByteLength(c) > 1
-isName(c) = isNameStart(c) or isDigit(c)
-isSpace(c) = c == " " or c == "\t" or c == "\r"
+(* The lexer walks the bytes of a line, never its characters: a text for each character of a line of a megabyte took 0.2 s before the first token.
+   A character is a byte that continues none, 10xxxxxx in UTF-8, with the bytes that continue it, as value.Len and text.Chars count them in a text
+   that isn't UTF-8 too: so a byte followed by one that continues is a character of more than one byte, and those are all letters. The walks of names
+   and spaces test their bytes inline: a call for each byte made a long name a third slower. *)
 
-defn commentEnd(cs, from, n, depth)
-  (** Where a comment that holds depth openings ends: {At, Depth}, at being the first character after what was read. *)
+(** Does a byte continue a character, 10xxxxxx in UTF-8, instead of starting one? *)
+continues(v) = v >= 128 and v < 192
+
+(** Is the character at byte i of a text of n bytes one byte alone: the byte after it, if any, starts a character? *)
+alone(i, words, n) = i >= n or not continues(str.Byte(i + 1, words))
+
+(** Is the character at byte i a digit? One of more than one byte counts too when its first byte is 0 to 8: that is how a text compares with "9". *)
+isDigitAt(i, words, n) = i <= n and str.Byte(i, words) >= 48 and (str.Byte(i, words) <= 56 or (str.Byte(i, words) == 57 and alone(i, words, n)))
+
+defn isNameStartAt(i, words, n)
+  (** Does a name start with the character at byte i: a letter of ASCII, an underscore, or any character of more than one byte? *)
+  v = str.Byte(i, words)
+  v == 95 or (v >= 97 and v <= 122) or (v >= 65 and v <= 90) or not alone(i, words, n)
+end
+
+defn found(part, from, words, n)
+  (** The first byte from from on where part starts, part being one or two characters of one byte each, and the byte after it continuing none:
+      else it is the start of a longer character, not part. Missing if there is none. *)
+  size = str.ByteLength(part)
+  at = str.ByteFind(part, from, words)
+  while not value.IsMissing(at) and at + size <= n and continues(str.Byte(at + size, words))
+    at = str.ByteFind(part, at + 1, words)
+  end
+  at
+end
+
+(** Does at, where a mark was found from an earlier byte, still answer from byte from on: missing, there was none and there is none; a place still
+    ahead is the first. 0 is a mark not looked for yet. Each search of a line goes on from where the last one stopped, so its marks cost its bytes once,
+    where a search from each text to the end of a line with no backslash cost the line once a text. *)
+kept(at, from) = value.IsMissing(at) or (at != 0 and at >= from)
+
+(** The first place of part from byte from on, as found gives it, knowing at, the place found before. *)
+seek(part, at, from, words, n) = if kept(at, from) at else found(part, from, words, n) end
+
+(** The earlier of two byte positions, either of which may be missing. *)
+earlier(a, b) = if value.IsMissing(a) b else if value.IsMissing(b) a else list.Min(a, b) end
+
+(** No mark looked for yet in a line, for commentEnd and textEnd. *)
+noMarks() = {Open: 0, Close: 0, Quote: 0, Slash: 0}
+
+defn commentEnd(words, from, n, depth, marks)
+  (** Where a comment that holds depth openings ends: {At, Depth, Marks}, at being the first byte after what was read. The next opening and closing
+      are each found natively, and the places found are kept in marks for the rest of the line. *)
   i = from
+  m = marks
   while i <= n and depth > 0
-    if cs[i] == "(" and cs[i + 1] == "*"
+    m.Open = seek("(*", m.Open, i, words, n)
+    m.Close = seek("*)", m.Close, i, words, n)
+    next = earlier(m.Open, m.Close)
+    if value.IsMissing(next)
+      i = n + 1
+    else if next == m.Open
       depth += 1
-      i += 2
-    else if cs[i] == "*" and cs[i + 1] == ")"
+      i = m.Open + 2
+    else
       depth -= 1
-      i += 2
-    else
-      i += 1
+      i = m.Close + 2
     end
   end
-  {At: list.Min(i, n + 1), Depth: depth}
+  {At: list.Min(i, n + 1), Depth: depth, Marks: m}
 end
 
-defn textEnd(cs, from, n)
-  (** Where a text that is open ends: {At, Open}, at being the first character after what was read. Escapes take two characters. *)
+defn textEnd(words, from, n, marks)
+  (** Where a text that is open ends: {At, Open, Marks}, at being the first byte after what was read. A backslash takes the character after it, and a
+      doubled quote stays in the text; the next quote and backslash are each found natively, and the places found are kept in marks for the rest of
+      the line. *)
   i = from
-  closed = false
-  while i <= n and not closed
-    c = cs[i]
-    if c == "\\" or (c == "\"" and cs[i + 1] == "\"") or (c == "$" and cs[i + 1] == "$")
-      i += 2
-    else if c == "\""
-      closed = true
-      i += 1
+  m = marks
+  while i <= n
+    m.Quote = seek("\"", m.Quote, i, words, n)
+    m.Slash = seek("\\", m.Slash, i, words, n)
+    if value.IsMissing(m.Quote) and value.IsMissing(m.Slash)
+      return {At: n + 1, Open: true, Marks: m}
+    end
+    if not value.IsMissing(m.Slash) and (value.IsMissing(m.Quote) or m.Slash < m.Quote)
+      i = m.Slash + 2
+      while i <= n and continues(str.Byte(i, words))
+        i += 1
+      end
+    else if m.Quote < n and str.Byte(m.Quote + 1, words) == 34 and alone(m.Quote + 1, words, n)
+      i = m.Quote + 2
     else
-      i += 1
+      return {At: m.Quote + 1, Open: false, Marks: m}
     end
   end
-  {At: list.Min(i, n + 1), Open: not closed}
+  {At: n + 1, Open: true, Marks: m}
 end
 
-defn numberEnd(cs, from, n)
+defn nameEnd(words, from, n)
+  (** The first byte after the letters, digits and underscores from from on, a character of more than one byte being a letter. *)
+  i = from
+  while i <= n
+    v = str.Byte(i, words)
+    if (v >= 97 and v <= 122) or (v >= 65 and v <= 90) or (v >= 48 and v <= 57) or v == 95 or (v >= 128 and v < 192)
+      i += 1
+    else if i < n and continues(str.Byte(i + 1, words))
+      i += 2
+    else
+      return i
+    end
+  end
+  i
+end
+
+defn numberEnd(words, from, n)
   (** The end of a number, which may hold letters, digits, underscores and dots followed by a digit. *)
-  i = from + 1
-  while i <= n and (isName(cs[i]) or (cs[i] == "." and isDigit(cs[i + 1])))
-    i += 1
+  i = nameEnd(words, from, n)
+  while i < n and str.Byte(i, words) == 46 and isDigitAt(i + 1, words, n)
+    i = nameEnd(words, i + 1, n)
   end
   i
 end
 
-defn nameEnd(cs, from, n)
-  i = from + 1
-  while i <= n and isName(cs[i])
-    i += 1
+defn spaceEnd(words, from, n)
+  (** The first byte after the spaces, tabs and carriage returns from from on: one followed by a byte that continues is a longer character. *)
+  i = from
+  while i <= n
+    v = str.Byte(i, words)
+    if (v == 32 or v == 9 or v == 13) and (i == n or not continues(str.Byte(i + 1, words)))
+      i += 1
+    else
+      return i
+    end
   end
   i
 end
 
-defn spaceEnd(cs, from, n)
-  i = from + 1
-  while i <= n and isSpace(cs[i])
-    i += 1
-  end
-  i
-end
-
-defn solidBefore(cs, from)
-  (** The last character before from that is no space, or "" at the start of the line. *)
-  i = from - 1
-  while i > 1 and isSpace(cs[i])
+defn isBlock(words, start, stop, n)
+  (** Is the name do from start to stop a keyword: right after the ) of a call, before a name or the line end, it starts a block. *)
+  i = start - 1
+  while i >= 1 and (str.Byte(i, words) == 32 or str.Byte(i, words) == 9 or str.Byte(i, words) == 13)
     i -= 1
   end
-  cs[i]
+  after = spaceEnd(words, stop, n)
+  i >= 1 and str.Byte(i, words) == 41 and (after > n or isNameStartAt(after, words, n))
 end
 
-defn solidAfter(cs, from, n)
-  (** The first character from from on that is no space, or "" at the end of the line. *)
-  i = from
-  while i <= n and isSpace(cs[i])
-    i += 1
+defn nameRole(words, start, stop, n)
+  (** The role of the name from byte start to the byte before stop, from the character before it and the one after it. *)
+  if start > 1 and str.Byte(start - 1, words) == 46
+    return Field
   end
-  if i <= n cs[i] else "" end
-end
-
-defn nameRole(word, before, after)
-  (** The role of a name, from the character before it and the one after it. *)
-  if before == "."
-    Field
-  else if word in keywords or word == "_"
+  word = str.ByteSlice(start, stop - 1, words)
+  if word in keywords or word == "_" or (word == "do" and isBlock(words, start, stop, n))
     Keyword
-  else if after == "("
+  else if stop <= n and str.Byte(stop, words) == 40 and alone(stop, words, n)
     Name
   else
     Plain
   end
 end
 
-defn add(role, words, out)
-  (** Adds a word to the tokens. Two plain words in a row make one. *)
-  last = value.Len(out)
-  if role == Plain and last > 0 and out[last][1] == Plain
-    list.Concat(list.Take(last - 1, out), [[Plain, "$(out[last][2])$(words)"]])
-  else
-    list.Append([role, words], out)
+defn synced(words, start, from, n)
+  (** The last byte from start to from where a reading of code from start starts a word: just after a character that is always a word of its own,
+      one byte of ASCII that is no letter, digit, underscore, space, tab, carriage return or dot, and that no byte continues. Between start and from
+      there is no quote and no opening of a comment, so no word crosses such a character. Looked for back from from, 4,096 bytes at most: start if
+      there is none, as in a name of a megabyte. *)
+  j = from - 1
+  stop = list.Max(start, from - 4096)
+  while j >= stop
+    v = str.Byte(j, words)
+    if v < 128 and not ((v >= 97 and v <= 122) or (v >= 65 and v <= 90) or (v >= 48 and v <= 57) or v == 95 or v == 32 or v == 9 or v == 13 or v == 46) and (j == n or not continues(str.Byte(j + 1, words)))
+      return j + 1
+    end
+    j -= 1
   end
+  start
 end
 
-defn Tokens(line, state)
-  (** Reads one line given the state at its start: the words with their roles, in order and with every character, and the state at its end.
-
-        Tokens("defn f", FirstState).Tokens[1] --> [1, "defn"] *)
-  (* cs holds an empty text before and two after the characters, so that looking around never leaves the list. *)
-  cs = list.Concat([""], list.Concat(str.Chars(line), ["", ""]))
-  n = value.Len(cs) - 2
-  out = []
+defn resumeAt(words, state, from, n)
+  (** Where Tokens can start to read a line, with the state there, {At, Comment, Text}, and still make from byte from on the words that a reading from
+      the start makes. The comments and texts before from are crossed from mark to mark, each found natively, and the code between them is not read:
+      in code, only a quote or the opening of a comment changes the state, and each starts a word. A comment or a text that reaches from is read from
+      its start; code, from the place synced finds. *)
   depth = state.Comment
   inText = state.Text
-  i = 2
-  while i <= n
-    start = i
+  marks = noMarks()
+  i = 1
+  while i < from
     if depth > 0
-      r = commentEnd(cs, i, n, depth)
+      r = commentEnd(words, i, n, depth, marks)
+      if r.At > from
+        return {At: i, Comment: depth, Text: inText}
+      end
       depth = r.Depth
       i = r.At
-      out = add(Comment, str.Join("", cs[start..i - 1]), out)
+      marks = r.Marks
     else if inText
-      r = textEnd(cs, i, n)
+      r = textEnd(words, i, n, marks)
+      if r.At > from
+        return {At: i, Comment: 0, Text: true}
+      end
       inText = r.Open
       i = r.At
-      out = add(String, str.Join("", cs[start..i - 1]), out)
+      marks = r.Marks
     else
-      c = cs[i]
-      if c == "(" and cs[i + 1] == "*"
-        r = commentEnd(cs, i + 2, n, 1)
-        depth = r.Depth
-        i = r.At
-        out = add(Comment, str.Join("", cs[start..i - 1]), out)
-      else if c == "\""
-        r = textEnd(cs, i + 1, n)
+      marks.Quote = seek("\"", marks.Quote, i, words, n)
+      marks.Open = seek("(*", marks.Open, i, words, n)
+      next = earlier(marks.Quote, marks.Open)
+      if value.IsMissing(next) or next >= from
+        return {At: synced(words, i, from, n), Comment: 0, Text: false}
+      end
+      if next == marks.Quote
+        r = textEnd(words, next + 1, n, marks)
+        if r.At > from
+          return {At: next, Comment: 0, Text: false}
+        end
         inText = r.Open
         i = r.At
-        out = add(String, str.Join("", cs[start..i - 1]), out)
-      else if isDigit(c)
-        i = numberEnd(cs, i, n)
-        out = add(Number, str.Join("", cs[start..i - 1]), out)
-      else if isNameStart(c)
-        i = nameEnd(cs, i, n)
-        word = str.Join("", cs[start..i - 1])
-        (* do starts a block right after the ) of a call, before a name or the line end: elsewhere it is a name. *)
-        next = if word == "do" solidAfter(cs, i, n) else "" end
-        block = word == "do" and solidBefore(cs, start) == ")" and (next == "" or isNameStart(next))
-        out = add(if block Keyword else nameRole(word, cs[start - 1], cs[i]) end, word, out)
-      else if isSpace(c)
-        i = spaceEnd(cs, i, n)
-        out = add(Plain, str.Join("", cs[start..i - 1]), out)
+        marks = r.Marks
       else
-        i += 1
-        out = add(Plain, c, out)
+        r = commentEnd(words, next + 2, n, 1, marks)
+        if r.At > from
+          return {At: next, Comment: 0, Text: false}
+        end
+        depth = r.Depth
+        i = r.At
+        marks = r.Marks
       end
     end
+  end
+  {At: i, Comment: depth, Text: inText}
+end
+
+defn Tokens(line, state, from = 1)
+  (** Reads one line given the state at its start: the words with their roles, in order and with every character, and the state at its end. Two
+      plain words in a row make one. With from, the byte where a character starts, only the words from there on are made, the one that starts before
+      it cut there: a screen that shows the end of a long line makes only the words it shows, and the line before them is crossed by its comments and
+      texts only. The line is walked a byte at a time, the inside of a comment or a text from mark to mark, each found natively, so a line of a
+      megabyte costs its bytes once at most.
+
+        Tokens("defn f", FirstState).Tokens[1] --> [1, "defn"]
+        Tokens("defn f", FirstState, from = 3).Tokens --> [[1, "fn"], [6, " f"]] *)
+  n = str.ByteLength(line)
+  first = list.Max(1, list.Min(from, n + 1))
+  out = []
+  marks = noMarks()
+  plain = 0
+  (* From a byte past the start, the reading starts where resumeAt says: the words before it are not made, and most of the line is not read. *)
+  at = if first > 1 resumeAt(line, state, first, n) else {At: 1, Comment: state.Comment, Text: state.Text} end
+  depth = at.Comment
+  inText = at.Text
+  i = at.At
+  while i <= n
+    start = i
+    role = Plain
+    if depth > 0
+      r = commentEnd(line, i, n, depth, marks)
+      depth = r.Depth
+      i = r.At
+      marks = r.Marks
+      role = Comment
+    else if inText
+      r = textEnd(line, i, n, marks)
+      inText = r.Open
+      i = r.At
+      marks = r.Marks
+      role = String
+    else
+      (* The byte of the character and the one after it tell what starts here; one that continues makes the character longer, and a letter. *)
+      v = str.Byte(i, line)
+      w = if i < n str.Byte(i + 1, line) else 0 end
+      one = w < 128 or w >= 192
+      if v == 40 and w == 42 and (i + 2 > n or not continues(str.Byte(i + 2, line)))
+        r = commentEnd(line, i + 2, n, 1, marks)
+        depth = r.Depth
+        i = r.At
+        marks = r.Marks
+        role = Comment
+      else if v == 34 and one
+        r = textEnd(line, i + 1, n, marks)
+        inText = r.Open
+        i = r.At
+        marks = r.Marks
+        role = String
+      else if v >= 48 and (v <= 56 or (v == 57 and one))
+        i = numberEnd(line, i + 1, n)
+        role = Number
+      else if (v >= 97 and v <= 122) or (v >= 65 and v <= 90) or v == 95 or not one
+        i = nameEnd(line, i + 1, n)
+        role = nameRole(line, start, i, n)
+      else if v == 32 or v == 9 or v == 13
+        i = spaceEnd(line, i + 1, n)
+      else
+        i += 1
+      end
+    end
+    (* Plain words are kept as the byte where they start, and sliced once a word of another role or the end of the line comes. *)
+    if role == Plain
+      plain = if plain == 0 start else plain end
+    else
+      if plain > 0 and start > first
+        out = list.Append([Plain, str.ByteSlice(list.Max(plain, first), start - 1, line)], out)
+      end
+      plain = 0
+      if i > first
+        out = list.Append([role, str.ByteSlice(list.Max(start, first), i - 1, line)], out)
+      end
+    end
+  end
+  if plain > 0 and n >= first
+    out = list.Append([Plain, str.ByteSlice(list.Max(plain, first), n, line)], out)
   end
   {Tokens: out, State: {Comment: depth, Text: inText}}
 end
@@ -238,9 +386,6 @@ mayChange(words) = str.Contains("\"", words) or str.Contains("(*", words) or str
 charBytes(at, words) = if at > str.ByteLength(words) 1 else bytesOfLead(str.Byte(at, words)) end
 bytesOfLead(b) = if b < 0xC0 1 else if b < 0xE0 2 else if b < 0xF0 3 else 4 end
 
-(** The earlier of two byte positions, either of which may be missing. *)
-earlier(a, b) = if value.IsMissing(a) b else if value.IsMissing(b) a else list.Min(a, b) end
-
 defn StateAfter(words, state)
   (** The state at the end of a line, given the one at its start: the one that Tokens gives, without making the tokens. A line with no quote and no
       comment mark leaves it as it is. Else the line is read from mark to mark, each found natively: in a comment, the next opening or closing of one,
@@ -256,10 +401,15 @@ defn StateAfter(words, state)
   inText = state.Text
   i = 1
   n = str.ByteLength(words)
+  (* The places found are kept while they are ahead, so that each mark is looked for once: see kept. *)
+  open = 0
+  close = 0
+  quote = 0
+  slash = 0
   while i <= n
     if depth > 0
-      open = str.ByteFind("(*", i, words)
-      close = str.ByteFind("*)", i, words)
+      open = if kept(open, i) open else str.ByteFind("(*", i, words) end
+      close = if kept(close, i) close else str.ByteFind("*)", i, words) end
       next = earlier(open, close)
       if value.IsMissing(next)
         i = n + 1
@@ -271,8 +421,8 @@ defn StateAfter(words, state)
         i = close + 2
       end
     else if inText
-      quote = str.ByteFind("\"", i, words)
-      slash = str.ByteFind("\\", i, words)
+      quote = if kept(quote, i) quote else str.ByteFind("\"", i, words) end
+      slash = if kept(slash, i) slash else str.ByteFind("\\", i, words) end
       if value.IsMissing(quote)
         i = n + 1
       else if not value.IsMissing(slash) and slash < quote
@@ -284,8 +434,8 @@ defn StateAfter(words, state)
         i = quote + 1
       end
     else
-      quote = str.ByteFind("\"", i, words)
-      open = str.ByteFind("(*", i, words)
+      quote = if kept(quote, i) quote else str.ByteFind("\"", i, words) end
+      open = if kept(open, i) open else str.ByteFind("(*", i, words) end
       next = earlier(quote, open)
       if value.IsMissing(next)
         i = n + 1

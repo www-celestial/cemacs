@@ -96,3 +96,158 @@ defn isStateAfterAsTokens()
   end
   true
 end
+
+(* Tokens walks the bytes of a line: here it is read a character at a time, as it was written before, and the two must give the same words, roles and
+   states on any line, bytes that are no UTF-8 too, as a file can hold. Each character is a text, cs holds an empty one before them and two after. *)
+charDigit(c) = c >= "0" and c <= "9"
+charNameStart(c) = c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or str.ByteLength(c) > 1
+charName(c) = charNameStart(c) or charDigit(c)
+charSpace(c) = c == " " or c == "\t" or c == "\r"
+defn charCommentEnd(cs, from, n, depth)
+  i = from
+  while i <= n and depth > 0
+    if cs[i] == "(" and cs[i + 1] == "*"
+      depth += 1
+      i += 2
+    else if cs[i] == "*" and cs[i + 1] == ")"
+      depth -= 1
+      i += 2
+    else
+      i += 1
+    end
+  end
+  {At: list.Min(i, n + 1), Depth: depth}
+end
+defn charTextEnd(cs, from, n)
+  i = from
+  closed = false
+  while i <= n and not closed
+    c = cs[i]
+    if c == "\\" or (c == "\"" and cs[i + 1] == "\"") or (c == "$" and cs[i + 1] == "$")
+      i += 2
+    else
+      closed = c == "\""
+      i += 1
+    end
+  end
+  {At: list.Min(i, n + 1), Open: not closed}
+end
+defn charWhile(holds, cs, from, n)
+  i = from
+  while i <= n and holds(cs, i)
+    i += 1
+  end
+  i
+end
+defn charSolidBefore(cs, from)
+  i = from - 1
+  while i > 1 and charSpace(cs[i])
+    i -= 1
+  end
+  cs[i]
+end
+defn charAdd(role, words, out)
+  last = value.Len(out)
+  if role == color.Plain and last > 0 and out[last][1] == color.Plain
+    list.Concat(list.Take(last - 1, out), [[color.Plain, "$(out[last][2])$(words)"]])
+  else
+    list.Append([role, words], out)
+  end
+end
+defn charTokens(line, state)
+  (** The tokens of a line read a character at a time. *)
+  cs = list.Concat([""], list.Concat(str.Chars(line), ["", ""]))
+  n = value.Len(cs) - 2
+  out = []
+  depth = state.Comment
+  inText = state.Text
+  i = 2
+  while i <= n
+    start = i
+    c = cs[i]
+    role = color.Plain
+    if depth > 0 or (not inText and c == "(" and cs[i + 1] == "*")
+      r = charCommentEnd(cs, if depth > 0 i else i + 2 end, n, if depth > 0 depth else 1 end)
+      depth = r.Depth
+      i = r.At
+      role = color.Comment
+    else if inText or c == "\""
+      r = charTextEnd(cs, if inText i else i + 1 end, n)
+      inText = r.Open
+      i = r.At
+      role = color.String
+    else if charDigit(c)
+      i = charWhile((xs, k) -> charName(xs[k]) or (xs[k] == "." and charDigit(xs[k + 1])), cs, i + 1, n)
+      role = color.Number
+    else if charNameStart(c)
+      i = charWhile((xs, k) -> charName(xs[k]), cs, i + 1, n)
+      word = str.Join("", cs[start..i - 1])
+      next = cs[charWhile((xs, k) -> charSpace(xs[k]), cs, i, n)]
+      if word == "do" and charSolidBefore(cs, start) == ")" and (next == "" or charNameStart(next))
+        role = color.Keyword
+      else if cs[start - 1] == "."
+        role = color.Field
+      else if word in ["if", "else", "end", "for", "in", "while", "break", "return", "defn", "match", "struct", "and", "or", "not", "then", "use", "true", "false", "missing", "_"]
+        role = color.Keyword
+      else if cs[i] == "("
+        role = color.Name
+      end
+    else if charSpace(c)
+      i = charWhile((xs, k) -> charSpace(xs[k]), cs, i + 1, n)
+    else
+      i += 1
+    end
+    out = charAdd(role, str.Join("", cs[start..i - 1]), out)
+  end
+  {Tokens: out, State: {Comment: depth, Text: inText}}
+end
+
+(* The pieces of the lines: the marks of comments and texts, escapes, names, numbers and do, characters of one to four bytes, and bytes that are no
+   UTF-8: one that continues alone, one that starts a character and is not followed, a character cut short, a byte that never is UTF-8. *)
+pieces = ["(*", "*)", "(", ")", "*", "\"", "\"\"", "\\", "$$", ".", "1", "9", "0x1F", "2.5", " ", "\t", "\r", "a", "Z", "_", "do", "end", "f(", "é",
+  "€", "😀", str.FromBytes([128]), str.FromBytes([191]), str.FromBytes([195]), str.FromBytes([226, 130]), str.FromBytes([255])]
+lineCase = gen.Of({Words: gen.Map(ps -> str.Join("", ps), gen.List(gen.Pick(pieces), max = 40)), Start: gen.Pick(starts), Column: gen.Int(0, 60)})
+isTokensAsCharacters() = test.ForAll(p -> value.Equal(color.Tokens(p.Words, p.Start), charTokens(p.Words, p.Start)), lineCase, cases = 2000)
+
+defn cutFrom(from, tokens)
+  (** The tokens from byte from on, the one that starts before it cut there, as a screen that starts at that byte shows them. *)
+  out = []
+  at = 1
+  for t in tokens
+    stop = at + str.ByteLength(t[2])
+    if stop > from
+      out = list.Append([t[1], str.ByteSlice(list.Max(at, from) - at + 1, stop - at, t[2])], out)
+    end
+    at = stop
+  end
+  out
+end
+
+defn isFromAsCut(p)
+  (** Tokens from the byte where a column starts gives the words of the whole line from there, and the same state at the end. *)
+  column = list.Min(p.Column, value.Len(p.Words))
+  from = str.ByteLength(str.Slice(1, column, p.Words)) + 1
+  whole = color.Tokens(p.Words, p.Start)
+  part = color.Tokens(p.Words, p.Start, from = from)
+  value.Equal(part.Tokens, cutFrom(from, whole.Tokens)) and value.Equal(part.State, whole.State)
+end
+isTokensFromAsCut() = test.ForAll(isFromAsCut, lineCase, cases = 2000)
+
+(* Long lines, where the reading from a byte skips most of the line: code, a name of 5,000 letters, more than synced looks back over, and a comment and a
+   text that reach the screen from far before it. *)
+longLines = ["$(str.Repeat(5000, "a")) b(c)", str.Repeat(300, "f(a, \"b c\", 12) + x.y (* z *) "), "(* $(str.Repeat(2000, "a (* b *) ")) *) do",
+  "\"$(str.Repeat(2000, "a\\\"b\"\"")) \" end", str.Repeat(400, "x.do 1.5.5 9é ) do y")]
+defn isLongFromAsCut()
+  for w in longLines
+    for s in starts
+      for c in [0, 1, 4999, 5000, 5003, 6000, 9000, 20000]
+        if not isFromAsCut({Words: w, Start: s, Column: c})
+          return false
+        end
+      end
+    end
+  end
+  true
+end
+isFromOutsideTheLine() = value.Equal(color.Tokens("ab c", color.FirstState, from = 9).Tokens, []) and value.Equal(color.Tokens("ab c", color.FirstState, from = 0), color.Tokens("ab c", color.FirstState)) and
+  color.Tokens("(* a", color.FirstState, from = 9).State.Comment == 1

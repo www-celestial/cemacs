@@ -294,6 +294,51 @@ the gate without its drawing, and the two Cemacs lines differ by less than their
 thirds of Cemacs's, and its worst key ten times Cemacs's worst; Vim and Neovim, which change one line of their memline and
 write a few cells of the terminal, stay 30 times faster.
 
+### A key on a very long line
+
+A key on a line of 100 KB and of a megabyte in a file of Cesia, after its first character, at its middle and at its end:
+`press.Press` of the key, which follows the screen, then `view.View`, from the same state each time, in a window of 800 by
+600, 90 columns; $n = 21$, this version and the version before, `main` at 48311e8, taking turns. `hello` is five letters
+typed. The line is one word, `a` repeated and then ` b`, as a data URI is, or code, `f(a, "b c", 12) + x.y (* z *) `
+repeated, as a minified file is. The version before could take the line of code once, at 100 KB only: a key at its end took
+21 s there, and the time grows with the square of the line. Medians in milliseconds, before → now; the slowest of the 21 runs
+is within 1.2 times the median, but for a few runs of up to 1.6 times:
+
+| Line, place | `C-e` | `x` | backspace | `hello` |
+|---|---|---|---|---|
+| one word of 100 KB, start | 41.3 → 9.3 | 113 → 3.2 | 2.8 → 1.1 | 571 → 12.3 |
+| one word of 100 KB, middle | 41.1 → 8.6 | 22.7 → 7.1 | 21.7 → 5.4 | 111 → 31.4 |
+| one word of 100 KB, end | 1.0 → 0.5 | 43.7 → 10.2 | 43.3 → 11.2 | 216 → 50.7 |
+| one word of 1 MB, start | 490 → 81.8 | 1,344 → 19.6 | 11.2 → 12.0 | 6,853 → 89.6 |
+| one word of 1 MB, middle | 499 → 79.6 | 247 → 55.0 | 245 → 53.1 | 1,186 → 260 |
+| one word of 1 MB, end | 10.9 → 6.4 | 478 → 88.6 | 477 → 89.5 | 2,394 → 427 |
+| code of 100 KB, start | 22,302 → 18.1 | 143 → 10.1 | 75.2 → 9.3 | 644 → 46.8 |
+| code of 100 KB, middle | 21,124 → 21.7 | 5,196 → 18.9 | 5,163 → 19.2 | 26,164 → 88.6 |
+| code of 100 KB, end | 3.8 → 0.6 | 20,934 → 26.2 | 21,501 → 25.6 | 107,533 → 128 |
+| code of 1 MB, start | 167 | 84.3 | 77.1 | 410 |
+| code of 1 MB, middle | 167 | 163 | 160 | 797 |
+| code of 1 MB, end | 6.3 | 238 | 239 | 1,197 |
+
+The backspace at the start of a line of a megabyte took 12.3, 13.1 and 12.3 ms before and 11.8, 12.5 and 12.0 now in three
+more series of 41 runs: the same. What changed, in [Inside Cemacs](internals.md#the-colours):
+
+- The lexer made a text of each character of the line, 0.2 s for a megabyte before the first token, and joined each plain word
+  to the one before it by a copy of the list of tokens and of the words: a line of code cost the square of its words. It walks
+  the bytes now, and slices a run of plain words once.
+- The screen makes the tokens of its own columns only, from the byte where the first one starts: the line before is crossed by
+  its comments and texts, each found natively, and its code is not read. At the end of the megabyte of code, the 64,500
+  comments and texts before the screen take 147 ms; the state at the end of the line, for the lines under it, 63 ms; the rest
+  is the key and its frame. A word of a megabyte is walked a byte at a time, 65 ms: a call of [text.Byte] costs 56 ns, the
+  floor of a walk by bytes in Cesia.
+- The state at the end of a line, [color.StateAfter], looked again from each text for a backslash a line of code didn't have,
+  reading the rest of the line each time: 6.9 s for the megabyte of code, 63 ms now.
+- A letter typed at the start of a line split the whole line into characters, to know whether its first word moves it: it
+  reads the start of the line now, 1,344 ms → 19.6 ms on the line of a megabyte.
+
+On a file of usual lines nothing is slower: the tokens of the 1,065 lines of `core/view/view.ce` take 11.1 and 11.5 ms
+instead of 28.7 and 29.3, a key at its line 500 with its view 0.5 to 2.9 ms in both versions, and at line 19,000 of the text
+of the gate, a typed key with its view 1.55 ms in both (three series of 301), a scrolled line 2.2 ms instead of 2.9.
+
 ### Enter and Tab in a file of Cesia
 
 One key in a file of Cesia, without drawing: [commands.Update] of the key, which runs its command and [view.FollowState]
@@ -614,6 +659,9 @@ then takes SDL's renderer, as in [Typing and scrolling](#typing-and-scrolling).
 - SDL keeps at most 8,192 shaped texts; past that, it forgets them all and shapes again what the next frames draw.
 - A Cesia buffer over 1,000,000 bytes is not checked: see [Errors in the lines](check.md#when-it-runs).
 - One check runs at a time, for one buffer.
-- A key at the far end of a line of a megabyte takes about half a second: the colours of a line are read from its start to
-  the right edge of the screen, as a comment or a text opened before changes them. At its start, a key takes what it takes
-  on a short line, under 20 ms with the frame, and `M-f` crosses a word of 32,000 letters in 25 ms instead of 36 s.
+- A key at the far end of a line of a megabyte takes 0.09 s when the line is one word and 0.24 s when it is code: the
+  colours of a line are read from its start to the screen, as a comment or a text opened before changes them, by its comments
+  and texts, and a long word a byte at a time; see [A key on a very long line](#a-key-on-a-very-long-line). At its start, a
+  key takes what it takes on a short line, under 20 ms with the frame, and `M-f` crosses a word of 32,000 letters in 25 ms
+  instead of 36 s. Enter and Tab on such a line of a file of Cesia take 0.8 to 1.5 s and 0.2 to 0.6 s: the indent reads the
+  line by its characters.

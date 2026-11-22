@@ -176,7 +176,7 @@ defn Follow(rows, columns, margin, b)
   end
   out.Colors = coloredTo(lastLine, b)
   out.Guess = if out.Colors.Known >= lastLine missing else guessed(top, lastLine, out) end
-  out.Screen = screenOf(top, list.Min(rope.LineCount(b.Rope), top + seenRows - 1), left + seenColumns, out)
+  out.Screen = screenOf(top, list.Min(rope.LineCount(b.Rope), top + seenRows - 1), left, left + seenColumns, out)
   out
 end
 
@@ -210,10 +210,11 @@ defn Colouring(state)
   list.Any([not value.IsMissing(guessOf(shownIn(j, state))) for j in 1..n])
 end
 
-defn screenOf(first, last, width, b)
-  (** The tokens of the lines from first to last, kept by the text of each line: {Width, State, Tokens}, the tokens of the line cut to width characters
-      from the state at its start. A line whose text, width and state are the same as at the frame before keeps its tokens, as Elm's Html.Lazy keeps a
-      view whose arguments are the same: a typed key reads the colors of one line, a scrolled line those of the line that comes in. *)
+defn screenOf(first, last, left, width, b)
+  (** The tokens of the lines from first to last, kept by the text of each line: {Width, Left, State, Tokens}, the tokens of the line cut to width
+      characters from the state at its start, from column left on. A line whose text, width, left and state are the same as at the frame before keeps its
+      tokens, as Elm's Html.Lazy keeps a view whose arguments are the same: a typed key reads the colors of one line, a scrolled line those of the line
+      that comes in. *)
   kept = keptRows(b)
   out = dict.Dict()
   if last < first
@@ -221,7 +222,7 @@ defn screenOf(first, last, width, b)
   end
   fulls = screenLines(first, last, b)
   for k in 1..value.Len(fulls)
-    out = dict.Put(fulls[k], tokensOf(fulls[k], width, stateAt(first + k - 1, b), kept), out)
+    out = dict.Put(fulls[k], tokensOf(fulls[k], left, width, stateAt(first + k - 1, b), kept), out)
   end
   out
 end
@@ -240,13 +241,17 @@ screenLines(first, last, b) = str.Split("\n", rope.Slice(rope.LineStart(first, b
     of an eval are all cut so. *)
 cutTo(width, full) = if value.Len(full) > width str.Slice(1, width, full) else full end
 
-defn tokensOf(full, width, state, kept)
-  (** The row of a line of this text, cut to width characters, from this state: the one kept if it was made for the same, else read now. *)
+defn tokensOf(full, left, width, state, kept)
+  (** The row of a line of this text, cut to width characters, from this state, its tokens from column left on: the one kept if it was made for the
+      same, else read now. Only the tokens the screen shows are made: at the end of a long line, those of its last columns, from the byte where column
+      left starts. A row from before Left has none, and is read again. *)
   old = dict.Get(full, kept)
-  if not value.IsMissing(old) and old.Width == width and old.State == state
+  if not value.IsMissing(old) and old.Width == width and dict.GetOr("Left", -1, old) == left and old.State == state
     old
   else
-    {Width: width, State: state, Tokens: color.Tokens(cutTo(width, full), state).Tokens}
+    words = cutTo(width, full)
+    from = if left >= value.Len(words) str.ByteLength(words) + 1 else str.ByteLength(str.Slice(1, left, words)) + 1 end
+    {Width: width, Left: left, State: state, Tokens: color.Tokens(words, state, from = from).Tokens}
   end
 end
 
@@ -293,10 +298,11 @@ inside(font, x, y, words, paint) = {Kind: "text", X: x, Y: y, Text: words, Color
 rectCommand(x, y, w, h, paint) = {Kind: "rect", X: x, Y: y, Width: list.Max(0, w), Height: list.Max(0, h), Color: paint}
 box(x, y, w, h, paint, radius) = {Kind: "box", X: x, Y: y, Width: list.Max(0, w), Height: list.Max(0, h), Color: paint, Radius: radius}
 
-defn visible(tokens, left)
-  (** The tokens [role, text] of a line that are in the columns from left on, as [role, text, column], cutting the first one that straddles left. *)
+defn visible(tokens, first, left)
+  (** The tokens [role, text] of a line, the first at column first, that are in the columns from left on, as [role, text, column], cutting the first one
+      that straddles left. *)
   out = []
-  column = 0
+  column = first
   for token in tokens
     size = value.Len(token[2])
     if column + size > left
@@ -338,12 +344,13 @@ defn line(b, n, full, y, columns, rect, look)
   th = look.Theme
   cw = look.Width("M", "code")
   width = b.Left + columns
-  tokens = if lists.IsList(b) rowTokens(lists.PartsAt(n, b), cutTo(width, full)) else tokensOf(full, width, stateAt(n, b), keptRows(b)).Tokens end
+  (* The tokens of a row of a list start at column 0; those of code at the left of the screen, where tokensOf starts them. *)
+  tokens = if lists.IsList(b) rowTokens(lists.PartsAt(n, b), cutTo(width, full)) else tokensOf(full, b.Left, width, stateAt(n, b), keptRows(b)).Tokens end
   x0 = rect.X + Gutter
   here = marksAt(n, b)
   numbered = inside("code", rect.X + Gutter - 16 - value.Len("$n") * cw, y, "$n", if value.Len(here) > 0 markColor(here[1]) else th.Faint end)
   out = [numbered]
-  for token in visible(tokens, b.Left)
+  for token in visible(tokens, if lists.IsList(b) 0 else b.Left end, b.Left)
     out = list.Append(inside("code", x0 + (token[3] - b.Left) * cw, y, token[2], th.Syntax[token[1]]), out)
   end
   out

@@ -112,3 +112,9 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   9 ms instead of 238 on a line of a megabyte, and the rows of a list, the lines of the output and the value of an eval
   are cut to the screen with a slice, 10 ms for the frame of a row of a megabyte instead of 217, where all their characters
   were split.
+- `C-e`, typing and backspace at the far end of a line of a megabyte take 0.09 s instead of 0.48 when the line is one
+  word, and 0.24 s when it is code, where a line of 100 KB of code took 21 s, the colours shown the same: the lexer walks
+  the bytes of the line instead of a text for each character, slices a run of plain words once instead of copying the
+  tokens at each word, and makes only the words of the screen, crossing the line before them by its comments and texts;
+  the state at the end of a line of code no longer looks again from each text for a backslash it doesn't hold, 63 ms for
+  a megabyte instead of 6.9 s.

@@ -173,6 +173,25 @@ lines. So the lexer takes the state at the start of a line, the depth of comment
 gives the state at its end. An editor has to colour code that is broken, since it is being written: this lexer never stops
 on an error, and an unfinished text or comment only carries its state to the next line.
 
+The lexer walks the bytes of the line with [text.Byte], never a list of its characters: on a line of a megabyte, making a
+text of each character took 0.2 s before the first token. A character is what [value.Len] counts, a byte that doesn't
+continue one, `10xxxxxx` in [UTF-8](references.md#standards), with the bytes that continue it, so a file that isn't UTF-8 is
+cut as Cesia cuts it everywhere; every character of more than one byte is a letter. Inside a comment or a text it jumps from
+mark to mark, each found natively with [text.ByteFind], and each search goes on from where the last one stopped. A property
+test checks it against a reading a character at a time, the way it was written before, on random lines that hold bytes that
+are no UTF-8 too.
+
+The screen asks only for the words it shows: `from` is the byte where its first column starts, and the word that starts
+before it is cut there. To get there, the lexer crosses the comments and texts before `from` by their marks and doesn't read
+the code between them, as in code only a quote or a `(*` changes the state, and each starts a word. It starts to read just
+after the last character before `from` that is always a word of its own, a byte of ASCII that is no letter, digit,
+underscore, space or dot, such as `,` or `;`, looked for at most 4,096 bytes back. So at the end of a line of a megabyte of
+code, a key reads its comments and texts, not its words:
+
+```cesia
+color.Tokens("defn f() (* a", color.FirstState, from = 8).Tokens --> [[6, ") "], [5, "(* a"]]
+```
+
 Each buffer keeps the state at the start of each line, known down to some line, [color.StartOf]. An edit at line n forgets
 the states after n; drawing reads them again only down to the last line on the screen, and a line with no quote and no
 comment mark is not even read, since it can't change the state. So typing at line 19,000 of a file reads only the lines on
@@ -188,8 +207,10 @@ at least `syntax-ppss-max-span`, 20,000 characters, apart.
 That reading needs only the state, not the words, so it doesn't go through the lexer: [color.StateAfter] gives the state at
 the end of a line by jumping from mark to mark, each found natively with [text.ByteFind]. In a comment it looks for the next
 `(*` or `*)`, as comments nest; in a text, for the next quote, a doubled quote `""` and the character after a backslash
-being part of the text; elsewhere, for the next quote or `(*`. The lines come 100,000 at a time, one slice of the rope cut at
-its line ends. The state is the one the lexer gives, and a test checks it on 2,000 random lines from every kind of state:
+being part of the text; elsewhere, for the next quote or `(*`. A mark found is kept while it is ahead, and one that isn't
+there is not looked for again: a search for a backslash from each text of a line that has none read the rest of the line at
+each text, 6.9 s for a megabyte of code, now 63 ms. The lines come 100,000 at a time, one slice of the rope cut at its line
+ends. The state is the one the lexer gives, and a test checks it on 2,000 random lines from every kind of state:
 
 ```cesia
 color.StateAfter("x = \"a (* b", color.FirstState) --> {Comment: 0, Text: true}
