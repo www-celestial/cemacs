@@ -625,6 +625,32 @@ defn isStopsSameView()
   crossed
 end
 
+(* The state at the end of a line of 300 KB of code, for the lines under it, is read after an edit from the stops of the colors that still hold, and the
+   states and the view are the ones that colors read from the start of the file give: edits that open and close comments and texts at the end, in the
+   middle and at the start of the line, under a line that leaves it in code and under one that leaves it in a comment, the screen at the end of the
+   line, each followed; the line under it is as long, so that the screen shows its colors there. *)
+defn fresh(state)
+  (** The state with no row and no color known, followed again, so that the view reads every line from the start of the file. *)
+  s = withoutRows(state)
+  s.Buffers[1].Colors = color.BlankColors()
+  view.FollowState(0, s)
+end
+defn isEndStateSameView()
+  for above in ["first", "(* open"]
+    s = view.FollowState(0, stateOf([text.Place(2, value.Len(longCode), text.Of("$above\n$longCode\n$(str.Repeat(26000, "last *) \"x\" "))\n(* z", "a.ce"))], 800, 600))
+    for step in [[300000, "\""], [299990, "(* "], [300004, "*)"], [150000, "\""], [10, "*)"], [200000, "\""], [300010, "z"], [0, "\""], [300011, "x"]]
+      b = text.InsertWords(step[2], text.Place(2, step[1], s.Buffers[1]))
+      s.Buffers[1] = text.Place(2, text.LineWidth(2, b), b)
+      s = view.FollowState(0, s)
+      again = fresh(s)
+      if not value.Equal(view.View(s), view.View(again)) or not value.Equal([color.StartOf(n, s.Buffers[1].Colors) for n in 1..4], [color.StartOf(n, again.Buffers[1].Colors) for n in 1..4])
+        return false
+      end
+    end
+  end
+  true
+end
+
 defn isRowsKeptByText()
   (** Follow keeps one row per text of the lines on the screen, made for the width and the state at the start of each line. *)
   b = view.Follow(3, 80, 0, text.Of("a = 1\n(* b\nc *)\nd", "a.ce"))

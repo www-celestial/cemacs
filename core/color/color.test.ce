@@ -276,3 +276,33 @@ stopsCase = gen.Of({Words: gen.Map(ps -> str.Join("", ps), gen.List(gen.Pick(pie
   Cut: gen.Int(0, 90000), Tail: gen.Map(ps -> str.Join("", ps), gen.List(gen.Pick(pieces), max = 30))})
 isStopsHold() = test.ForAll(isStopsAsFromStart, stopsCase, cases = 60)
 isStopsOnlyAsked() = value.IsMissing(dict.GetOr("Stops", missing, color.Tokens("ab", color.FirstState, from = 2))) and value.Equal(color.Tokens("ab", color.FirstState, from = 2, stops = []).Stops, [])
+
+(* The colors keep the stops of the reading of the first long line they read, and after an edit the state at the end of that line is read from the
+   last one that still holds: the colors are then those that a reading from the start gives, the stops kept too. Random lines of the pieces made 200 KB
+   long, under a line that leaves each kind of state, cut at a random byte and given another end of 200 KB, which the stops past the cut would read
+   wrong. *)
+aboves = ["x", "(*", "(* (*", "\""]
+defn isEndAsFromStart(p)
+  (** The colors of a long line read again after an edit, from the stops kept, are those of a reading from its start. *)
+  line = longOf(p.Words)
+  first = color.ColoredTo(3, n -> [p.Above, line][n], color.BlankColors())
+  edited = "$(str.ByteSlice(1, list.Min(p.Cut, str.ByteLength(line)), line))$(longOf(p.Tail))"
+  value.Equal(color.ColoredTo(3, n -> [p.Above, edited][n], color.ForgetFrom(2, first)), color.ColoredTo(3, n -> [p.Above, edited][n], color.BlankColors()))
+end
+endCase = gen.Of({Words: gen.Map(ps -> str.Join("", ps), gen.List(gen.Pick(pieces), max = 30)), Above: gen.Pick(aboves), Cut: gen.Int(0, 200000),
+  Tail: gen.Map(ps -> str.Join("", ps), gen.List(gen.Pick(pieces), max = 30))})
+isEndFromStops() = test.ForAll(isEndAsFromStart, endCase, cases = 60)
+
+(* The state at the end of a long line is read from the last stop kept that holds, not from the start of the line: told that the line is in a comment
+   from its byte 70,000 on, the colors find it in a comment at its end, where a reading from its start finds none; read from another state, or after
+   an edit before the stop, the line is read from its start. Lines of 40 KB keep no stop, and colors that read no long line keep none. *)
+quoted = str.Repeat(20000, "x \"y\" ")
+told = {Chunks: [[color.FirstState]], Known: 1, Long: {State: color.FirstState, Text: quoted, Stops: [{At: 70000, Comment: 1, Text: false}]}}
+endOf(words, colors) = color.StartOf(2, color.ColoredTo(2, n -> words, colors))
+isEndReadFromStop() = endOf(quoted, told).Comment == 1 and value.Equal(endOf(quoted, color.BlankColors()), color.FirstState)
+isStopOfAnotherStateLeft() = value.Equal(endOf(quoted, {Chunks: [[{Comment: 0, Text: true}]], Known: 1, Long: told.Long}), color.StateAfter(quoted, {Comment: 0, Text: true}))
+isStopBeforeEditLeft() = value.Equal(endOf("$(str.ByteSlice(1, 70007, quoted))z$(str.ByteSlice(70009, str.ByteLength(quoted), quoted))", told), color.FirstState)
+isStopPastEditKept() = endOf("$(str.ByteSlice(1, 70008, quoted))z$(str.ByteSlice(70010, str.ByteLength(quoted), quoted))", told).Comment == 1
+isLongKept() = value.Equal(color.ColoredTo(2, n -> quoted, color.BlankColors()).Long, {State: color.FirstState, Text: quoted, Stops: [{At: 65538, Comment: 0, Text: false}]})
+isShortKeepsNoStop() = value.IsMissing(dict.GetOr("Long", missing, color.ColoredTo(3, n -> str.Repeat(10000, "\"a\" "), color.BlankColors())))
+isLongLeftByShort() = value.IsMissing(dict.GetOr("Long", missing, color.ColoredTo(3, n -> "\"a\"", color.ForgetFrom(1, color.ColoredTo(2, n -> quoted, color.BlankColors())))))
