@@ -386,9 +386,13 @@ defn labelOf(v, filter)
   flagged = value.Len([k for k in dict.Keys(v.Marks) if v.Marks[k] == "D"])
   parts = list.Concat(list.Concat(if marked > 0 ["$marked marked"] else [] end, if flagged > 0 ["$flagged flagged"] else [] end),
     list.Concat(if v.Sort != "name" ["by $(v.Sort)"] else [] end, if v.Hidden ["hidden shown"] else [] end))
-  info = if value.Len(parts) == 0 "? lists the keys" else str.Join(", ", parts) end
+  info = if value.Len(parts) == 0 HintWords else str.Join(", ", parts) end
   "$(Slashed(v.Dir))  $info$(if filter == "" "" else "  /" end)"
 end
+
+(** The words on the line under the panes when nothing is marked, sorted or shown besides: the keys to leave the folder, and the key that lists the
+    others. *)
+HintWords = "backspace: folder above, q: close, ?: keys"
 
 (** A folder with the slash that a name typed after it needs: the root stays /.
 
@@ -456,8 +460,8 @@ StarPrefix(state) = waiting("*", state)   (** *: waits for a second letter, one 
 PercentPrefix(state) = waiting("%", state)   (** %: waits for a second letter, one of PercentLetters, the marks by a pattern. *)
 
 (** ?: the keys of the folder list, in short, on the line under the panes. *)
-KeysSummary(state) = commands.Say(str.Join("  ", ["n p move", "m mark", "u unmark", "d flag", "x delete flagged", "C copy", "R move", "D delete", "+ folder",
-  "M mode", "T time", "S link", "! shell", "/ filter", "s sort", "( details", "g refresh", "q quit; Files and buffers in the book has them all"]), state)
+KeysSummary(state) = commands.Say(str.Join("  ", ["backspace or ^ folder above", "enter open", "n p move", "m mark", "u unmark", "d flag", "x delete flagged", "C copy", "R move", "D delete", "+ folder",
+  "M mode", "T time", "S link", "! shell", "/ filter", "s sort", "( details", "g refresh", "q close; Files and buffers in the book has them all"]), state)
 
 defn Enter(state)
   (** Enter: while / filters, the filter is kept and the letters are commands again; else the row under the cursor opens, as Visit. *)
@@ -466,16 +470,9 @@ defn Enter(state)
 end
 
 defn Back(state)
-  (** Backspace: while / filters, the last character of the filter taken back, or with none the folder above; else the row above unmarked, as DEL in
-      Dired. *)
-  v = viewHere(state)
-  if not v.Filtering
-    return UnmarkBack(state)
-  end
-  if lists.Of(here(state)).Filter != ""
+  (** Backspace: while / filters, the last character of the filter taken back; else, or with no filter left, the folder above, as ^. *)
+  if viewHere(state).Filtering and lists.Of(here(state)).Filter != ""
     commands.ListBack(state)
-  else if v.Dir == "/"
-    commands.Say("This is the root.", state)
   else
     Up(state)
   end
@@ -727,7 +724,8 @@ Unmark(state) = markHere(" ", state)   (** u: the row under the cursor unmarked,
 Flag(state) = markHere("D", state)   (** d: the row under the cursor flagged for deletion, which x does, and the cursor on the next. *)
 
 defn UnmarkBack(state)
-  (** Backspace: the row above unmarked, and the cursor on it, as DEL in Dired. *)
+  (** The row above unmarked, and the cursor on it, as DEL in Dired. It has no key: Backspace goes to the folder above, as it always did here; give it
+      one in your config if you want Dired's DEL. *)
   line = here(state).Cursor.Line
   if line <= 1
     return commands.Say("No row above.", state)

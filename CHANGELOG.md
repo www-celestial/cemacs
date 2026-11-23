@@ -17,6 +17,8 @@ what a key can lead to, so no key has to be learnt before the start.
   and `H` link, `M` and `T` give a mode and a time, `!` and `&` run the shell on the files, `Z` and `c` compress, `=` shows a
   diff, `A` and `Q` search and replace, `C-x C-q` edits the names as a text, a copy goes first to the folder of the other
   pane; `/` filters as letters did, and each program runs with the permission to run it alone.
+- In the manager of folders, `backspace` goes to the folder above again, as it did before the keys of Dired, a row marked or
+  not, and the line under the panes says how to leave: `backspace: folder above, q: close, ?: keys`.
 - Incremental search, `C-s` and `C-r` as in Emacs; a list's filter matches its words apart, in any order, ranked by fzy's
   score as Vim and Neovim do; `C-x p f` lists the files of the project's Git repository and `C-x p g` searches its lines.
 - In a file of Cesia, Enter starts the new line where `cesia fmt` puts it, Tab puts a line at its place or completes the

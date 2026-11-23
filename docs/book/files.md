@@ -223,7 +223,7 @@ The folder manager is a list of the files and folders of a folder, as Emacs's Di
 letter you type is a command, `n` the next row, `m` a mark, `C` a copy, `D` a deletion, and `?` says the main ones on the
 prompt line. A command acts on the rows marked with `*`, or, with none, on the row under the cursor. The list is named by
 the folder's absolute path. The prompt line shows that path, ending with `/`, then what the list holds besides: the count
-of the rows marked and flagged, the sort when it isn't by name, `hidden shown`, or, with none of these, `? lists the keys`.
+of the rows marked and flagged, the sort when it isn't by name, `hidden shown`, or, with none of these, `backspace: folder above, q: close, ?: keys`.
 The state of a list, its folder, its marks and the way it shows them, is a record, the view, that [folders.NewView] starts
 and [folders.ViewOf] reads.
 
@@ -287,6 +287,7 @@ with a dot is hidden, as most file managers do on Linux: `.` or `C-c .` shows th
 | `p`, `C-p`, `up` | [folders.Previous] | the row before |
 | `>`, `<` | [folders.NextFolder], [folders.PreviousFolder] | the next row of a folder, or the one before |
 | `^` | [folders.Up] | the folder above, the cursor on the one just left |
+| `backspace` | [folders.Back] | the folder above too, as `^`; while `/` filters, it first takes back the letters typed |
 | `enter`, `e`, `f`, `v` | [folders.Visit] | a folder opens in the list; a file opens in a buffer, and the list closes |
 | `o` | [folders.OpenOther] | opens the row in the other pane, which a split makes when there is one pane, and goes there |
 | `C-o` | [folders.ShowOther] | shows the row in the other pane, and stays in the list |
@@ -326,7 +327,7 @@ pasted path may start with `/`, with `~`, or be relative to the folder shown; on
 |---|---|---|
 | `m`, `* m` | [folders.Mark] | marks the row under the cursor with `*`, and goes to the next |
 | `u`, `* u` | [folders.Unmark] | takes its mark away, and goes to the next |
-| `backspace` | [folders.UnmarkBack] | goes to the row above, and takes its mark away, as `DEL` in Dired |
+| no key | [folders.UnmarkBack] | goes to the row above, and takes its mark away, as `DEL` in Dired; `backspace` goes to the folder above here, so give it a key in your config for Dired's way |
 | `d` | [folders.Flag] | flags the row for deletion with `D`, and goes to the next |
 | `U`, `* !` | [folders.UnmarkAll] | takes every mark away |
 | `t`, `* t` | [folders.ToggleMarks] | marks the rows with no mark, and unmarks those marked with `*`; a `D` stays |

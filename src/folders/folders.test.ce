@@ -62,7 +62,7 @@ isListReadOnly() = wordsOf(played(["C-k"])) == wordsOf(listed(false, missing))
 isSortedByDate() = value.Equal([e.Name for e in folders.Sorted(entries, "date")], [".git", "src", "b.ce", "run", "a.toml"])
 isSortedBySize() = value.Equal([e.Name for e in folders.Sorted(entries, "size")], [".git", "src", "b.ce", "a.toml", "run"])
 isSortedByName() = value.Equal([e.Name for e in folders.Sorted(entries, "name")], [".git", "src", "b.ce", "a.toml", "run"])
-isSortKeyCycles() = labelOf(played(["s"])) == "/p/  by date" and labelOf(played(["s", "s"])) == "/p/  by size" and labelOf(played(["s", "s", "s"])) == "/p/  ? lists the keys"
+isSortKeyCycles() = labelOf(played(["s"])) == "/p/  by date" and labelOf(played(["s", "s"])) == "/p/  by size" and labelOf(played(["s", "s", "s"])) == "/p/  backspace: folder above, q: close, ?: keys"
 isSortKeepsTheCursorName() = folders.ViewOf(here(played(["n", "s"]))).Sort == "date" and str.Contains("b.ce", str.Lines(wordsOf(played(["n", "s"])))[here(played(["n", "s"])).Cursor.Line])
 
 (* Marks: m, u, d, t, U, backspace, the groups of *, and the count on the line under the panes. *)
@@ -72,7 +72,6 @@ isUnmark() = marksOf(played(["m", "p", "u"])) == "    "
 isFlag() = marksOf(played(["d", "d"])) == "DD  " and labelOf(played(["d"])) == "/p/  1 flagged"
 isToggleLeavesFlags() = marksOf(played(["m", "d", "t"])) == " D**"
 isUnmarkAll() = marksOf(played(["m", "d", "U"])) == "    " and marksOf(played(["m", "d", "*", "!"])) == "    "
-isBackspaceUnmarksAbove() = marksOf(played(["m", "m", "backspace"])) == "*   " and here(played(["m", "m", "backspace"])).Cursor.Line == 2
 isMarkFolders() = marksOf(played(["*", "/"])) == "*   "
 isMarkLinks() = marksOf(played(["*", "@"])) == "   *"
 isMarkAll() = marksOf(played(["*", "s"])) == "****"
@@ -93,7 +92,7 @@ isEnterKeepsTheFilter() = wordsOf(played(["/", "m", "enter"])) == wordsOf(played
 isLettersAreCommandsAgain() = marksOf(played(["/", "b", "enter", "m"])) == "*"
 isCancelTakesTheFilter() = wordsOf(played(["/", "m", "C-g"])) == wordsOf(listed(false, missing)) and not folders.ViewOf(here(played(["/", "m", "C-g"]))).Filtering
 isFilterBackspace() = value.Len(str.Lines(wordsOf(played(["/", "m", "backspace"])))) == 4
-isLabelSaysTheFilter() = labelOf(played(["/", "b", "enter"])) == "/p/  ? lists the keys  /"
+isLabelSaysTheFilter() = labelOf(played(["/", "b", "enter"])) == "/p/  backspace: folder above, q: close, ?: keys  /"
 isUnknownLetterSaid() = str.Contains("? lists them", played(["z"]).Message)
 isMoveKeys() = here(played(["n", "n", "p"])).Cursor.Line == 2 and here(played([" "])).Cursor.Line == 2 and here(played(["n", "n", ">"])).Cursor.Line == 3
 isFolderLineKeys() = here(played(["n", "n", "<"])).Cursor.Line == 1 and str.Contains("No folder", played([">"]).Message)

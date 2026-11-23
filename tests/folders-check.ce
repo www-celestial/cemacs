@@ -108,6 +108,8 @@ check(nameOf(press.Press(["/", "su", "/"], s)) == "$folder/sub", "/ su / goes in
 check(nameOf(press.Press(["/", "/"], s)) == "/", "/ / goes to the root")
 check(nameOf(press.Press(["/", "~", "/"], s)) == sys.Env("HOME"), "/ ~/ goes to the home")
 check(nameOf(press.Press(["/", "backspace"], press.Press(["enter"], s))) == folder, "backspace with no filter goes up")
+check(nameOf(press.Press(["backspace"], press.Press(["enter"], s))) == folder, "backspace goes to the folder above, as it always did")
+check(nameOf(press.Press(["m", "backspace"], press.Press(["enter"], s))) == folder, "backspace goes up with a row marked too")
 pasting = s
 pasting.Clip = "$folder/sub/new.ce"
 check(nameOf(press.Press(["C-y"], pasting)) == "$folder/sub" and names(press.Press(["C-y"], pasting)) == "new.ce", "C-y goes to the folder of a pasted file")

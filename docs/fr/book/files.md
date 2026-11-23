@@ -247,8 +247,8 @@ les touches : chaque lettre que vous tapez est une commande, `n` la rangée suiv
 effacement, et `?` dit les principales sur la prompt line. Une commande agit sur les rangées marquées d'un `*`, ou, s'il n'y
 en a aucune, sur la rangée sous le curseur. La liste est nommée par le chemin absolu du dossier. La prompt line montre ce
 chemin, terminé par `/`, puis ce que la liste contient de plus : le nombre de rangées marquées et signalées, le tri quand il
-n'est pas par nom, `hidden shown` (les noms cachés montrés), ou, sans rien de cela, `? lists the keys` (`?` donne les
-touches). L'état d'une liste, son dossier, ses marques et sa façon de les montrer, est un record, la vue, que
+n'est pas par nom, `hidden shown` (les noms cachés montrés), ou, sans rien de cela, `backspace: folder above, q: close, ?: keys`
+(`backspace` remonte au dossier du dessus, `q` ferme la liste, `?` donne les touches). L'état d'une liste, son dossier, ses marques et sa façon de les montrer, est un record, la vue, que
 [folders.NewView] commence et que [folders.ViewOf] lit.
 
 ### Les rangées
@@ -318,6 +318,7 @@ Un nom qui commence par un point est caché, comme le font la plupart des gestio
 | `p`, `C-p`, `up` | [folders.Previous] | la rangée d'avant |
 | `>`, `<` | [folders.NextFolder], [folders.PreviousFolder] | la rangée suivante d'un dossier, ou celle d'avant |
 | `^` | [folders.Up] | le dossier du dessus, le curseur sur celui qu'on vient de quitter |
+| `backspace` | [folders.Back] | le dossier du dessus aussi, comme `^` ; pendant que `/` filtre, il défait d'abord les lettres tapées |
 | `enter`, `e`, `f`, `v` | [folders.Visit] | un dossier s'ouvre dans la liste ; un fichier s'ouvre dans un buffer, et la liste se ferme |
 | `o` | [folders.OpenOther] | ouvre la rangée dans l'autre pane, qu'un partage crée quand il n'y a qu'un pane, et y va |
 | `C-o` | [folders.ShowOther] | montre la rangée dans l'autre pane, et reste dans la liste |
@@ -359,7 +360,7 @@ marche aussi sans `/`.
 |---|---|---|
 | `m`, `* m` | [folders.Mark] | marque la rangée sous le curseur d'un `*`, et passe à la suivante |
 | `u`, `* u` | [folders.Unmark] | enlève sa marque, et passe à la suivante |
-| `backspace` | [folders.UnmarkBack] | va à la rangée du dessus, et enlève sa marque, comme `DEL` dans Dired |
+| aucune touche | [folders.UnmarkBack] | va à la rangée du dessus, et enlève sa marque, comme `DEL` dans Dired ; ici `backspace` remonte au dossier du dessus, donnez-lui donc une touche dans votre config pour la façon de Dired |
 | `d` | [folders.Flag] | signale la rangée pour l'effacement d'un `D`, et passe à la suivante |
 | `U`, `* !` | [folders.UnmarkAll] | enlève toutes les marques |
 | `t`, `* t` | [folders.ToggleMarks] | marque les rangées sans marque, et démarque celles marquées d'un `*` ; un `D` reste |
