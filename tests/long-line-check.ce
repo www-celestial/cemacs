@@ -2,12 +2,13 @@
     second, where each letter used to take the line again, and the time grew with the square of the word, 36 s for 32,000 letters; Tab, typing and
     backspace at the start of a line of a megabyte take no more than on a short one; C-e, typing and backspace at its far end, in a file of Cesia,
     take a tenth of a second for a word of a megabyte, and for a megabyte of code once C-e crossed it, the state at the end of the line read from the
-    stops of the colors. It is a script, not a test file: it times.
+    stops of the colors; on a word of a megabyte, the colours, Enter, Tab and M-f skip its letters natively. It is a script, not a test file: it times.
     tests/run.sh runs it with cesia run tests/long-line-check.ce. It prints ok at the end and stops at the first failure. *)
 use src/buffers
 use src/emacs
 use src/ide
 use core/color
+use core/indent
 use core/press
 use core/text
 use core/view
@@ -156,6 +157,30 @@ check(str.StartsWith("if a\nend  f(a,", keysAtStart(code, ["e", "n", "d"], 0.5))
 check(str.StartsWith("if a\n  f(a,", keysAtStart(code, ["tab"], 2.0)), "Tab leaves the code at its place")
 ifs = str.Repeat(10000, "if a b end ")
 check(str.StartsWith("if a\n  if a b end", keysAtStart(ifs, ["tab"], 0.5)), "Tab puts the line of ifs in the block")
+
+(* On a word of a megabyte in a file of Cesia, the colours of the screen at its far end, Enter there and at its start, Tab, the place of a word typed at
+   its start, and M-f across it skip the letters of the word natively, where a walk of its bytes with text.Byte came first: each takes under a quarter
+   of that walk, where each took more than the walk, M-f five times as much. The fastest of three each. *)
+defn walked(line)
+  (** The bytes of the line added up, a call of text.Byte for each. *)
+  sum = 0
+  for i in 1..str.ByteLength(line)
+    sum += str.Byte(i, line)
+  end
+  sum
+end
+wordLine = "  $(str.Repeat(999996, "a")) b"
+wordLines = ["if a", wordLine, "end"]
+wordBuffer = {Rope: rope.Of(str.Join("\n", wordLines)), Path: "/nowhere/word.ce", Colors: color.ColoredTo(4, n -> wordLines[n], color.BlankColors()), Guess: missing}
+bytesWalk = fastest(() -> walked(wordLine))
+wordEnd = str.ByteLength(wordLine)
+for part in [["the colours of its end", () -> color.Tokens(wordLine, color.FirstState, from = wordEnd - 90, stops = [])],
+  ["Enter at its end", () -> indent.NewLine({Line: 2, Column: value.Len(wordLine)}, wordBuffer)], ["Enter at its start", () -> indent.NewLine({Line: 2, Column: 2}, wordBuffer)],
+  ["Tab", () -> indent.Plan(2, 2, wordBuffer)], ["the place of a word typed at its start", () -> indent.Wanted(2, wordBuffer)],
+  ["M-f across it", () -> text.MoveWord(1, text.Place(2, 0, text.Of(str.Join("\n", wordLines), "/nowhere/word.ce")))]]
+  took = fastest(part[2])
+  check(took < bytesWalk / 4, "$(part[1]) on a word of a megabyte takes $took s, a walk of its bytes $bytesWalk s")
+end
 
 (* After a pause in a file of Cesia, each tick asks whether a signature can be asked, from the line of the cursor: a slice of it, where all its
    characters, one text each, took a quarter of a second at each tick on a line of a megabyte. *)
