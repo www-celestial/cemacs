@@ -448,7 +448,9 @@ defn resultBlock(k, i, line, lines, graph, state, out = missing, at = 0, table =
   (** The block of the result of cell i of buffer k under a line: its lines and its graph or its table, and its label out after its first at lines, see
       Block; an animation's bar, a 3D graph and a table take the mouse, and have a ring while they have the keys; a table takes the wheel too, and a graph
       that shows a mark takes a press on its points. *)
-  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state) or tableFocused(k, table, state), out = out, at = at, table = table), {Cell: i})
+  look = dict.GetOr("Look", missing, state)
+  measuredHeads = if value.IsSome(table) and value.IsSome(look) and value.Len(dict.GetOr("Heads", [], table)) != value.Len(table.Columns) dict.Put("Heads", [look.Width(c, "strong") for c in table.Columns], table) else table end
+  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state) or tableFocused(k, table, state), out = out, at = at, table = measuredHeads), {Cell: i})
   if value.IsSome(table)
     key = table.Key
     return dict.Merge(made, {Mouse: (action, point, st) -> tableMouse(key, action, point, st), Wheel: (amount, st) -> tableWheel(key, amount, st), Keeps: true})
@@ -693,11 +695,30 @@ defn taken(k, state)
   s = next(k, answeredCell(k, i, s, started = r.Started))
   r = runOf(s.Buffers[k])
   if value.IsMissing(r.Task) and not asking(r)
-    vars = nb.Variables(r.Session)
-    r.Vars = if result.IsOk(vars) vars.Value else [] end
+    (* The names for *variables* are asked in a fiber, so that the result shows at once; the next tick takes them. *)
+    one = r.Session
+    r.Varying = fiber.Spawn(() -> nb.Variables(one))
+    sys.Sleep(0)
     s = withRun(k, r, s)
   end
   s
+end
+
+defn varied(k, state)
+  (** The state at a tick for buffer k: the names of its session for *variables*, once they came. *)
+  r = runOf(state.Buffers[k])
+  v = if value.IsMissing(r) missing else dict.GetOr("Varying", missing, r) end
+  if value.IsMissing(v)
+    return state
+  end
+  got = fiber.Wait(v, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  r.Varying = missing
+  vars = if result.IsOk(got) got.Value else got end
+  r.Vars = if result.IsOk(vars) vars.Value else [] end
+  withRun(k, r, state)
 end
 
 defn stopped(k, state)
@@ -1610,6 +1631,7 @@ end
     own. *)
 asking(r) = value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsSome(dict.GetOr("Rescene", missing, r)) or value.IsSome(dict.GetOr("Framing", missing, r)) or
   value.IsSome(dict.GetOr("Turning", missing, r)) or value.IsSome(dict.GetOr("Paging", missing, r)) or value.IsSome(dict.GetOr("Marking", missing, r)) or
+  value.IsSome(dict.GetOr("Varying", missing, r)) or
   copyAsked(dict.GetOr("Copying", missing, r))
 
 (** Does the copy of a table hold the session: has it asked its rows? *)
@@ -2761,7 +2783,7 @@ defn TableOf(v)
   matrix = v.Kind == "array"
   columns = if matrix ["$j" for j in 1..list.Min(256, v.Shape[2])] else v.Columns end
   count = if matrix v.Shape[1] else v.Count end
-  rows = [[cutCell(x) for x in r] for r in v.Rows]
+  rows = v.Rows
   t = {Key: dict.GetOr("Key", missing, v), Kind: v.Kind, Columns: columns, Count: count, Total: count, First: 1, Rows: rows, Positions: [j for j in 1..value.Len(rows)],
     Top: 1, Row: 1, Column: 1, Left: 1, Sort: missing, Filter: "", Draft: missing, Selected: missing, Widths: [], Stale: matrix and (count > value.Len(rows) or v.Shape[2] > 10),
     Find: missing, Fixed: value.IsMissing(dict.GetOr("Key", missing, v)), Prefix: false}
@@ -2770,25 +2792,47 @@ end
 
 defn measured(t)
   (** The table with the widths of its columns grown to hold the rows it has: for each, {Whole, Fraction, Text}, the characters of its numbers before
-      their decimal point and from it, and of its texts. Widths only grow, so that the columns don't jump as the table scrolls. *)
+      their decimal point and from it, and of its texts. Widths only grow, so that the columns don't jump as the table scrolls. Each cell is read once
+      here: Wholes gives, for each row and column, the characters of its number before its decimal point, or -1 for a text, and Numeric whether a
+      column holds numbers alone, so that a draw only places them. *)
   out = t
-  ws = []
-  for j in 1..value.Len(t.Columns)
-    w = if j <= value.Len(t.Widths) t.Widths[j] else {Whole: 0, Fraction: 0, Text: 0} end
-    for r in t.Rows
-      if j <= value.Len(r)
-        if isNumberWords(r[j])
-          parts = splitNumber(r[j])
-          w.Whole = list.Max(w.Whole, parts[1])
-          w.Fraction = list.Max(w.Fraction, parts[2])
-        else
-          w.Text = list.Max(w.Text, value.Len(r[j]))
-        end
+  n = value.Len(t.Columns)
+  whole = [if j <= value.Len(t.Widths) t.Widths[j].Whole else 0 end for j in 1..n]
+  fraction = [if j <= value.Len(t.Widths) t.Widths[j].Fraction else 0 end for j in 1..n]
+  texts = [if j <= value.Len(t.Widths) t.Widths[j].Text else 0 end for j in 1..n]
+  numeric = list.Fill(value.Len(t.Rows) > 0, n)
+  wholes = []
+  rows = t.Rows
+  for k in 1..value.Len(rows)
+    r = rows[k]
+    line = list.Fill(-1, n)
+    for j in 1..list.Min(n, value.Len(r))
+      x = r[j]
+      size = value.Len(x)
+      if size > CellColumns()
+        (* A cell is drawn at most CellColumns() characters wide, the last one …. *)
+        x = cutCell(x)
+        size = CellColumns()
+        rows[k][j] = x
+      end
+      b = if size == 0 0 else str.Byte(1, x) end
+      (* A number starts with a digit, a sign, a point, or is nan or inf: the others are texts without a parse. *)
+      at = if (b >= 48 and b <= 57) or b == 45 or b == 43 or b == 46 or b == 105 or b == 110 (if isNumberWords(x) splitNumber(x)[1] else -1 end) else -1 end
+      if at >= 0
+        line[j] = at
+        whole[j] = list.Max(whole[j], at)
+        fraction[j] = list.Max(fraction[j], size - at)
+      else
+        texts[j] = list.Max(texts[j], size)
+        numeric[j] = numeric[j] and size == 0
       end
     end
-    ws = list.Append(w, ws)
+    wholes = list.Append(line, wholes)
   end
-  out.Widths = ws
+  out.Widths = [{Whole: whole[j], Fraction: fraction[j], Text: texts[j]} for j in 1..n]
+  out.Rows = rows
+  out.Wholes = wholes
+  out.Numeric = numeric
   out
 end
 
@@ -2812,7 +2856,7 @@ defn TableLayout(t, width, cell, look)
   for j in t.Left..value.Len(t.Columns)
     w = t.Widths[j]
     chars = list.Min(CellColumns(), list.Max(w.Whole + w.Fraction, w.Text))
-    head = look.Width(t.Columns[j], "strong") + (if value.IsSome(t.Sort) and t.Sort.Column == t.Columns[j] 2 * cell.Width else 0 end)
+    head = headWidth(j, t, look) + (if value.IsSome(t.Sort) and t.Sort.Column == t.Columns[j] 2 * cell.Width else 0 end)
     wide = list.Max(chars * cell.Width, head) + 2 * cell.Width
     if value.Len(out) > 0 and x + wide > width
       return out
@@ -2823,8 +2867,8 @@ defn TableLayout(t, width, cell, look)
   out
 end
 
-(** Are the texts of a column of a table, those it has, all numbers? Its header goes on the right then. *)
-numericColumn(j, t) = value.Len(t.Rows) > 0 and list.All([j > value.Len(r) or r[j] == "" or isNumberWords(r[j]) for r in t.Rows])
+(** The width of the header of column j in the strong font: as the block measured it once, or the look measures it. *)
+headWidth(j, t, look) = if j <= value.Len(dict.GetOr("Heads", [], t)) t.Heads[j] else look.Width(t.Columns[j], "strong") end
 
 defn NoteWords(t)
   (** What the line under a table says: its rows, those it shows when it scrolls, those that hold the words of its filter, and its sort; or the filter
@@ -2845,7 +2889,7 @@ defn TableItems(t, focused, width, top, cell, th, look)
       chosen in reverse, the cell of the cursor in a box of the accent color while the table has the keys, and the table in a ring of it; its frame and
       the rule under its header in ink, the lines between rows and columns in the color of lines; and the line under it.
 
-        value.Len(TableItems({Columns: ["a"], Rows: [["1"]], First: 1, Positions: [1], Count: 1, Total: 1, Top: 1, Row: 1, Column: 1, Left: 1, Sort: missing, Filter: "", Draft: missing, Selected: missing, Widths: [{Whole: 1, Fraction: 0, Text: 0}]}, false, 800, 0, {Width: 8, Height: 19}, {Ink: 1, Line: 2, Muted: 3, Accent: 4, Code: 5, Faint: 6}, {Width: (w, f) -> 8 * value.Len(w)})) --> 9 *)
+        value.Len(TableItems({Columns: ["a"], Rows: [["1"]], First: 1, Positions: [1], Count: 1, Total: 1, Top: 1, Row: 1, Column: 1, Left: 1, Sort: missing, Filter: "", Draft: missing, Selected: missing, Widths: [{Whole: 1, Fraction: 0, Text: 0}], Wholes: [[1]], Numeric: [true]}, false, 800, 0, {Width: 8, Height: 19}, {Ink: 1, Line: 2, Muted: 3, Accent: 4, Code: 5, Faint: 6}, {Width: (w, f) -> 8 * value.Len(w)})) --> 9 *)
   cols = TableLayout(t, width, cell, look)
   h = shownRows(t)
   ch = cell.Height
@@ -2858,16 +2902,18 @@ defn TableItems(t, focused, width, top, cell, th, look)
     name = t.Columns[j]
     sorted = value.IsSome(t.Sort) and t.Sort.Column == name
     arrow = if sorted 2 * cell.Width else 0 end
-    x = if numericColumn(j, t) c.X + c.Width - cell.Width - arrow - look.Width(name, "strong") else c.X + cell.Width end
+    wide = headWidth(j, t, look)
+    x = if t.Numeric[j] c.X + c.Width - cell.Width - arrow - wide else c.X + cell.Width end
     out = list.Append({Kind: "text", X: x, Y: top, Text: name, Color: th.Ink, Font: "strong"}, out)
     if sorted
-      out = list.Append({Kind: "text", X: x + look.Width(name, "strong") + math.Div(cell.Width, 2), Y: top, Text: if t.Sort.Descending "↓" else "↑" end, Color: th.Ink, Font: "code"}, out)
+      out = list.Append({Kind: "text", X: x + wide + math.Div(cell.Width, 2), Y: top, Text: if t.Sort.Descending "↓" else "↑" end, Color: th.Ink, Font: "code"}, out)
     end
   end
   for k in 1..h
     q = t.Top + k - 1
     y = top + k * ch
     row = rowAt(q, t)
+    wholes = if value.IsMissing(row) [] else t.Wholes[q - t.First + 1] end
     lit = value.IsSome(t.Selected) and t.Selected == q
     if lit
       out = list.Append({Kind: "rect", X: left, Y: y, Width: right - left, Height: ch, Color: th.Ink}, out)
@@ -2876,7 +2922,8 @@ defn TableItems(t, focused, width, top, cell, th, look)
       j = c.Column
       words = if value.IsMissing(row) or j > value.Len(row) "" else row[j] end
       w = t.Widths[j]
-      x = if isNumberWords(words) c.X + c.Width - cell.Width - (w.Fraction + splitNumber(words)[1]) * cell.Width else c.X + cell.Width end
+      whole = if j <= value.Len(wholes) wholes[j] else -1 end
+      x = if whole >= 0 c.X + c.Width - cell.Width - (w.Fraction + whole) * cell.Width else c.X + cell.Width end
       if words != ""
         out = list.Append({Kind: "text", X: x, Y: y, Text: words, Color: if lit th.Code else th.Ink end, Font: "code"}, out)
       end
@@ -2932,8 +2979,9 @@ defn scrolledTo(t, q)
 end
 
 defn wantsRows(t)
-  (** Must the table ask its session for rows: the rows it shows aren't all fetched, or are within 10 rows of the end of those fetched, or a place is
-      asked for a position? Never one that has no key. *)
+  (** Must the table ask its session for rows: the rows it shows aren't all fetched, or, once it scrolled, are within 10 rows of the end of those
+      fetched, or a place is asked for a position? Never one that has no key, and never at its first screen, which the run gave: a table that is not
+      scrolled asks nothing. *)
   if t.Fixed
     return false
   end
@@ -2942,7 +2990,7 @@ defn wantsRows(t)
   end
   last = list.Min(t.Count, t.Top + TableRows() - 1)
   have = t.First + value.Len(t.Rows) - 1
-  t.Count > 0 and (t.Top < t.First or last > have or (have < t.Count and last > have - 10) or (t.First > 1 and t.Top < t.First + 10))
+  t.Count > 0 and (t.Top < t.First or last > have or (t.Top > 1 and have < t.Count and last > have - 10) or (t.First > 1 and t.Top < t.First + 10))
 end
 
 (* -- Rows asked of the session, one question at a time, as a scene: {Task, Buffer, Key, First, Sort, Filter, Find}. *)
@@ -2988,7 +3036,7 @@ defn landedRows(t, p, answer)
   end
   a = answer.Value
   out.First = p.First
-  out.Rows = [[cutCell(x) for x in row] for row in a.Rows]
+  out.Rows = a.Rows
   out.Positions = a.Positions
   out.Count = a.Count
   out.Total = a.Total
@@ -3560,7 +3608,7 @@ defn tick(state)
   s = state
   for k in 1..value.Len(s.Buffers)
     if value.IsSome(runOf(s.Buffers[k]))
-      s = copying(k, marked(k, paged(k, turnLanded(k, played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, s)))))))))))
+      s = copying(k, marked(k, paged(k, turnLanded(k, played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, varied(k, s))))))))))))
     end
     if value.IsSome(replOf(s.Buffers[k]))
       s = answered(k, s)
