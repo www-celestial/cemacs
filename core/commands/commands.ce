@@ -1386,8 +1386,13 @@ end
 
 defn bindingsHere(state)
   (** The keys that a chord would be looked up in now: those of the list in the current buffer, or else those of the editor, with the buffer's own over
-      them. A prompt has no pairs. *)
-  if lists.IsList(current(state)) listKeys(state) else withOwnKeys(current(state), config(state).Keys()) end
+      them, and the pairs of the control that has the keys over all. A prompt has no pairs. *)
+  if lists.IsList(current(state))
+    return listKeys(state)
+  end
+  all = withOwnKeys(current(state), config(state).Keys())
+  f = FocusOf(state)
+  if value.IsMissing(f) all else dict.Merge(all, dict.Dict([{Key: k, Value: f.Keys[k]} for k in dict.Keys(f.Keys) if str.Contains(" ", k)])) end
 end
 
 defn OwnKeysOf(b)
@@ -1442,8 +1447,14 @@ defn routed(chord, state)
     s = state
     s.Buffers[state.Current].Typing = false
     f = FocusOf(state)
-    if value.IsSome(f) and state.Pending == "" and dict.Has(chord, f.Keys)
-      return ran(f.Keys[chord], withChords(chord, s))
+    (* A control's keys may hold a pair or a group, as C-c e s: the keys before its last wait with the control still focused. *)
+    whole = if state.Pending == "" chord else "$(state.Pending) $chord" end
+    if value.IsSome(f) and dict.Has(whole, f.Keys)
+      s.Pending = ""
+      return ran(f.Keys[whole], withChords(whole, s))
+    end
+    if value.IsSome(f) and list.Any([str.StartsWith("$whole ", k) for k in dict.Keys(f.Keys)])
+      return pending(whole, s)
     end
     s = Unfocused(s)
     c = complete.Of(s)
@@ -1601,11 +1612,12 @@ defn Wheel(event, state)
 end
 
 defn wheelIn(event, state)
-  (** The wheel over a block that takes it, as a table of the cells, moves what the block shows, with its Wheel, a function of the amount and the state
-      that gives the state, or missing when it can't move that way: then, and anywhere else, the wheel moves the screen. *)
+  (** The wheel over a block that takes it, as a table of the cells, moves what the block shows, with its Wheel, a function of the amount, the point of the
+      mouse in the block, {X, Y, Width}, as its Mouse has it, and the state, that gives the state, or missing when it can't move that way: then, and
+      anywhere else, the wheel moves the screen. *)
   hit = view.BlockAt(event.X, event.Y, state)
   if value.IsSome(hit) and dict.Has("Wheel", hit.Block)
-    moved = hit.Block.Wheel(event.Amount, state)
+    moved = hit.Block.Wheel(event.Amount, {X: event.X - hit.Left, Y: event.Y - hit.Top, Width: hit.Width}, state)
     if value.IsSome(moved)
       return moved
     end
@@ -1629,9 +1641,15 @@ defn down(event, state)
   s = if j > 0 focused(j, state) else state end
   hit = view.BlockAt(event.X, event.Y, s)
   if value.IsSome(hit) and dict.Has("Mouse", hit.Block)
-    (* A block that takes the mouse, as a slider of the cells: it has the press, the moves and the release, and the cursor stays. *)
-    s.Holding = {Mouse: hit.Block.Mouse, Left: hit.Left, Top: hit.Top, Width: hit.Width}
-    return hit.Block.Mouse("down", {X: event.X - hit.Left, Y: event.Y - hit.Top, Width: hit.Width}, s)
+    (* A block that takes the mouse, as a slider of the cells: it has the press, the moves and the release, and the cursor stays. Its Mouse gives
+       missing for a press it doesn't take, as one on the lines above a graph: the press goes to the text, and the control that has the keys leaves them. *)
+    held = s
+    held.Holding = {Mouse: hit.Block.Mouse, Left: hit.Left, Top: hit.Top, Width: hit.Width}
+    took = hit.Block.Mouse("down", {X: event.X - hit.Left, Y: event.Y - hit.Top, Width: hit.Width}, held)
+    if value.IsSome(took)
+      return took
+    end
+    s = Unfocused(s)
   end
   if view.IsInCode(event.X, event.Y, s)
     at = view.ClickAt(event.X, event.Y, s)
@@ -1672,12 +1690,17 @@ inBlock(event, h) = {X: event.X - h.Left, Y: event.Y - h.Top, Width: h.Width}
 
 defn Drag(event, state)
   (** The mouse moved: with the button held, the cursor follows it once it has left the zone around the press, even if it comes back; a block that took
-      the press gets the move. *)
+      the press gets the move. With no button held, the block under it that has a Hover gets it, see Hover. *)
   h = holdingOf(state)
   if value.IsSome(h)
     return h.Mouse("move", inBlock(event, h), state)
   end
-  if not state.Dragging or inZone(event, pressPoint(state), config(state).DragZone())
+  if not state.Dragging
+    i = panes.Active(state)
+    j = view.PaneAt(event.X, event.Y, state)
+    return if j > 0 and j != i focused(i, Hover(event, focused(j, state))) else Hover(event, state) end
+  end
+  if inZone(event, pressPoint(state), config(state).DragZone())
     state
   else
     at = view.PositionAt(event.X, event.Y, state)
@@ -1685,6 +1708,33 @@ defn Drag(event, state)
     s.Pressed = missing
     s
   end
+end
+
+defn hoveringOf(state)
+  (** The block that the mouse is over and that has a Hover, {Hover, At}, At telling it apart, or missing. A state from before this field has none. *)
+  match state
+    {Hovering: h} -> h
+    else -> missing
+  end
+end
+
+defn Hover(event, state)
+  (** A move of the mouse with no button held, in the pane being edited: the block under it with a Hover, a function of the point, {X, Y, Width} as its
+      Mouse has it, and the state, that gives the state, gets the point, as a graph of the cells shows the value of the point under the mouse; the block
+      that had it before and no longer does gets missing, once. Elsewhere the move changes nothing. *)
+  hit = view.BlockAt(event.X, event.Y, state)
+  over = if value.IsSome(hit) and dict.Has("Hover", hit.Block) {Hover: hit.Block.Hover, At: [hit.Block.Line, hit.Top]} else missing end
+  before = hoveringOf(state)
+  s = state
+  if value.IsSome(before) and (value.IsMissing(over) or not value.Equal(before.At, over.At))
+    s.Hovering = missing
+    s = before.Hover(missing, s)
+  end
+  if value.IsMissing(over)
+    return s
+  end
+  s.Hovering = over
+  over.Hover({X: event.X - hit.Left, Y: event.Y - hit.Top, Width: hit.Width}, s)
 end
 
 defn Release(event, state)

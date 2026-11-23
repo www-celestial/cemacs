@@ -930,9 +930,45 @@ isTabHintDrawn() = "{color/ | commands/ | complete/}" in list.Map(c -> c.Text, l
 defn wheelBlock(moves)
   (** A window of a hundred lines with a block under line 1, five rows high, whose wheel says it moved, or can't. *)
   s = stateOf(hundred)
-  s.Buffers[1] = text.WithBlocks([{Line: 1, Rows: 5, Cell: 0, Draw: (w, l) -> [], Wheel: (amount, st) -> if moves dict.Put("Moved", amount, st) else missing end}], s.Buffers[1])
+  s.Buffers[1] = text.WithBlocks([{Line: 1, Rows: 5, Cell: 0, Draw: (w, l) -> [], Wheel: (amount, point, st) -> if moves dict.Put("Moved", amount, st) else missing end}], s.Buffers[1])
   s
 end
 isWheelOverBlockTakes() = dict.GetOr("Moved", missing, commands.Update(wheelAt(100, 40, -1.0), wheelBlock(true))) == -1.0 and here(commands.Update(wheelAt(100, 40, -1.0), wheelBlock(true))).Top == 1
 isWheelOverBlockGives() = value.IsMissing(dict.GetOr("Moved", missing, commands.Update(wheelAt(100, 40, -3.0), wheelBlock(false)))) and here(commands.Update(wheelAt(100, 40, -3.0), wheelBlock(false))).Top > 1
 isWheelBesideBlock() = value.IsMissing(dict.GetOr("Moved", missing, commands.Update(wheelAt(100, 400, -1.0), wheelBlock(true))))
+
+(* A block with a Hover, as a graph of the cells, gets the moves of the mouse with no button held, the point in the block, and missing once when the
+   mouse leaves it; the moves elsewhere change nothing. *)
+defn hoverBlock()
+  (** A window of a hundred lines with a block under line 1, five rows high, that keeps the points it is told, and missing for a leave. *)
+  s = stateOf(hundred)
+  s.Buffers[1] = text.WithBlocks([{Line: 1, Rows: 5, Cell: 0, Draw: (w, l) -> [], Hover: (point, st) -> dict.Put("Seen", list.Append(point, dict.GetOr("Seen", [], st)), st)}], s.Buffers[1])
+  s
+end
+(** The points a hover block was told, after these moves. *)
+seen(moves) = dict.GetOr("Seen", [], list.Reduce((s, at) -> commands.Update(mouse("move", at[1], at[2]), s), hoverBlock(), moves))
+isHoverTold() = value.Equal(seen([[100, 40], [101, 42]]), [{X: 100 - view.Gutter, Y: 17, Width: 800 - view.Gutter - 8}, {X: 101 - view.Gutter, Y: 19, Width: 800 - view.Gutter - 8}])
+isHoverLeaveOnce() = value.Equal(seen([[100, 40], [100, 400], [100, 420]]), [{X: 100 - view.Gutter, Y: 17, Width: 800 - view.Gutter - 8}, missing])
+isHoverElsewhereNothing() = value.Equal(seen([[100, 400]]), []) and wordsOf(commands.Update(mouse("move", 100, 40), hoverBlock())) == hundred
+(* A block's Mouse that gives missing for a press lets the press go to the text: the cursor goes under it. *)
+defn pressBlock(takes)
+  (** A window of a hundred lines with a block under line 1 whose Mouse takes a press, or gives missing. *)
+  s = stateOf(hundred)
+  s.Buffers[1] = text.WithBlocks([{Line: 1, Rows: 5, Cell: 0, Draw: (w, l) -> [], Mouse: (action, point, st) -> if takes dict.Put("Took", action, st) else missing end}], s.Buffers[1])
+  s
+end
+isBlockPressTaken() = dict.GetOr("Took", missing, commands.Update(mouse("down", 100, 40), pressBlock(true))) == "down" and value.IsSome(commands.Update(mouse("down", 100, 40), pressBlock(true)).Holding)
+isBlockPressGiven() = value.IsMissing(dict.GetOr("Took", missing, commands.Update(mouse("down", 100, 40), pressBlock(false)))) and value.IsMissing(commands.Update(mouse("down", 100, 40), pressBlock(false)).Holding) and
+  commands.Update(mouse("down", 100, 40), pressBlock(false)).Dragging
+(* The keys of a control may hold a pair: its first key waits with the control focused, the pair runs the control's command; another pair leaves the
+   control and runs the editor's. *)
+defn focusedPair()
+  (** A state whose control has the keys, with C-c e s of its own. *)
+  s = stateOf("abc")
+  s.Focus = {Keys: {"C-c e s": st -> dict.Put("Saved", true, st)}, Hints: []}
+  s
+end
+isFocusPairRuns() = dict.GetOr("Saved", false, press.Press(["C-c", "e", "s"], focusedPair())) and value.IsSome(commands.FocusOf(press.Press(["C-c", "e", "s"], focusedPair())))
+isFocusPairWaits() = press.Press(["C-c"], focusedPair()).Pending == "C-c" and value.IsSome(commands.FocusOf(press.Press(["C-c"], focusedPair())))
+isFocusOtherPairLeaves() = not dict.GetOr("Saved", false, press.Press(["C-x", "C-g"], focusedPair())) and value.IsMissing(commands.FocusOf(press.Press(["C-x"], focusedPair())))
+isFocusPairHinted() = list.Any([h.Key == "s" and not h.Group for h in commands.Update({Kind: "tick", Seconds: 1.0}, press.Press(["C-c", "e"], focusedPair())).Hints])

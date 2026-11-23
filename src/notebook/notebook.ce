@@ -453,7 +453,7 @@ defn resultBlock(k, i, line, lines, graph, state, out = missing, at = 0, table =
   made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state) or tableFocused(k, table, state), out = out, at = at, table = measuredHeads), {Cell: i})
   if value.IsSome(table)
     key = table.Key
-    return dict.Merge(made, {Mouse: (action, point, st) -> tableMouse(key, action, point, st), Wheel: (amount, st) -> tableWheel(key, amount, st), Keeps: true})
+    return dict.Merge(made, {Mouse: (action, point, st) -> tableMouse(key, action, point, st), Wheel: (amount, point, st) -> tableWheel(key, amount, st), Keeps: true})
   end
   if value.IsSome(graph) and value.IsSome(dict.GetOr("Mark", missing, graph)) and not (isAnimation(graph) or isTurning(graph))
     key = graph.Key
