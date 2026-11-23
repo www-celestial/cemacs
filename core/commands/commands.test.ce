@@ -900,7 +900,7 @@ isOneWordAtOnce() = wordsOf(press.Press(["M->", "Hell", "tab"], inFile(words4)))
 isNoWordSays() = press.Press(["M->", "Hzq", "tab"], inFile(words4)).Message == "No completion for Hzq."
 isLowerFindsCapitals() = complete.Of(press.Press(["M->", "hel", "tab"], inFile(words4))).Words[1] == "Help" and
   wordsOf(press.Press(["M->", "hel", "tab", "tab"], inFile(words4))) == "$(words4)Help"
-isNamesOfCesia() = wordsOf(press.Press(["M->", "ByteFi", "tab"], inFile(words4))) == "$(words4)ByteFind"
+isNamesOfCesia() = wordsOf(press.Press(["M->", "ByteSli", "tab"], inFile(words4))) == "$(words4)ByteSlice"
 isTabIndentsBeforeCompleting() = wordsOf(press.Press(["M->", "enter", "Hel", "C-a", " ", "C-e", "tab"], inFile("Help = 1\nif a"))) == "Help = 1\nif a\n  Hel" and
   value.IsMissing(complete.Of(press.Press(["M->", "enter", "Hel", "C-a", " ", "C-e", "tab"], inFile("Help = 1\nif a"))))
 isTabMidWordCompletesNothing() = value.IsMissing(complete.Of(press.Press(["M->", "Hel", "C-b", "tab"], inFile(words4))))
