@@ -3,6 +3,7 @@ use core/color
 use std/text as str
 use std/bug
 use std/list
+use std/dict
 use std/value
 use std/num
 use std/math
@@ -251,3 +252,27 @@ defn isLongFromAsCut()
 end
 isFromOutsideTheLine() = value.Equal(color.Tokens("ab c", color.FirstState, from = 9).Tokens, []) and value.Equal(color.Tokens("ab c", color.FirstState, from = 0), color.Tokens("ab c", color.FirstState)) and
   color.Tokens("(* a", color.FirstState, from = 9).State.Comment == 1
+
+(* The stops of a crossing, given back for a line that starts with the same bytes up to StopMargin() past each, make the same words, the same state and
+   the same stops as a reading from the start: random lines of the pieces made 200 KB long, read near their end, then cut at a random byte and given
+   another end of 200 KB, which the stops of the first line past the cut would read wrong. *)
+defn longOf(words)
+  (** The words repeated to 200 KB at least. *)
+  unit = "$words \n"
+  str.Repeat(1 + math.Div(200000, str.ByteLength(unit)), unit)
+end
+nearEnd(line, back) = str.ByteLength(str.Slice(1, list.Max(0, value.Len(line) - back), line)) + 1
+defn isStopsAsFromStart(p)
+  (** A line read from its stops after an edit past them reads as from its start. *)
+  line = longOf(p.Words)
+  first = color.Tokens(line, p.Start, from = nearEnd(line, p.Column), stops = [])
+  cut = math.Div(str.ByteLength(line), 2) + p.Cut
+  edited = "$(str.ByteSlice(1, cut, line))$(longOf(p.Tail))"
+  held = [s for s in first.Stops if s.At + color.StopMargin() <= cut]
+  from = nearEnd(edited, p.Column)
+  value.Equal(color.Tokens(edited, p.Start, from = from, stops = held), color.Tokens(edited, p.Start, from = from, stops = []))
+end
+stopsCase = gen.Of({Words: gen.Map(ps -> str.Join("", ps), gen.List(gen.Pick(pieces), max = 30)), Start: gen.Pick(starts), Column: gen.Int(0, 60),
+  Cut: gen.Int(0, 90000), Tail: gen.Map(ps -> str.Join("", ps), gen.List(gen.Pick(pieces), max = 30))})
+isStopsHold() = test.ForAll(isStopsAsFromStart, stopsCase, cases = 60)
+isStopsOnlyAsked() = value.IsMissing(dict.GetOr("Stops", missing, color.Tokens("ab", color.FirstState, from = 2))) and value.Equal(color.Tokens("ab", color.FirstState, from = 2, stops = []).Stops, [])

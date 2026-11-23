@@ -5,6 +5,8 @@ use src/rope
 use std/text as str
 use std/list
 use std/value
+use std/gen
+use std/test
 
 (** A buffer of a file of Cesia holding words, whose colors are known, as the view knows them for the lines on the screen. *)
 defn buffer(words)
@@ -160,3 +162,33 @@ tabbedMessy() = applied(indent.Plan(1, value.Len(str.Split("\n", messy)), buffer
 isTabAsFmt() = value.Equal(held(tabbedMessy()), formatted)
 isTabTwiceSame() = value.Len(indent.Plan(1, value.Len(tabbedMessy()), buffer(str.Join("\n", tabbedMessy())))) == 0
 isNoBlankLeftWithSpaces() = list.All([l == "" for l in tabbedMessy() if str.Trim(l) == "" and not str.Contains("spaces", l)])
+
+(* Enter cuts its line at the byte where the column starts and reads it by its bytes, never split into characters: on random lines of marks, blocks,
+   characters of one to four bytes and bytes that are no UTF-8, it gives what the characters of the line give. The spaces and tabs around the cursor
+   are characters of their own, and one that a byte continuing a character follows is none. *)
+enterPieces = ["(*", "*)", "(", ")", "[", "]", "{", "}", "\"", "\\", "$$", "$$(", " ", " ", "  ", "\t", "\r", "a", "_", "1", "if", "do", "end",
+  "else", "then", "->", "=", "+", ",", "struct", "é", "€", "😀", str.FromBytes([128]), str.FromBytes([191]), str.FromBytes([195]),
+  str.FromBytes([226, 130]), str.FromBytes([255])]
+aboves = ["", "if a\n", "x = f(\n", "(* a\n", "s = \"\n", "x = a +\n", "defn f()\n  y = [1,\n"]
+enterCase = gen.Of({Words: gen.Map(ps -> str.Join("", ps), gen.List(gen.Pick(enterPieces), max = 30)), Above: gen.Pick(aboves), Column: gen.Int(0, 40)})
+blankChar(c) = c == " " or c == "\t"
+
+defn isEnterAsCharacters(p)
+  (** Enter at a column of the last line of p gives the spaces before and after the cursor, the line before it and the indent that the characters give. *)
+  words = "$(p.Above)$(p.Words)"
+  n = value.Len(str.Split("\n", words))
+  b = buffer(words)
+  cs = str.Chars(p.Words)
+  column = list.Min(p.Column, value.Len(cs))
+  e = indent.NewLine({Line: n, Column: column}, b)
+  left = list.Take(column, cs)
+  rest = list.Skip(column, cs)
+  inText = e.Layout.State.Comment == 0 and value.Len(e.Layout.State.Stack) > 0
+  before = if inText 0 else value.Len(list.TakeWhile(blankChar, list.Reverse(left))) end
+  after = if inText 0 else value.Len(list.TakeWhile(blankChar, rest)) end
+  kept = b
+  kept.Layout = e.Layout
+  place = if inText str.Join("", list.TakeWhile(blankChar, left)) else str.Repeat(indent.Wanted(n + 1, kept, line = str.Join("", list.Skip(after, rest))), " ") end
+  e.Before == before and e.After == after and e.Indent == place and list.Last(e.Layout.Group).Text == str.Join("", left)
+end
+isEnterByBytes() = test.ForAll(isEnterAsCharacters, enterCase, cases = 2000)

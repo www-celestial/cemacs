@@ -136,3 +136,14 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   drawn, so the name, `.#cemacs-` and 32 digits as a copy's, needs no randomness of the kernel, and a save under a grant
   of its folder alone, as the blocks of the book run, reads nothing out of it. A file of a name of 250 bytes is saved
   too, where `PATH.cemacs-` and a time was too long for the system.
+- Enter in a file of Cesia cuts its line at the byte of the cursor and reads it by its bytes, where it split the line into
+  its characters, one text each, and the place of the new line reads its first two tokens only: on a line of a megabyte of
+  code, Enter takes 80 ms at its start instead of 1.5 s, and 0.44 s at its end instead of 1.28, where the indent reads the
+  whole line. Tab reads the lines of its statement once, by their bytes, 0.37 s instead of 0.58 there, where a cursor at
+  the end of a word made it read them twice, and a line of many ifs looks for its arrows once instead of once for each if;
+  a letter typed at the start of a line reads what follows the cursor only as far as its spaces and six characters, to
+  know whether it moves the line, so `end` typed there takes 0.25 s instead of 0.76.
+- A letter and backspace at the far end of a line of a megabyte of code take 0.09 s instead of 0.24, the colours shown the
+  same: the row of the line on the screen keeps where the crossing of its comments and texts passed, with the state there,
+  every 64 KB, and the row made again after a key crosses only the bytes after the last of these before its edit; on a file
+  of 100 MB of such lines, the rows of the screen keep 36 KB of them.

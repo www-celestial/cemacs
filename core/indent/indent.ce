@@ -42,21 +42,27 @@ isGoing(t) = t == "," or t == "." or t == "+" or t == "-" or t == "*" or t == "/
     function: a variable added under --watch is read before it has a value. *)
 startState() = {Comment: 0, Stack: [], Opens: [], Blocks: [], Continued: false, Shift: 0, Shifts: []}
 
-(** The earlier of two byte positions, either of which may be missing. *)
-earliest(a, c) = if value.IsMissing(a) c else if value.IsMissing(c) a else list.Min(a, c) end
-
 (** Where a line starts, from the state at its start: "comment", "text" or "code". *)
 placeOf(comment, stack) = if comment > 0 "comment" else if value.Len(stack) > 0 "text" else "code" end
 
-defn lexed(line, number, st, every = false)
+(** The byte where part next starts in line from byte i on, or n + 1, past the line's n bytes, when it is not there: found natively. *)
+nextOf(part, i, line, n) = match str.ByteFind(part, i, line)
+  missing -> n + 1
+  k -> k
+end
+
+defn lexed(line, number, st, every = false, most = 0)
   (** fmt's scan of line number, from the state at its start: {Where, Out, Open, Inner, Close, Unmatched, Tokens, State}. Where and Out are
       where the line starts and where its line end is; Open and Close how many brackets are open at its start and at its end, Inner the
       innermost one open at its start or missing; Unmatched how many brackets it closes that were not open; Tokens the tokens of the line out of
       any bracket, text or comment, among them the brackets that open and close at that level, and a text as one "; with every, the tokens
       inside brackets too. State has the comment, text and brackets at its end: Opens holds each bracket open, {Line, Byte}, for the place of a
-      line that goes on inside it. What the loop reads at each byte is kept in plain numbers, as a call costs more than the byte. *)
-  b = str.Bytes(line)
-  n = value.Len(b)
+      line that goes on inside it. With most, the reading stops once it has that many tokens: only Where, Open, Inner and those Tokens are then
+      known, which is all that the place of a line being typed reads, so a line of a megabyte is read as far as its first words.
+      The line is walked a byte at a time, each read natively, and never split: inside a comment, a text or brackets, the next byte that can
+      matter is found natively and kept until passed, so their words are crossed at once. What the loop reads at each byte is kept in plain
+      numbers, as a call costs more than the byte. *)
+  n = str.ByteLength(line)
   comment = st.Comment
   stack = st.Stack
   opens = st.Opens
@@ -78,79 +84,88 @@ defn lexed(line, number, st, every = false)
   braces = 0
   braced = 0
   i = 1
-  while i <= n
-    c = b[i]
+  while i <= n and (most == 0 or value.Len(tokens) < most)
+    c = str.Byte(i, line)
     if comment > 0
-      if c == 40 and i < n and b[i + 1] == 42
+      d = if i < n str.Byte(i + 1, line) else 0 end
+      if c == 40 and d == 42
         comment += 1
         i += 2
-      else if c == 42 and i < n and b[i + 1] == 41
+      else if c == 42 and d == 41
         comment -= 1
         i += 2
       else
-        (* The next byte that can matter, found natively and kept until passed: the words of a comment are read at once. *)
         if opening < i
-          opening = earliest(str.ByteFind("(*", i, line), n + 1)
+          opening = nextOf("(*", i, line, n)
         end
         if closing < i
-          closing = earliest(str.ByteFind("*)", i, line), n + 1)
+          closing = nextOf("*)", i, line, n)
         end
-        i = list.Min(opening, closing)
+        i = if opening < closing opening else closing end
       end
     else if inText
       if c != 92 and c != 36 and c != 34
         if quoting < i
-          quoting = earliest(str.ByteFind("\"", i, line), n + 1)
+          quoting = nextOf("\"", i, line, n)
         end
         if escaping < i
-          escaping = earliest(str.ByteFind("\\", i, line), n + 1)
+          escaping = nextOf("\\", i, line, n)
         end
         if dollar < i
-          dollar = earliest(str.ByteFind("$", i, line), n + 1)
+          dollar = nextOf("$", i, line, n)
         end
-        i = list.Min(list.Min(quoting, escaping), dollar)
-      else if c == 92 or (c == 36 and i < n and b[i + 1] == 36)
-        i += 2
-      else if c == 36 and i < n and b[i + 1] == 40
-        stack = list.Append(1, stack)
-        depth += 1
-        inText = false
-        i += 2
+        i = if quoting < escaping quoting else escaping end
+        i = if dollar < i dollar else i end
       else
-        if c == 34
-          stack = list.DropLast(1, stack)
-          depth -= 1
-          inText = depth > 0 and stack[depth] == 0
+        d = if i < n str.Byte(i + 1, line) else 0 end
+        if c == 92 or (c == 36 and d == 36)
+          i += 2
+        else if c == 36 and d == 40
+          stack = list.Append(1, stack)
+          depth += 1
+          inText = false
+          i += 2
+        else
+          if c == 34
+            stack = list.DropLast(1, stack)
+            depth -= 1
+            inText = depth > 0 and stack[depth] == 0
+          end
+          i += 1
         end
-        i += 1
       end
     else if c == 32 or c == 9 or c == 13
       i += 1
     else if level > 0 and depth == 0 and not every and c != 40 and c != 41 and c != 91 and c != 93 and c != 123 and c != 125 and c != 34
-      (* Inside brackets only brackets, texts and comments matter to fmt: the next one is found natively, and kept until passed. *)
+      (* Inside brackets only brackets, texts and comments matter to fmt. *)
       if parens < i
-        parens = earliest(str.ByteFind("(", i, line), n + 1)
+        parens = nextOf("(", i, line, n)
       end
       if shut < i
-        shut = earliest(str.ByteFind(")", i, line), n + 1)
+        shut = nextOf(")", i, line, n)
       end
       if squares < i
-        squares = earliest(str.ByteFind("[", i, line), n + 1)
+        squares = nextOf("[", i, line, n)
       end
       if squared < i
-        squared = earliest(str.ByteFind("]", i, line), n + 1)
+        squared = nextOf("]", i, line, n)
       end
       if braces < i
-        braces = earliest(str.ByteFind("{", i, line), n + 1)
+        braces = nextOf("{", i, line, n)
       end
       if braced < i
-        braced = earliest(str.ByteFind("}", i, line), n + 1)
+        braced = nextOf("}", i, line, n)
       end
       if quoting < i
-        quoting = earliest(str.ByteFind("\"", i, line), n + 1)
+        quoting = nextOf("\"", i, line, n)
       end
-      i = list.Min(list.Min(list.Min(parens, shut), list.Min(squares, squared)), list.Min(list.Min(braces, braced), quoting))
-    else if c == 40 and i < n and b[i + 1] == 42
+      i = if parens < shut parens else shut end
+      i = if squares < i squares else i end
+      i = if squared < i squared else i end
+      i = if braces < i braces else i end
+      i = if braced < i braced else i end
+      i = if quoting < i quoting else i end
+    else if c == 40 and i < n and str.Byte(i + 1, line) == 42
       comment = 1
       i += 2
     else if c == 34
@@ -176,7 +191,11 @@ defn lexed(line, number, st, every = false)
       i += 1
     else if (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95 or c >= 128
       j = i + 1
-      while j <= n and (((b[j] >= 97 and b[j] <= 122) or (b[j] >= 65 and b[j] <= 90)) or (b[j] >= 48 and b[j] <= 57) or b[j] == 95 or b[j] >= 128)
+      while j <= n
+        v = str.Byte(j, line)
+        if not ((v >= 97 and v <= 122) or (v >= 65 and v <= 90) or (v >= 48 and v <= 57) or v == 95 or v >= 128)
+          break
+        end
         j += 1
       end
       if every or level == 0
@@ -184,7 +203,7 @@ defn lexed(line, number, st, every = false)
       end
       i = j
     else
-      size = if i < n and isPair(c, b[i + 1]) 2 else 1 end
+      size = if i < n and isPair(c, str.Byte(i + 1, line)) 2 else 1 end
       if c == 41 or c == 93 or c == 125
         if level > 0
           opens = list.DropLast(1, opens)
@@ -194,7 +213,7 @@ defn lexed(line, number, st, every = false)
         end
       end
       if every or level == 0
-        tokens = list.Append(if size == 1 str.ByteSlice(i, i, line) else str.ByteSlice(i, i + 1, line) end, tokens)
+        tokens = list.Append(str.ByteSlice(i, i + size - 1, line), tokens)
       end
       if c == 40 or c == 91 or c == 123
         opens = list.Append({Line: number, Byte: i}, opens)
@@ -208,9 +227,11 @@ defn lexed(line, number, st, every = false)
 end
 
 defn indentOf(line)
-  (** The spaces at the start of a line, or missing when a tab is among them. *)
+  (** The spaces at the start of a line, or missing when a tab is among them: only its first bytes are read. *)
+  n = str.ByteLength(line)
   k = 0
-  for c in str.Bytes(line)
+  while k < n
+    c = str.Byte(k + 1, line)
     if c == 9
       return missing
     else if c != 32
@@ -221,26 +242,27 @@ defn indentOf(line)
   k
 end
 
-defn hasFrom(t, from, tokens)
-  (** Is t among the tokens from the one at from on? *)
-  for k in from..value.Len(tokens)
-    if tokens[k] == t
-      return true
-    end
+defn lastOf(t, tokens)
+  (** The place of the last token t among tokens, or 0: t is among the tokens after the k-th one when it is more than k. *)
+  k = value.Len(tokens)
+  while k >= 1 and tokens[k] != t
+    k -= 1
   end
-  false
+  k
 end
 
 (** Is a token a name, and not a number? *)
 startsName(t) = nameByte(str.Byte(1, t)) and not (str.Byte(1, t) >= 48 and str.Byte(1, t) <= 57)
 
-defn opening(t, k, tokens)
+defn opening(t, k, tokens, marks)
   (** Does the k-th token of a line open a block that end closes? An if after else or before the -> of a match arm opens none, nor a struct or
-      an interface written on one line. do opens one right after the ) of a call, before a name or the line end: elsewhere it is a name. *)
+      an interface written on one line. do opens one right after the ) of a call, before a name or the line end: elsewhere it is a name. marks
+      are the places of the last -> and the last { of the line, as marksFor finds them for t: each if reads them, not the rest of the line, so
+      a line of many ifs costs its tokens once. *)
   if t == "if"
-    not ((k > 1 and tokens[k - 1] == "else") or hasFrom("->", k + 1, tokens))
+    not ((k > 1 and tokens[k - 1] == "else") or marks.Arrow > k)
   else if t == "struct" or t == "interface"
-    not hasFrom("{", k + 1, tokens)
+    not (marks.Brace > k)
   else if t == "do"
     k > 1 and tokens[k - 1] == ")" and (k == value.Len(tokens) or startsName(tokens[k + 1]))
   else
@@ -248,11 +270,27 @@ defn opening(t, k, tokens)
   end
 end
 
+(** The places of the last -> and the last { of tokens before any is looked for, see marksFor. *)
+noMarks() = {Arrow: -1, Brace: -1}
+
+defn marksFor(t, tokens, marks)
+  (** The places of the last -> and the last { of the tokens, {Arrow, Brace}, as opening asks them for t: each found once, at the first if, or
+      struct or interface, and -1 until then, from noMarks(). *)
+  out = marks
+  if t == "if" and out.Arrow < 0
+    out.Arrow = lastOf("->", tokens)
+  else if (t == "struct" or t == "interface") and out.Brace < 0
+    out.Brace = lastOf("{", tokens)
+  end
+  out
+end
+
 defn blocksAfter(blocks, tokens, indent)
   (** The blocks open after the tokens of a line, in their order: an opener adds one, an end closes the innermost one that end closes, with the
       bodies above it. A do block on a line that starts with then, at indent under its statement, has its body under that line: it is a "t",
       after a "c" for each step of that indent, which its end closes too. *)
   out = blocks
+  marks = noMarks()
   for k in 1..value.Len(tokens)
     t = tokens[k]
     if t == "end"
@@ -264,13 +302,18 @@ defn blocksAfter(blocks, tokens, indent)
       while value.Len(out) > 0 and list.Last(out) == "c"
         out = list.DropLast(1, out)
       end
-    else if isOpener(t) and opening(t, k, tokens) and t == "do" and tokens[1] == "then"
-      while 2 * value.Len(out) < indent
-        out = list.Append("c", out)
+    else if isOpener(t)
+      marks = marksFor(t, tokens, marks)
+      if opening(t, k, tokens, marks)
+        if t == "do" and tokens[1] == "then"
+          while 2 * value.Len(out) < indent
+            out = list.Append("c", out)
+          end
+          out = list.Append("t", out)
+        else
+          out = list.Append("k", out)
+        end
       end
-      out = list.Append("t", out)
-    else if isOpener(t) and opening(t, k, tokens)
-      out = list.Append("k", out)
     end
   end
   out
@@ -288,8 +331,37 @@ defn done(blocks)
   out
 end
 
-(** Is a line only spaces, tabs and line ends? *)
-isBlank(line) = str.Trim(line) == ""
+defn isBlank(line)
+  (** Is a line only spaces, tabs, line ends and form feeds, the bytes that str.Trim takes off? It is read up to its first other byte. *)
+  n = str.ByteLength(line)
+  k = 1
+  while k <= n
+    c = str.Byte(k, line)
+    if c != 32 and c != 9 and c != 10 and c != 13 and c != 12
+      return false
+    end
+    k += 1
+  end
+  true
+end
+
+defn kindOf(x, blank, st)
+  (** How fmt reads a line from its scan x, of its first two tokens at least, whether it is blank, and the state at its start: {Kind, Level},
+      see stepped. *)
+  tokens = x.Tokens
+  count = value.Len(tokens)
+  first = if count > 0 tokens[1] else missing end
+  if x.Where == "text"
+    {Kind: "text", Level: 0}
+  else if blank
+    {Kind: "blank", Level: 0}
+  else if x.Where == "code" and x.Open == 0 and not st.Continued and first != "then"
+    dedent = (first == "end" or first == "else") and not (count > 1 and tokens[2] == "->")
+    {Kind: "statement", Level: list.Max([value.Len(st.Blocks) - (if dedent 1 else 0 end), 0])}
+  else
+    {Kind: "continued", Level: 0}
+  end
+end
 
 defn stepped(line, number, st)
   (** Line number read by fmt's rule, from the state at its start: {Kind, Level, At, Tokens, Lexed, State}. Kind is "statement" for a line that
@@ -301,26 +373,19 @@ defn stepped(line, number, st)
   x = lexed(line, number, st)
   tokens = x.Tokens
   count = value.Len(tokens)
-  first = if count > 0 tokens[1] else missing end
   last = if count > 0 tokens[count] else missing end
-  blank = isBlank(line)
   blocks = st.Blocks
   shift = st.Shift
   shifts = st.Shifts
   at = indentOf(line)
-  level = 0
-  kind = "continued"
-  if x.Where == "text"
-    kind = "text"
-  else if blank
-    kind = "blank"
-  else if x.Where == "code" and x.Open == 0 and not st.Continued and first != "then"
-    kind = "statement"
+  blank = isBlank(line)
+  read = kindOf(x, blank, st)
+  kind = read.Kind
+  level = read.Level
+  if kind == "statement"
     if count > 0
       blocks = [if k == "v0" "v1" else k end for k in blocks]
     end
-    dedent = (first == "end" or first == "else") and not (count > 1 and tokens[2] == "->")
-    level = list.Max([value.Len(blocks) - (if dedent 1 else 0 end), 0])
     shift = if value.IsMissing(at) 0 else 2 * level - at end
   end
   continued = st.Continued
@@ -538,11 +603,25 @@ defn kindOfBlank(st)
   end
 end
 
-(** The number of characters of the first bytes of a line, up to byte k: those that start a character. *)
-charsBefore(k, line) = value.Len([c for c in list.Take(k - 1, str.Bytes(line)) if c < 128 or c >= 192])
+(** Does a byte continue a character, 10xxxxxx in UTF-8, instead of starting one? *)
+continues(c) = c >= 128 and c < 192
 
-(** The spaces at the start of a line, a tab counting as one. *)
-spacesOf(line) = value.Len(list.TakeWhile(c -> c == 32 or c == 9, str.Bytes(line)))
+defn charsBefore(k, line)
+  (** The number of characters of the bytes of a line before byte k: those that start a character. They are counted natively, and value.Len
+      counts the bytes that continue a character at the start of a text as one more. *)
+  part = str.ByteSlice(1, list.Min(k - 1, str.ByteLength(line)), line)
+  value.Len(part) - (if part != "" and continues(str.Byte(1, part)) 1 else 0 end)
+end
+
+defn spacesOf(line)
+  (** The spaces and tabs at the start of a line, in bytes, a tab counting as one: only those are read. *)
+  n = str.ByteLength(line)
+  k = 0
+  while k < n and (str.Byte(k + 1, line) == 32 or str.Byte(k + 1, line) == 9)
+    k += 1
+  end
+  k
+end
 
 defn lastBefore(group)
   (** The last line of a group that holds more than spaces, or missing. *)
@@ -638,12 +717,16 @@ defn opensBlock(tokens)
     return true
   end
   count = 0
+  marks = noMarks()
   for k in 1..value.Len(tokens)
     t = tokens[k]
     if t == "end"
       count -= 1
-    else if isOpener(t) and opening(t, k, tokens)
-      count += 1
+    else if isOpener(t)
+      marks = marksFor(t, tokens, marks)
+      if opening(t, k, tokens, marks)
+        count += 1
+      end
     end
   end
   count > 0
@@ -658,15 +741,19 @@ defn openerOf(group, inner)
   k = value.Len(group)
   while k >= 1 and group[k].Line >= inner.Line
     tokens = tokensIn(group[k], inner)
+    marks = noMarks()
     j = value.Len(tokens)
     while j >= 1
       t = tokens[j]
       if t == "end"
         need += 1
-      else if isOpener(t) and opening(t, j, tokens)
-        need -= 1
-        if need == 0
-          return spacesOf(group[k].Text)
+      else if isOpener(t)
+        marks = marksFor(t, tokens, marks)
+        if opening(t, j, tokens, marks)
+          need -= 1
+          if need == 0
+            return spacesOf(group[k].Text)
+          end
         end
       end
       j -= 1
@@ -725,7 +812,7 @@ defn guessed(r, line, number, b)
     return commentPlace(r.Group)
   end
   if value.Len(st.Opens) > 0
-    return insidePlace(r, lexed(line, number, st, every = true).Tokens, b)
+    return insidePlace(r, lexed(line, number, st, every = true, most = 2).Tokens, b)
   end
   start = if value.Len(r.Group) > 0 r.Group[1] else missing end
   if value.IsMissing(start)
@@ -745,8 +832,8 @@ defn guessed(r, line, number, b)
 end
 
 defn placeIn(r, line, number, b)
-  (** The place of a line being typed, read after r. *)
-  s = stepped(line, number, r.State)
+  (** The place of a line being typed, read after r: only its first two tokens matter, so a line of a megabyte is read as far as them. *)
+  s = kindOf(lexed(line, number, r.State, most = 2), isBlank(line), r.State)
   kind = if s.Kind == "blank" kindOfBlank(r.State) else s.Kind end
   if kind == "statement"
     if s.Kind == "blank" 2 * value.Len(r.State.Blocks) else 2 * s.Level end
@@ -771,6 +858,17 @@ defn Wanted(n, b, line = missing)
   placeIn(ran(n, b), text, n, b)
 end
 
+defn blanksTo(k, line)
+  (** The byte after the spaces and tabs of a line from byte k on, each a character of its own: one that a byte continuing a character follows is
+      none, as str.Chars reads it. *)
+  n = str.ByteLength(line)
+  j = k
+  while j <= n and (str.Byte(j, line) == 32 or str.Byte(j, line) == 9) and (j == n or not continues(str.Byte(j + 1, line)))
+    j += 1
+  end
+  j
+end
+
 defn NewLine(at, b)
   (** What Enter does at a position {Line, Column} of a Cesia buffer, read as fmt reads it: {Before, After, Indent, Layout}. Before is the number of
       spaces and tabs before the position that go, since no line ends with spaces, and After of those after it, which the indent of the new line
@@ -780,23 +878,25 @@ defn NewLine(at, b)
       colors are guessed. *)
   line = rope.Line(at.Line, b.Rope)
   r = ran(at.Line, b)
-  left = str.Join("", list.Take(at.Column, str.Chars(line)))
-  rest = str.Join("", list.Skip(at.Column, str.Chars(line)))
+  (* The line is cut natively at the byte where the column starts, and read by its bytes from there: never split into characters. *)
+  left = str.Slice(1, list.Min(at.Column, value.Len(line)), line)
+  cut = str.ByteLength(left)
   s = stepped(left, at.Line, r.State)
   inText = placeOf(s.State.Comment, s.State.Stack) == "text"
-  before = if inText 0 else value.Len(list.TakeWhile(c -> c == " " or c == "\t", list.Reverse(str.Chars(left)))) end
-  after = if inText 0 else value.Len(list.TakeWhile(c -> c == " " or c == "\t", str.Chars(rest))) end
+  k = cut
+  while not inText and k >= 1 and (str.Byte(k, left) == 32 or str.Byte(k, left) == 9)
+    k -= 1
+  end
+  before = cut - k
+  after = if inText 0 else blanksTo(cut + 1, line) - cut - 1 end
   group = if s.Kind == "statement" [] else r.Group end
   next = {State: s.State, Group: list.Append(record(at.Line, left, r.State, s), group)}
-  words = str.Join("", list.Skip(after, str.Chars(rest)))
-  {Before: before, After: after, Indent: if inText str.Join("", list.TakeWhile(c -> c == " " or c == "\t", str.Chars(left))) else str.Repeat(placeIn(next, words, at.Line + 1, b), " ") end,
+  words = str.ByteSlice(cut + after + 1, str.ByteLength(line), line)
+  {Before: before, After: after, Indent: if inText str.ByteSlice(1, blanksTo(1, left) - 1, left) else str.Repeat(placeIn(next, words, at.Line + 1, b), " ") end,
     Layout: if value.IsMissing(color.GuessOf(b)) {Line: at.Line + 1, State: next.State, Group: next.Group} else missing end}
 end
 
 (* ---- The places of whole statements *)
-
-(** The bytes of spaces and tabs at the start of a line. *)
-leading(line) = value.Len(list.TakeWhile(c -> c == 32 or c == 9, str.Bytes(line)))
 
 defn changesOf(group, first, last)
   (** The changes of indent of a statement's lines, {Line, Indent, Old}: Old the bytes of spaces and tabs it starts with, Indent the spaces it
@@ -808,7 +908,7 @@ defn changesOf(group, first, last)
     return out
   end
   for g in group
-    old = leading(g.Text)
+    old = spacesOf(g.Text)
     if g.Kind == "statement"
       want = 2 * g.Level
       if want != old or value.IsMissing(g.At)

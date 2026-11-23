@@ -210,6 +210,17 @@ arrière. À la fin d'une ligne d'un mégaoctet de code, une touche lit donc ses
 color.Tokens("defn f() (* a", color.FirstState, from = 8).Tokens --> [[6, ") "], [5, "(* a"]]
 ```
 
+La rangée d'une ligne à l'écran garde où cette traversée est passée, avec l'état à cet endroit : un stop (un point d'arrêt)
+au moins tous les 64 KB, que [color.Tokens] donne avec `stops` et reprend. Une modification à l'extrémité de la ligne laisse
+les octets d'avant tels qu'ils étaient, et un stop tient tant que la ligne est la même jusqu'à 8 octets après lui, plus que
+ce qu'un pas de la traversée lit après sa fin. La rangée refaite après une touche commence donc sa traversée au dernier stop
+avant l'écran qui tient, et fait les mêmes mots, et les mêmes stops, qu'une traversée depuis le début de la ligne : un
+property-based test le vérifie sur des lignes au hasard de 200 KB, coupées à un octet au hasard et dotées d'une autre fin. À
+la fin d'une ligne d'un mégaoctet de code, une lettre traverse au plus 64 KB au lieu de la ligne entière, 93 ms avec sa frame
+au lieu de 242. Un stop prend environ 92 octets, et seules les rangées de l'écran en gardent : sur un fichier de 100 MB fait
+de lignes d'un mégaoctet, les 28 rangées de l'écran gardent 392 stops, 36 KB, 0,04 % du buffer, et jamais plus de 0,14 % des
+octets qu'elles traversent. C'est encore le cache de `syntax-ppss`, à l'intérieur d'une seule ligne.
+
 Chaque buffer garde l'état au début de chaque ligne, connu jusqu'à une certaine ligne, [color.StartOf]. Une modification à
 la ligne n oublie les états après n ; le dessin ne les relit que jusqu'à la dernière ligne de l'écran, et une ligne sans
 guillemet et sans marque de commentaire n'est même pas lue, puisqu'elle ne peut pas changer l'état. Taper à la ligne
@@ -277,6 +288,17 @@ plus espacées que cela se lit depuis la ligne située 2 000 lignes plus haut, d
 Une ligne coûte donc les lignes de la définition où elle se trouve, jamais le fichier entier. La lecture depuis l'anchor
 donne l'état au début de la ligne, les blocs et les parenthèses ouverts et les lignes du statement qu'elle peut continuer ;
 de cet état, [indent.Wanted] tire la place d'une ligne que l'on tape, et [indent.Plan] les changements de Tab.
+
+La ligne se lit par ses octets, comme les couleurs la lisent, jamais comme une liste de ses caractères : le scan de fmt la
+parcourt un octet à la fois, et dans un commentaire, un texte ou des parenthèses, il va au prochain octet qui peut compter,
+cherché en code natif avec [text.ByteFind]. Enter coupe la ligne à l'octet du curseur, la place d'une ligne que l'on tape ne
+lit que ses deux premiers tokens, Tab lit une seule fois les lignes de son statement, et une lettre tapée au début d'une ligne
+ne lit ce qui suit le curseur que jusqu'à ses espaces et six caractères, pour savoir si elle fait un mot qui déplace la
+ligne. Sur une ligne d'un mégaoctet de code, Enter à son début prend 80 ms avec sa frame, surtout les couleurs de la ligne
+qui descend, là où les caractères de la ligne, un texte chacun, prenaient 1,5 s. À sa fin, l'indentation a besoin de la ligne
+entière, des parenthèses, textes et commentaires ouverts au curseur et des blocs que la ligne ouvre et ferme, et la lit une
+fois : 0,44 s au lieu de 1,28 ; voir
+[Une touche sur une très longue ligne](performance.md#une-touche-sur-une-très-longue-ligne).
 
 Enter garde sa lecture : [text.NewLine] range, dans le `Layout` du buffer, l'état au début de la nouvelle ligne, et l'Enter
 suivant, ou le premier mot tapé sur cette ligne, repart de lui quand il est au plus 256 lignes plus haut, au lieu de chercher
