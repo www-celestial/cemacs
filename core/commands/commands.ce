@@ -1587,16 +1587,30 @@ end
 
 defn Wheel(event, state)
   (** The screen of the pane under the mouse moved by the wheel, the WheelLines of the config for each notch, in rows, through the blocks under the lines as
-      through the lines, without making that pane the one being edited. The cursor stays on the screen, as in Emacs: past the ScrollMargin of the config from
+      through the lines, without making that pane the one being edited; over a block that takes the wheel, as a table of the cells, that block moves first,
+      see wheelIn. The cursor stays on the screen, as in Emacs: past the ScrollMargin of the config from
       its top or its bottom, it goes to the nearest line inside, at the column it had, as C-n keeps it; see view.Wheeled. What is less than a row stays for
       the next event, since a touchpad sends many small ones. *)
   i = panes.Active(state)
   j = view.PaneAt(event.X, event.Y, state)
   if j > 0 and j != i
-    focused(i, wheeled(event, focused(j, state)))
+    focused(i, wheelIn(event, focused(j, state)))
   else
-    wheeled(event, state)
+    wheelIn(event, state)
   end
+end
+
+defn wheelIn(event, state)
+  (** The wheel over a block that takes it, as a table of the cells, moves what the block shows, with its Wheel, a function of the amount and the state
+      that gives the state, or missing when it can't move that way: then, and anywhere else, the wheel moves the screen. *)
+  hit = view.BlockAt(event.X, event.Y, state)
+  if value.IsSome(hit) and dict.Has("Wheel", hit.Block)
+    moved = hit.Block.Wheel(event.Amount, state)
+    if value.IsSome(moved)
+      return moved
+    end
+  end
+  wheeled(event, state)
 end
 
 defn wheeled(event, state)
