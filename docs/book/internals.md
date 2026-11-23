@@ -38,7 +38,8 @@ buffer.
 question asked, or `missing`), `Message`, `Run` (the program, or `missing`), `Window`, `Width`, `Height`, `Cell` (the size of
 a character of the code font), `Look` (the theme and the widths of the fonts), `Clip` (the clipboard when there is no window),
 `Chorded`, `Chain` (true after `C-k`), `Dragging`, `Pressed`, `Wheel`, `Ending`, `Title`, `Config`, `Home` (the folder of
-Cemacs), `Second`, `Panes`, `Pane`, `Waited`, `Hints` and `Chords`. Later code added `Still`, `Breaks` and `Checking`, read
+Cemacs), `Second`, `Panes`, `Pane`, `Waited`, `Hints` and `Chords`. Later code added `Still`, `Breaks`, `Checking` and
+`Hovering` (the block under the mouse that wants its moves), read
 through a `match` with a default, for the reason [Changing Cemacs](customising.md#reloading-cemacs-while-it-runs) tells.
 
 A buffer, made by [text.Of], holds `Rope` (its text), `Cursor`, `Mark`, `Origin` (what set the mark: `"key"`, `"shift"`,

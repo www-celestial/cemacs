@@ -33,10 +33,10 @@ Les touches des cells sont un groupe de `C-c`, `e` pour *execute* (exécuter), q
 | `C-c e i` | [notebook.InsertCell] | écrit un marqueur, `(* %%  *)`, au-dessus de la ligne du curseur, le curseur là où va son titre |
 | `C-c e v` | [notebook.ShowVariables] | ouvre `*variables*` à côté : les noms que les cells ont définis |
 | `C-c e r` | [notebook.OpenRepl] | ouvre `*repl*` en dessous : un prompt dans la même session que les cells |
-| `C-c e s` | [notebook.StopCell] | arrête la cell qui tourne ; les cells qui attendent après elle ne tournent pas |
+| `C-c e s` | [notebook.StopCell] | arrête la cell qui tourne ; les cells qui attendent après elle ne tournent pas. Quand un graphe a les touches, enregistre plutôt le graphe en SVG, voir [La souris et les touches sur un graphe](#la-souris-et-les-touches-sur-un-graphe) |
 | `C-c e h` | [notebook.WriteHtml] | écrit la page du fichier à côté de lui, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | efface les résultats dessinés ; les noms de la session restent |
-| `C-c e f` | [notebook.FocusControl] | donne les touches au premier input de la cell du curseur, un slider ou un autre, à la barre de son animation, à son graphe 3D ou à sa table : voir Sliders, Inputs, Animations, Graphes 3D et Tables |
+| `C-c e f` | [notebook.FocusControl] | donne les touches au premier input de la cell du curseur, un slider ou un autre, à la barre de son animation, à son graphe 3D, à sa table ou à son graphe : voir Sliders, Inputs, Animations, Graphes 3D, Tables et Les graphes |
 | `C-c e c` | [notebook.CopyTable] | copie une table en CSV : celle qui a les touches, ou les a eues en dernier, ou la première de la cell du curseur |
 
 Dans `*repl*`, Enter lance ce qui a été tapé, et `M-p` et `M-n` reculent et avancent dans ce qui a été tapé avant ;
@@ -97,6 +97,69 @@ largeur, la session dessine à nouveau la scene à la nouvelle ; le graphe garde
 L'écran glisse sur un graphe une rangée à la fois, sa partie basse visible quand l'écran commence dedans : voir
 [L'écran d'un pane](windows.md#lécran-dun-pane).
 
+### La souris et les touches sur un graphe
+
+Un graphe à deux dimensions, ni une animation ni un graphe 3D, montre les valeurs de ses points, comme la page de
+SunEarthTools les montre sous la souris.
+
+- **La souris au-dessus.** Le point le plus proche de la souris, à 12 pixels près, de ses lignes, de ses points et de ses
+  textes, montre une croix fine et ses valeurs dans une petite case à côté, `x = 128.27  y = 9.99`, dans les unités des
+  données, sur un axe log aussi, comme std/plot écrit la case d'une marque : 6 chiffres significatifs au plus, après le
+  label de sa layer, `21 Jun: x = …`, quand le graphe en a plus d'une. Rien n'est dessiné quand aucun point n'est aussi
+  près.
+- **Un clic sur un point** épingle sa case : elle reste, et plusieurs le peuvent ; un clic de nouveau sur elle, ou
+  `Escape`, l'enlève. Le clic donne aussi les touches au graphe, comme un clic sur une table, et choisit sa rangée dans une
+  table de la cell qui a autant de rangées, comme le dit [Une rangée et son point](#une-rangée-et-son-point). Un appui sur
+  les lignes au-dessus du graphe va au texte, comme avant.
+
+La première fois que la souris passe sur un graphe, ou que le graphe prend les touches, sa scene est demandée de nouveau,
+une fois, [cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html) avec `points = true`, qui donne les places et
+les valeurs des points que le graphe dessine, ceux que M4 (l'algorithme qui allège une longue ligne) garde d'une longue
+ligne, et comment ses axes rencontrent les pixels ; le graphe garde les formes qu'il a dessinées. Ensuite, un mouvement de
+la souris ne demande rien : les points sont rangés dans des buckets (des cases de rangement) de 32 sur 32 pixels, et le
+plus proche est trouvé parmi ceux des buckets que touchent les 12 pixels autour de la souris, quatre au plus.
+
+`C-c e f` dans sa cell, quand la cell n'a pas d'autre contrôle, Tab depuis une table de la cell, ou un clic donne les
+touches au graphe : un anneau de la couleur d'accent l'entoure, et le point des touches a sa croix et sa case dans cette
+couleur.
+
+| Touches | Ce qu'elles font |
+|---|---|
+| `←` `→` | le point d'avant, le point d'après, le long de sa layer, et sa rangée dans une table de la cell |
+| `↑` `↓` | la layer d'avant, la layer d'après, au point de la position la plus proche |
+| `Space` | épingle le point des touches, ou le désépingle |
+| la molette | zoome autour de la souris, un cran vers le haut 20 % plus près |
+| un glissement | déplace la vue, ce qui est sous la souris la suivant ; pas dans un graphe polaire |
+| `0` | revient aux étendues du graphe lui-même |
+| `M-w` | copie les valeurs des points épinglés, une ligne chacun, x et y séparés par une tabulation, ou sans épingle celles du point des touches |
+| `C-c e s` | enregistre le graphe en SVG à côté du fichier |
+| `Tab` `S-Tab` | la table ou le graphe suivant de la cell, le précédent |
+| `Escape` | enlève les épingles ; sans épingle, quitte le graphe |
+| `C-g` | quitte le graphe |
+
+**Le zoom.** Chaque cran de la molette change les étendues voulues et demande à la session la scene à ces étendues,
+[cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html) avec `xlim` et `ylim`, comme les options de
+`plot.Of` les donnent : la session la dessine, ses graduations et leurs étiquettes refaites, et les points sous la souris
+viennent avec elle. La valeur sous la souris reste sous elle. Une question à la fois : les crans qui viennent pendant
+qu'une question attend ne changent que les étendues voulues, et les dernières sont demandées une fois la réponse venue,
+si bien qu'une molette rapide ne demande pas une file de vues anciennes. Un axe des noms de barres garde sa propre
+étendue, et un graphe polaire ne zoome que la distance à son centre, son `ylim`, `[center, rim]` (le centre, le bord).
+Un zoom reste entre un millionième et un million de fois l'étendue du graphe lui-même. Le code ne change jamais : `0`,
+un lancement de la cell et la page montrent le graphe comme son code le dessine.
+
+**Sans les touches, rien ne change.** Tant qu'aucun graphe n'a les touches, la molette au-dessus d'un graphe déplace
+l'écran, comme elle l'a toujours fait, un glissement dessus ne zoome rien, et chaque touche fait ce qu'elle faisait : `0`
+s'écrit, `M-w` copie la région, `C-c e s` arrête la cell qui tourne.
+
+**Le SVG.** `C-c e s` écrit le graphe comme son code le dessine, à sa propre taille et à ses propres étendues, le texte que
+`plot.Save` écrirait, que [cells.Svg](https://www-celestial.github.io/cesia-lang/cells.html) demande à la session ; un zoom
+est une vue de l'éditeur et n'y est pas, comme la vue vers laquelle on a tourné un graphe 3D. Le fichier va à côté du
+fichier des cells, nommé d'après lui et le titre de la cell en minuscules et en chiffres, ses accents enlevés,
+[notebook.SvgPath] : `sun-day.svg` pour le graphe de la cell `(* %% Day *)` de `sun.ce`, `sun-day-2.svg` pour un second
+graphe de cette cell, `sun-cell3.svg` pour une troisième cell sans titre. Un fichier ou un lien qui est déjà là fait
+l'objet d'une question d'abord, comme pour la page, et le fichier est écrit comme un enregistrement en écrit un, par un
+nouveau fichier et un rename, si bien qu'un lien là est remplacé, jamais écrit à travers.
+
 ## Tables
 
 Une frame, une matrice, une liste de maps ou de structs et un struct s'affichent comme une *table* (un tableau) sous leur
@@ -128,7 +191,7 @@ choisie est en inverse, l'encre et le papier échangés.
 | `M-w` | copie le texte de la case du curseur |
 | `C-u M-w` | copie la rangée du curseur, ses cases séparées par des tabulations |
 | `C-c e c` | copie toute la table en CSV (des valeurs séparées par des virgules), comme std/csv l'écrit : son en-tête, puis ses rangées comme elle les montre, triées et filtrées, 100 000 au plus |
-| `Tab` `S-Tab` | la table suivante de la cell, la précédente |
+| `Tab` `S-Tab` | la table ou le graphe suivant de la cell, le précédent |
 | `Escape` `C-g` | quitte la table |
 
 Le tri et le filtre se font dans la session, qui garde l'ordre pour l'écran suivant : les nombres se trient comme des
@@ -156,10 +219,10 @@ plot.Points(frame.Column("hour", hours), frame.Column("elevation", hours))
 
 Une rangée choisie, par un clic ou les flèches, marque son point sur chaque graphe de la cell qui en a autant : un anneau
 au point, à sa place exacte, même un point que le graphe a écarté en allégeant une longue ligne, et une case de ses
-valeurs à côté, `x = 9  y = 18.14`, que la session dessine, une question pour chaque marque. Un clic sur un point d'un
-graphe marqué, à 12 pixels près, choisit sa rangée : la table défile jusqu'à elle, triée et filtrée comme elle l'est, et
-la montre en inverse. Une table et un graphe de longueurs différentes ne sont pas liés, et rien n'est lié d'une cell à
-l'autre.
+valeurs à côté, `x = 9  y = 18.14`, que la session dessine, une question pour chaque marque. Un clic sur un point d'un tel
+graphe, à 12 pixels près, choisit sa rangée : la table défile jusqu'à elle, triée et filtrée comme elle l'est, et la
+montre en inverse ; le graphe prend les touches, et ses flèches choisissent les rangées des points où elles vont. Une table
+et un graphe de longueurs différentes ne sont pas liés, et rien n'est lié d'une cell à l'autre.
 
 ## Sliders
 
@@ -431,7 +494,15 @@ qu'aucune réponse n'aille à une autre question. Les rangées d'une table sont 
 colonnes au plus, un texte de 200 caractères au plus pour chaque colonne de chaque rangée, et pour chacune une position de
 1 au nombre de rangées de la valeur ; des rangées qui ne le sont pas sont refusées, et la table garde ce qu'elle montre et
 n'en demande pas plus. Les places des points d'un graphe marqué sont 100 000 au plus par layer (une couche du graphe), de
-64 layers, chacune un nombre de -1 000 000 à 1 000 000. Les mots d'un filtre vont à la session comme un texte, qu'elle
+64 layers, chacune un nombre de -1 000 000 à 1 000 000. Les points et les axes que la session envoie pour la souris sont
+une entrée aussi : 1 000 000 de points au plus en tout, chacun avec deux nombres finis, ses valeurs ; chaque layer avec un
+nombre de points, une sorte et un label (une étiquette) de 200 caractères au plus, coupé à 30 dans une case ; les axes avec
+une échelle que std/plot donne, des étendues finies et non vides, au-dessus de 0 sur un axe log, et des pixels dans les
+mêmes bornes. Des points ou des axes qui ne le sont pas sont refusés : le graphe ne montre pas de valeurs, et ne les
+redemande pas. Les croix et les cases ne sont dessinées que dans le tracé. `M-w` copie des nombres seuls, écrits par
+Cemacs, jamais un texte de la session. Le nom du SVG d'un graphe vient du fichier et du titre de sa cell, jamais de la
+session, et ne contient pas de `/` : il reste à côté du fichier. Le SVG n'est écrit que si c'est un texte qui commence par
+`<svg`, de 64 000 000 d'octets au plus. Les mots d'un filtre vont à la session comme un texte, qu'elle
 cherche tel quel et ne lit jamais comme un motif ni comme du code. La
 vérification lit chaque nombre une fois : 16 ms pour 100 000 marques, 25 ms pour une heatmap (une carte de chaleur, une grille de cases
 colorées selon leur valeur) d'un million de cases. La mémoire que prennent les formes est écrite par `c.Write`, qui vérifie
@@ -446,6 +517,14 @@ médianes). Une cell qui montre une frame de 1 000 rangées apparaît en 2,62 ms
 2,74 quand elle montrait la frame comme un texte, les médianes de 21 lancements à tour de rôle : sa table est dessinée au
 tick (le pas de la boucle de l'éditeur) où son résultat arrive, et les noms de `*variables*` viennent à un tick suivant.
 Cemacs atteint sa première frame en 30,84 ms, comme avant les tables (30,86).
+
+Les valeurs sous la souris : sur un graphe de 10 000 points, un mouvement de la souris vers un autre point prend 0,18 ms à
+travers l'éditeur, la médiane de 21 mouvements, dont 0,12 ms dans le handler (la fonction qui le traite) du graphe lui-même,
+sans question à la session ; la vue de la fenêtre prend ensuite 0,20 ms. Une cell qui montre ce graphe apparaît en
+22,10 ms, de `C-c e e` à son bloc dessiné, contre 22,90 avant la souris et les touches (médianes de 21 lancements, à tour
+de rôle) : les points ne sont demandés qu'une fois que la souris passe sur le graphe ou qu'il prend les touches. Cemacs
+atteint sa première frame en 31,07 ms (31,13 avant). Une ligne de 10 000 points est faite en bandes en 13 ms au lieu de
+19, chaque jointure sur son onglet (le miter, le coin prolongé où les bords de deux segments se rencontrent).
 
 Taper dans un fichier de cells coûte ce que coûte taper dans n'importe quel fichier : les cells ne sont relues que lorsqu'une
 cell tourne, et une demi-seconde après la dernière touche pour remettre les résultats sous leurs cells, jamais à chaque

@@ -41,7 +41,8 @@ d'annulation garde des textes entiers, et que deux panes gardent deux endroits d
 `Cell` (la taille d'un caractère de la police du code), `Look` (le thème et les largeurs des polices), `Clip` (le
 presse-papiers quand il n'y a pas de fenêtre), `Chorded`, `Chain` (true après `C-k`), `Dragging`, `Pressed`, `Wheel`,
 `Ending`, `Title`, `Config`, `Home` (le dossier de Cemacs), `Second`, `Panes`, `Pane`, `Waited`, `Hints` et `Chords`. Du code
-plus tardif a ajouté `Still`, `Breaks` et `Checking`, lus par un `match` avec une valeur par défaut, pour la raison que donne
+plus tardif a ajouté `Still`, `Breaks`, `Checking` et `Hovering` (le bloc sous la souris qui veut ses mouvements), lus par
+un `match` avec une valeur par défaut, pour la raison que donne
 [Modifier Cemacs](customising.md#recharger-cemacs-pendant-quil-tourne).
 
 Un buffer, fait par [text.Of], contient `Rope` (son texte), `Cursor`, `Mark`, `Origin` (ce qui a posé la mark : `"key"`,

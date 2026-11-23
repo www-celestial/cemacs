@@ -362,8 +362,9 @@ A key bound to nothing says so on the prompt line, as `C-t is not bound.` or `C-
 |---|---|---|
 | press of the first button | [commands.Press] | the pane under the mouse becomes the one you edit; in its code, the cursor goes to the edge between two characters nearest to the mouse |
 | move with the button held | [commands.Drag] | selects from the press to the mouse, once the mouse has left the zone around the press |
+| move with no button | [commands.Hover] | tells a block under the mouse that wants it where the mouse is, as a graph of the cells shows the values of the point under it; elsewhere, nothing |
 | release | [commands.Release] | ends the drag; a click that selected nothing leaves no mark |
-| wheel | [commands.Wheel] | scrolls the pane under the mouse, and its cursor with it |
+| wheel | [commands.Wheel] | scrolls the pane under the mouse, and its cursor with it; over a table of the cells, or a graph that has the keys, moves or zooms it first |
 
 The zone around a press is [emacs.DragZone], 4 pixels on either axis: a hand that moves a pixel while it clicks makes no
 selection. Once the mouse has left the zone, the cursor follows it, even back into it. A drag past the edge of the code

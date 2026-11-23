@@ -77,6 +77,15 @@ what a key can lead to, so no key has to be learnt before the start.
 - A row chosen in a table rings its point on each line, points or texts of the graphs of its cell that have as many
   points, with a box of its values, and a click on a point of such a graph chooses its row.
 - The wheel over a table moves its rows first, and the screen once the table is at its first or its last row.
+- A 2D graph under a cell shows the values of the point nearest the mouse in a small box beside a thin cross, as std/plot
+  writes the box of a mark, its points asked once of the session of Cesia 1.3 and kept in buckets of 32 by 32 pixels; a
+  click pins them, several at once, and gives the graph the keys: the arrows go from point to point and from layer to
+  layer, Space pins, `M-w` copies x and y, the wheel zooms about the mouse and a drag moves the view, each view drawn by
+  the session one question at a time, `0` goes back to its own ranges, and `C-c e s` saves the graph as SVG beside the
+  file, named after its cell, asking before it replaces one. Without the keys, the wheel over a graph moves the screen and
+  every key does what it did. Tab goes between the tables and the graphs of a cell.
+- A click on a point of a graph linked to a table chooses its row and gives the graph the keys, where it gave them to the
+  table; a press on the lines above a graph goes to the text.
 
 ### Changing Cemacs
 
@@ -99,9 +108,15 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   that shows a frame of 1,000 rows appears in 2.62 ms against 2.74 when it showed it as text, and the first frame stays at
   30.84 ms against 30.86 (medians of 21 runs, alternated), as Cesia 1.3 reads a file of more than 256 functions from its
   cache with no young collection.
+- The point under the mouse on a graph of 10,000 points in 0.18 ms a move, with no question to the session; a cell that
+  shows that graph appears in 22.10 ms against 22.90; a line of 10,000 points is made into its strips in 13 ms instead
+  of 19.
 
 ### Fixes
 
+- The left and the right side of a graph's frame are drawn whole, as in its SVG, where the left one stopped short and the
+  right one faded: a line keeps its width up to each joint, its strip on the miter of its two segments, and a joint
+  sharper than 120 degrees is cut flat.
 - The config of a Git repository runs no program of its own on `=`, `C-x p f`, `C-x g`, `C-c g d`, the log, a commit shown,
   the blame or `C-x p g`: no fsmonitor, external diff, textconv, filter, hook, signature program or fetch helper of a
   `.git/` that came with a folder; `=` runs out of any repository.

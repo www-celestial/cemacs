@@ -388,8 +388,9 @@ rien), et ne change rien.
 |---|---|---|
 | appui sur le premier bouton | [commands.Press] | le pane sous la souris devient celui que vous modifiez ; dans son code, le curseur va à la limite entre deux caractères la plus proche de la souris |
 | déplacement bouton tenu | [commands.Drag] | sélectionne de l'appui jusqu'à la souris, dès que la souris a quitté la zone autour de l'appui |
+| déplacement sans bouton | [commands.Hover] | dit à un bloc sous la souris qui le veut où est la souris, comme un graphe des cells montre les valeurs du point qui est dessous ; ailleurs, rien |
 | relâchement | [commands.Release] | finit le glissement ; un clic qui n'a rien sélectionné ne laisse pas de mark |
-| molette | [commands.Wheel] | fait défiler le pane sous la souris, et son curseur avec |
+| molette | [commands.Wheel] | fait défiler le pane sous la souris, et son curseur avec ; au-dessus d'une table des cells, ou d'un graphe qui a les touches, la déplace ou le zoome d'abord |
 
 La zone autour d'un appui est [emacs.DragZone], 4 pixels sur chaque axe : une main qui bouge d'un pixel pendant qu'elle
 clique ne fait pas de sélection. Dès que la souris a quitté la zone, le curseur la suit, même quand elle y revient. Un

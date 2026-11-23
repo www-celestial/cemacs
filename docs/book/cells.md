@@ -30,10 +30,10 @@ The keys of the cells are a group of `C-c`, `e` for *execute*, which the band of
 | `C-c e i` | [notebook.InsertCell] | writes a marker, `(* %%  *)`, above the line of the cursor, the cursor where its title goes |
 | `C-c e v` | [notebook.ShowVariables] | opens `*variables*` beside: the names the cells defined |
 | `C-c e r` | [notebook.OpenRepl] | opens `*repl*` below: a prompt in the same session as the cells |
-| `C-c e s` | [notebook.StopCell] | stops the cell that runs; the cells waiting after it don't run |
+| `C-c e s` | [notebook.StopCell] | stops the cell that runs; the cells waiting after it don't run. While a graph has the keys, it saves the graph as SVG instead, see [The mouse and the keys on a graph](#the-mouse-and-the-keys-on-a-graph) |
 | `C-c e h` | [notebook.WriteHtml] | writes the page of the file beside it, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | clears the results drawn; the names of the session stay |
-| `C-c e f` | [notebook.FocusControl] | gives the keys to the first input of the cursor's cell, a slider or another, to the bar of its animation, to its 3D graph or to its table: see Sliders, Inputs, Animations, 3D graphs and Tables |
+| `C-c e f` | [notebook.FocusControl] | gives the keys to the first input of the cursor's cell, a slider or another, to the bar of its animation, to its 3D graph, to its table or to its graph: see Sliders, Inputs, Animations, 3D graphs, Tables and Graphs |
 | `C-c e c` | [notebook.CopyTable] | copies a table as CSV: the one that has the keys, or had them last, or the first of the cursor's cell |
 
 In `*repl*`, Enter runs what was typed, and `M-p` and `M-n` go back and on through what was typed before; anywhere else,
@@ -95,6 +95,64 @@ draws a graph under its answer in the same way, and the page of `C-c e h` holds 
 graph a row at a time, its lower part showing when the screen starts inside it: see
 [The screen of a pane](windows.md#the-screen-of-a-pane).
 
+### The mouse and the keys on a graph
+
+A graph of two dimensions, neither an animation nor a 3D graph, shows the values of its points, as the page of
+SunEarthTools shows them under the mouse.
+
+- **The mouse over it.** The point nearest the mouse, within 12 pixels, of its lines, its points and its texts, shows a thin
+  cross and its values in a small box beside it, `x = 128.27  y = 9.99`, in the units of the data, on a log axis too, as
+  std/plot writes the box of a mark: at most 6 significant digits, after the label of its layer, `21 Jun: x = …`, when the
+  graph has more than one. Nothing is drawn when no point is that near.
+- **A click on a point** pins its box: it stays, and several can; a click on it again, or `Escape`, takes it away. The
+  click gives the graph the keys too, as a click on a table does, and chooses its row in a table of the cell of as many
+  rows, as [A row and its point](#a-row-and-its-point) tells. A press on the lines above the graph goes to the text, as
+  before.
+
+The first time the mouse comes over a graph, or the graph gets the keys, its scene is asked again once,
+[cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html) with `points = true`, which gives the places and the
+values of the points that the graph draws, those that M4 keeps of a long line, and how its axes meet the pixels; the graph
+keeps the shapes it drew. From then on a move of the mouse asks nothing: the points are kept in buckets of 32 by 32 pixels,
+and the nearest is found among those of the buckets that the 12 pixels about the mouse touch, four at most.
+
+`C-c e f` in its cell, when the cell has no other control, Tab from a table of the cell, or a click gives the graph the
+keys: a ring of the accent color goes round it, and the point of the keys has its cross and its box in that color.
+
+| Keys | What they do |
+|---|---|
+| `←` `→` | the point before, the point after, along its layer, and its row in a table of the cell |
+| `↑` `↓` | the layer before, the layer after, at the point of the nearest position |
+| `Space` | pins the point of the keys, or unpins it |
+| the wheel | zooms about the mouse, a notch up 20 % nearer |
+| a drag | moves the view, what is under the mouse following it; not in a polar graph |
+| `0` | goes back to the graph's own ranges |
+| `M-w` | copies the values of the points pinned, one a line, x and y apart by a tab, or without a pin of the point of the keys |
+| `C-c e s` | saves the graph as SVG beside the file |
+| `Tab` `S-Tab` | the next table or graph of the cell, the previous one |
+| `Escape` | takes the pins away; with none, leaves the graph |
+| `C-g` | leaves the graph |
+
+**Zoom.** Each notch of the wheel changes the ranges wanted and asks the session the scene at those ranges,
+[cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html) with `xlim` and `ylim`, as the options of `plot.Of`
+give them: the session draws it, its ticks and their labels made again, and the points under the mouse come with it.
+The value under the mouse stays under it. One question at a time: the notches that come while one is asked change only the
+ranges wanted, and the latest are asked once the answer came, so a fast wheel asks no queue of old views. An axis of the
+names of bars keeps its own range, and a polar graph zooms the distance from its center alone, its `ylim`, `[center,
+rim]`. A zoom stays within a millionth and a million times the graph's own range. The code is never changed: `0`, a run of
+the cell and the page show the graph as its code draws it.
+
+**Without the keys, nothing changes.** While no graph has the keys, the wheel over a graph moves the screen, as it always
+did, a drag on it zooms nothing, and every key does what it did: `0` is typed, `M-w` copies the region, `C-c e s` stops the
+cell that runs.
+
+**The SVG.** `C-c e s` writes the graph as its code draws it, at its own size and ranges, the text that `plot.Save` would
+write, which [cells.Svg](https://www-celestial.github.io/cesia-lang/cells.html) asks of the session; a zoom is a view of the
+editor and isn't in it, as the view a 3D graph was turned to. The file goes beside the file of the cells, named after it
+and the title of the cell in small letters and digits, its accents taken off, [notebook.SvgPath]: `sun-day.svg` for the
+graph of the cell `(* %% Day *)` of `sun.ce`, `sun-day-2.svg` for a second graph of that cell, `sun-cell3.svg` for a third
+cell with no title. A file or a link there already is asked about first, as for the page, and the file is written as a
+save writes one, through a new file and a rename, so that a link there is replaced, never written through.
+
 ## Tables
 
 A frame, a matrix, a list of maps or structs and a struct show as a *table* under their cell, drawn as the page of
@@ -124,7 +182,7 @@ reverse, ink and paper swapped.
 | `M-w` | copies the text of the cell of the cursor |
 | `C-u M-w` | copies the row of the cursor, its cells apart by tabs |
 | `C-c e c` | copies the whole table as CSV, as std/csv writes it: its header, then its rows as it shows them, sorted and filtered, at most 100,000 |
-| `Tab` `S-Tab` | the next table of the cell, the previous one |
+| `Tab` `S-Tab` | the next table or graph of the cell, the previous one |
 | `Escape` `C-g` | leaves the table |
 
 The sort and the filter happen in the session, which keeps the order for the next screen: numbers sort as numbers, NaN
@@ -150,9 +208,10 @@ plot.Points(frame.Column("hour", hours), frame.Column("elevation", hours))
 
 A row chosen, by a click or the arrows, marks its point on each graph of the cell of as many points: a ring at the
 point, at its exact place, even one that the graph thinned out of a long line, and a box of its values beside it,
-`x = 9  y = 18.14`, which the session draws, one question for each mark. A click on a point of a marked graph, within 12
-pixels, chooses its row: the table scrolls to it, sorted and filtered as it is, and shows it in reverse. A table and a
-graph of other lengths are not linked, and nothing is linked across cells.
+`x = 9  y = 18.14`, which the session draws, one question for each mark. A click on a point of such a graph, within 12
+pixels, chooses its row: the table scrolls to it, sorted and filtered as it is, and shows it in reverse; the graph gets the
+keys, and its arrows choose the rows of the points they go to. A table and a graph of other lengths are not linked, and
+nothing is linked across cells.
 
 ## Sliders
 
@@ -398,7 +457,14 @@ a time, a frame, a slider's number, a view, a scene, the rows of a table or a ma
 question. The rows of a table are input too: at most 1,000 rows and 256 columns, a text of at most 200 characters for
 each column of each row, and a position for each from 1 to the rows of the value; rows that are not are refused, and the
 table keeps what it shows and asks no more. The places of the points of a marked graph are at most 100,000 a layer, of
-64 layers, each a number from -1,000,000 to 1,000,000. The words of a filter go to the session as a text, which finds
+64 layers, each a number from -1,000,000 to 1,000,000. The points and the axes that the session sends for the mouse are
+input too: at most 1,000,000 points in all, each with two finite numbers, its values; each layer with a count, a kind and
+a label of at most 200 characters, cut at 30 in a box; the axes with a scale std/plot gives, ranges finite and not empty,
+above 0 on a log axis, and pixels within the same bounds. Points or axes that are not are refused: the graph shows no
+values, and asks them no more. The crosses and the boxes are drawn only inside the plot. `M-w` copies numbers alone,
+written by Cemacs, never a text of the session. The name of a graph's SVG comes from the file and the title of its cell,
+never from the session, and holds no `/`: it stays beside the file. The SVG is written only when it is a text that starts
+with `<svg`, of at most 64,000,000 bytes. The words of a filter go to the session as a text, which finds
 them as they are and never reads them as a pattern or as code. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
 a million cells. The memory the shapes take is written by `c.Write`, which checks its whole length against the block
 before it writes.
@@ -411,6 +477,13 @@ most, under the 16.7 ms of one refresh at 60 Hz (three runs, the median of their
 1,000 rows appears in 2.62 ms, from `C-c e e` to its table drawn, against 2.74 when it showed the frame as text, the
 medians of 21 runs taking turns: its table is drawn at the tick its result lands, and the names of `*variables*` come at
 a later tick. Cemacs reaches its first frame in 30.84 ms, as before tables (30.86).
+
+The values under the mouse: on a graph of 10,000 points, a move of the mouse to another point takes 0.18 ms through the
+editor, the median of 21 moves, 0.12 ms of it in the graph's own handler, with no question to the session; the view of the
+window then takes 0.20 ms. A cell that shows that graph appears in 22.10 ms, from `C-c e e` to its block drawn, against
+22.90 before the mouse and the keys (medians of 21 runs, alternated): the points are asked only once the mouse comes over
+the graph or it gets the keys. Cemacs reaches its first frame in 31.07 ms (31.13 before). A line of 10,000 points is made
+into its strips in 13 ms instead of 19, each joint on its miter.
 
 Typing in a file of cells costs what typing in any file costs: the cells are read again only when a cell runs, and half a
 second after the last key to put the results back under their cells, never at each key. Measured in a window of 1920 by
