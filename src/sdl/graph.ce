@@ -98,57 +98,109 @@ defn dashed(item)
 end
 
 defn lineArrays(item)
-  (** A line as strips of four vertices across each point, its two edges a pixel of fading alpha: soft without a mask. A point's normal is that of
-      the segment from the point before it to the one after it, so that the strip bends at a joint. *)
+  (** A line as strips of four vertices across each point, its two edges a pixel of fading alpha: soft without a mask. At a joint, the strip lies on the
+      line that halves the angle of its two segments, as far out as their miter, so that each keeps its width up to the joint, as the round joins of the
+      SVG keep it: a frame's sides are whole. A joint sharper than 120 degrees, whose miter would reach past twice the width, is cut flat, a bevel: its
+      point has a strip for each segment, and a wedge between them. *)
   half = list.Max(0.5, item.Width / 2.0)
   across = [0.0 - (half + 0.6), 0.0 - (half - 0.4), half - 0.4, half + 0.6]
   fade = [0.0, 1.0, 1.0, 0.0]
   parts = pieces(item)
   points = list.Sum([value.Len(p.Xs) for p in parts])
-  segments = points - value.Len(parts)
-  xy = list.Fill(0.0, points * 8)
-  colors = list.Fill(0.0, points * 16)
-  index = list.Fill(0, list.Max(1, segments * 18))
-  r = Red(item.Color) / 255.0
-  g = Green(item.Color) / 255.0
-  b = Blue(item.Color) / 255.0
-  v = 0
-  ti = 1
+  (* The strips first, at most two a point: where each is and its normal, as long as the joint needs, and whether it joins the strip before. *)
+  most = 2 * points
+  sx = list.Fill(0.0, most)
+  sy = list.Fill(0.0, most)
+  nxs = list.Fill(0.0, most)
+  nys = list.Fill(0.0, most)
+  joins = list.Fill(false, most)
+  count = 0
   for p in parts
     n = value.Len(p.Xs)
     for i in 1..n
-      a = list.Max(1, i - 1)
-      z = list.Min(n, i + 1)
-      dx = p.Xs[z] - p.Xs[a]
-      dy = p.Ys[z] - p.Ys[a]
-      size = math.Sqrt(dx * dx + dy * dy)
-      nx = if size > 0.000001 (0.0 - dy) / size else 0.0 end
-      ny = if size > 0.000001 dx / size else 1.0 end
-      for j in 1..4
-        k = v + j - 1
-        xy[2 * k + 1] = p.Xs[i] + nx * across[j]
-        xy[2 * k + 2] = p.Ys[i] + ny * across[j]
-        colors[4 * k + 1] = r
-        colors[4 * k + 2] = g
-        colors[4 * k + 3] = b
-        colors[4 * k + 4] = fade[j]
-      end
-      if i < n
-        for j in 0..2
-          q = v + j
-          index[ti] = q
-          index[ti + 1] = q + 1
-          index[ti + 2] = q + 4
-          index[ti + 3] = q + 1
-          index[ti + 4] = q + 5
-          index[ti + 5] = q + 4
-          ti = ti + 6
+      (* The directions of the segments before and after the point, of length 1, or 0 where there is none or it has no length. *)
+      ax = 0.0
+      ay = 0.0
+      bx = 0.0
+      by = 0.0
+      if i > 1
+        dx = p.Xs[i] - p.Xs[i - 1]
+        dy = p.Ys[i] - p.Ys[i - 1]
+        size = math.Sqrt(dx * dx + dy * dy)
+        if size > 0.000001
+          ax = dx / size
+          ay = dy / size
         end
       end
-      v = v + 4
+      if i < n
+        dx = p.Xs[i + 1] - p.Xs[i]
+        dy = p.Ys[i + 1] - p.Ys[i]
+        size = math.Sqrt(dx * dx + dy * dy)
+        if size > 0.000001
+          bx = dx / size
+          by = dy / size
+        end
+      end
+      (* The sum of the normals of the two segments halves their angle; its length is twice the cosine of half the turn. *)
+      mx = 0.0 - ay - by
+      my = ax + bx
+      m2 = mx * mx + my * my
+      lone = (ax == 0.0 and ay == 0.0) or (bx == 0.0 and by == 0.0)
+      first = count + 1
+      if lone or m2 >= 1.0
+        count = count + 1
+        sx[count] = p.Xs[i]
+        sy[count] = p.Ys[i]
+        nxs[count] = if lone and m2 > 0.0 mx else if lone 0.0 else 2.0 * mx / m2 end
+        nys[count] = if lone and m2 > 0.0 my else if lone 1.0 else 2.0 * my / m2 end
+      else
+        count = count + 2
+        sx[count - 1] = p.Xs[i]
+        sy[count - 1] = p.Ys[i]
+        nxs[count - 1] = 0.0 - ay
+        nys[count - 1] = ax
+        sx[count] = p.Xs[i]
+        sy[count] = p.Ys[i]
+        nxs[count] = 0.0 - by
+        nys[count] = bx
+        joins[count] = true
+      end
+      joins[first] = i > 1
     end
   end
-  {XY: xy, Colors: colors, Index: index, NV: points * 4, NI: segments * 18}
+  joined = list.Count(j -> j, joins)
+  xy = list.Fill(0.0, count * 8)
+  colors = list.Fill(0.0, count * 16)
+  index = list.Fill(0, list.Max(1, joined * 18))
+  r = Red(item.Color) / 255.0
+  g = Green(item.Color) / 255.0
+  b = Blue(item.Color) / 255.0
+  ti = 1
+  for t in 1..count
+    v = 4 * (t - 1)
+    for j in 1..4
+      k = v + j - 1
+      xy[2 * k + 1] = sx[t] + nxs[t] * across[j]
+      xy[2 * k + 2] = sy[t] + nys[t] * across[j]
+      colors[4 * k + 1] = r
+      colors[4 * k + 2] = g
+      colors[4 * k + 3] = b
+      colors[4 * k + 4] = fade[j]
+    end
+    if joins[t]
+      for j in 0..2
+        q = v - 4 + j
+        index[ti] = q
+        index[ti + 1] = q + 1
+        index[ti + 2] = q + 4
+        index[ti + 3] = q + 1
+        index[ti + 4] = q + 5
+        index[ti + 5] = q + 4
+        ti = ti + 6
+      end
+    end
+  end
+  {XY: xy, Colors: colors, Index: index, NV: count * 4, NI: joined * 18}
 end
 
 defn areaArrays(item)

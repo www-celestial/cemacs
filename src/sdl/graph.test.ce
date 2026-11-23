@@ -11,3 +11,36 @@ isDashed() = near(along(10.0, [3.7, 1.6]), [[0.0, 3.7], [5.3, 9.0]])
 (* A dash-dot repeats its four lengths: a dash, a gap, a dot, a gap. *)
 isDashDot() = near(along(20.0, [6.4, 1.6, 1.0, 1.6]), [[0.0, 6.4], [8.0, 9.0], [10.6, 17.0], [18.6, 19.6]])
 isSolid() = near(along(5.0, missing), [[0.0, 5.0]])
+
+(* A line keeps its width at a joint: the strip of a frame, a rectangle of four sides as std/plot draws it, reaches at each corner as far from both of its
+   sides as along them, so that no side thins to its corner; a joint sharper than 120 degrees is cut flat, with a strip for each of its segments. *)
+defn outerAt(arrays, t)
+  (** The places of the two outer vertices of strip t. *)
+  v = 4 * (t - 1)
+  [[arrays.XY[2 * v + 1], arrays.XY[2 * v + 2]], [arrays.XY[2 * (v + 3) + 1], arrays.XY[2 * (v + 3) + 2]]]
+end
+(** How far a place is from the line through two points. *)
+off(at, a, b) = math.Abs((b[1] - a[1]) * (at[2] - a[2]) - (b[2] - a[2]) * (at[1] - a[1])) / math.Sqrt((b[1] - a[1]) * (b[1] - a[1]) + (b[2] - a[2]) * (b[2] - a[2]))
+frameXs = [25.5, 582.5, 582.5, 25.5, 25.5]
+frameYs = [9.5, 9.5, 366.5, 366.5, 9.5]
+defn isFrameSidesWhole()
+  arrays = lineArrays({Xs: frameXs, Ys: frameYs, Width: 1.0, Dash: missing, Color: 0})
+  corner = (i) -> [frameXs[i], frameYs[i]]
+  ok = []
+  for i in 2..4
+    for at in outerAt(arrays, i)
+      ok = list.Append(off(at, corner(i - 1), corner(i)) >= 1.09 and off(at, corner(i), corner(i + 1)) >= 1.09, ok)
+    end
+  end
+  arrays.NV == 20 and arrays.NI == 4 * 18 and list.All(ok)
+end
+defn isSharpJointBevelled()
+  arrays = lineArrays({Xs: [0.0, 100.0, 0.0], Ys: [0.0, 5.0, 10.0], Width: 1.0, Dash: missing, Color: 0})
+  arrays.NV == 16 and arrays.NI == 3 * 18 and list.All([math.Abs(off(at, [0.0, 0.0], [100.0, 5.0]) - 1.1) < 1e-9 for at in outerAt(arrays, 2)])
+end
+defn isStraightLineUnchanged()
+  (* A straight line's strips are straight across it, as they were. *)
+  xy = lineArrays({Xs: [0.0, 10.0, 20.0], Ys: [0.0, 0.0, 0.0], Width: 1.0, Dash: missing, Color: 0}).XY
+  want = list.Flatten([[x, -1.1, x, -0.1, x, 0.1, x, 1.1] for x in [0.0, 10.0, 20.0]])
+  value.Len(xy) == 24 and list.All([math.Abs(xy[k] - want[k]) < 1e-9 for k in 1..24])
+end
