@@ -50,8 +50,8 @@ inGraph(x, px, py) = {X: 2 * 8 + px, Y: x.Under + py, Width: 1400}
 press(chord, s) = commands.FocusOf(s).Keys[chord](s)
 (** A text typed, as the editor gives it. *)
 typed(words, s) = commands.Update({Kind: "text", Text: words}, s)
-(** The texts drawn over a graph. *)
-words(x) = [c.Text for c in x.Draw(1400, look) if c.Kind == "text" and c.Y >= x.Under]
+(** The texts drawn over a graph: those of the graph of texts after it. *)
+words(x) = list.Flatten([[i.Text for i in c.Items] for c in list.Skip(1, [c for c in x.Draw(1400, look) if c.Kind == "graph"])])
 (** The pixel of a value along a linear axis of a scene. *)
 pixelOf(a, v) = a.From + (v - a.Low) / (a.High - a.Low) * (a.To - a.From)
 

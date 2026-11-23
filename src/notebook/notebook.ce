@@ -3760,21 +3760,21 @@ defn plotBox(axes, scene)
   [list.Min(axes.X.From, axes.X.To), list.Min(axes.Y.From, axes.Y.To), math.Abs(axes.X.To - axes.X.From), math.Abs(axes.Y.To - axes.Y.From)]
 end
 
-defn shownPoints(g)
+defn shownPoints(g, focused)
   (** The points a 2D graph shows the values of, each {Q, Place, Keyed}, its point, its place in the pixels of the graph and whether the keys chose it:
-      each point pinned, the point of the keys and the point under the mouse, once each, but the one that the mark of a row of a table rings, whose values
-      the session drew. *)
+      each point pinned, the point of the keys while it has them and the point under the mouse, once each, but the one that the mark of a row of a table
+      rings, whose values the session drew. *)
   axes = dict.GetOr("Axes", missing, g)
   if value.IsMissing(axes) or not dict.GetOr("Pointed", false, g)
     return []
   end
   out = []
   seen = []
-  spot = dict.GetOr("Spot", missing, g)
+  spot = if focused dict.GetOr("Spot", missing, g) else missing end
   hover = dict.GetOr("Hover", missing, g)
   n = value.Len(g.Points)
   ones = list.Concat([{Q: q, Keyed: false} for q in dict.GetOr("Pins", [], g)],
-    [{Q: pointOf(g, w.Layer, w.J), Keyed: w.Keyed} for w in [dict.Merge(spotted(g, spot), {Keyed: true}), dict.Merge(dict.GetOr("Hover", {}, g), {Keyed: false})] if dict.Has("J", w) and w.Layer <= n and w.J <= value.Len(g.Points[w.Layer].At)])
+    [{Q: pointOf(g, w.Layer, w.J), Keyed: w.Keyed} for w in [dict.Merge(spotted(g, spot), {Keyed: true}), dict.Merge(if value.IsSome(hover) hover else {} end, {Keyed: false})] if dict.Has("J", w) and w.Layer <= n and w.J <= value.Len(g.Points[w.Layer].At)])
   mark = dict.GetOr("Mark", missing, g)
   for one in ones
     q = one.Q
@@ -3821,27 +3821,33 @@ defn placeNear(ats, at)
 end
 
 defn GraphOverlay(graph, focused, top, cell, th)
-  (** What draws over a 2D graph, top pixels down its block, in the commands of the frame and not as shapes of the graph, so that sdl draws the graph
-      from what it made: at each point whose values it shows, see shownPoints, a thin cross, and its values in a box beside it, in the code font, inside
-      the plot, the box of the point of the keys edged in the accent color; and a ring in that color round the graph while it has the keys.
+  (** What draws over a 2D graph, top pixels down its block, without changing the shapes of the graph, so that sdl draws it from what it made: at each
+      point whose values it shows, see shownPoints, a thin cross, and its values in a box beside it, inside the plot, as std/plot draws the box of a mark,
+      the text in the font of the graph at 12 pixels, a graph of texts alone; the cross and the box of the point of the keys in the accent color; and a
+      ring in that color round the graph while it has the keys.
 
         value.Len(GraphOverlay({Scene: {Width: 300, Height: 200}}, true, 4, {Width: 8, Height: 19}, {Ink: 1, Code: 2, Accent: 3})) --> 8 *)
   left = 2 * cell.Width
   out = []
+  texts = []
   box = plotBox(dict.GetOr("Axes", missing, graph), graph.Scene)
-  for one in shownPoints(graph)
+  for one in shownPoints(graph, focused)
     px = math.Div(math.Floor(one.Place[1]), 1)
     py = math.Div(math.Floor(one.Place[2]), 1)
     words = pointWords(graph, one.Q)
-    wide = value.Len(words) * cell.Width + 8
-    high = cell.Height + 2
+    (* The font of the graph is JetBrains Mono, whose characters are 0.6 em wide: 7.2 pixels at 12. *)
+    wide = math.Div(math.Ceil(value.Len(words) * 7.2), 1) + 8
+    high = 22
     bx = if px + 10 + wide <= box[1] + box[3] px + 10 else list.Max(math.Div(math.Floor(box[1]), 1), px - 10 - wide) end
     by = if py - 10 - high >= box[2] py - 10 - high else list.Min(math.Div(math.Floor(box[2] + box[4]), 1) - high, py + 10) end
     edge = if one.Keyed th.Accent else th.Ink end
     out = list.Concat(out, [{Kind: "rect", X: left + px - 6, Y: top + py, Width: 13, Height: 1, Color: edge}, {Kind: "rect", X: left + px, Y: top + py - 6, Width: 1, Height: 13, Color: edge},
       {Kind: "box", X: left + bx, Y: top + by, Width: wide, Height: high, Color: th.Code, Radius: 0, Alpha: 235}])
     out = list.Concat(out, edged(left + bx, top + by, wide, high, edge))
-    out = list.Append({Kind: "text", X: left + bx + 4, Y: top + by + 1, Text: words, Color: th.Ink, Font: "code"}, out)
+    texts = list.Append({Kind: "text", X: bx + 4.0, Y: by + 3.0 + 12.24, Text: words, Size: 12, Color: th.Ink, Anchor: "start", Angle: 0, Width: value.Len(words) * 7.2, Clip: missing}, texts)
+  end
+  if value.Len(texts) > 0
+    out = list.Append({Kind: "graph", X: left, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: texts, Font: graph.Font, Fallback: dict.GetOr("Fallback", missing, graph)}, out)
   end
   if not focused
     return out

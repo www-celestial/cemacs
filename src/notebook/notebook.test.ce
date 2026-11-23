@@ -802,7 +802,7 @@ hoverWave(x, y, s) = waveOf(s).Hover(inWave(x, y, s), s)
 clickWave(x, y, s) = clickAt(inWave(x, y, s), waveOf(s), s)
 wheelWave(x, y, amount, s) = waveOf(s).Wheel(amount, inWave(x, y, s), s)
 (** The texts and the boxes drawn over the graph. *)
-boxWords(s) = [c.Text for c in waveOf(s).Draw(1000, look) if c.Kind == "text"]
+boxWords(s) = list.Flatten([[i.Text for i in c.Items] for c in list.Skip(1, [c for c in waveOf(s).Draw(1000, look) if c.Kind == "graph"])])
 (** The window with the keys on the graph, through C-c e f in its cell. *)
 defn waveFocused(s)
   t = s
@@ -815,7 +815,8 @@ isPointsLand() = waveGraph(graphed()).Pointed and value.Equal(waveGraph(graphed(
    past 12 pixels; and none once the mouse leaves. *)
 isHoverNearest() = value.Equal(waveGraph(hoverWave(203, 148, graphed())).Hover, {Layer: 1, J: 2}) and value.Equal(boxWords(hoverWave(203, 148, graphed())), ["a: x = 2  y = 20"])
 isHoverNoneFar() = value.IsMissing(dict.GetOr("Hover", missing, waveGraph(hoverWave(150, 300, graphed())))) and value.Equal(boxWords(hoverWave(150, 300, graphed())), [])
-isHoverLeaves() = value.IsMissing(waveGraph(waveOf(hoverWave(203, 148, graphed())).Hover(missing, hoverWave(203, 148, graphed()))).Hover)
+isHoverLeaves() = value.IsMissing(waveGraph(waveOf(hoverWave(203, 148, graphed())).Hover(missing, hoverWave(203, 148, graphed()))).Hover) and
+  value.Equal(boxWords(waveOf(hoverWave(203, 148, graphed())).Hover(missing, hoverWave(203, 148, graphed()))), [])
 defn isHoverCross()
   rects = [c for c in waveOf(hoverWave(203, 148, graphed())).Draw(1000, look) if c.Kind == "rect" and (c.Width == 13 or c.Height == 13)]
   value.Len(rects) == 2 and rects[1].X == 2 * cell.Width + 200 - 6 and rects[2].Y == waveOf(graphed()).Under + 150 - 6
