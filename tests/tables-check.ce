@@ -1,0 +1,157 @@
+(** Checks of the tables of the cells against a real session of std/cells, on a file in a new folder under /tmp: a frame shown as a table, its header
+    and its numbers on the right, their decimal points in a line; its keys after C-c e f: the arrows choose a row, which marks its point on the graph of
+    the cell, s sorts in the session, / filters by words, M-w and C-u M-w copy; a click on a point of the graph chooses its row; a frame of a million rows
+    scrolls a screen at a time, its rows asked of the session, and sorts there; C-c e c copies a table as CSV. It is a script, not a test file: it needs
+    permissions. Run it from the root of cemacs with cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/tables-check.ce,
+    CESIA the real path of the cesia that runs it. It prints ok at the end and stops at the first failure. *)
+use core/commands
+use core/text
+use core/view
+use src/notebook
+use src/ui
+use std/bug
+use std/cells as nb
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+defn settled(state)
+  (** The state once the cells stop moving, ticked as the editor ticks it, or a failure after twenty seconds. *)
+  s = state
+  waited = 0.0
+  while notebook.Moving(s)
+    check(waited < 20.0, "the cells never ended")
+    sys.Sleep(0.002)
+    waited = waited + 0.002
+    s = notebook.Hooked({}).Idle(s)
+  end
+  s
+end
+
+(** The block of the table of cell i, or missing. *)
+tableIn(i, s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i and value.IsSome(dict.GetOr("Table", missing, x)), text.BlocksOf(s.Buffers[1]))
+(** The block of the graph of cell i, or missing. *)
+graphIn(i, s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i and value.IsSome(dict.GetOr("Graph", missing, x)), text.BlocksOf(s.Buffers[1]))
+(** A key of the control that has the keys. *)
+press(chord, s) = commands.FocusOf(s).Keys[chord](s)
+(** A text typed while a control has the keys, as the editor gives it. *)
+typed(words, s) = commands.Update({Kind: "text", Text: words}, s)
+
+defn focusedIn(line, state)
+  (** The state with the keys on the first control of the cell of a line, through C-c e f. *)
+  s = state
+  s.Buffers[1] = text.Place(line, 0, s.Buffers[1])
+  notebook.FocusControl(s)
+end
+
+(** The texts of the rows a table shows, in the code font, in their order down the block. *)
+rowTexts(x) = [c.Text for c in x.Draw(1400, look) if c.Kind == "text" and c.Font == "code" and c.Y > x.Under and c.Y < x.Under + (notebook.TableHeight(x.Table) - 1) * 19]
+
+look = ui.Look(ui.Light, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/day.ce"
+source = "use std/cells\nuse std/frame\nuse std/math\nuse std/plot\n\n(* %% Day *)\nhours = frame.Of({heure: [\"06:52:10\", \"7:00:00\", \"8:00:00\", \"9:00:00\", \"10:00:00\", \"11:00:00\", \"12:00:00\", \"13:00:00\", \"14:00:00\", \"15:00:00\", \"16:00:00\", \"16:32:17\"],\n  elevation: [-0.833, 0.48, 9.99, 18.14, 24.35, 28.02, 28.66, 26.19, 20.94, 13.51, 4.49, -0.833],\n  azimuth: [116.59, 117.87, 128.27, 140.08, 153.62, 168.74, 184.7, 200.29, 214.52, 227.01, 237.93, 243.29]})\ncells.Show(hours)\nplot.Of([plot.Line(frame.Column(\"azimuth\", hours), frame.Column(\"elevation\", hours)), plot.Points(frame.Column(\"azimuth\", hours), frame.Column(\"elevation\", hours))])\n\n(* %% Big *)\nbig = frame.Of({i: [k for k in 1..1000000], x: [math.Sin(k / 1000.0) for k in 1..1000000]})\nbig\n"
+result.Unwrap(sys.Write(path, source))
+s = view.Start([text.Of(source, path)], look, {Width: 8, Height: 19}, 1400, 900)
+s = settled(notebook.RunAll(s))
+
+(* The frame shows as a table: 12 rows, its header in the strong font, a number's decimal point under the others'. *)
+day = tableIn(2, s)
+check(value.IsSome(day) and day.Table.Count == 12 and notebook.TableHeight(day.Table) == 14 and day.Rows == 15, "the frame is a table of 12 rows, under its label: $(dict.GetOr("Rows", missing, day))")
+heads = [c.Text for c in day.Draw(1400, look) if c.Kind == "text" and c.Font == "strong"]
+check(value.Equal(heads, ["heure", "elevation", "azimuth"]), "the header: $heads")
+cells = [c for c in day.Draw(1400, look) if c.Kind == "text" and c.Font == "code" and (c.Text == "-0.833" or c.Text == "28.66" or c.Text == "0.48")]
+points = [c.X + (str.Find(".", c.Text) - 1) * 8 for c in cells]
+check(value.Len(cells) >= 3 and list.Min(points) == list.Max(points), "the decimal points in a line: $([[c.Text, c.X] for c in cells])")
+
+(* C-c e f gives the table the keys; Down chooses the rows, and the third marks its point on the graph, which the session draws. *)
+s = focusedIn(8, s)
+check(value.Equal(commands.FocusOf(s).Table, day.Table.Key), "C-c e f focuses the table")
+s = settled(press("down", press("down", s)))
+check(tableIn(2, s).Table.Selected == 3, "Down twice chooses row 3")
+g = graphIn(2, s)
+check(value.Equal(g.Graph.Mark, [3, 12]) and value.Len(g.Graph.Points) == 2, "the graph marks point 3 of 12: $(dict.GetOr("Mark", missing, g.Graph))")
+check(list.Any([i.Role == "mark" and i.Kind == "text" and str.Contains("y = 9.99", i.Text) for i in g.Graph.Scene.Items]), "the box of the mark says y = 9.99")
+
+(* s sorts by the column of the cursor in the session, increasing; the row chosen stays chosen, at its new place. *)
+s = settled(press("s", press("right", s)))
+t = tableIn(2, s).Table
+check(value.Equal(t.Sort, {Column: "elevation", Descending: false}) and t.Rows[1][2] == "-0.833" and t.Rows[12][2] == "28.66", "sorted by elevation: $([r[2] for r in t.Rows])")
+check(t.Positions[t.Selected] == 3 and t.Rows[t.Selected][2] == "9.99", "the row chosen keeps its row: $(t.Selected)")
+s = settled(press("s", s))
+check(tableIn(2, s).Table.Rows[1][2] == "28.66", "s again sorts decreasing")
+
+(* / filters by words in any column, as typed; Enter keeps it; Escape after / takes it back. *)
+s = settled(typed("/", s))
+s = settled(typed("1", typed("1", s)))
+t = tableIn(2, s).Table
+check(t.Filter == "11" and t.Count == 3 and t.Total == 12, "the filter 11 keeps the rows of 116.59, 117.87 and 11:00:00: $(t.Count) $(t.Filter)")
+s = settled(press("enter", s))
+check(value.IsMissing(tableIn(2, s).Table.Draft) and tableIn(2, s).Table.Filter == "11", "Enter keeps the filter")
+s = settled(press("escape", typed("x", typed("/", s))))
+check(tableIn(2, s).Table.Filter == "11", "Escape takes the filter typed back")
+s = settled(typed("/", s))
+s = settled(press("backspace", press("backspace", s)))
+s = settled(press("enter", s))
+check(tableIn(2, s).Table.Count == 12, "the filter erased shows every row")
+
+(* M-w copies the cell, C-u M-w the row, apart by tabs. *)
+s = press("home", s)
+s = press("M-w", s)
+cell = commands.Clipboard(s)
+s = press("M-w", press("C-u", s))
+row = commands.Clipboard(s)
+check(cell == "28.66" and str.Split("\t", row)[2] == "28.66", "M-w copies $cell, C-u M-w $row")
+
+(* Escape leaves; a key typed then is the buffer's. *)
+s = press("escape", s)
+check(value.IsMissing(commands.FocusOf(s)), "Escape leaves the table")
+
+(* A click on a point of the marked graph chooses its row. *)
+s = settled(focusedIn(8, s))
+s = settled(press("s", press("s", s)))
+s = settled(press("down", s))
+g = graphIn(2, s)
+check(value.IsSome(g.Graph.Mark), "the graph shows a mark")
+layer = g.Graph.Points[1]
+k = list.IndexOf(7, layer.At)
+s = settled(g.Mouse("down", {X: 2 * 8 + layer.Xs[k] + 3, Y: g.Under + layer.Ys[k] - 2, Width: 1400}, s))
+t = tableIn(2, s).Table
+check(t.Positions[t.Selected - t.First + 1] == 7 and t.Selected == 12 and value.Equal(graphIn(2, s).Graph.Mark, [7, 12]), "a click on point 7 chooses its row, the last when sorted by elevation: $(t.Selected)")
+
+(* C-c e c copies the whole table as CSV. *)
+s = settled(notebook.CopyTable(s))
+lines = str.Lines(str.Trim(commands.Clipboard(s)))
+check(value.Len(lines) == 13 and lines[1] == "heure,elevation,azimuth" and lines[2] == "06:52:10,-0.833,116.59", "C-c e c copies the table as CSV: $(lines[1..2])")
+
+(* A frame of a million rows: a screen at a time, the rows asked as it scrolls, sorted in the session. *)
+s = settled(focusedIn(13, s))
+big = tableIn(3, s)
+check(big.Table.Count == 1000000, "a million rows")
+started = sys.Now()
+s = press("pagedown", s)
+moved = sys.Now() - started
+s = settled(s)
+t = tableIn(3, s).Table
+check(t.Top == 21 and t.Selected == 21 and t.Rows[t.Selected - t.First + 1][1] == "21", "PgDn moves a screen: $(t.Top) $(t.Selected)")
+s = settled(press("end", s))
+t = tableIn(3, s).Table
+check(t.Top == 999981 and t.Rows[t.Row - t.First + 1][1] == "1000000", "End shows the last row: $(t.Top)")
+s = settled(press("s", press("right", s)))
+t = tableIn(3, s).Table
+check(t.Sort.Column == "x" and t.Positions[t.Selected - t.First + 1] == 1000000, "the million rows sorted, the last row kept chosen")
+io.Print("a screen of a million rows: $(str.Decimals(2, moved * 1000.0)) ms to move")
+
+_ = sys.Run("rm", ["-rf", folder])
+io.Print("ok")
