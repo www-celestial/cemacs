@@ -33,7 +33,7 @@ The keys of the cells are a group of `C-c`, `e` for *execute*, which the band of
 | `C-c e s` | [notebook.StopCell] | stops the cell that runs; the cells waiting after it don't run |
 | `C-c e h` | [notebook.WriteHtml] | writes the page of the file beside it, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | clears the results drawn; the names of the session stay |
-| `C-c e f` | [notebook.FocusControl] | gives the keys to the first slider of the cursor's cell, to the bar of its animation, or to its 3D graph: see Sliders, Animations and 3D graphs |
+| `C-c e f` | [notebook.FocusControl] | gives the keys to the first input of the cursor's cell, a slider or another, to the bar of its animation, or to its 3D graph: see Sliders, Inputs, Animations and 3D graphs |
 
 In `*repl*`, Enter runs what was typed, and `M-p` and `M-n` go back and on through what was typed before; anywhere else,
 Enter is a new line, as always.
@@ -145,6 +145,63 @@ and a result never comes from two numbers.
 `stale: computed with rho = 28.0`. This happens after `C-c e s` stopped a rerun, which drops the number that waited,
 after an undo of a move, and after you type another number by hand; the line goes once the cell runs again. A number
 typed by hand runs nothing by itself, as any edit: `C-c e e` runs it.
+
+## Inputs
+
+The other inputs of a form are written as a slider is, one a line in a cell of inputs, each with its value written
+there: a list to choose from, a check box, a field to type in, and a day, as
+[std/cells](https://www-celestial.github.io/cesia-lang/cells.html) gives them. Sliders and the others share a cell:
+
+```cesia norun
+use std/cells
+
+(* %% Place and day *)
+year  = cells.Choice(2026, [2025, 2026, 2027])
+zone  = cells.Choice("GMT-5", ["GMT-6", "GMT-5", "GMT-4"])
+day   = cells.Date("2026-11-23")
+place = cells.Field("40.76, -73.984")
+high  = cells.Field(50)
+rho   = cells.Slider(28.0, 0.0, 50.0, step = 0.5)
+bold  = cells.Check(false, label = "Bold line")
+```
+
+Under each line, Cemacs draws the input from the text alone, before anything runs, in the font of the code, in the ink
+and on the paper of the theme, black on white in the light one: its name, then its box, its edges one pixel wide, with
+its value as the file writes it, and a `v` at the right of a list and of a day; a check box is `[ ]` or `[x]` and its
+label. Their names line up, and so do their boxes and the tracks of the sliders.
+
+```
+year   [ 2026        v ]
+zone   [ GMT-5       v ]
+day    [ 2026-11-23  v ]
+place  [ 40.76, -73.984           ]
+high   [ 50                       ]
+rho    ----------o--------  28.0
+[ ] Bold line
+```
+
+`C-c e f` gives the keys to the first input of the cell of the cursor, and a click to the input under it: its box takes
+the accent color, and the band of hints lists its keys.
+
+| Input | Keys | Mouse |
+|---|---|---|
+| a choice | `enter` opens the list, `up` and `down` move in it, `home` and `end` to the first option and the last, `pageup` and `pagedown` 8, `enter` chooses, `C-g` shuts it | a click opens the list, a click on an option chooses it |
+| a check box | `space` checks it, or not | a click checks it, or not |
+| a field | what you type goes in the box, `backspace` and `delete` erase, `left`, `right`, `home` and `end` move the cursor, `enter` sets it; a field of a number takes only a number | a click puts the cursor there |
+| a date | `left` and `right` pick the year, the month or the day, `up` and `down` change it, the month round the year and the day within its month, `enter` sets it | a click picks the part under it |
+
+`tab` and `S-tab` go to the next input of the cell and the previous one, sliders among them, round; `C-g` leaves, and so
+does any other key, which then does what it always does. No key is taken while no input has them: Enter on the line of a
+choice is a new line, Space a space, as everywhere.
+
+A change writes the new value in the buffer in place of the old one, its bytes alone, one step of undo, then runs again
+only the cells that read its name, at once, as a slider's move: no button to press. A field waits for `enter`, so
+nothing runs at each letter typed, and so does a date. A text is written in quotes, its `"`, `\`, ends of line, tabs and
+`$` escaped as Cesia reads them, by [cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html): what you type
+reaches the session as that text, and never runs, even `$(...)`. While the cells run, a heavy one shows `running…` and
+`C-c e s` stops it, as for a slider; the latest value wins, and a result computed with another value than the file's
+says `stale: computed with zone = GMT-5`. Without a session yet, the value is written and nothing runs, and the
+prompt line says that `C-c e a` runs the cells with it.
 
 ## Animations
 
@@ -260,6 +317,13 @@ the next key. The number written is one of the slider's steps, between its min a
 [cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html), and the session takes it only for a name that holds a
 number already. The file itself is written when you save it, as any buffer: through a new file beside it that a rename
 puts in its place, and never over a file that changed on disk since it was read.
+
+A choice, a check box, a field and a date are written the same way: only their value, over the columns where the
+analysis read it, once Cemacs checked that these columns still lie in the input's cell and still hold a value of its
+kind, a text in quotes, `true` or `false`, its number or its day. The value written is the one
+[cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html) makes, a text in quotes with its `"`, `\`, ends of
+line and `$` escaped, so that nothing typed in a field can end the text, start another line or run as code, and the
+session reads it as a value, never runs it, and gives it only to a name that holds a value of the same kind.
 
 A scene comes from the session, another process, and Cemacs reads it as input: before anything is made of it, its size,
 the kind and the fields of each item, and the vertices all of them would make are checked against [notebook.SceneLimits],
