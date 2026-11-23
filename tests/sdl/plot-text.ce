@@ -1,0 +1,37 @@
+(* The texts of a graph in JetBrains Mono, the font std/plot measures them with, and a character it lacks, the superscript minus of 10⁻³, in the
+   graph's Fallback, Noto Sans Medium: a short bar, where JetBrains Mono alone draws its .notdef, a box as high as a capital. The rows the text lights
+   are counted in each case. *)
+use std/io
+use std/list
+use std/math
+use std/result
+use src/sdl
+use tests/sdl/probe
+
+black = 0x000000
+
+defn rows(fallback, window)
+  (** The window that drew a minus in superscript at 24 pixels, with the fallback or not, and how many rows of pixels it lit. *)
+  text = {Kind: "text", X: 10, Y: 40, Text: "⁻", Size: 24, Color: 0xffffff, Anchor: "start", Angle: 0, Width: 14.4, Id: "t$fallback"}
+  drawn = sdl.Draw([{Kind: "clear", Color: black}, {Kind: "graph", X: 0, Y: 0, Width: 60, Height: 60, Items: [text], Font: "../../fonts/JetBrainsMono-Regular.ttf",
+    Fallback: if fallback "../../fonts/NotoSans-Medium.ttf" else missing end}], window)
+  image = probe.Pixels(drawn, 60, 60)
+  {Window: drawn, Rows: list.Count(y -> probe.Differing(0, y, 60, 1, black, image) > 0, 0..59)}
+end
+
+defn check()
+  w = sdl.Open("test", 60, 60, "../../fonts/JetBrainsMono-Regular.ttf")?
+  (* Each size opens its font once, with the fallback of the first graph that asks it: two sizes, one for each case. *)
+  with = rows(true, w)
+  io.Print("with Noto Sans: a bar of at most 4 rows: $(with.Rows > 0 and with.Rows <= 4)")
+  sdl.Frame([{Kind: "clear", Color: black}], with.Window)
+  io.Print(sdl.Close(with.Window))
+  v = sdl.Open("test", 60, 60, "../../fonts/JetBrainsMono-Regular.ttf")?
+  alone = rows(false, v)
+  io.Print("alone: a box of more than 10 rows: $(alone.Rows > 10)")
+  sdl.Frame([{Kind: "clear", Color: black}], alone.Window)
+  io.Print(sdl.Close(alone.Window))
+  result.Ok("closed")
+end
+
+io.Print(check())
