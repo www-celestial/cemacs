@@ -59,9 +59,10 @@ defn lexed(line, number, st, every = false, most = 0)
       inside brackets too. State has the comment, text and brackets at its end: Opens holds each bracket open, {Line, Byte}, for the place of a
       line that goes on inside it. With most, the reading stops once it has that many tokens: only Where, Open, Inner and those Tokens are then
       known, which is all that the place of a line being typed reads, so a line of a megabyte is read as far as its first words.
-      The line is walked a byte at a time, each read natively, and never split: inside a comment, a text or brackets, the next byte that can
-      matter is found natively and kept until passed, so their words are crossed at once. What the loop reads at each byte is kept in plain
-      numbers, as a call costs more than the byte. *)
+      The line is walked a byte at a time, each read natively, and never split: inside a comment the next opening and closing are found
+      natively and kept until passed; inside a text or brackets, the next byte that can matter is found natively, all the bytes that can at
+      once; a name or a run of spaces of more than a byte is skipped natively too, past its first bytes, so a word of a megabyte costs a few
+      calls and a word of one letter none. What the loop reads at each byte is kept in plain numbers, as a call costs more than the byte. *)
   n = str.ByteLength(line)
   comment = st.Comment
   stack = st.Stack
@@ -74,15 +75,7 @@ defn lexed(line, number, st, every = false, most = 0)
   unmatched = 0
   opening = 0
   closing = 0
-  quoting = 0
-  escaping = 0
-  dollar = 0
-  parens = 0
-  shut = 0
-  squares = 0
-  squared = 0
-  braces = 0
-  braced = 0
+  spaced = 0
   i = 1
   while i <= n and (most == 0 or value.Len(tokens) < most)
     c = str.Byte(i, line)
@@ -105,17 +98,8 @@ defn lexed(line, number, st, every = false, most = 0)
       end
     else if inText
       if c != 92 and c != 36 and c != 34
-        if quoting < i
-          quoting = nextOf("\"", i, line, n)
-        end
-        if escaping < i
-          escaping = nextOf("\\", i, line, n)
-        end
-        if dollar < i
-          dollar = nextOf("$", i, line, n)
-        end
-        i = if quoting < escaping quoting else escaping end
-        i = if dollar < i dollar else i end
+        k = str.ByteFindAny("\"\\$", i + 1, line)
+        i = if value.IsMissing(k) n + 1 else k end
       else
         d = if i < n str.Byte(i + 1, line) else 0 end
         if c == 92 or (c == 36 and d == 36)
@@ -135,36 +119,19 @@ defn lexed(line, number, st, every = false, most = 0)
         end
       end
     else if c == 32 or c == 9 or c == 13
-      i += 1
+      (* A space right after a space, or at the start of the line, starts a run, as an indent: the rest of it is skipped natively. A space
+         alone between two words costs no call. *)
+      if spaced == i - 1
+        k = str.ByteFindAny(" \t\r", i + 1, line, not = true)
+        i = if value.IsMissing(k) n + 1 else k end
+      else
+        spaced = i
+        i += 1
+      end
     else if level > 0 and depth == 0 and not every and c != 40 and c != 41 and c != 91 and c != 93 and c != 123 and c != 125 and c != 34
       (* Inside brackets only brackets, texts and comments matter to fmt. *)
-      if parens < i
-        parens = nextOf("(", i, line, n)
-      end
-      if shut < i
-        shut = nextOf(")", i, line, n)
-      end
-      if squares < i
-        squares = nextOf("[", i, line, n)
-      end
-      if squared < i
-        squared = nextOf("]", i, line, n)
-      end
-      if braces < i
-        braces = nextOf("{", i, line, n)
-      end
-      if braced < i
-        braced = nextOf("}", i, line, n)
-      end
-      if quoting < i
-        quoting = nextOf("\"", i, line, n)
-      end
-      i = if parens < shut parens else shut end
-      i = if squares < i squares else i end
-      i = if squared < i squared else i end
-      i = if braces < i braces else i end
-      i = if braced < i braced else i end
-      i = if quoting < i quoting else i end
+      k = str.ByteFindAny("()[]{}\"", i + 1, line)
+      i = if value.IsMissing(k) n + 1 else k end
     else if c == 40 and i < n and str.Byte(i + 1, line) == 42
       comment = 1
       i += 2
@@ -190,13 +157,19 @@ defn lexed(line, number, st, every = false, most = 0)
       end
       i += 1
     else if (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95 or c >= 128
+      (* After the second byte of a name, its ASCII letters, digits and underscores are skipped natively; a byte from 128 on is read here, so a
+         name of one letter, or of accents, costs what it did. *)
       j = i + 1
       while j <= n
         v = str.Byte(j, line)
-        if not ((v >= 97 and v <= 122) or (v >= 65 and v <= 90) or (v >= 48 and v <= 57) or v == 95 or v >= 128)
+        if (v >= 97 and v <= 122) or (v >= 65 and v <= 90) or (v >= 48 and v <= 57) or v == 95
+          k = str.ByteFindAny("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", j + 1, line, not = true)
+          j = if value.IsMissing(k) n + 1 else k end
+        else if v >= 128
+          j += 1
+        else
           break
         end
-        j += 1
       end
       if every or level == 0
         tokens = list.Append(str.ByteSlice(i, j - 1, line), tokens)
@@ -227,19 +200,17 @@ defn lexed(line, number, st, every = false, most = 0)
 end
 
 defn indentOf(line)
-  (** The spaces at the start of a line, or missing when a tab is among them: only its first bytes are read. *)
+  (** The spaces at the start of a line, or missing when a tab is among them: only its first bytes are read, those after the first space natively. *)
   n = str.ByteLength(line)
-  k = 0
-  while k < n
-    c = str.Byte(k + 1, line)
-    if c == 9
-      return missing
-    else if c != 32
-      return k
-    end
-    k += 1
+  c = if n > 0 str.Byte(1, line) else 0 end
+  k = if c == 32 str.ByteFindAny(" ", 2, line, not = true) else 1 end
+  if value.IsMissing(k)
+    n
+  else if k <= n and str.Byte(k, line) == 9
+    missing
+  else
+    k - 1
   end
-  k
 end
 
 defn lastOf(t, tokens)
@@ -332,17 +303,13 @@ defn done(blocks)
 end
 
 defn isBlank(line)
-  (** Is a line only spaces, tabs, line ends and form feeds, the bytes that str.Trim takes off? It is read up to its first other byte. *)
-  n = str.ByteLength(line)
-  k = 1
-  while k <= n
-    c = str.Byte(k, line)
-    if c != 32 and c != 9 and c != 10 and c != 13 and c != 12
-      return false
-    end
-    k += 1
+  (** Is a line only spaces, tabs, line ends and form feeds, the bytes that str.Trim takes off? It is read up to its first other byte, natively
+      but at each form feed, which a text of Cesia can't write. *)
+  k = str.ByteFindAny(" \t\n\r", 1, line, not = true)
+  while not value.IsMissing(k) and str.Byte(k, line) == 12
+    k = str.ByteFindAny(" \t\n\r", k + 1, line, not = true)
   end
-  true
+  value.IsMissing(k)
 end
 
 defn kindOf(x, blank, st)
@@ -427,7 +394,7 @@ linesOf(first, last, b) = str.Split("\n", rope.Slice(rope.LineStart(first, b.Rop
 isGoingOn(w) = w == "end" or w == "else" or w == "then" or w == "and" or w == "or" or w == "not" or w == "in"
 
 defn firstWord(line)
-  (** The name that a line starts with, at its first byte, or missing. *)
+  (** The name that a line starts with, at its first byte, or missing. Its ASCII letters, digits and underscores are skipped natively. *)
   n = str.ByteLength(line)
   if n == 0
     return missing
@@ -438,7 +405,8 @@ defn firstWord(line)
   end
   j = 1
   while j < n and nameByte(str.Byte(j + 1, line))
-    j += 1
+    k = str.ByteFindAny("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", j + 2, line, not = true)
+    j = if value.IsMissing(k) n else k - 1 end
   end
   str.ByteSlice(1, j, line)
 end
@@ -614,13 +582,13 @@ defn charsBefore(k, line)
 end
 
 defn spacesOf(line)
-  (** The spaces and tabs at the start of a line, in bytes, a tab counting as one: only those are read. *)
+  (** The spaces and tabs at the start of a line, in bytes, a tab counting as one: only those are read, past the first natively. *)
   n = str.ByteLength(line)
-  k = 0
-  while k < n and (str.Byte(k + 1, line) == 32 or str.Byte(k + 1, line) == 9)
-    k += 1
+  if n == 0 or not (str.Byte(1, line) == 32 or str.Byte(1, line) == 9)
+    return 0
   end
-  k
+  k = str.ByteFindAny(" \t", 2, line, not = true)
+  if value.IsMissing(k) n else k - 1 end
 end
 
 defn lastBefore(group)
@@ -860,13 +828,19 @@ end
 
 defn blanksTo(k, line)
   (** The byte after the spaces and tabs of a line from byte k on, each a character of its own: one that a byte continuing a character follows is
-      none, as str.Chars reads it. *)
+      none, as str.Chars reads it. Past the first, they are skipped natively: only the last of them can be followed by a byte that continues. *)
   n = str.ByteLength(line)
-  j = k
-  while j <= n and (str.Byte(j, line) == 32 or str.Byte(j, line) == 9) and (j == n or not continues(str.Byte(j + 1, line)))
-    j += 1
+  if k > n or not (str.Byte(k, line) == 32 or str.Byte(k, line) == 9)
+    return k
   end
-  j
+  j = str.ByteFindAny(" \t", k + 1, line, not = true)
+  if value.IsMissing(j)
+    n + 1
+  else if continues(str.Byte(j, line))
+    j - 1
+  else
+    j
+  end
 end
 
 defn NewLine(at, b)

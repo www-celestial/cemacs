@@ -192,3 +192,9 @@ defn isEnterAsCharacters(p)
   e.Before == before and e.After == after and e.Indent == place and list.Last(e.Layout.Group).Text == str.Join("", left)
 end
 isEnterByBytes() = test.ForAll(isEnterAsCharacters, enterCase, cases = 2000)
+
+(* The same on lines of long runs, which the reading skips natively past their first bytes: names, spaces and tabs, the insides of texts and brackets,
+   each piece repeated up to 200 times. *)
+runCase = gen.Of({Words: gen.Map(ps -> str.Join("", ps), gen.List(gen.Map(p -> str.Repeat(p.Times, p.Piece), gen.Of({Piece: gen.Pick(enterPieces),
+  Times: gen.Int(1, 200)})), max = 8)), Above: gen.Pick(aboves), Column: gen.Int(0, 1600)})
+isEnterByBytesOnRuns() = test.ForAll(isEnterAsCharacters, runCase, cases = 300)
