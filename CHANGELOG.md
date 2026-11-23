@@ -147,3 +147,9 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   same: the row of the line on the screen keeps where the crossing of its comments and texts passed, with the state there,
   every 64 KB, and the row made again after a key crosses only the bytes after the last of these before its edit; on a file
   of 100 MB of such lines, the rows of the screen keep 36 KB of them.
+- A letter and backspace at the far end of a line of a megabyte of code take 27 ms instead of 95, `end` there 75 ms
+  instead of 279, and Enter at its start 17 ms instead of 81, the colours the same: the colours keep, for the first line of
+  more than 64 KB they read, where the reading of its comments and texts passed, with the state there, every 64 KB, and the
+  state at the end of the line, which the lines under it start from, is read again from the last of these before the edit,
+  2.5 ms instead of 67 at the far end. In the middle of the line, a letter takes 66 ms instead of 94. The colours keep one
+  such line per buffer, with its text, and a file of usual lines is coloured as fast as before.
