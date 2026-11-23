@@ -117,7 +117,7 @@ isLatestPending() = press("right", press("right", focused())).Buffers[1].CellRun
 isTabRound() = commands.FocusOf(press("tab", focused())).Slider == "n" and commands.FocusOf(press("tab", press("tab", focused()))).Slider == "rho"
 isIntSlider() = line(press("up", press("tab", focused())), 5) == "n = cells.Slider(4, 0, 10)"
 isCgLeaves() = value.IsMissing(commands.FocusOf(press("C-g", focused()))) and value.Len(rho(press("C-g", focused())).Draw(1000, look)) == value.Len(rho(opened()).Draw(1000, look))
-isNoControlHere() = notebook.FocusControl(opened()).Message == "This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, or a 3D graph of plot.Surface or plot.Line3."
+isNoControlHere() = notebook.FocusControl(opened()).Message == "This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, a 3D graph of plot.Surface or plot.Line3, or a table."
 
 defn atSlider(name, s)
   (** The block of a slider on the screen with a point inside it, as the mouse finds it. *)
@@ -604,3 +604,150 @@ meshes = gen.Of({Rows: gen.Int(-1, 4), Columns: gen.Int(-1, 4), Xs: gen.List(gen
   Palette: gen.List(gen.Pick(["#000000", "#ffffff", "#21918c", "red", "#12345"]), min = 0, max = 4), Colors: gen.List(gen.Int(-2, 4), min = 0, max = 20),
   Order: gen.List(gen.Pick([1, -1, 0, 2]), min = 1, max = 3)})
 isFaultFuzz() = test.ForAll(faultHolds, meshes, cases = 400)
+
+(* Tables: a table that a run showed is drawn from its first rows, without a session; its keys move, sort, filter and copy, its rows and the points of
+   a marked graph that a session sends are checked before use, and the wheel over it scrolls it. A session's answers are faked as fibers that answer at
+   once, as the anim tests do. *)
+tableSource = "use std/frame\n\n(* %% Day *)\nhours\n"
+dayRows = [["06:52:10", "-0.833", "116.59"], ["7:00:00", "0.48", "117.87"], ["8:00:00", "9.99", "128.27"], ["12:00:00", "28.66", "184.7"]]
+(** The value of a table of four rows of the day, as a run gives it, its key 5.1. *)
+dayValue = {Kind: "table", Columns: ["heure", "elevation", "azimuth"], Rows: dayRows, Count: 4, Key: "5.1"}
+
+defn tabled(v)
+  (** The window once cell 2 showed a value as a table, and a graph of key 5 under it, as a run gives them; its session busy, so that nothing asks. *)
+  s = notebook.Hooked({}).Idle(view.Start([text.Of(tableSource, "day.ce")], look, cell, 1280, 720))
+  r = s.Buffers[1].CellRun
+  r.Session = "a session"
+  r.Task = "a cell runs"
+  s.Buffers[1].CellRun = r
+  g = dict.Merge(notebook.Prepared({Width: 400, Height: 300, Items: [], Dropped: 0}, "."), {Key: 5, Asked: notebook.GraphWidth(s)})
+  s.Buffers[1] = text.WithBlocks([dict.Merge(notebook.Block(4, [], cell, table = notebook.TableOf(v)), {Cell: 2, Base: [], Inputs: {}, Status: missing, Part: 1}),
+    dict.Merge(notebook.Block(4, [], cell, graph = g), {Cell: 2, Base: [], Inputs: {}, Status: missing, Part: 2})], s.Buffers[1])
+  s.Buffers[1] = text.Place(4, 0, s.Buffers[1])
+  s = commands.Unfocused(notebook.FocusControl(s))
+  s.Buffers[1] = text.Place(1, 0, s.Buffers[1])
+  s
+end
+(** The block of the table, and of the graph. *)
+tableOf(s) = list.FindFirst(x -> value.IsSome(dict.GetOr("Table", missing, x)), text.BlocksOf(s.Buffers[1]))
+graphOf(s) = list.FindFirst(x -> value.IsSome(dict.GetOr("Graph", missing, x)), text.BlocksOf(s.Buffers[1]))
+defn onTable(state)
+  (** The window after C-c e f in the cell of the table. *)
+  s = state
+  s.Buffers[1] = text.Place(4, 0, s.Buffers[1])
+  notebook.FocusControl(s)
+end
+textIn(words, s) = commands.Update({Kind: "text", Text: words}, s)   (** A text typed, as the editor gives it. *)
+(** The texts a block draws in a font. *)
+textsIn(x, font) = [c for c in x.Draw(1000, look) if c.Kind == "text" and c.Font == font]
+
+isTableValueKinds() = notebook.IsTableValue(dayValue) and notebook.IsTableValue({Kind: "array", Shape: [3, 2], Rows: [["1", "2"]]}) and not notebook.IsTableValue({Kind: "array", Shape: [1, 4], Rows: [["1"]]}) and not notebook.IsTableValue({Kind: "text", Text: "1"})
+(* Its rows, its header in the strong font and its note under it; the numbers on the right, their decimal points in one column; the texts on the left. *)
+isTableDrawn() = tableOf(tabled(dayValue)).Rows == 6 and value.Equal([c.Text for c in textsIn(tableOf(tabled(dayValue)), "strong")], ["heure", "elevation", "azimuth"]) and
+  list.Last(textsIn(tableOf(tabled(dayValue)), "code")).Text == "4 rows"
+defn isDecimalPointsInLine()
+  numbers = [c for c in textsIn(tableOf(tabled(dayValue)), "code") if c.Text in ["-0.833", "0.48", "9.99", "28.66"]]
+  dots = [c.X + (str.Find(".", c.Text) - 1) * cell.Width for c in numbers]
+  texts = [c.X for c in textsIn(tableOf(tabled(dayValue)), "code") if c.Text in ["06:52:10", "7:00:00"]]
+  value.Len(numbers) == 4 and list.Min(dots) == list.Max(dots) and texts[1] == texts[2]
+end
+isLongCellCut() = notebook.TableOf(dict.Put("Rows", [[str.Repeat(100, "x"), "1", "2"]], dict.Put("Count", 1, dayValue))).Rows[1][1] == "$(str.Repeat(39, "x"))…"
+isMatrixAskedWhole() = notebook.TableOf({Kind: "array", Shape: [30, 12], Rows: [["1"]], Key: 3}).Stale and not notebook.TableOf({Kind: "array", Shape: [3, 2], Rows: [["1", "2"], ["3", "4"], ["5", "6"]], Key: 3}).Stale
+isOldTableFixed() = notebook.TableOf(dict.Drop("Key", dayValue)).Fixed and not notebook.TableOf(dayValue).Fixed
+
+(* The keys: C-c e f, the arrows choose a row, which the graph of the cell wants marked; s sorts and asks the rows again; / types a filter; M-w copies. *)
+isFocusTable() = commands.FocusOf(onTable(tabled(dayValue))).Table == "5.1" and value.Len(tableOf(onTable(tabled(dayValue))).Draw(1000, look)) == value.Len(tableOf(tabled(dayValue)).Draw(1000, look)) + 16
+isDownChooses() = tableOf(press("down", press("down", onTable(tabled(dayValue))))).Table.Selected == 3 and value.Equal(graphOf(press("down", press("down", onTable(tabled(dayValue))))).Graph.Wants, [3, 4])
+isRowReversed() = list.Any([c.Kind == "rect" and c.Color == ui.Dark.Ink and c.Height == cell.Height for c in tableOf(press("down", onTable(tabled(dayValue)))).Draw(1000, look)])
+isEndLastRow() = tableOf(press("end", onTable(tabled(dayValue)))).Table.Row == 4 and tableOf(press("home", press("end", onTable(tabled(dayValue))))).Table.Row == 1
+defn isSortCycles()
+  s = press("right", onTable(tabled(dayValue)))
+  one = tableOf(textIn("s", s)).Table
+  two = tableOf(textIn("s", textIn("s", s))).Table
+  three = tableOf(textIn("s", textIn("s", textIn("s", s)))).Table
+  value.Equal(one.Sort, {Column: "elevation", Descending: false}) and one.Stale and two.Sort.Descending and value.IsMissing(three.Sort)
+end
+defn isSortKeepsChosen()
+  t = tableOf(textIn("s", press("right", press("down", onTable(tabled(dayValue)))))).Table
+  t.Find == 2 and value.Len(t.Rows) == 0
+end
+defn isFilterTyped()
+  s = textIn("j", textIn("/", onTable(tabled(dayValue))))
+  t = tableOf(s).Table
+  kept = tableOf(press("enter", s)).Table
+  back = tableOf(press("escape", s)).Table
+  t.Draft == "j" and t.Filter == "j" and t.Stale and value.IsMissing(kept.Draft) and kept.Filter == "j" and back.Filter == "" and
+    list.Last(textsIn(tableOf(s), "code")).Text == "filter: j▏"
+end
+isFilterBackspace() = tableOf(press("backspace", textIn("j", textIn("/", onTable(tabled(dayValue)))))).Table.Filter == ""
+isCopyCell() = commands.Clipboard(press("M-w", press("right", press("down", onTable(tabled(dayValue)))))) == "0.48"
+isCopyRow() = commands.Clipboard(press("M-w", press("C-u", press("down", onTable(tabled(dayValue)))))) == "7:00:00\t0.48\t117.87"
+isPrefixEnds() = commands.Clipboard(press("M-w", press("down", press("C-u", onTable(tabled(dayValue)))))) == "7:00:00"
+isEscapeLeavesTable() = value.IsMissing(commands.FocusOf(press("escape", onTable(tabled(dayValue))))) and value.IsMissing(commands.FocusOf(press("C-g", onTable(tabled(dayValue)))))
+(* No key changes while no table has the keys: s and / are typed in the buffer, M-w copies as it did. *)
+defn isKeysUnchangedWithoutFocus()
+  s = keyed(tabled(dayValue))
+  t = commands.Update({Kind: "text", Text: "/"}, commands.Update({Kind: "text", Text: "s"}, s))
+  value.IsMissing(commands.FocusOf(t)) and line(t, 1) == "s/use std/frame" and value.IsMissing(tableOf(t).Table.Sort)
+end
+isFixedRefusesSort() = value.IsMissing(tableOf(textIn("s", onTable(tabled(dict.Drop("Key", dayValue))))).Table.Sort)
+isCopyFixedTable() = str.StartsWith("heure,elevation,azimuth\n06:52:10,-0.833,116.59\n", commands.Clipboard(notebook.CopyTable(onTable(tabled(dict.Drop("Key", dayValue))))))
+
+(* A table of a thousand rows scrolls: the wheel over it moves it three rows a notch, and gives the screen the wheel at its first row. *)
+bigValue = {Kind: "table", Columns: ["i"], Rows: [["$k"] for k in 1..20], Count: 1000, Key: "6"}
+defn atTable(s)
+  (** A point of the table on the screen, as the mouse finds it. *)
+  for y in 0..719
+    hit = view.BlockAt(100, y, s)
+    if value.IsSome(hit) and value.IsSome(dict.GetOr("Table", missing, hit.Block))
+      return {X: 100, Y: y + 2 * cell.Height + 4}
+    end
+  end
+  missing
+end
+wheelAt(at, amount, s) = commands.Wheel({Kind: "mouse", Action: "wheel", X: at.X, Y: at.Y, Button: 0, Amount: amount}, s)   (** The wheel at a point. *)
+isWheelScrollsTable() = tableOf(wheelAt(atTable(tabled(bigValue)), -1.0, tabled(bigValue))).Table.Top == 4 and tabled(bigValue).Buffers[1].Top == wheelAt(atTable(tabled(bigValue)), -1.0, tabled(bigValue)).Buffers[1].Top
+isWheelAtTopScrollsScreen() = tableOf(wheelAt(atTable(tabled(bigValue)), 1.0, tabled(bigValue))).Table.Top == 1
+isPageAsks() = notebook.TableOf(bigValue).Stale == false and tableOf(press("pagedown", onTable(tabled(bigValue)))).Table.Top == 21 and tableOf(press("pagedown", onTable(tabled(bigValue)))).Table.Row == 21
+defn isRowsLand()
+  (* The rows asked come in a tick, put in place; rows that are not sane leave the table as it was, and asking no more. *)
+  s = press("pagedown", onTable(tabled(bigValue)))
+  r = s.Buffers[1].CellRun
+  r.Task = missing
+  r.Paging = {Task: fiber.Spawn(() -> result.Ok({Columns: ["i"], Rows: [["$k"] for k in 1..100], Count: 1000, Total: 1000, Positions: [k for k in 1..100]})), Buffer: 1, Key: "6", First: 1, Sort: missing, Filter: "", Find: missing}
+  s.Buffers[1].CellRun = r
+  sys.Sleep(0.001)
+  t = tableOf(ticked(s)).Table
+  bad = s
+  r.Paging = {Task: fiber.Spawn(() -> result.Ok({Columns: ["i"], Rows: [["<script>"] for k in 1..2], Count: 1000, Total: 1000, Positions: [0, 2000]})), Buffer: 1, Key: "6", First: 1, Sort: missing, Filter: "", Find: missing}
+  bad.Buffers[1].CellRun = r
+  sys.Sleep(0.001)
+  u = tableOf(ticked(bad)).Table
+  value.Len(t.Rows) == 100 and t.Rows[21][1] == "21" and u.Fixed and value.Len(u.Rows) == 20
+end
+isRowsFaultRefuses() = value.IsSome(notebook.RowsFault({Columns: ["a"], Rows: [["1", "2"]], Count: 1, Total: 1, Positions: [1]}, {})) and value.IsSome(notebook.RowsFault({Columns: ["a"], Rows: [[str.Repeat(201, "x")]], Count: 1, Total: 1, Positions: [1]}, {})) and
+  value.IsSome(notebook.RowsFault({Columns: ["a"], Rows: list.Fill(["1"], 1001), Count: 1001, Total: 1001, Positions: list.Fill(1, 1001)}, {})) and value.IsSome(notebook.RowsFault({Columns: ["a"], Rows: [["1"]], Count: 2, Total: 1, Positions: [1]}, {}))
+
+(* A row and its point: a marked scene that the session sent shows in the graph with the places of its points; a click on one chooses its row. *)
+defn markSent(state, points)
+  (** The window as if the session had sent the scene of the graph marked at row 2 of 4, with these points, for the next tick to take. *)
+  s = press("down", onTable(state))
+  r = s.Buffers[1].CellRun
+  r.Task = missing
+  r.Marking = {Task: fiber.Spawn(() -> result.Ok({Width: 400, Height: 300, Items: [], Dropped: 0, Points: points})), Cell: 2, Key: 5, Mark: [2, 4], Width: 400}
+  s.Buffers[1].CellRun = r
+  sys.Sleep(0.001)
+  ticked(s)
+end
+layer = [{Layer: 1, Kind: "line", Label: missing, At: [1, 2, 3, 4], Xs: [10.0, 100.0, 200.0, 300.0], Ys: [250.0, 200.0, 100.0, 50.0]}]
+isMarkLands() = value.Equal(graphOf(markSent(tabled(dayValue), layer)).Graph.Mark, [2, 4]) and value.Len(graphOf(markSent(tabled(dayValue), layer)).Graph.Points) == 1
+isNoLayerNotLinked() = value.IsMissing(dict.GetOr("Mark", missing, graphOf(markSent(tabled(dayValue), [])).Graph)) and value.Equal(graphOf(markSent(tabled(dayValue), [])).Graph.Unlinked, [4])
+isBadPointsRefused() = value.IsMissing(dict.GetOr("Mark", missing, graphOf(markSent(tabled(dayValue), [{At: [1, 2], Xs: [1.0], Ys: [1.0, 2.0]}])).Graph)) and
+  value.IsSome(notebook.PointsFault([{At: [0], Xs: [1.0], Ys: [1.0]}]))
+defn isClickPointChooses()
+  s = markSent(tabled(dayValue), layer)
+  g = graphOf(s)
+  t = g.Mouse("down", {X: 2 * cell.Width + 201, Y: g.Under + 99, Width: 1000}, s)
+  far = g.Mouse("down", {X: 2 * cell.Width + 150, Y: g.Under + 150, Width: 1000}, s)
+  tableOf(t).Table.Selected == 3 and value.Equal(graphOf(t).Graph.Wants, [3, 4]) and tableOf(far).Table.Selected == 2
+end

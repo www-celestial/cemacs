@@ -5,7 +5,10 @@
     move: the number is written in the buffer, and only the cells that read it run again. The other inputs of a form, cells.Choice, cells.Check,
     cells.Field and cells.Date, draw their boxes under their lines and change the same way. An animation of plot.Frames shows its first frame over a bar,
     ▶ 1 / 120, that Space plays after C-c e f, or the mouse; its frames come from the session one at a time. A 3D graph of plot.Surface or plot.Line3
-    turns when dragged, or with the arrows after C-c e f: the session draws each view, and the code keeps its own. The work is std/cells': runs wait
+    turns when dragged, or with the arrows after C-c e f: the session draws each view, and the code keeps its own. A frame, a matrix or a list of maps
+    or structs draws as a table, with thin borders, its header and its numbers aligned, 20 rows at a time, scrolled by the wheel or by its keys after
+    C-c e f or a click: its rows come from the session a screen at a time, sorted by s and filtered by / there; the row chosen marks its point on the
+    graphs of its cell that have as many points, and a click on such a point chooses its row. The work is std/cells': runs wait
     in fibers, and each tick takes their results, so that typing never waits.
     src/cemacs.ce adds the hooks of Hooked to the config and these Keys. *)
 use core/commands
@@ -19,6 +22,7 @@ use src/rope
 use std/cells as nb
 use std/cesia
 use std/columns as col
+use std/csv
 use std/date
 use std/debug
 use std/dict
@@ -32,8 +36,8 @@ use std/value
 
 (** The keys of the cells, in their group of C-c: e for execute. M-p and M-n go through the history in `*repl*`, and Enter there runs what was typed. *)
 Keys() = {"C-c e": "execute", "C-c e e": RunCell, "C-c e a": RunAll, "C-c e i": InsertCell, "C-c e v": ShowVariables, "C-c e r": OpenRepl,
-  "C-c e s": StopCell, "C-c e h": WriteHtml, "C-c e k": ClearResults, "C-c e f": FocusControl, "enter": Enter, "S-enter": Enter, "M-p": HistoryBack,
-  "M-n": HistoryOn}
+  "C-c e s": StopCell, "C-c e h": WriteHtml, "C-c e k": ClearResults, "C-c e f": FocusControl, "C-c e c": CopyTable, "enter": Enter, "S-enter": Enter,
+  "M-p": HistoryBack, "M-n": HistoryOn}
 
 (** The most lines of a result drawn under a cell: its output, then its value, each cut there with a line that says how many more. *)
 MaxLines() = 40
@@ -197,30 +201,32 @@ defn colorOf(role, th)
   end
 end
 
-defn Block(line, lines, cell, graph = missing, focused = false, out = missing, at = 0)
+defn Block(line, lines, cell, graph = missing, focused = false, out = missing, at = 0, table = missing)
   (** A block of lines under a line, each {Role, Words}, with a thin bar on its left: drawn at the width of the pane, cut to it. A graph, {Key,
       Scene, Font}, comes under the lines, its scene drawn by sdl at its own size, which keeps the shape of the graph: the width of the pane or the
       graph's own when it is less, a polar graph square; an animation's has its bar under it, see BarItems,
-      and a 3D graph the line of its view, see ViewItems, each with a ring when focused. Out, a label as Out[3]:, marks a result as Jupyter does: the
+      and a 3D graph the line of its view, see ViewItems, each with a ring when focused. A table comes there instead, see TableItems, with its ring when
+      focused. Out, a label as Out[3]:, marks a result as Jupyter does: the
       lines after the first at ones, which are its status and its note, start after it, on its row, and the others under them; a result with no line
-      gives the label a row of its own, above its graph.
+      gives the label a row of its own, above its graph. Under is how far down the block its graph or its table starts, in pixels.
 
         Block(3, [{Role: "value", Words: "42"}], {Width: 8, Height: 19}).Rows --> 1 *)
   alone = value.IsSome(out) and value.Len(lines) <= at
   rowed = if alone list.Append({Role: "note", Words: out}, lines) else lines end
   pad = if value.IsMissing(out) or alone 0 else value.Len(out) + 1 end
   label = if value.IsMissing(out) or alone [] else [{At: at, Words: out}] end
-  high = if value.IsMissing(graph) 0 else math.Div(graph.Scene.Height + 8 + cell.Height - 1, cell.Height) end
+  high = if value.IsSome(table) TableHeight(table) else if value.IsMissing(graph) 0 else math.Div(graph.Scene.Height + 8 + cell.Height - 1, cell.Height) end
   bar = if isAnimation(graph) or isTurning(graph) 1 else 0 end
   rows = list.Max(1, value.Len(rowed) + high + bar)
-  top = value.Len(rowed) * cell.Height + 4
+  top = value.Len(rowed) * cell.Height + (if value.IsSome(table) 0 else 4 end)
   under = (value.Len(rowed) + high) * cell.Height
+  shown = (width, look) -> if value.IsSome(table) TableItems(table, focused, width, top, cell, look.Theme, look) else if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font, Fallback: graph.Fallback}] end
   draw = (width, look) -> list.Concat(list.Concat(list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
     [lineText(k, rowed[k], if k > at pad else 0 end, width, look, cell) for k in 1..value.Len(rowed)]),
     [rowText(l.At, "  $(l.Words)", colorOf("note", look.Theme), cell) for l in label]),
-    if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font, Fallback: graph.Fallback}] end),
+    shown(width, look)),
     if bar == 0 [] else if isAnimation(graph) BarItems(graph, focused, width, under, cell, look.Theme) else ViewItems(graph, focused, top, under, cell, look.Theme) end)
-  {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Lines: lines, Out: out}
+  {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Table: table, Lines: lines, Out: out, Under: top}
 end
 
 (** Line k of a block, {Role, Words}, pad columns after the bar's margin, cut to the width. *)
@@ -438,10 +444,21 @@ end
 (** The width that a graph under a cell takes in the pane being edited, in pixels: the pane's text width, past the bar of the block. *)
 GraphWidth(state) = list.Max(200, view.LayoutOf(state).Code.Width - view.Gutter - 8 - 2 * state.Cell.Width)
 
-defn resultBlock(k, i, line, lines, graph, state, out = missing, at = 0)
-  (** The block of the result of cell i of buffer k under a line: its lines and its graph, and its label out after its first at lines, see Block; an
-      animation's bar and a 3D graph take the mouse, and have a ring while they have the keys. *)
-  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state), out = out, at = at), {Cell: i})
+defn resultBlock(k, i, line, lines, graph, state, out = missing, at = 0, table = missing)
+  (** The block of the result of cell i of buffer k under a line: its lines and its graph or its table, and its label out after its first at lines, see
+      Block; an animation's bar, a 3D graph and a table take the mouse, and have a ring while they have the keys; a table takes the wheel too, and a graph
+      that shows a mark takes a press on its points. *)
+  look = dict.GetOr("Look", missing, state)
+  measuredHeads = if value.IsSome(table) and value.IsSome(look) and value.Len(dict.GetOr("Heads", [], table)) != value.Len(table.Columns) dict.Put("Heads", [look.Width(c, "strong") for c in table.Columns], table) else table end
+  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state) or tableFocused(k, table, state), out = out, at = at, table = measuredHeads), {Cell: i})
+  if value.IsSome(table)
+    key = table.Key
+    return dict.Merge(made, {Mouse: (action, point, st) -> tableMouse(key, action, point, st), Wheel: (amount, st) -> tableWheel(key, amount, st), Keeps: true})
+  end
+  if value.IsSome(graph) and value.IsSome(dict.GetOr("Mark", missing, graph)) and not (isAnimation(graph) or isTurning(graph))
+    key = graph.Key
+    return dict.Put("Mouse", (action, point, st) -> pointMouse(key, action, point, st), made)
+  end
   if not (isAnimation(graph) or isTurning(graph))
     return made
   end
@@ -466,10 +483,11 @@ defn withParts(k, i, parts, state, inputs = {}, status = missing, out = missing)
   made = []
   for j in 1..value.Len(parts)
     lines = if j == 1 list.Concat(head, parts[j].Lines) else parts[j].Lines end
-    if value.Len(lines) > 0 or value.IsSome(parts[j].Graph)
+    table = dict.GetOr("Table", missing, parts[j])
+    if value.Len(lines) > 0 or value.IsSome(parts[j].Graph) or value.IsSome(table)
       first = j == 1
       label = if first out else missing end
-      made = list.Append(dict.Merge(resultBlock(k, i, at, lines, parts[j].Graph, state, out = label, at = if first value.Len(head) else 0 end), {Base: parts[j].Lines, Inputs: if first inputs else {} end,
+      made = list.Append(dict.Merge(resultBlock(k, i, at, lines, parts[j].Graph, state, out = label, at = if first value.Len(head) else 0 end, table = table), {Base: parts[j].Lines, Inputs: if first inputs else {} end,
         Status: if first status else missing end, Part: j}), made)
     end
   end
@@ -488,19 +506,19 @@ defn withStatus(k, i, status, state)
   if value.Len(old) == 0
     return withBlock(k, i, [], state, status = status)
   end
-  parts = [{Lines: dict.GetOr("Base", x.Lines, x), Graph: dict.GetOr("Graph", missing, x)} for x in old]
+  parts = [{Lines: dict.GetOr("Base", x.Lines, x), Graph: dict.GetOr("Graph", missing, x), Table: dict.GetOr("Table", missing, x)} for x in old]
   withParts(k, i, parts, state, inputs = dict.GetOr("Inputs", {}, old[1]), status = status, out = dict.GetOr("Out", missing, old[1]))
 end
 
 (** Are two blocks the same part of the same cell? *)
 samePart(x, y) = dict.GetOr("Cell", 0, x) == dict.GetOr("Cell", 0, y) and dict.GetOr("Part", 1, x) == dict.GetOr("Part", 1, y)
 
-defn rebuilt(k, x, graph, state)
-  (** The state with block x of buffer k drawn again with another graph, in its place among the parts of its cell: its lines, its status and its note
-      as they were. *)
+defn rebuilt(k, x, graph, state, table = missing)
+  (** The state with block x of buffer k drawn again with another graph, or another table, in its place among the parts of its cell: its lines, its
+      status and its note as they were. *)
   b = state.Buffers[k]
   base = dict.GetOr("Base", x.Lines, x)
-  made = dict.Merge(resultBlock(k, x.Cell, x.Line, x.Lines, graph, state, out = dict.GetOr("Out", missing, x), at = value.Len(x.Lines) - value.Len(base)), {Base: base, Inputs: dict.GetOr("Inputs", {}, x),
+  made = dict.Merge(resultBlock(k, x.Cell, x.Line, x.Lines, graph, state, out = dict.GetOr("Out", missing, x), at = value.Len(x.Lines) - value.Len(base), table = if value.IsSome(table) table else dict.GetOr("Table", missing, x) end), {Base: base, Inputs: dict.GetOr("Inputs", {}, x),
     Status: dict.GetOr("Status", missing, x), Part: dict.GetOr("Part", 1, x)})
   s = state
   s.Buffers[k] = text.WithBlocks([if samePart(y, x) made else y end for y in text.BlocksOf(b)], b)
@@ -511,9 +529,9 @@ end
 keeps(i, r) = i in dict.GetOr("Keeping", [], r)
 
 defn resultParts(ran, state, asked = missing)
-  (** The parts of the result of a run, each {Lines, Graph}, in the order they came: what the cell printed and what cells.Show showed, then its value or
-      its error; each graph ends a part. Each text is cut at MaxLines() lines. A graph that isn't drawn says why on an error line, and a run that
-      failed is its message alone. *)
+  (** The parts of the result of a run, each {Lines, Graph, Table}, in the order they came: what the cell printed and what cells.Show showed, then its
+      value or its error; each graph and each table ends a part. Each text is cut at MaxLines() lines. A graph that isn't drawn says why on an error line,
+      and a run that failed is its message alone. *)
   if result.IsErr(ran)
     return [{Lines: [{Role: "error", Words: ran.Error.Message}], Graph: missing}]
   end
@@ -533,6 +551,9 @@ defn resultParts(ran, state, asked = missing)
     else if value.IsSome(g)
       out = list.Append({Lines: lines, Graph: g}, out)
       lines = []
+    else if IsTableValue(p.Value)
+      out = list.Append({Lines: lines, Graph: missing, Table: TableOf(p.Value)}, out)
+      lines = []
     else
       lines = list.Concat(lines, capped(valueLines(p.Value)))
     end
@@ -544,6 +565,9 @@ defn resultParts(ran, state, asked = missing)
   g = graphFrom(done.Value, state, asked = asked)
   if value.IsSome(g) and dict.Has("Fault", g)
     return list.Append({Lines: list.Append({Role: "error", Words: g.Fault}, lines), Graph: missing}, out)
+  end
+  if IsTableValue(done.Value)
+    return list.Append({Lines: lines, Graph: missing, Table: TableOf(done.Value)}, out)
   end
   list.Append({Lines: list.Concat(lines, capped(valueLines(done.Value))), Graph: g}, out)
 end
@@ -671,11 +695,30 @@ defn taken(k, state)
   s = next(k, answeredCell(k, i, s, started = r.Started))
   r = runOf(s.Buffers[k])
   if value.IsMissing(r.Task) and not asking(r)
-    vars = nb.Variables(r.Session)
-    r.Vars = if result.IsOk(vars) vars.Value else [] end
+    (* The names for *variables* are asked in a fiber, so that the result shows at once; the next tick takes them. *)
+    one = r.Session
+    r.Varying = fiber.Spawn(() -> nb.Variables(one))
+    sys.Sleep(0)
     s = withRun(k, r, s)
   end
   s
+end
+
+defn varied(k, state)
+  (** The state at a tick for buffer k: the names of its session for *variables*, once they came. *)
+  r = runOf(state.Buffers[k])
+  v = if value.IsMissing(r) missing else dict.GetOr("Varying", missing, r) end
+  if value.IsMissing(v)
+    return state
+  end
+  got = fiber.Wait(v, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  r.Varying = missing
+  vars = if result.IsOk(got) got.Value else got end
+  r.Vars = if result.IsOk(vars) vars.Value else [] end
+  withRun(k, r, state)
 end
 
 defn stopped(k, state)
@@ -805,7 +848,8 @@ defn widened(k, state)
       (* A graph the session no longer holds, or a scene that isn't sane, keeps its width. *)
       return rebuilt(k, old, dict.Put("Fixed", true, old.Graph), s)
     end
-    return rebuilt(k, old, dict.Merge(old.Graph, dict.Put("Asked", pending.Width, Prepared(scene.Value, commands.Home(s)))), s)
+    fresh = dict.Merge(old.Graph, dict.Put("Asked", pending.Width, Prepared(scene.Value, commands.Home(s))))
+    return rebuilt(k, old, if value.IsSome(dict.GetOr("Mark", missing, old.Graph)) dict.Put("Points", dict.GetOr("Points", [], scene.Value), fresh) else fresh end, s)
   end
   x = stale(b, state)
   if value.IsMissing(x)
@@ -816,7 +860,9 @@ defn widened(k, state)
   width = GraphWidth(state)
   frame = dict.GetOr("Frame", 1, x.Graph)
   turn = if isTurning(x.Graph) x.Graph.View else missing end
-  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)), Cell: x.Cell, Key: key, Width: width}
+  mark = dict.GetOr("Mark", missing, x.Graph)
+  task = if value.IsSome(mark) fiber.Spawn(() -> nb.Scene(one, key, width, mark = mark)) else fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)) end
+  r.Rescene = {Task: task, Cell: x.Cell, Key: key, Width: width}
   withRun(k, r, state)
 end
 
@@ -1099,7 +1145,10 @@ defn answered(k, state)
   s = state
   after = b
   for part in resultParts(ran, state)
-    words = str.Join("", ["$(l.Words)\n" for l in part.Lines])
+    (* *repl* writes a table as lines of text, as the cells did before they drew tables. *)
+    t = dict.GetOr("Table", missing, part)
+    shownLines = if value.IsMissing(t) part.Lines else list.Concat(part.Lines, list.Append({Words: NoteWords(t)}, [{Words: l} for l in TableLines(t.Columns, t.Rows)])) end
+    words = str.Join("", ["$(l.Words)\n" for l in shownLines])
     graph = part.Graph
     if isAnimation(graph)
       (* *repl* shows the first frame of an animation: a cell plays it, with its bar. *)
@@ -1249,7 +1298,7 @@ defn restaled(k, state)
       else
         changed = true
         label = dict.GetOr("Out", missing, x)
-        out = list.Append(dict.Merge(resultBlock(k, x.Cell, x.Line, lines, x.Graph, state, out = label, at = value.Len(lines) - value.Len(x.Base)), {Base: x.Base, Inputs: inputs, Status: dict.GetOr("Status", missing, x),
+        out = list.Append(dict.Merge(resultBlock(k, x.Cell, x.Line, lines, x.Graph, state, out = label, at = value.Len(lines) - value.Len(x.Base), table = dict.GetOr("Table", missing, x)), {Base: x.Base, Inputs: inputs, Status: dict.GetOr("Status", missing, x),
           Part: dict.GetOr("Part", 1, x)}), out)
       end
     end
@@ -1457,7 +1506,8 @@ defn FocusControl(state)
       chooses. A check box: Space checks it or not. A field: what is typed goes in its box, Enter sets it. A date: Left and Right pick its year, its
       month or its day, Up and Down change it, Enter sets it. The bar of an animation: Space plays it or pauses it, the
       arrows go a frame back or on, the pages ten, Home and End to the first frame and the last. A 3D graph: the arrows move the eye 10°, Right and
-      Left round it, Up and Down higher and lower, and Home back to the view of the code. C-g, a click in the text or any other key leaves it. *)
+      Left round it, Up and Down higher and lower, and Home back to the view of the code. A table: the arrows move a cell, s sorts, / filters, M-w copies;
+      see TableKeys. C-g, a click in the text or any other key leaves it. *)
   k = state.Current
   b = state.Buffers[k]
   if not IsCells(b)
@@ -1478,7 +1528,11 @@ defn FocusControl(state)
   if value.IsSome(solid)
     return turnFocusedOn(k, solid.Graph.Key, s)
   end
-  commands.Say("This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, or a 3D graph of plot.Surface or plot.Line3.", s)
+  table = list.FindFirst(x -> value.IsSome(dict.GetOr("Table", missing, x)), partsOf(k, i, s))
+  if value.IsSome(table)
+    return tableFocusedOn(k, table.Table, s)
+  end
+  commands.Say("This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, a 3D graph of plot.Surface or plot.Line3, or a table.", s)
 end
 
 (* -- A move: the number written in the buffer, then the session told, the latest value winning. *)
@@ -1576,7 +1630,12 @@ end
 (** Does a question to the session other than a run wait for its answer, a Set, a scene, a frame or a view: one at a time, so that each gets its
     own. *)
 asking(r) = value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsSome(dict.GetOr("Rescene", missing, r)) or value.IsSome(dict.GetOr("Framing", missing, r)) or
-  value.IsSome(dict.GetOr("Turning", missing, r))
+  value.IsSome(dict.GetOr("Turning", missing, r)) or value.IsSome(dict.GetOr("Paging", missing, r)) or value.IsSome(dict.GetOr("Marking", missing, r)) or
+  value.IsSome(dict.GetOr("Varying", missing, r)) or
+  copyAsked(dict.GetOr("Copying", missing, r))
+
+(** Does the copy of a table hold the session: has it asked its rows? *)
+copyAsked(c) = value.IsSome(c) and dict.Has("Task", c)
 
 defn setting(k, name, number, state)
   (** The state with the Set of a slider's number running in a fiber: no cell starts until it answers, so that the cells run with the number set. *)
@@ -2682,6 +2741,865 @@ defn turnDrawn(k, key, state)
   if value.IsMissing(x) state else regraphed(k, key, x.Graph, state) end
 end
 
+(* ---- Tables: a frame, a matrix, a list of maps or structs or a struct that a cell shows is drawn as a table, thin borders, its header in the strong font,
+   numbers on the right of their column, their decimal points in a line, texts on the left, in the code font, the ink of the theme on its paper. It shows
+   20 rows at most and scrolls inside its block, by the wheel over it or by the keys once it has them: its rows come from the session a screen at a time,
+   cells.Rows, sorted and filtered there, so that a table of a million rows costs a screen. Its state is in its block, {Key, Kind, Columns, Count, Total,
+   First, Rows, Positions, Top, Row, Column, Left, Sort, Filter, Draft, Selected, Widths, Stale, Find, Fixed}: the rows fetched from First with their
+   positions in the value, the first row shown, the cell of the cursor, the first column shown, the sort and the filter, a filter being typed, the row
+   chosen, the widths of the columns, whether the rows shown must be asked, a position whose place is asked, and whether it can be asked at all. A row
+   chosen marks its point on the graphs of its cell that have as many points, and a click on such a point chooses its row. *)
+
+(** The most rows a table shows at once: past them it scrolls. *)
+TableRows() = 20
+
+(** The most characters of a cell that a table draws: a longer text ends with …. *)
+CellColumns() = 40
+
+(** The rows a table asks of the session at a time, around those it shows. *)
+pageRows = 100
+
+(** Is the text of a cell a number, as cells.Rows writes one: 12, -0.833, 1e-7, nan or inf? *)
+isNumberWords(t) = value.IsSome(str.Number(t)) or t in ["nan", "inf", "-inf"]
+
+(** The characters of a number before its decimal point, and from it: 2 and 3 for 12.50. *)
+splitNumber(t) = (at -> if value.IsMissing(at) [value.Len(t), 0] else [at - 1, value.Len(t) - at + 1] end)(str.Find(".", t))
+
+(** A cell's text cut to the characters a table draws. *)
+cutCell(t) = if value.Len(t) <= CellColumns() t else "$(str.Join("", list.Take(CellColumns() - 1, str.Chars(t))))…" end
+
+defn IsTableValue(v)
+  (** Does a value that a run shows draw as a table: a table of cells.Run, or a matrix, an array of more than one row?
+
+        IsTableValue({Kind: "array", Shape: [1, 4], Rows: [["1", "2", "3", "4"]]}) --> false *)
+  value.IsSome(v) and (v.Kind == "table" or (v.Kind == "array" and dict.Has("Shape", v) and value.Len(v.Shape) == 2 and v.Shape[1] > 1))
+end
+
+defn TableOf(v)
+  (** The state of a table that a run showed, its first rows as the run gave them: a matrix's first rows, cut at 10 columns, are asked again whole at
+      once. A table without a key, from a Cesia before them, shows the rows it came with and nothing more.
+
+        TableOf({Kind: "table", Columns: ["a"], Rows: [["1"]], Count: 1, Key: 3}).Count --> 1 *)
+  matrix = v.Kind == "array"
+  columns = if matrix ["$j" for j in 1..list.Min(256, v.Shape[2])] else v.Columns end
+  count = if matrix v.Shape[1] else v.Count end
+  rows = v.Rows
+  t = {Key: dict.GetOr("Key", missing, v), Kind: v.Kind, Columns: columns, Count: count, Total: count, First: 1, Rows: rows, Positions: [j for j in 1..value.Len(rows)],
+    Top: 1, Row: 1, Column: 1, Left: 1, Sort: missing, Filter: "", Draft: missing, Selected: missing, Widths: [], Stale: matrix and (count > value.Len(rows) or v.Shape[2] > 10),
+    Find: missing, Fixed: value.IsMissing(dict.GetOr("Key", missing, v)), Prefix: false}
+  measured(t)
+end
+
+defn measured(t)
+  (** The table with the widths of its columns grown to hold the rows it has: for each, {Whole, Fraction, Text}, the characters of its numbers before
+      their decimal point and from it, and of its texts. Widths only grow, so that the columns don't jump as the table scrolls. Each cell is read once
+      here: Wholes gives, for each row and column, the characters of its number before its decimal point, or -1 for a text, and Numeric whether a
+      column holds numbers alone, so that a draw only places them. *)
+  out = t
+  n = value.Len(t.Columns)
+  whole = [if j <= value.Len(t.Widths) t.Widths[j].Whole else 0 end for j in 1..n]
+  fraction = [if j <= value.Len(t.Widths) t.Widths[j].Fraction else 0 end for j in 1..n]
+  texts = [if j <= value.Len(t.Widths) t.Widths[j].Text else 0 end for j in 1..n]
+  numeric = list.Fill(value.Len(t.Rows) > 0, n)
+  wholes = []
+  rows = t.Rows
+  for k in 1..value.Len(rows)
+    r = rows[k]
+    line = list.Fill(-1, n)
+    for j in 1..list.Min(n, value.Len(r))
+      x = r[j]
+      size = value.Len(x)
+      if size > CellColumns()
+        (* A cell is drawn at most CellColumns() characters wide, the last one …. *)
+        x = cutCell(x)
+        size = CellColumns()
+        rows[k][j] = x
+      end
+      b = if size == 0 0 else str.Byte(1, x) end
+      (* A number starts with a digit, a sign, a point, or is nan or inf: the others are texts without a parse. *)
+      at = if (b >= 48 and b <= 57) or b == 45 or b == 43 or b == 46 or b == 105 or b == 110 (if isNumberWords(x) splitNumber(x)[1] else -1 end) else -1 end
+      if at >= 0
+        line[j] = at
+        whole[j] = list.Max(whole[j], at)
+        fraction[j] = list.Max(fraction[j], size - at)
+      else
+        texts[j] = list.Max(texts[j], size)
+        numeric[j] = numeric[j] and size == 0
+      end
+    end
+    wholes = list.Append(line, wholes)
+  end
+  out.Widths = [{Whole: whole[j], Fraction: fraction[j], Text: texts[j]} for j in 1..n]
+  out.Rows = rows
+  out.Wholes = wholes
+  out.Numeric = numeric
+  out
+end
+
+(** The rows a table shows: at most TableRows(), none for a table with none. *)
+shownRows(t) = list.Max(0, list.Min(TableRows(), t.Count))
+
+(** The rows of the block of a table: its header, the rows it shows and its note. *)
+TableHeight(t) = shownRows(t) + 2
+
+(** The row fetched at a place of the table, from 1, or missing when it isn't fetched. *)
+rowAt(q, t) = if q >= t.First and q < t.First + value.Len(t.Rows) t.Rows[q - t.First + 1] else missing end
+
+(** The position in the value of the row at a place of the table, or missing when it isn't fetched. *)
+positionAt(q, t) = if q >= t.First and q < t.First + value.Len(t.Positions) t.Positions[q - t.First + 1] else missing end
+
+defn TableLayout(t, width, cell, look)
+  (** The places of the columns of a table drawn width pixels wide, from its column Left: each {Column, X, Width} in pixels from the left of the block, the
+      width as its widest number or text, at most CellColumns() characters, or its header in the strong font, with a character of room each side. *)
+  x = 2 * cell.Width
+  out = []
+  for j in t.Left..value.Len(t.Columns)
+    w = t.Widths[j]
+    chars = list.Min(CellColumns(), list.Max(w.Whole + w.Fraction, w.Text))
+    head = headWidth(j, t, look) + (if value.IsSome(t.Sort) and t.Sort.Column == t.Columns[j] 2 * cell.Width else 0 end)
+    wide = list.Max(chars * cell.Width, head) + 2 * cell.Width
+    if value.Len(out) > 0 and x + wide > width
+      return out
+    end
+    out = list.Append({Column: j, X: x, Width: wide}, out)
+    x = x + wide
+  end
+  out
+end
+
+(** The width of the header of column j in the strong font: as the block measured it once, or the look measures it. *)
+headWidth(j, t, look) = if j <= value.Len(dict.GetOr("Heads", [], t)) t.Heads[j] else look.Width(t.Columns[j], "strong") end
+
+defn NoteWords(t)
+  (** What the line under a table says: its rows, those it shows when it scrolls, those that hold the words of its filter, and its sort; or the filter
+      being typed.
+
+        NoteWords({Count: 1000, Total: 1000, Top: 21, Sort: {Column: "x", Descending: true}, Filter: "", Draft: missing}) --> "rows 21–40 of 1000 · by x, decreasing" *)
+  if value.IsSome(t.Draft)
+    return "filter: $(t.Draft)▏"
+  end
+  rows = if t.Count > TableRows() "rows $(t.Top)–$(list.Min(t.Count, t.Top + TableRows() - 1)) of $(t.Count)" else "$(t.Count) rows" end
+  held = if t.Filter == "" rows else "$rows holding \"$(t.Filter)\", of $(t.Total)" end
+  if value.IsMissing(t.Sort) held else "$held · by $(t.Sort.Column), $(if t.Sort.Descending "decreasing" else "increasing" end)" end
+end
+
+defn TableItems(t, focused, width, top, cell, th, look)
+  (** What draws a table top pixels down its block: its paper, its header in the strong font, the sorted column marked ↑ or ↓, each row shown in the code
+      font, a number on the right of its column, its decimal point under those of the others, a text on the left, a row not yet fetched blank; the row
+      chosen in reverse, the cell of the cursor in a box of the accent color while the table has the keys, and the table in a ring of it; its frame and
+      the rule under its header in ink, the lines between rows and columns in the color of lines; and the line under it.
+
+        value.Len(TableItems({Columns: ["a"], Rows: [["1"]], First: 1, Positions: [1], Count: 1, Total: 1, Top: 1, Row: 1, Column: 1, Left: 1, Sort: missing, Filter: "", Draft: missing, Selected: missing, Widths: [{Whole: 1, Fraction: 0, Text: 0}], Wholes: [[1]], Numeric: [true]}, false, 800, 0, {Width: 8, Height: 19}, {Ink: 1, Line: 2, Muted: 3, Accent: 4, Code: 5, Faint: 6}, {Width: (w, f) -> 8 * value.Len(w)})) --> 9 *)
+  cols = TableLayout(t, width, cell, look)
+  h = shownRows(t)
+  ch = cell.Height
+  left = 2 * cell.Width
+  right = if value.Len(cols) == 0 left + 4 * cell.Width else list.Last(cols).X + list.Last(cols).Width end
+  bottom = top + (h + 1) * ch
+  out = [{Kind: "rect", X: left, Y: top, Width: right - left, Height: bottom - top, Color: th.Code}]
+  for c in cols
+    j = c.Column
+    name = t.Columns[j]
+    sorted = value.IsSome(t.Sort) and t.Sort.Column == name
+    arrow = if sorted 2 * cell.Width else 0 end
+    wide = headWidth(j, t, look)
+    x = if t.Numeric[j] c.X + c.Width - cell.Width - arrow - wide else c.X + cell.Width end
+    out = list.Append({Kind: "text", X: x, Y: top, Text: name, Color: th.Ink, Font: "strong"}, out)
+    if sorted
+      out = list.Append({Kind: "text", X: x + wide + math.Div(cell.Width, 2), Y: top, Text: if t.Sort.Descending "↓" else "↑" end, Color: th.Ink, Font: "code"}, out)
+    end
+  end
+  for k in 1..h
+    q = t.Top + k - 1
+    y = top + k * ch
+    row = rowAt(q, t)
+    wholes = if value.IsMissing(row) [] else t.Wholes[q - t.First + 1] end
+    lit = value.IsSome(t.Selected) and t.Selected == q
+    if lit
+      out = list.Append({Kind: "rect", X: left, Y: y, Width: right - left, Height: ch, Color: th.Ink}, out)
+    end
+    for c in cols
+      j = c.Column
+      words = if value.IsMissing(row) or j > value.Len(row) "" else row[j] end
+      w = t.Widths[j]
+      whole = if j <= value.Len(wholes) wholes[j] else -1 end
+      x = if whole >= 0 c.X + c.Width - cell.Width - (w.Fraction + whole) * cell.Width else c.X + cell.Width end
+      if words != ""
+        out = list.Append({Kind: "text", X: x, Y: y, Text: words, Color: if lit th.Code else th.Ink end, Font: "code"}, out)
+      end
+      if focused and q == t.Row and j == t.Column
+        out = list.Concat(out, edged(c.X + 1, y + 1, c.Width - 1, ch - 1, th.Accent))
+        out = list.Concat(out, edged(c.X + 2, y + 2, c.Width - 3, ch - 3, th.Accent))
+      end
+    end
+  end
+  (* The lines: between the rows and the columns in the color of lines, then the frame and the rule under the header in ink, over them. *)
+  for k in 2..h
+    out = list.Append({Kind: "rect", X: left, Y: top + k * ch, Width: right - left, Height: 1, Color: th.Line}, out)
+  end
+  for c in list.Skip(1, cols)
+    out = list.Append({Kind: "rect", X: c.X, Y: top, Width: 1, Height: bottom - top, Color: th.Line}, out)
+  end
+  out = list.Concat(out, edged(left, top, right - left + 1, bottom - top + 1, th.Ink))
+  out = list.Append({Kind: "rect", X: left, Y: top + ch, Width: right - left, Height: 1, Color: th.Ink}, out)
+  more = if value.Len(cols) > 0 and (t.Left > 1 or list.Last(cols).Column < value.Len(t.Columns)) " · columns $(t.Left)–$(list.Last(cols).Column) of $(value.Len(t.Columns))" else "" end
+  out = list.Append({Kind: "text", X: left, Y: bottom + 1, Text: "$(NoteWords(t))$more", Color: if value.IsSome(t.Draft) th.Ink else th.Faint end, Font: "code"}, out)
+  if focused
+    out = list.Concat(out, edged(left - 3, top - 3, right - left + 7, bottom - top + 7, th.Accent))
+    out = list.Concat(out, edged(left - 2, top - 2, right - left + 5, bottom - top + 5, th.Accent))
+  end
+  out
+end
+
+(* -- The table of a block, found and drawn again. *)
+
+(** The block of buffer k that shows the table of a key, or missing. *)
+tableBlock(k, key, state) = if k < 1 or k > value.Len(state.Buffers) missing else list.FindFirst(x -> value.IsSome(dict.GetOr("Table", missing, x)) and value.Equal(x.Table.Key, key), text.BlocksOf(state.Buffers[k])) end
+
+(** Does the table of a block in buffer k have the keys? *)
+tableFocused(k, table, state) = value.IsSome(table) and value.IsSome(commands.FocusOf(state)) and value.Equal(dict.GetOr("Table", missing, commands.FocusOf(state)), table.Key) and dict.GetOr("Buffer", 0, commands.FocusOf(state)) == k
+
+defn withTable(k, t, state)
+  (** The state with the table of a key in buffer k drawn again as t, its lines as they were. *)
+  x = tableBlock(k, t.Key, state)
+  if value.IsMissing(x) state else rebuilt(k, x, x.Graph, state, table = t) end
+end
+
+defn scrolledTo(t, q)
+  (** The table with its first row shown moved so that the row at place q shows. *)
+  out = t
+  h = shownRows(t)
+  if q < t.Top
+    out.Top = q
+  else if q > t.Top + h - 1
+    out.Top = q - h + 1
+  end
+  out.Top = list.Max(1, list.Min(out.Top, t.Count - h + 1))
+  out
+end
+
+defn wantsRows(t)
+  (** Must the table ask its session for rows: the rows it shows aren't all fetched, or, once it scrolled, are within 10 rows of the end of those
+      fetched, or a place is asked for a position? Never one that has no key, and never at its first screen, which the run gave: a table that is not
+      scrolled asks nothing. *)
+  if t.Fixed
+    return false
+  end
+  if t.Stale or value.IsSome(t.Find)
+    return true
+  end
+  last = list.Min(t.Count, t.Top + TableRows() - 1)
+  have = t.First + value.Len(t.Rows) - 1
+  t.Count > 0 and (t.Top < t.First or last > have or (t.Top > 1 and have < t.Count and last > have - 10) or (t.First > 1 and t.Top < t.First + 10))
+end
+
+(* -- Rows asked of the session, one question at a time, as a scene: {Task, Buffer, Key, First, Sort, Filter, Find}. *)
+
+defn paged(k, state)
+  (** The state at a tick for buffer k: the rows a table asked, once they came, put in it, if it still sorts and filters as it asked; then the next table
+      that needs rows asks them, unless the session is busy. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r)
+    return state
+  end
+  p = dict.GetOr("Paging", missing, r)
+  s = state
+  if value.IsSome(p)
+    got = fiber.Wait(p.Task, timeout = 0)
+    if result.IsErr(got) and got.Error.Kind == "timeout"
+      return state
+    end
+    r.Paging = missing
+    s = withRun(k, r, state)
+    answer = if result.IsOk(got) got.Value else got end
+    x = tableBlock(p.Buffer, p.Key, s)
+    if value.IsSome(x)
+      t = landedRows(x.Table, p, answer)
+      s = marking(p.Buffer, x.Cell, t, withTable(p.Buffer, t, s))
+    end
+  end
+  asksRows(k, s)
+end
+
+defn landedRows(t, p, answer)
+  (** The table once the rows it asked came: put in place when it still sorts and filters as it asked, with the place of the position it looked for; a
+      session that can't give them, as one that ended or a table it no longer keeps, leaves it with what it has, and asks no more. *)
+  out = t
+  if result.IsErr(answer) or RowsFault(answer.Value, t) != missing
+    out.Fixed = true
+    out.Stale = false
+    out.Find = missing
+    return out
+  end
+  if not (value.Equal(t.Sort, p.Sort) and t.Filter == p.Filter)
+    return out
+  end
+  a = answer.Value
+  out.First = p.First
+  out.Rows = a.Rows
+  out.Positions = a.Positions
+  out.Count = a.Count
+  out.Total = a.Total
+  out.Columns = if value.Len(a.Columns) == value.Len(t.Columns) t.Columns else a.Columns end
+  out.Stale = false
+  if value.IsSome(p.Find) and value.Equal(t.Find, p.Find)
+    out.Find = missing
+    found = dict.GetOr("Found", missing, a)
+    if value.IsSome(found)
+      out.Row = found
+      out.Selected = found
+      out = scrolledTo(out, found)
+      out.Stale = not (found >= out.First and found < out.First + value.Len(out.Rows))
+    else
+      out.Selected = missing
+    end
+  end
+  out.Top = list.Max(1, list.Min(out.Top, out.Count - shownRows(out) + 1))
+  out.Row = list.Max(1, list.Min(out.Row, out.Count))
+  measured(out)
+end
+
+defn RowsFault(a, t)
+  (** What is wrong with rows that the session sent for a table, or missing: they are input, checked before anything is made of them. At most 1000 rows
+      and 256 columns, each a text of at most 200 characters, as many as its columns, a position for each from 1 to its total, and counts that agree.
+
+        RowsFault({Columns: ["a"], Rows: [["1"]], Count: 1, Total: 1, Positions: [1]}, {}) --> missing *)
+  if not (value.IsDict(a) and value.IsArray(dict.GetOr("Columns", missing, a)) and value.IsArray(dict.GetOr("Rows", missing, a)) and value.IsArray(dict.GetOr("Positions", missing, a)))
+    return "they are no rows"
+  end
+  n = value.Len(a.Columns)
+  if n > 256 or value.Len(a.Rows) > 1000 or value.Len(a.Positions) != value.Len(a.Rows) or not list.All([value.IsText(c) and value.Len(c) <= 200 for c in a.Columns])
+    return "they have more than 1000 rows or 256 columns, or not a position each"
+  end
+  if not (value.IsInt(dict.GetOr("Count", missing, a)) and value.IsInt(dict.GetOr("Total", missing, a)) and a.Count >= 0 and a.Count <= a.Total)
+    return "their counts are no counts"
+  end
+  for row in a.Rows
+    if not (value.IsArray(row) and value.Len(row) == n and list.All([value.IsText(x) and value.Len(x) <= 200 for x in row]))
+      return "a row is not a text of at most 200 characters for each column"
+    end
+  end
+  if not list.All([value.IsInt(q) and q >= 1 and q <= a.Total for q in a.Positions])
+    return "a position is out of the table"
+  end
+  missing
+end
+
+defn asksRows(k, state)
+  (** The state with the rows of the first table of buffer k that needs them asked of its session: around the rows it shows, 100 at a time, sorted and
+      filtered as it is, unless a cell runs or another question waits. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task) or asking(r)
+    return state
+  end
+  x = list.FindFirst(b -> value.IsSome(dict.GetOr("Table", missing, b)) and wantsRows(b.Table), text.BlocksOf(state.Buffers[k]))
+  if value.IsMissing(x)
+    return state
+  end
+  t = x.Table
+  first = list.Max(1, list.Min(t.Top - 40, t.Count - pageRows + 1))
+  one = r.Session
+  key = t.Key
+  sort = t.Sort
+  filter = if t.Filter == "" missing else t.Filter end
+  find = t.Find
+  last = first + pageRows - 1
+  task = if value.IsSome(find) fiber.Spawn(() -> nb.Rows(one, key, first, last, sort = sort, filter = filter, find = find)) else fiber.Spawn(() -> nb.Rows(one, key, first, last, sort = sort, filter = filter)) end
+  r.Paging = {Task: task, Buffer: k, Key: key, First: first, Sort: sort, Filter: t.Filter, Find: find}
+  (* The fiber writes its question now, so that the session reads the rows while this one draws. *)
+  sys.Sleep(0)
+  withRun(k, r, state)
+end
+
+(* -- The keys of a table: C-c e f, Tab or a click gives them; the arrows move the cursor a cell, the pages a screen, Home and End to the first row and
+   the last; s sorts by the column of the cursor, increasing, then decreasing, then as given; / types a filter, its words in any column, Enter keeps it
+   and Escape takes it back; M-w copies the cell, C-u M-w the row, apart by tabs, and C-c e c the whole table as CSV; Escape or C-g leaves. *)
+
+(** The rows of the band while a table has the keys. *)
+TableHints() = [{Key: "← → ↑ ↓", Name: "a cell", Group: false}, {Key: "PgUp PgDn", Name: "a screen", Group: false}, {Key: "s", Name: "sort by the column", Group: false},
+  {Key: "/", Name: "filter", Group: false}, {Key: "M-w", Name: "copy the cell, C-u the row", Group: false}, {Key: "C-c e c", Name: "copy as CSV", Group: false},
+  {Key: "C-g", Name: "leave", Group: false}]
+
+(** The rows of the band while a filter is typed. *)
+FilterHints() = [{Key: "Enter", Name: "keep the filter", Group: false}, {Key: "Escape", Name: "take it back", Group: false}]
+
+(** The command that does f to the table that has the keys, with its state. *)
+onTable(f) = state -> tableKeyed(f, state)
+
+defn tableKeyed(f, state)
+  (** The table that has the keys changed by f, a function of the table and the state that gives a table or a state; the prefix of C-u ends with the
+      key after it. *)
+  focus = commands.FocusOf(state)
+  x = tableBlock(focus.Buffer, focus.Table, state)
+  if value.IsMissing(x)
+    return commands.Unfocused(state)
+  end
+  t = x.Table
+  got = f(t, state)
+  if dict.Has("Buffers", got)
+    return got
+  end
+  out = got
+  out.Prefix = got.Prefix and not t.Prefix
+  tableChosen(focus.Buffer, out, state)
+end
+
+(** The keys of a table that has the keys. *)
+TableKeys() = {"up": onTable((t, s) -> movedCell(-1, 0, t)), "down": onTable((t, s) -> movedCell(1, 0, t)), "left": onTable((t, s) -> movedCell(0, -1, t)),
+  "right": onTable((t, s) -> movedCell(0, 1, t)), "pageup": onTable((t, s) -> screened(-TableRows(), t)), "pagedown": onTable((t, s) -> screened(TableRows(), t)),
+  "home": onTable((t, s) -> movedCell(-t.Count, 0, t)), "end": onTable((t, s) -> movedCell(t.Count, 0, t)), "s": onTable((t, s) -> if t.Fixed unsorted(s) else sortedBy(t) end),
+  "/": onTable((t, s) -> if t.Fixed unsorted(s) else typing(t, s) end), "M-w": onTable((t, s) -> copiedCell(t, s)), "C-u": onTable((t, s) -> dict.Put("Prefix", true, t)),
+  "tab": st -> tableTabbed(1, st), "S-tab": st -> tableTabbed(-1, st), "C-g": commands.Unfocused, "escape": commands.Unfocused}
+
+(** The keys of a table while its filter is typed: what is typed goes in it. *)
+FilterKeys() = {"enter": onTable((t, s) -> filterKept(t, s)), "escape": onTable((t, s) -> filterTakenBack(t, s)), "C-g": onTable((t, s) -> filterTakenBack(t, s)),
+  "backspace": onTable((t, s) -> filterErased(t))}
+
+(** What a table that its session no longer gives says to s and /. *)
+unsorted(state) = commands.Say("This table is no longer in the session, which keeps the last 64: C-c e e runs its cell again.", state)
+
+defn screened(rows, t)
+  (** The table moved a screen of rows, its cursor with it, where it was on the screen. *)
+  out = t
+  out.Top = list.Max(1, list.Min(t.Count - shownRows(t) + 1, t.Top + rows))
+  movedCell(rows, 0, out)
+end
+
+defn movedCell(rows, columns, t)
+  (** The table with its cursor moved some rows and some columns, within its cells, its row chosen and shown, and its columns shown from one that holds
+      the cursor's. *)
+  out = t
+  out.Row = list.Max(1, list.Min(t.Count, t.Row + rows))
+  out.Column = list.Max(1, list.Min(value.Len(t.Columns), t.Column + columns))
+  out.Selected = if t.Count == 0 missing else out.Row end
+  if out.Column < out.Left
+    out.Left = out.Column
+  end
+  scrolledTo(out, out.Row)
+end
+
+defn sortedBy(t)
+  (** The table sorted by the column of its cursor: increasing, again decreasing, again as given; its chosen row looked for in the new order. *)
+  out = t
+  name = t.Columns[t.Column]
+  out.Sort = if value.IsMissing(t.Sort) or t.Sort.Column != name {Column: name, Descending: false} else if not t.Sort.Descending {Column: name, Descending: true} else missing end
+  reordered(out, t)
+end
+
+defn reordered(out, t)
+  (** A table whose sort or filter changed: its rows asked again, and the place of its chosen row looked for, by its position, or the first row shown. *)
+  o = out
+  o.Stale = true
+  o.Rows = []
+  o.Positions = []
+  o.First = 1
+  chosen = if value.IsSome(t.Selected) positionAt(t.Selected, t) else missing end
+  o.Find = chosen
+  if value.IsMissing(chosen)
+    o.Top = 1
+    o.Row = 1
+    o.Selected = missing
+  end
+  o
+end
+
+defn typing(t, state)
+  (** The state with the filter of the table that has the keys being typed: what is typed goes in it, Enter keeps it, Escape takes it back. *)
+  out = t
+  out.Draft = t.Filter
+  f = commands.FocusOf(state)
+  f.Keys = FilterKeys()
+  f.Hints = FilterHints()
+  f.Typed = (words, st) -> onTable((tt, ss) -> filterTyped(words, tt))(st)
+  f.Before = t.Filter
+  s = state
+  s.Focus = f
+  tableChosen(f.Buffer, out, s)
+end
+
+defn filterTyped(words, t)
+  (** The table with words typed at the end of its filter, which applies at once: the session filters it, the latest words winning. *)
+  out = t
+  out.Draft = "$(t.Draft)$(str.Replace("\n", " ", str.Replace("\t", " ", words)))"
+  filtered(out, t)
+end
+
+defn filterErased(t)
+  (** The table with the last character of its filter erased. *)
+  out = t
+  cs = str.Chars(t.Draft)
+  out.Draft = str.Join("", list.Take(list.Max(0, value.Len(cs) - 1), cs))
+  filtered(out, t)
+end
+
+defn filtered(out, t)
+  (** A table whose filter is the one typed. *)
+  o = out
+  o.Filter = str.Trim(o.Draft)
+  if o.Filter == t.Filter o else reordered(o, t) end
+end
+
+defn filterKept(t, state)
+  (** Enter in a filter: it stays, and the keys move in the table again. *)
+  out = t
+  out.Draft = missing
+  tableFocusedOn(commands.FocusOf(state).Buffer, out, state)
+end
+
+defn filterTakenBack(t, state)
+  (** Escape in a filter: the filter before it was typed comes back, and the keys move in the table again. *)
+  out = t
+  out.Draft = missing
+  before = dict.GetOr("Before", "", commands.FocusOf(state))
+  out.Filter = before
+  out = if before == t.Filter out else reordered(out, t) end
+  tableFocusedOn(commands.FocusOf(state).Buffer, out, state)
+end
+
+defn copiedCell(t, state)
+  (** M-w: the text of the cell of the cursor in the clipboard; after C-u, its row, its cells apart by tabs. *)
+  row = rowAt(t.Row, t)
+  if value.IsMissing(row)
+    return commands.Say("This row isn't here yet.", state)
+  end
+  whole = t.Prefix
+  t.Prefix = false
+  if whole
+    return commands.Say("Copied row $(t.Row).", commands.ToClipboard(str.Join("\t", [str.Replace("\n", " ", str.Replace("\t", " ", x)) for x in row]), withTable(commands.FocusOf(state).Buffer, t, state)))
+  end
+  commands.Say("Copied the cell.", commands.ToClipboard(if t.Column <= value.Len(row) row[t.Column] else "" end, withTable(commands.FocusOf(state).Buffer, t, state)))
+end
+
+defn tableTabbed(by, state)
+  (** Tab and S-Tab: the keys to the next table of the cell, or the previous one, round. *)
+  f = commands.FocusOf(state)
+  x = tableBlock(f.Buffer, f.Table, state)
+  if value.IsMissing(x)
+    return commands.Unfocused(state)
+  end
+  all = [b for b in partsOf(f.Buffer, x.Cell, state) if value.IsSome(dict.GetOr("Table", missing, b))]
+  at = orFirst(list.FindFirst(j -> value.Equal(all[j].Table.Key, f.Table), 1..value.Len(all)))
+  tableFocusedOn(f.Buffer, all[math.Mod(at - 1 + by, value.Len(all)) + 1].Table, state)
+end
+
+defn tableFocusedOn(k, t, state)
+  (** The state with the keys on a table of buffer k, drawn with its ring, and the control that had them without. *)
+  s = commands.Unfocused(state)
+  r = runOf(s.Buffers[k])
+  if value.IsSome(r)
+    r.LastTable = t.Key
+    s = withRun(k, r, s)
+  end
+  s.Focus = {Keys: TableKeys(), Hints: TableHints(), Leave: st -> tableDrawn(k, t.Key, st), Buffer: k, Table: t.Key}
+  withTable(k, t, s)
+end
+
+defn tableDrawn(k, key, state)
+  (** The state with the block of the table of a key in buffer k drawn again, with its ring or without; a filter being typed is kept. *)
+  x = tableBlock(k, key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  t = x.Table
+  t.Draft = missing
+  withTable(k, t, state)
+end
+
+defn tableChosen(k, t, state)
+  (** The state with a table of buffer k as t, its columns shown from one that holds the cursor's, and the row chosen marked on the graphs of its cell. *)
+  x = tableBlock(k, t.Key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  out = t
+  look = dict.GetOr("Look", missing, state)
+  if value.IsSome(look)
+    width = view.LayoutOf(state).Code.Width - view.Gutter - 8
+    while out.Left < out.Column and list.All([c.Column != out.Column for c in TableLayout(out, width, state.Cell, look)])
+      out.Left = out.Left + 1
+    end
+  end
+  marking(k, x.Cell, out, withTable(k, out, state))
+end
+
+(* -- The mouse and the wheel. *)
+
+defn tableMouse(key, action, point, state)
+  (** A press of the mouse on a table: it gives the table the keys, and on a row puts the cursor in the cell under the point and chooses the row; on the
+      header it sorts by the column under the point, as s does. Moves and releases do nothing. *)
+  k = state.Current
+  x = tableBlock(k, key, state)
+  if action != "down" or value.IsMissing(x)
+    return state
+  end
+  t = x.Table
+  top = dict.GetOr("Under", 0, x)
+  width = point.Width
+  cols = if value.IsSome(dict.GetOr("Look", missing, state)) TableLayout(t, width, state.Cell, state.Look) else [] end
+  hit = list.FindFirst(c -> point.X >= c.X and point.X < c.X + c.Width, cols)
+  row = math.Div(point.Y - top, state.Cell.Height)
+  s = if tableFocused(k, t, state) state else tableFocusedOn(k, t, state) end
+  if value.IsMissing(hit) or row < 0 or row > shownRows(t)
+    return s
+  end
+  t = tableBlock(k, key, s).Table
+  t.Column = hit.Column
+  if row == 0
+    return tableChosen(k, sortedBy(t), s)
+  end
+  tableChosen(k, movedCell(t.Top + row - 1 - t.Row, 0, t), s)
+end
+
+defn tableWheel(key, amount, state)
+  (** The wheel over a table: it scrolls three rows a notch, as the screen does, and gives missing at its first or its last row, where the wheel moves the
+      screen. *)
+  k = state.Current
+  x = tableBlock(k, key, state)
+  if value.IsMissing(x)
+    return missing
+  end
+  t = x.Table
+  rows = math.Div(math.Round(0.0 - amount * 3.0), 1)
+  top = list.Max(1, list.Min(t.Count - shownRows(t) + 1, t.Top + rows))
+  if top == t.Top
+    return if (rows < 0 and t.Top > 1) or (rows > 0 and t.Top < t.Count - shownRows(t) + 1) state else missing end
+  end
+  t.Top = top
+  withTable(k, t, state)
+end
+
+(* -- A row and its point: the graphs of the cell of a table, of as many points as its rows, show the point of the row chosen, which the session draws,
+   cells.Scene with the mark, one question at a time; a click on such a point chooses its row. *)
+
+(** The graphs of cell i of buffer k that can show a mark: neither an animation nor a 3D graph. *)
+markable(k, i, state) = [x for x in partsOf(k, i, state) if value.IsSome(dict.GetOr("Graph", missing, x)) and not isAnimation(x.Graph) and not isTurning(x.Graph)]
+
+defn marking(k, i, t, state)
+  (** The state with the row chosen in a table of cell i of buffer k wanted on the graphs of the cell, by its position and the rows of the table: each
+      asks its scene with the mark, unless it has shown that it holds no layer of as many points. *)
+  p = if value.IsSome(t.Selected) positionAt(t.Selected, t) else missing end
+  if value.IsSome(t.Selected) and value.IsMissing(p)
+    (* The row chosen isn't fetched yet: its mark waits for it. *)
+    return state
+  end
+  want = if value.IsMissing(p) missing else [p, t.Total] end
+  s = state
+  for x in markable(k, i, state)
+    g = x.Graph
+    if not (value.IsSome(want) and want[2] in dict.GetOr("Unlinked", [], g)) and not value.Equal(dict.GetOr("Wants", missing, g), want)
+      g.Wants = want
+      s = rebuilt(k, x, g, s)
+    end
+  end
+  s
+end
+
+defn marked(k, state)
+  (** The state at a tick for buffer k: the scene with a mark, once it came, drawn in its graph with the places of its points, or, when it marks
+      nothing, the graph left as it was and known to hold no layer of as many points; then the next graph whose mark differs from the one it wants asks
+      its scene, unless the session is busy. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r)
+    return state
+  end
+  m = dict.GetOr("Marking", missing, r)
+  s = state
+  if value.IsSome(m)
+    got = fiber.Wait(m.Task, timeout = 0)
+    if result.IsErr(got) and got.Error.Kind == "timeout"
+      return state
+    end
+    r.Marking = missing
+    s = withRun(k, r, state)
+    scene = if result.IsOk(got) got.Value else got end
+    x = list.FindFirst(b -> dict.GetOr("Cell", 0, b) == m.Cell and value.IsSome(dict.GetOr("Graph", missing, b)) and value.Equal(b.Graph.Key, m.Key), text.BlocksOf(s.Buffers[k]))
+    if value.IsSome(x)
+      g = x.Graph
+      bad = result.IsErr(scene) or value.IsSome(SceneFault(scene.Value)) or (value.IsSome(m.Mark) and PointsFault(dict.GetOr("Points", [], scene.Value)) != missing)
+      if bad or (value.IsSome(m.Mark) and value.Len(dict.GetOr("Points", [], scene.Value)) == 0)
+        (* A scene that can't come, or no layer of as many points: the graph stays as it is, and isn't asked that mark again. *)
+        g.Unlinked = if value.IsSome(m.Mark) list.Append(m.Mark[2], dict.GetOr("Unlinked", [], g)) else dict.GetOr("Unlinked", [], g) end
+        g.Wants = dict.GetOr("Mark", missing, g)
+        s = rebuilt(k, x, g, s)
+      else
+        ng = dict.Merge(g, Prepared(scene.Value, commands.Home(s)))
+        ng.Mark = m.Mark
+        ng.Points = dict.GetOr("Points", [], scene.Value)
+        ng.Asked = m.Width
+        s = rebuilt(k, x, ng, s)
+      end
+    end
+  end
+  asksMark(k, s)
+end
+
+defn PointsFault(points)
+  (** What is wrong with the places of the points of a marked scene, or missing: they are input. At most 64 layers, each {At, Xs, Ys}, at most 100,000
+      positions from 1, and a place on the screen for each.
+
+        PointsFault([{Layer: 1, Kind: "line", At: [1, 2], Xs: [10.0, 20.0], Ys: [5.0, 6.0]}]) --> missing
+        PointsFault([{At: [1, 2], Xs: [10.0], Ys: [5.0, 6.0]}]) --> "a layer has not a place on the screen for each of its points" *)
+  if not value.IsArray(points) or value.Len(points) > 64
+    return "its points are no list of layers"
+  end
+  for p in points
+    at = if value.IsDict(p) dict.GetOr("At", missing, p) else missing end
+    if not (value.IsArray(at) and value.Len(at) <= 100000 and list.All([value.IsInt(q) and q >= 1 for q in at]))
+      return "a layer has no positions of its points"
+    end
+    if value.Len(at) > 0 and not (places(dict.GetOr("Xs", missing, p), value.Len(at)) and places(dict.GetOr("Ys", missing, p), value.Len(at)))
+      return "a layer has not a place on the screen for each of its points"
+    end
+  end
+  missing
+end
+
+defn asksMark(k, state)
+  (** The state with the scene of the first graph of buffer k that wants another mark than the one it shows asked of the session, at the width it was
+      asked at, unless a cell runs or another question waits. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task) or asking(r)
+    return state
+  end
+  x = list.FindFirst(b -> dict.GetOr("Cell", 0, b) > 0 and value.IsSome(dict.GetOr("Graph", missing, b)) and dict.Has("Wants", b.Graph) and not value.Equal(b.Graph.Wants, dict.GetOr("Mark", missing, b.Graph)), text.BlocksOf(state.Buffers[k]))
+  if value.IsMissing(x)
+    return state
+  end
+  one = r.Session
+  key = x.Graph.Key
+  mark = x.Graph.Wants
+  width = dict.GetOr("Asked", x.Graph.Scene.Width, x.Graph)
+  task = if value.IsMissing(mark) fiber.Spawn(() -> nb.Scene(one, key, width)) else fiber.Spawn(() -> nb.Scene(one, key, width, mark = mark)) end
+  r.Marking = {Task: task, Cell: x.Cell, Key: key, Mark: mark, Width: width}
+  sys.Sleep(0)
+  withRun(k, r, state)
+end
+
+defn pointMouse(key, action, point, state)
+  (** A press of the mouse on a graph that shows a mark: the point of a linked layer nearest to it, within 12 pixels, chooses its row in the table of the
+      cell of as many rows, which shows it; a press elsewhere does nothing. *)
+  k = state.Current
+  if action != "down"
+    return state
+  end
+  x = list.FindFirst(b -> value.IsSome(dict.GetOr("Graph", missing, b)) and value.Equal(b.Graph.Key, key) and dict.GetOr("Cell", 0, b) > 0, text.BlocksOf(state.Buffers[k]))
+  if value.IsMissing(x) or value.IsMissing(dict.GetOr("Mark", missing, x.Graph))
+    return state
+  end
+  g = x.Graph
+  px = point.X - 2 * state.Cell.Width
+  py = point.Y - dict.GetOr("Under", 0, x)
+  best = missing
+  far = 144.0
+  for p in g.Points
+    for j in 1..value.Len(p.At)
+      d = (p.Xs[j] - px) * (p.Xs[j] - px) + (p.Ys[j] - py) * (p.Ys[j] - py)
+      if d <= far
+        far = d
+        best = p.At[j]
+      end
+    end
+  end
+  if value.IsMissing(best)
+    return state
+  end
+  table = list.FindFirst(b -> value.IsSome(dict.GetOr("Table", missing, b)) and b.Table.Total == g.Mark[2], partsOf(k, x.Cell, state))
+  if value.IsMissing(table)
+    return state
+  end
+  t = table.Table
+  if value.IsMissing(t.Sort) and t.Filter == ""
+    t = movedCell(best - t.Row, 0, t)
+  else
+    t.Find = best
+  end
+  tableChosen(k, t, tableFocusedOn(k, t, state))
+end
+
+(* -- C-c e c: the whole table as CSV, its rows asked of the session 1000 at a time, sorted and filtered as it shows them. *)
+
+(** The most rows that C-c e c copies: past them, the first ones, and it says so. *)
+CopyRows() = 100000
+
+defn CopyTable(state)
+  (** C-c e c: the whole table that has the keys, or had them last, or the first of the cell of the cursor, in the clipboard as CSV, std/csv's: its header,
+      then its rows as it shows them, sorted and filtered, at most CopyRows(). The rows come from the session, 1000 at a time, while the editor goes on. *)
+  focus = commands.FocusOf(state)
+  k = if value.IsSome(focus) and dict.Has("Table", focus) focus.Buffer else state.Current end
+  if not IsCells(state.Buffers[k])
+    return commands.Say("C-c e c copies a table that a cell shows.", state)
+  end
+  r = runOf(state.Buffers[k])
+  key = if value.IsSome(focus) and dict.Has("Table", focus) focus.Table else if value.IsSome(r) dict.GetOr("LastTable", missing, r) else missing end
+  x = if value.IsSome(key) tableBlock(k, key, state) else missing end
+  if value.IsMissing(x) and value.IsSome(r) and value.Len(r.Cells) > 0
+    i = CellAt(state.Buffers[k].Cursor.Line, r.Cells)
+    x = list.FindFirst(b -> value.IsSome(dict.GetOr("Table", missing, b)), partsOf(k, i, state))
+  end
+  if value.IsMissing(x)
+    return commands.Say("No table here: C-c e c copies a table that a cell shows, the one with the keys.", state)
+  end
+  t = x.Table
+  s = if value.IsSome(focus) and dict.Has("Table", focus) tableFocusedOn(k, t, state) else state end
+  if t.Fixed or value.IsMissing(r) or value.IsMissing(r.Session)
+    return commands.Say("Copied $(value.Len(t.Rows)) rows as CSV.", commands.ToClipboard(csv.Text(list.Prepend(t.Columns, t.Rows)), s))
+  end
+  if value.IsSome(dict.GetOr("Copying", missing, r))
+    return commands.Say("A table is being copied.", s)
+  end
+  r = runOf(s.Buffers[k])
+  r.Copying = {Key: t.Key, Sort: t.Sort, Filter: t.Filter, Count: list.Min(t.Count, CopyRows()), All: t.Count, Columns: t.Columns}
+  commands.Say("Copying the table…", withRun(k, r, s))
+end
+
+defn copying(k, state)
+  (** The state at a tick for buffer k: the copy of a table asked of the session in one fiber, which asks its rows 1000 at a time and holds the session
+      meanwhile; once done, its CSV in the clipboard. *)
+  r = runOf(state.Buffers[k])
+  c = if value.IsMissing(r) missing else dict.GetOr("Copying", missing, r) end
+  if value.IsMissing(c)
+    return state
+  end
+  if not dict.Has("Task", c)
+    if value.IsMissing(r.Session) or value.IsSome(r.Task) or asking(r)
+      return state
+    end
+    one = r.Session
+    c.Task = fiber.Spawn(() -> rowsOf(one, c))
+    r.Copying = c
+    sys.Sleep(0)
+    return withRun(k, r, state)
+  end
+  got = fiber.Wait(c.Task, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  r.Copying = missing
+  s = withRun(k, r, state)
+  rows = if result.IsOk(got) got.Value else got end
+  if result.IsErr(rows)
+    return commands.Say("The table isn't copied: $(rows.Error.Message)", s)
+  end
+  cut = if c.All > c.Count ", the first $(c.Count) of $(c.All)" else "" end
+  commands.Say("Copied $(value.Len(rows.Value)) rows as CSV$cut.", commands.ToClipboard(csv.Text(list.Prepend(c.Columns, rows.Value)), s))
+end
+
+defn rowsOf(session, c)
+  (** The rows of a table as it shows them, asked of the session 1000 at a time, in an Ok, or an Err. *)
+  out = []
+  filter = if c.Filter == "" missing else c.Filter end
+  first = 1
+  while first <= c.Count
+    got = nb.Rows(session, c.Key, first, list.Min(c.Count, first + 999), sort = c.Sort, filter = filter)?
+    if value.Len(got.Rows) == 0 or RowsFault(got, {}) != missing
+      return result.Ok(out)
+    end
+    out = list.Concat(out, got.Rows)
+    first = first + value.Len(got.Rows)
+  end
+  result.Ok(out)
+end
+
 (* ---- The hooks. *)
 
 defn tick(state)
@@ -2690,7 +3608,7 @@ defn tick(state)
   s = state
   for k in 1..value.Len(s.Buffers)
     if value.IsSome(runOf(s.Buffers[k]))
-      s = turnLanded(k, played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, s))))))))
+      s = copying(k, marked(k, paged(k, turnLanded(k, played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, varied(k, s))))))))))))
     end
     if value.IsSome(replOf(s.Buffers[k]))
       s = answered(k, s)
@@ -2732,7 +3650,17 @@ end
 (** Do the cells need ticks: a cell runs, a slider's Set, a stop, a page, a frame or a view is waited for, a graph waits for the width of its pane,
     an animation plays on the screen, or a 3D graph waits to be asked its view? The sliders are drawn again from the text at rest at the ticks the check of a file of Cesia asks for, as the results
     are put back under their cells. A still animation takes no tick. *)
-Moving(state) = list.Any([busy(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state)) or list.Any([playing(k, state) or aiming(k, state) for k in 1..value.Len(state.Buffers)])
+Moving(state) = list.Any([busy(b) or tableWaits(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state)) or list.Any([playing(k, state) or aiming(k, state) for k in 1..value.Len(state.Buffers)])
+
+defn tableWaits(b)
+  (** Does a buffer with a session have a table that waits for rows, a graph that waits for its mark, or a copy that waits to start? *)
+  r = runOf(b)
+  if value.IsMissing(r) or value.IsMissing(r.Session)
+    return false
+  end
+  value.IsSome(dict.GetOr("Copying", missing, r)) or list.Any([(value.IsSome(dict.GetOr("Table", missing, x)) and wantsRows(x.Table)) or
+    (value.IsSome(dict.GetOr("Graph", missing, x)) and dict.Has("Wants", x.Graph) and not value.Equal(x.Graph.Wants, dict.GetOr("Mark", missing, x.Graph))) for x in text.BlocksOf(b)])
+end
 
 defn Hooked(config)
   (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs. *)

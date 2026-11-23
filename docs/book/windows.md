@@ -111,7 +111,8 @@ slides over it a row at a time, as over the lines, instead of showing or hiding 
 
 The wheel moves the screen by rows, through the graphs as through the lines, and takes the cursor along, which stays as far
 from the edge. Inside a graph taller than the pane, where no line shows, the cursor stays where it was until the next key,
-which brings the screen back to it. A click leaves the screen where it is, even on a line of the margin, so that the text
+which brings the screen back to it. Over a table of the cells, the wheel moves the table's rows first, and the screen once
+the table is at its first or its last row: see [Tables](cells.md#tables). A click leaves the screen where it is, even on a line of the margin, so that the text
 doesn't move under the mouse; the margin comes back at the next key. `ScrollMargin` set to `() -> 0` moves the screen only
 when the cursor leaves it: see [Settings](customising.md#settings).
 

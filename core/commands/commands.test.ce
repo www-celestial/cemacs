@@ -924,3 +924,15 @@ isTabCompletes() = press.Press(["C-x", "C-f", "core/comm", "tab"], stateOf("")).
 isTabListsThem() = press.Press(["C-x", "C-f", "core/co", "tab"], stateOf("")).Prompt.Hint == "{color/ | commands/ | complete/}"
 isTabHintGoesOnTyping() = press.Press(["C-x", "C-f", "core/co", "tab", "m"], stateOf("")).Prompt.Hint == ""
 isTabHintDrawn() = "{color/ | commands/ | complete/}" in list.Map(c -> c.Text, list.Filter(c -> c.Kind == "text", view.View(press.Press(["C-x", "C-f", "core/co", "tab"], stateOf("")))))
+
+(* A block that takes the wheel, as a table of the cells, moves first: its Wheel gives the state, or missing when it can't move that way, and then the
+   wheel moves the screen, as over any other block. *)
+defn wheelBlock(moves)
+  (** A window of a hundred lines with a block under line 1, five rows high, whose wheel says it moved, or can't. *)
+  s = stateOf(hundred)
+  s.Buffers[1] = text.WithBlocks([{Line: 1, Rows: 5, Cell: 0, Draw: (w, l) -> [], Wheel: (amount, st) -> if moves dict.Put("Moved", amount, st) else missing end}], s.Buffers[1])
+  s
+end
+isWheelOverBlockTakes() = dict.GetOr("Moved", missing, commands.Update(wheelAt(100, 40, -1.0), wheelBlock(true))) == -1.0 and here(commands.Update(wheelAt(100, 40, -1.0), wheelBlock(true))).Top == 1
+isWheelOverBlockGives() = value.IsMissing(dict.GetOr("Moved", missing, commands.Update(wheelAt(100, 40, -3.0), wheelBlock(false)))) and here(commands.Update(wheelAt(100, 40, -3.0), wheelBlock(false))).Top > 1
+isWheelBesideBlock() = value.IsMissing(dict.GetOr("Moved", missing, commands.Update(wheelAt(100, 400, -1.0), wheelBlock(true))))
