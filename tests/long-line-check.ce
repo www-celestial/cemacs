@@ -95,6 +95,25 @@ typed = timed(["x"], press.Press(["C-g"], cesiaFile))
 check(typed.Seconds < 0.5, "x at the start of a line of a megabyte of a file of Cesia takes $(typed.Seconds) s")
 check(str.StartsWith("xaaa", rope.Text(here(typed.State).Rope)), "x is typed at the start")
 
+(* In a file of Cesia, Enter and end typed at the start of a line of a megabyte of code read only the start of the line for the place of the new line and
+   of the end, where all its characters, one text each, took a second and a half; Tab reads the line once, by its bytes. On a line of 10,000 ifs, Tab reads
+   the arrows of the line once, where each if looked through the rest of the line, seconds. *)
+defn keysAtStart(line, keys, limit)
+  (** The keys at the start of the second line of a file of Cesia, the screen followed, under limit seconds; the text after them. *)
+  s = view.Start([text.Of("if a\n$line\nend", "/nowhere/long.ce")], look, cell, 800, 600)
+  s.Config = withApps
+  t = timed(keys, press.Press(["C-n"], s))
+  view.View(t.State)
+  check(t.Seconds < limit, "$(keys) at the start of a line of $(str.ByteLength(line)) bytes of a file of Cesia takes $(t.Seconds) s")
+  rope.Text(here(t.State).Rope)
+end
+code = "  $(str.Repeat(32258, "f(a, \"b c\", 12) + x.y (* z *) "))"
+check(str.StartsWith("if a\n\n  f(a,", keysAtStart(code, ["enter"], 0.5)), "Enter at the start opens a line above the code")
+check(str.StartsWith("if a\nend  f(a,", keysAtStart(code, ["e", "n", "d"], 0.5)), "end typed at the start goes to the margin")
+check(str.StartsWith("if a\n  f(a,", keysAtStart(code, ["tab"], 2.0)), "Tab leaves the code at its place")
+ifs = str.Repeat(10000, "if a b end ")
+check(str.StartsWith("if a\n  if a b end", keysAtStart(ifs, ["tab"], 0.5)), "Tab puts the line of ifs in the block")
+
 (* After a pause in a file of Cesia, each tick asks whether a signature can be asked, from the line of the cursor: a slice of it, where all its
    characters, one text each, took a quarter of a second at each tick on a line of a megabyte. *)
 paused = press.Press(["C-g", "C-e", " "], cesiaFile)
