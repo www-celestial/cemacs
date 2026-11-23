@@ -1,0 +1,12 @@
+the edges of the box that has the keys in the accent color: true
+paper inside: true
+its value written: true
+its v: true
+an option on paper: true
+the option under the cursor in reverse: true
+the list has its three rows: true
+a field's box, its edges in ink, and its text: true
+a check box and its label: true
+missing
+Ok("closed")
+exit 0

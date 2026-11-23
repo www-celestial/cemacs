@@ -36,7 +36,7 @@ Les touches des cells sont un groupe de `C-c`, `e` pour *execute* (exécuter), q
 | `C-c e s` | [notebook.StopCell] | arrête la cell qui tourne ; les cells qui attendent après elle ne tournent pas |
 | `C-c e h` | [notebook.WriteHtml] | écrit la page du fichier à côté de lui, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | efface les résultats dessinés ; les noms de la session restent |
-| `C-c e f` | [notebook.FocusControl] | donne les touches au premier slider de la cell du curseur, à la barre de son animation, ou à son graphe 3D : voir Sliders, Animations et Graphes 3D |
+| `C-c e f` | [notebook.FocusControl] | donne les touches au premier input de la cell du curseur, un slider ou un autre, à la barre de son animation, ou à son graphe 3D : voir Sliders, Inputs, Animations et Graphes 3D |
 
 Dans `*repl*`, Enter lance ce qui a été tapé, et `M-p` et `M-n` reculent et avancent dans ce qui a été tapé avant ;
 partout ailleurs, Enter est un saut de ligne, comme toujours.
@@ -151,6 +151,66 @@ une ligne au-dessus de lui : `stale: computed with rho = 28.0` (périmé : calcu
 `C-c e s` a arrêté un rerun, ce qui abandonne le nombre qui attendait, après un undo d'un mouvement, et après que vous
 avez tapé un autre nombre à la main ; la ligne s'en va dès que la cell tourne de nouveau. Un nombre tapé à la main ne
 lance rien par lui-même, comme toute modification : `C-c e e` le lance.
+
+## Inputs
+
+Les autres inputs (les champs) d'un formulaire s'écrivent comme un slider, un par ligne dans une cell d'inputs, chacun
+avec sa valeur écrite là : une liste où choisir, une case à cocher, un champ où taper, et un jour, comme
+[std/cells](https://www-celestial.github.io/cesia-lang/cells.html) les donne. Sliders et autres inputs partagent une
+cell :
+
+```cesia norun
+use std/cells
+
+(* %% Place and day *)
+year  = cells.Choice(2026, [2025, 2026, 2027])
+zone  = cells.Choice("GMT-5", ["GMT-6", "GMT-5", "GMT-4"])
+day   = cells.Date("2026-11-23")
+place = cells.Field("40.76, -73.984")
+high  = cells.Field(50)
+rho   = cells.Slider(28.0, 0.0, 50.0, step = 0.5)
+bold  = cells.Check(false, label = "Bold line")
+```
+
+Sous chaque ligne, Cemacs dessine l'input à partir du texte seul, avant que rien ne tourne, dans la police du code, à
+l'encre et sur le papier du thème, noir sur blanc dans le thème clair : son nom, puis sa case, ses bords larges d'un
+pixel, avec sa valeur telle que le fichier l'écrit, et un `v` à droite d'une liste et d'un jour ; une case à cocher est
+`[ ]` ou `[x]` suivie de son label (son libellé). Leurs noms s'alignent, et leurs cases aussi, avec les barres des
+sliders.
+
+```
+year   [ 2026        v ]
+zone   [ GMT-5       v ]
+day    [ 2026-11-23  v ]
+place  [ 40.76, -73.984           ]
+high   [ 50                       ]
+rho    ----------o--------  28.0
+[ ] Bold line
+```
+
+`C-c e f` donne les touches au premier input de la cell du curseur, et un clic à l'input sous lui : sa case prend la
+couleur d'accent, et la bande d'aide liste ses touches.
+
+| Input | Touches | Souris |
+|---|---|---|
+| un choix | `enter` ouvre la liste, `up` et `down` s'y déplacent, `home` et `end` vont à la première option et à la dernière, `pageup` et `pagedown` de 8, `enter` choisit, `C-g` la ferme | un clic ouvre la liste, un clic sur une option la choisit |
+| une case à cocher | `space` la coche, ou la décoche | un clic la coche, ou la décoche |
+| un champ | ce que vous tapez va dans la case, `backspace` et `delete` effacent, `left`, `right`, `home` et `end` déplacent le curseur, `enter` le donne ; un champ de nombre ne prend qu'un nombre | un clic y met le curseur |
+| une date | `left` et `right` choisissent l'année, le mois ou le jour, `up` et `down` le changent, le mois en tournant sur l'année et le jour dans son mois, `enter` la donne | un clic choisit la partie sous lui |
+
+`tab` et `S-tab` passent à l'input suivant de la cell et au précédent, les sliders parmi eux, en tournant ; `C-g` en sort,
+comme toute autre touche, qui fait alors ce qu'elle fait toujours. Aucune touche n'est prise tant qu'aucun input n'a les
+touches : Entrée sur la ligne d'un choix est une nouvelle ligne, Espace une espace, comme partout.
+
+Un changement écrit la nouvelle valeur dans le buffer à la place de l'ancienne, ses octets seuls, une étape d'annulation,
+puis ne relance que les cells qui lisent son nom, tout de suite, comme le mouvement d'un slider : aucun bouton à presser.
+Un champ attend `enter`, si bien que rien ne tourne à chaque lettre tapée, et une date aussi. Un texte s'écrit entre
+guillemets, ses `"`, `\`, fins de ligne, tabulations et `$` échappés comme Cesia les lit, par
+[cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html) : ce que vous tapez arrive à la session comme ce
+texte, et ne tourne jamais, même `$(...)`. Pendant que les cells tournent, une cell lourde affiche `running…` et `C-c e s`
+l'arrête, comme pour un slider ; la dernière valeur gagne, et un résultat calculé avec une autre valeur que celle du
+fichier le dit : `stale: computed with zone = GMT-5`. Sans session encore, la valeur est écrite et rien ne tourne, et la
+ligne d'invite dit que `C-c e a` lance les cells avec elle.
 
 ## Animations
 
@@ -281,6 +341,14 @@ steps du slider, entre son min et son max, fait par [cells.Snap](https://www-cel
 la session ne l'accepte que pour un nom qui tient déjà un nombre. Le fichier lui-même est écrit quand vous l'enregistrez,
 comme tout buffer : par un nouveau fichier à côté de lui qu'un rename (un renommage) met à sa place, et jamais par-dessus un
 fichier qui a changé sur le disque depuis qu'il a été lu.
+
+Un choix, une case à cocher, un champ et une date s'écrivent de la même façon : seulement leur valeur, sur les colonnes
+où l'analyse l'a lue, une fois que Cemacs a vérifié que ces colonnes sont toujours dans la cell de l'input et contiennent
+toujours une valeur de sa sorte, un texte entre guillemets, `true` ou `false`, son nombre ou son jour. La valeur écrite
+est celle que fait [cells.Snap](https://www-celestial.github.io/cesia-lang/cells.html), un texte entre guillemets avec
+ses `"`, `\`, fins de ligne et `$` échappés, si bien que rien de ce qu'on tape dans un champ ne peut finir le texte,
+commencer une autre ligne ou tourner comme du code, et la session la lit comme une valeur, ne l'exécute jamais, et ne la
+donne qu'à un nom qui tient déjà une valeur de la même sorte.
 
 Une scene vient de la session, un autre processus, et Cemacs la lit comme une entrée : avant que quoi que ce soit en soit
 fait, sa taille, la sorte et les champs de chaque élément, et les sommets (les points des formes) que tous feraient sont

@@ -60,6 +60,12 @@ what a key can lead to, so no key has to be learnt before the start.
   the ink of the theme. A dash-dot line is drawn with its dots, where a scene with one was refused.
 - A graph under a cell keeps the shape of its own size, as wide as the pane or as itself when that is less, a polar graph
   square, where every graph was 400 pixels high; a graph narrower than the pane is not asked again at each tick.
+- The inputs of a form of Cesia 1.3 under their lines, as a slider: `cells.Choice`, a list that Enter or a click opens,
+  `cells.Check`, a box that Space or a click checks, `cells.Field`, a box to type in that Enter sets, and `cells.Date`,
+  whose arrows change its year, its month or its day; drawn in the font of the code, black on white in the light theme.
+  A change writes its value in place of the old one, escaped as Cesia reads it, one step of undo, then runs again only
+  the cells that read it. `C-c e f` and Tab go round every input of a cell, sliders among them; no key is taken while no
+  input has the keys.
 
 ### Changing Cemacs
 
