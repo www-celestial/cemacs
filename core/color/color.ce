@@ -428,16 +428,37 @@ defn StateAfter(words, state)
   if not mayChange(words)
     return state
   end
+  walk(words, state, missing)
+end
+
+defn walk(words, state, stops)
+  (** The reading of a line that StateAfter makes, from the start of the line in the state given. With stops missing, it gives the state at the end of
+      the line. With a list, it gives {State, Stops}, and starts from the last of the stops given, with the state there, if any: it keeps a stop, {At,
+      Comment, Text}, at the first place between two steps stopBytes() past the last one, as the crossing of Tokens does, and Stops are the ones given
+      and those, in order. A step reads no byte after the one where the next starts, the one after a quote, so a stop holds for a line read from the
+      same state whose bytes are those of the line it was made on up to it: the reading from it goes as the reading from the start would, and keeps
+      the same stops. *)
   depth = state.Comment
   inText = state.Text
   i = 1
+  if not value.IsMissing(stops) and value.Len(stops) > 0
+    depth = list.Last(stops).Comment
+    inText = list.Last(stops).Text
+    i = list.Last(stops).At
+  end
+  out = stops
   n = str.ByteLength(words)
+  stop = if value.IsMissing(stops) n + 1 else i + stopBytes() end
   (* The places found are kept while they are ahead, so that each mark is looked for once: see kept. *)
   open = 0
   close = 0
   quote = 0
   slash = 0
   while i <= n
+    if i >= stop
+      out = list.Append({At: i, Comment: depth, Text: inText}, out)
+      stop = i + stopBytes()
+    end
     if depth > 0
       open = if kept(open, i) open else str.ByteFind("(*", i, words) end
       close = if kept(close, i) close else str.ByteFind("*)", i, words) end
@@ -479,11 +500,57 @@ defn StateAfter(words, state)
       end
     end
   end
-  {Comment: depth, Text: inText}
+  if value.IsMissing(stops)
+    {Comment: depth, Text: inText}
+  else
+    {State: {Comment: depth, Text: inText}, Stops: out}
+  end
+end
+
+defn held(long, words, state)
+  (** The stops of the line kept by the colors, long, {State, Text, Stops}, that still hold for the words of a line read from the state given: none if
+      long was read from another state, else those up to the last one past which, by StopMargin() bytes, the words are the same as long.Text. It is
+      looked for by halves, as the screen looks for the stops of a row, so a line of a megabyte is compared a few times at most. *)
+  if value.IsMissing(long) or not (long.State == state)
+    return []
+  end
+  stops = long.Stops
+  size = str.ByteLength(long.Text)
+  holds(k) = stops[k].At + StopMargin() <= size and str.StartsWith(str.ByteSlice(1, stops[k].At + StopMargin(), long.Text), words)
+  (* The first and the last first, as each of these takes a slice of the line as long as the bytes before its stop: after a key at the start of the
+     line the first fails, and at its far end the last holds. *)
+  if value.Len(stops) == 0 or not holds(1)
+    return []
+  end
+  if holds(value.Len(stops))
+    return stops
+  end
+  low = 1
+  high = value.Len(stops) - 1
+  while low < high
+    middle = math.Div(low + high + 1, 2)
+    if holds(middle)
+      low = middle
+    else
+      high = middle - 1
+    end
+  end
+  list.Take(low, stops)
+end
+
+(** The line that the colors keep the stops of, {State, Text, Stops}, or missing: see ColoredTo. *)
+longOf(colors) = match colors
+  {Long: long} -> long
+  else -> missing
 end
 
 defn ColoredTo(line, lineOf, colors)
   (** The state at the start of line number line, once the lines before it are known; line_of(n) gives the text of line n.
+      The first line of more than 64 KB that may change the state, of those read, is kept with its stops, as Long, {State, Text, Stops}: where its
+      reading passed, with the state there, one every 64 KB at least, as Tokens keeps them; a reading of no such line keeps none. The next reading of
+      a line of that size starts from the last of them that still holds, the line read from the same state and the same up to StopMargin() bytes past
+      it: after a key at the far end of a line of a megabyte, the state at its end, for the lines under it, reads only the bytes after the last stop
+      before the edit, and is the same.
 
         StartOf(2, ColoredTo(2, n -> str.Join("", ["(", "* a"]), BlankColors())).Comment --> 1 *)
   have = colors.Known
@@ -494,8 +561,23 @@ defn ColoredTo(line, lineOf, colors)
   last = value.Len(chunks)
   part = chunks[last]
   state = StartOf(have, colors)
+  long = longOf(colors)
+  kept = missing
+  (* As StateAfter, a line with no mark is not read; the first long one found is read with stops, and the size of a line is asked only until then. *)
+  looking = true
+  big = stopBytes()
   for n in have..(line - 1)
-    state = StateAfter(lineOf(n), state)
+    words = lineOf(n)
+    if mayChange(words)
+      if looking and str.ByteLength(words) > big
+        r = walk(words, state, held(long, words, state))
+        kept = {State: state, Text: words, Stops: r.Stops}
+        looking = false
+        state = r.State
+      else
+        state = walk(words, state, missing)
+      end
+    end
     if value.Len(part) == chunkLines()
       chunks[last] = part
       chunks = list.Append([], chunks)
@@ -505,11 +587,16 @@ defn ColoredTo(line, lineOf, colors)
     part = list.Append(state, part)
   end
   chunks[last] = part
-  {Chunks: chunks, Known: line}
+  out = {Chunks: chunks, Known: line}
+  if not value.IsMissing(kept)
+    out.Long = kept
+  end
+  out
 end
 
 defn ForgetFrom(line, colors)
-  (** The colors with only the lines before the given one still known, after an edit in it. The first line is always known.
+  (** The colors with only the lines before the given one still known, after an edit in it. The first line is always known. The long line kept, if
+      any, stays: its stops are used only where they still hold, see ColoredTo.
 
         ForgetFrom(2, ColoredTo(5, n -> "x", BlankColors())).Known --> 2 *)
   keep = list.Max(1, line)
@@ -519,5 +606,8 @@ defn ForgetFrom(line, colors)
   whole = math.Div(keep - 1, chunkLines())
   chunks = list.Take(whole + 1, colors.Chunks)
   chunks[whole + 1] = list.Take(keep - whole * chunkLines(), chunks[whole + 1])
-  {Chunks: chunks, Known: keep}
+  out = colors
+  out.Chunks = chunks
+  out.Known = keep
+  out
 end

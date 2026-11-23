@@ -227,6 +227,20 @@ guillemet et sans marque de commentaire n'est même pas lue, puisqu'elle ne peut
 19 000 d'un fichier ne lit donc que les lignes de l'écran, et un saut à la fin d'un grand fichier lit chaque ligne une fois,
 la première fois.
 
+L'état à la fin d'une longue ligne, dont partent les lignes en dessous, se lit lui aussi depuis des stops. [color.ColoredTo]
+garde, comme `Long` dans les couleurs, la première ligne de plus de 64 KB qu'il lit et qui contient un guillemet ou une
+marque de commentaire, avec l'état à son début et un stop au moins tous les 64 KB de la lecture de [color.StateAfter], qui
+va de marque en marque sans les mots : ses propres stops, puisque ses pas ne sont pas ceux de la traversée de la rangée. Un
+pas de cette lecture ne lit aucun octet après le début du suivant, donc un stop tient selon la règle des rangées : le même
+état au début de la ligne, et les mêmes octets jusqu'à 8 après le stop. Après une touche, la ligne est relue depuis le
+dernier stop qui tient, et les couleurs sont celles d'une lecture depuis son début, les stops gardés aussi : un
+property-based test le vérifie sur des lignes au hasard de 200 KB, dont des octets qui ne sont pas de l'UTF-8, coupées à un
+octet au hasard et dotées d'une autre fin, et les états des lignes et les frames de lignes de 300 KB après des modifications
+sont les mêmes, octet pour octet, que ceux de la version d'avant. À la fin d'une ligne d'un mégaoctet de code, l'état à sa
+fin lit au plus 64 KB après une lettre, 2,5 ms au lieu de 67 pour la ligne entière. Les couleurs gardent une seule de ces lignes, avec
+son texte, que la lecture avait fait de toute façon : une copie d'une ligne par buffer, et une lecture qui ne lit aucune
+longue ligne n'en garde aucune.
+
 Les états sont gardés en chunks (en morceaux) de 1 024 lignes, une liste de listes : oublier les lignes après une
 modification garde les chunks d'avant et en coupe un, et lire plus de lignes remplit le dernier chunk et en ajoute de
 nouveaux. Chaque opération coûte le nombre de chunks plus un chunk, là où une liste plate d'un état par ligne était coupée et

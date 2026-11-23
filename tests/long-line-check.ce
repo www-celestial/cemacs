@@ -1,7 +1,8 @@
 (** Checks of the keys on a very long line, as a minified file or a data URI holds one: M-f and M-b cross a word of 200,000 letters in well under a
     second, where each letter used to take the line again, and the time grew with the square of the word, 36 s for 32,000 letters; Tab, typing and
     backspace at the start of a line of a megabyte take no more than on a short one; C-e, typing and backspace at its far end, in a file of Cesia,
-    take a tenth of a second for a word of a megabyte, and for a megabyte of code once C-e crossed it. It is a script, not a test file: it times.
+    take a tenth of a second for a word of a megabyte, and for a megabyte of code once C-e crossed it, the state at the end of the line read from the
+    stops of the colors. It is a script, not a test file: it times.
     tests/run.sh runs it with cesia run tests/long-line-check.ce. It prints ok at the end and stops at the first failure. *)
 use src/buffers
 use src/emacs
@@ -15,6 +16,7 @@ use src/ui
 use std/bug
 use std/dict
 use std/io
+use std/list
 use std/sys
 use std/text as str
 use std/value
@@ -106,6 +108,27 @@ for keys in [["x"], ["backspace"]]
   check(t.Seconds < crossed.Seconds, "$(keys[1]) at the end of a line of a megabyte of code takes $(t.Seconds) s, C-e that crossed it $(crossed.Seconds) s")
   s = t.State
 end
+
+(* After a key at the far end of a line of a megabyte of code, the state at its end, for the lines under it, is read from the stops that the colors keep,
+   from the last one before the edit, where the whole line was read again, as long as a reading of the line from its start: here a quarter of it at
+   most, the fastest of three each. *)
+defn fastest(f)
+  (** The seconds of the fastest of three runs of f. *)
+  best = 1000000.0
+  for k in 1..3
+    t = sys.Now()
+    f()
+    best = list.Min(best, sys.Now() - t)
+  end
+  best
+end
+farLines = ["if a", "  $(str.Repeat(32258, "f(a, \"b c\", 12) + x.y (* z *) "))", "end"]
+farColors = color.ColoredTo(4, n -> farLines[n], color.BlankColors())
+typedLines = [farLines[1], "$(farLines[2])x", farLines[3]]
+whole = fastest(() -> color.StateAfter(typedLines[2], color.FirstState))
+fromStops = fastest(() -> color.ColoredTo(4, n -> typedLines[n], color.ForgetFrom(2, farColors)))
+check(fromStops < whole / 4, "the state at the end of a line of a megabyte after a key at its end takes $fromStops s, a reading of the line $whole s")
+check(color.StartOf(3, color.ColoredTo(4, n -> typedLines[n], color.ForgetFrom(2, farColors))) == color.StateAfter(typedLines[2], color.FirstState), "the state at the end of the line is the same")
 
 (* In a file of Cesia, a letter at the start of a line of a megabyte reads only the start of the line to know whether it moves it, where all its
    characters took 1.3 s. *)

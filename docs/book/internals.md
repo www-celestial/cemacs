@@ -207,6 +207,18 @@ the states after n; drawing reads them again only down to the last line on the s
 comment mark is not even read, since it can't change the state. So typing at line 19,000 of a file reads only the lines on
 the screen, and a jump to the end of a large file reads every line once, the first time.
 
+The state at the end of a long line, which the lines under it start from, is read from stops too. [color.ColoredTo] keeps,
+as `Long` in the colours, the first line of more than 64 KB that it reads and that holds a quote or a comment mark, with the
+state at its start and a stop every 64 KB at least of the reading of [color.StateAfter], which goes from mark to mark without
+the words: its own stops, as its steps are not those of the crossing of the row. A step of it reads no byte past the start
+of the next, so a stop holds by the rule of the rows: the same state at the start of the line, and the same bytes up to 8
+past the stop. After a key, the line is read again from the last stop that holds, and the colours are those of a reading
+from its start, the stops kept too: a property test checks it on random lines of 200 KB, bytes that are no UTF-8 among them,
+cut at a random byte and given another end, and the states of the lines and the frames of 300 KB lines after edits are the
+same byte for byte as the version before. At the end of a line of a megabyte of code, the state at its end reads 64 KB at
+most after a letter, 2.5 ms instead of 67 for the whole line. The colours keep one such line, with its text, which the reading made
+anyway: one copy of a line per buffer, and a reading that reads no long line keeps none.
+
 The states are kept in chunks of 1,024 lines, a list of lists: forgetting the lines after an edit keeps the chunks before it
 and cuts one, and reading more lines fills the last chunk and adds new ones. Each costs the number of chunks plus one chunk,
 where one flat list of a state per line was cut and extended by copies of every state before the edit: at line 1,416,745 of a
