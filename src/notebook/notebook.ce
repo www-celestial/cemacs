@@ -205,7 +205,8 @@ defn Block(line, lines, cell, graph = missing, focused = false, out = missing, a
   (** A block of lines under a line, each {Role, Words}, with a thin bar on its left: drawn at the width of the pane, cut to it. A graph, {Key,
       Scene, Font}, comes under the lines, its scene drawn by sdl at its own size, which keeps the shape of the graph: the width of the pane or the
       graph's own when it is less, a polar graph square; an animation's has its bar under it, see BarItems,
-      and a 3D graph the line of its view, see ViewItems, each with a ring when focused. A table comes there instead, see TableItems, with its ring when
+      and a 3D graph the line of its view, see ViewItems, each with a ring when focused; a 2D graph the values of its points under the mouse, pinned
+      or chosen by the keys, and its ring when focused, see GraphOverlay. A table comes there instead, see TableItems, with its ring when
       focused. Out, a label as Out[3]:, marks a result as Jupyter does: the
       lines after the first at ones, which are its status and its note, start after it, on its row, and the others under them; a result with no line
       gives the label a row of its own, above its graph. Under is how far down the block its graph or its table starts, in pixels.
@@ -220,7 +221,7 @@ defn Block(line, lines, cell, graph = missing, focused = false, out = missing, a
   rows = list.Max(1, value.Len(rowed) + high + bar)
   top = value.Len(rowed) * cell.Height + (if value.IsSome(table) 0 else 4 end)
   under = (value.Len(rowed) + high) * cell.Height
-  shown = (width, look) -> if value.IsSome(table) TableItems(table, focused, width, top, cell, look.Theme, look) else if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font, Fallback: graph.Fallback}] end
+  shown = (width, look) -> if value.IsSome(table) TableItems(table, focused, width, top, cell, look.Theme, look) else if value.IsMissing(graph) [] else list.Prepend({Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font, Fallback: graph.Fallback}, if isFlat(graph) GraphOverlay(graph, focused, top, cell, look.Theme) else [] end) end
   draw = (width, look) -> list.Concat(list.Concat(list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
     [lineText(k, rowed[k], if k > at pad else 0 end, width, look, cell) for k in 1..value.Len(rowed)]),
     [rowText(l.At, "  $(l.Words)", colorOf("note", look.Theme), cell) for l in label]),
@@ -446,18 +447,19 @@ GraphWidth(state) = list.Max(200, view.LayoutOf(state).Code.Width - view.Gutter 
 
 defn resultBlock(k, i, line, lines, graph, state, out = missing, at = 0, table = missing)
   (** The block of the result of cell i of buffer k under a line: its lines and its graph or its table, and its label out after its first at lines, see
-      Block; an animation's bar, a 3D graph and a table take the mouse, and have a ring while they have the keys; a table takes the wheel too, and a graph
-      that shows a mark takes a press on its points. *)
+      Block; an animation's bar, a 3D graph, a table and a 2D graph of a cell take the mouse, and have a ring while they have the keys; a table takes the
+      wheel too, and a 2D graph the moves of the mouse, see graphHover, and the wheel while it has the keys. *)
   look = dict.GetOr("Look", missing, state)
   measuredHeads = if value.IsSome(table) and value.IsSome(look) and value.Len(dict.GetOr("Heads", [], table)) != value.Len(table.Columns) dict.Put("Heads", [look.Width(c, "strong") for c in table.Columns], table) else table end
-  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state) or tableFocused(k, table, state), out = out, at = at, table = measuredHeads), {Cell: i})
+  made = dict.Merge(Block(line, lines, state.Cell, graph = graph, focused = barFocused(k, graph, state) or turnFocused(k, graph, state) or tableFocused(k, table, state) or graphFocused(k, graph, state), out = out, at = at, table = measuredHeads), {Cell: i})
   if value.IsSome(table)
     key = table.Key
     return dict.Merge(made, {Mouse: (action, point, st) -> tableMouse(key, action, point, st), Wheel: (amount, point, st) -> tableWheel(key, amount, st), Keeps: true})
   end
-  if value.IsSome(graph) and value.IsSome(dict.GetOr("Mark", missing, graph)) and not (isAnimation(graph) or isTurning(graph))
+  if isFlat(graph) and i > 0
     key = graph.Key
-    return dict.Put("Mouse", (action, point, st) -> pointMouse(key, action, point, st), made)
+    return dict.Merge(made, {Mouse: (action, point, st) -> graphMouse(k, key, action, point, st), Hover: (point, st) -> graphHover(k, key, point, st),
+      Wheel: (amount, point, st) -> graphWheel(k, key, amount, point, st), Keeps: true})
   end
   if not (isAnimation(graph) or isTurning(graph))
     return made
@@ -849,6 +851,15 @@ defn widened(k, state)
       return rebuilt(k, old, dict.Put("Fixed", true, old.Graph), s)
     end
     fresh = dict.Merge(old.Graph, dict.Put("Asked", pending.Width, Prepared(scene.Value, commands.Home(s))))
+    fresh.Hover = missing
+    if dict.GetOr("Pointed", false, old.Graph) and value.IsMissing(PointsFault(dict.GetOr("Points", [], scene.Value), full = true)) and value.IsMissing(AxesFault(dict.GetOr("Axes", missing, scene.Value)))
+      return rebuilt(k, old, pointed(fresh, scene.Value), s)
+    end
+    if dict.GetOr("Pointed", false, old.Graph)
+      (* Points that aren't sane at the new width: the graph shows no values, and asks none again. *)
+      fresh.Near = missing
+      fresh.Axes = missing
+    end
     return rebuilt(k, old, if value.IsSome(dict.GetOr("Mark", missing, old.Graph)) dict.Put("Points", dict.GetOr("Points", [], scene.Value), fresh) else fresh end, s)
   end
   x = stale(b, state)
@@ -861,7 +872,12 @@ defn widened(k, state)
   frame = dict.GetOr("Frame", 1, x.Graph)
   turn = if isTurning(x.Graph) x.Graph.View else missing end
   mark = dict.GetOr("Mark", missing, x.Graph)
-  task = if value.IsSome(mark) fiber.Spawn(() -> nb.Scene(one, key, width, mark = mark)) else fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)) end
+  shown = dict.GetOr("Shown", missing, x.Graph)
+  xlim = if value.IsMissing(shown) missing else dict.GetOr("X", missing, shown) end
+  ylim = if value.IsMissing(shown) missing else dict.GetOr("Y", missing, shown) end
+  points = dict.GetOr("Pointed", false, x.Graph)
+  flat = isFlat(x.Graph) and (value.IsSome(mark) or value.IsSome(shown) or points)
+  task = if flat fiber.Spawn(() -> nb.Scene(one, key, width, mark = mark, xlim = xlim, ylim = ylim, points = points)) else fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)) end
   r.Rescene = {Task: task, Cell: x.Cell, Key: key, Width: width}
   withRun(k, r, state)
 end
@@ -1507,7 +1523,8 @@ defn FocusControl(state)
       month or its day, Up and Down change it, Enter sets it. The bar of an animation: Space plays it or pauses it, the
       arrows go a frame back or on, the pages ten, Home and End to the first frame and the last. A 3D graph: the arrows move the eye 10°, Right and
       Left round it, Up and Down higher and lower, and Home back to the view of the code. A table: the arrows move a cell, s sorts, / filters, M-w copies;
-      see TableKeys. C-g, a click in the text or any other key leaves it. *)
+      see TableKeys. A 2D graph, when the cell has no other control: the arrows go from point to point, the wheel zooms, M-w copies, C-c e s saves it;
+      see GraphKeys. C-g, a click in the text or any other key leaves it. *)
   k = state.Current
   b = state.Buffers[k]
   if not IsCells(b)
@@ -1532,7 +1549,11 @@ defn FocusControl(state)
   if value.IsSome(table)
     return tableFocusedOn(k, table.Table, s)
   end
-  commands.Say("This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, a 3D graph of plot.Surface or plot.Line3, or a table.", s)
+  flat = list.FindFirst(x -> isFlat(dict.GetOr("Graph", missing, x)), partsOf(k, i, s))
+  if value.IsSome(flat)
+    return graphFocusedOn(k, flat.Graph.Key, s)
+  end
+  commands.Say("This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, a 3D graph of plot.Surface or plot.Line3, a table or a graph.", s)
 end
 
 (* -- A move: the number written in the buffer, then the session told, the latest value winning. *)
@@ -1632,7 +1653,7 @@ end
 asking(r) = value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsSome(dict.GetOr("Rescene", missing, r)) or value.IsSome(dict.GetOr("Framing", missing, r)) or
   value.IsSome(dict.GetOr("Turning", missing, r)) or value.IsSome(dict.GetOr("Paging", missing, r)) or value.IsSome(dict.GetOr("Marking", missing, r)) or
   value.IsSome(dict.GetOr("Varying", missing, r)) or
-  copyAsked(dict.GetOr("Copying", missing, r))
+  copyAsked(dict.GetOr("Copying", missing, r)) or copyAsked(dict.GetOr("Saving", missing, r))
 
 (** Does the copy of a table hold the session: has it asked its rows? *)
 copyAsked(c) = value.IsSome(c) and dict.Has("Task", c)
@@ -3149,7 +3170,7 @@ TableKeys() = {"up": onTable((t, s) -> movedCell(-1, 0, t)), "down": onTable((t,
   "right": onTable((t, s) -> movedCell(0, 1, t)), "pageup": onTable((t, s) -> screened(-TableRows(), t)), "pagedown": onTable((t, s) -> screened(TableRows(), t)),
   "home": onTable((t, s) -> movedCell(-t.Count, 0, t)), "end": onTable((t, s) -> movedCell(t.Count, 0, t)), "s": onTable((t, s) -> if t.Fixed unsorted(s) else sortedBy(t) end),
   "/": onTable((t, s) -> if t.Fixed unsorted(s) else typing(t, s) end), "M-w": onTable((t, s) -> copiedCell(t, s)), "C-u": onTable((t, s) -> dict.Put("Prefix", true, t)),
-  "tab": st -> tableTabbed(1, st), "S-tab": st -> tableTabbed(-1, st), "C-g": commands.Unfocused, "escape": commands.Unfocused}
+  "tab": st -> controlTabbed(1, st), "S-tab": st -> controlTabbed(-1, st), "C-g": commands.Unfocused, "escape": commands.Unfocused}
 
 (** The keys of a table while its filter is typed: what is typed goes in it. *)
 FilterKeys() = {"enter": onTable((t, s) -> filterKept(t, s)), "escape": onTable((t, s) -> filterTakenBack(t, s)), "C-g": onTable((t, s) -> filterTakenBack(t, s)),
@@ -3270,18 +3291,6 @@ defn copiedCell(t, state)
   commands.Say("Copied the cell.", commands.ToClipboard(if t.Column <= value.Len(row) row[t.Column] else "" end, withTable(commands.FocusOf(state).Buffer, t, state)))
 end
 
-defn tableTabbed(by, state)
-  (** Tab and S-Tab: the keys to the next table of the cell, or the previous one, round. *)
-  f = commands.FocusOf(state)
-  x = tableBlock(f.Buffer, f.Table, state)
-  if value.IsMissing(x)
-    return commands.Unfocused(state)
-  end
-  all = [b for b in partsOf(f.Buffer, x.Cell, state) if value.IsSome(dict.GetOr("Table", missing, b))]
-  at = orFirst(list.FindFirst(j -> value.Equal(all[j].Table.Key, f.Table), 1..value.Len(all)))
-  tableFocusedOn(f.Buffer, all[math.Mod(at - 1 + by, value.Len(all)) + 1].Table, state)
-end
-
 defn tableFocusedOn(k, t, state)
   (** The state with the keys on a table of buffer k, drawn with its ring, and the control that had them without. *)
   s = commands.Unfocused(state)
@@ -3395,9 +3404,10 @@ defn marking(k, i, t, state)
 end
 
 defn marked(k, state)
-  (** The state at a tick for buffer k: the scene with a mark, once it came, drawn in its graph with the places of its points, or, when it marks
-      nothing, the graph left as it was and known to hold no layer of as many points; then the next graph whose mark differs from the one it wants asks
-      its scene, unless the session is busy. *)
+  (** The state at a tick for buffer k: the scene that a 2D graph asked, once it came, drawn in its graph, with the places of its points and, when it
+      asked them, their values and its axes; or, when its mark marks nothing, the graph left as it was and known to hold no layer of as many points; then
+      the next graph whose view differs from the one it wants asks its scene, unless the session is busy. A scene that asked only the points of what the
+      graph shows keeps the shapes it has, which sdl drew. *)
   r = runOf(state.Buffers[k])
   if value.IsMissing(r)
     return state
@@ -3414,106 +3424,874 @@ defn marked(k, state)
     scene = if result.IsOk(got) got.Value else got end
     x = list.FindFirst(b -> dict.GetOr("Cell", 0, b) == m.Cell and value.IsSome(dict.GetOr("Graph", missing, b)) and value.Equal(b.Graph.Key, m.Key), text.BlocksOf(s.Buffers[k]))
     if value.IsSome(x)
-      g = x.Graph
-      bad = result.IsErr(scene) or value.IsSome(SceneFault(scene.Value)) or (value.IsSome(m.Mark) and PointsFault(dict.GetOr("Points", [], scene.Value)) != missing)
-      if bad or (value.IsSome(m.Mark) and value.Len(dict.GetOr("Points", [], scene.Value)) == 0)
-        (* A scene that can't come, or no layer of as many points: the graph stays as it is, and isn't asked that mark again. *)
-        g.Unlinked = if value.IsSome(m.Mark) list.Append(m.Mark[2], dict.GetOr("Unlinked", [], g)) else dict.GetOr("Unlinked", [], g) end
-        g.Wants = dict.GetOr("Mark", missing, g)
-        s = rebuilt(k, x, g, s)
-      else
-        ng = dict.Merge(g, Prepared(scene.Value, commands.Home(s)))
-        ng.Mark = m.Mark
-        ng.Points = dict.GetOr("Points", [], scene.Value)
-        ng.Asked = m.Width
-        s = rebuilt(k, x, ng, s)
-      end
+      s = viewLanded(k, x, m, scene, s)
     end
   end
-  asksMark(k, s)
+  asksView(k, s)
 end
 
-defn PointsFault(points)
+defn viewLanded(k, x, m, scene, state)
+  (** The state with the scene that the 2D graph of block x asked, m, put in it: see marked. *)
+  g = x.Graph
+  points = dict.GetOr("Points", false, m)
+  zoom = dict.GetOr("Zoom", missing, m)
+  why = if result.IsErr(scene) scene.Error.Message else SceneFault(scene.Value) end
+  if value.IsMissing(why) and (value.IsSome(m.Mark) or points)
+    why = PointsFault(dict.GetOr("Points", [], scene.Value), full = points)
+  end
+  if value.IsMissing(why) and points
+    why = AxesFault(dict.GetOr("Axes", missing, scene.Value))
+  end
+  linked = value.IsMissing(why) and (value.IsMissing(m.Mark) or (if points list.Any([dict.GetOr("Count", -1, p) == m.Mark[2] for p in scene.Value.Points]) else value.Len(dict.GetOr("Points", [], scene.Value)) > 0 end))
+  if value.IsSome(why) or not linked
+    (* A scene that can't come, or no layer of as many points: the graph stays as it is, and isn't asked that mark again, nor these ranges or points
+       when the scene can't come. *)
+    if value.IsSome(m.Mark) and not value.Equal(m.Mark, dict.GetOr("Mark", missing, g))
+      g.Unlinked = list.Append(m.Mark[2], dict.GetOr("Unlinked", [], g))
+    end
+    g.Wants = dict.GetOr("Mark", missing, g)
+    s = state
+    if value.IsSome(why)
+      g.Zoom = dict.GetOr("Shown", missing, g)
+      g.Pointed = dict.GetOr("Pointed", false, g) or points
+      s = if value.IsSome(zoom) or points commands.Say("This graph shows no values: its scene can't be drawn, as $why.", state) else state end
+    end
+    return rebuilt(k, x, g, s)
+  end
+  same = value.Equal(m.Mark, dict.GetOr("Mark", missing, g)) and value.Equal(zoom, dict.GetOr("Shown", missing, g)) and m.Width == dict.GetOr("Asked", m.Width, g)
+  (* Only the points of what the graph shows: its shapes stay, so that sdl draws them from what it made. *)
+  ng = if same g else dict.Merge(g, Prepared(scene.Value, commands.Home(state))) end
+  ng.Mark = m.Mark
+  ng.Shown = zoom
+  ng.Asked = m.Width
+  ng.Points = dict.GetOr("Points", [], scene.Value)
+  ng = if points pointed(ng, scene.Value) else dict.Put("Near", NearOf(ng.Points), ng) end
+  if not same
+    ng.Hover = missing
+  end
+  rebuilt(k, x, ng, state)
+end
+
+defn pointed(g, scene)
+  (** The graph with the points and the axes of a scene asked with points = true: in buckets, for the point under the mouse, and its own ranges, those of
+      the first scene, which no zoom asked. *)
+  out = g
+  out.Pointed = true
+  out.Points = scene.Points
+  out.Axes = scene.Axes
+  out.Near = NearOf(scene.Points)
+  if value.IsMissing(dict.GetOr("Own", missing, g)) and value.IsMissing(dict.GetOr("Shown", missing, out))
+    out.Own = limitsIn(scene.Axes)
+  end
+  out
+end
+
+(** The most points of all the layers of a graph that Cemacs keeps. *)
+mostPoints = 1000000
+
+defn PointsFault(points, full = false)
   (** What is wrong with the places of the points of a marked scene, or missing: they are input. At most 64 layers, each {At, Xs, Ys}, at most 100,000
-      positions from 1, and a place on the screen for each.
+      positions from 1, a place on the screen for each, and 1,000,000 points in all; with full, as for the mouse, each layer has too its number, its
+      kind, its label, a text of at most 200 characters or missing, its count of points, and Values, {X, Y}, a finite number for each of its points.
 
         PointsFault([{Layer: 1, Kind: "line", At: [1, 2], Xs: [10.0, 20.0], Ys: [5.0, 6.0]}]) --> missing
-        PointsFault([{At: [1, 2], Xs: [10.0], Ys: [5.0, 6.0]}]) --> "a layer has not a place on the screen for each of its points" *)
+        PointsFault([{At: [1, 2], Xs: [10.0], Ys: [5.0, 6.0]}]) --> "a layer has not a place on the screen for each of its points"
+        PointsFault([{Layer: 1, Kind: "line", Label: missing, Count: 2, At: [1, 2], Xs: [10.0, 20.0], Ys: [5.0, 6.0], Values: {X: [1.0, 2.0], Y: [3.0, 1.0 / 0.0]}}], full = true) --> "a layer has not a finite value for each of its points" *)
   if not value.IsArray(points) or value.Len(points) > 64
     return "its points are no list of layers"
   end
+  total = 0
   for p in points
     at = if value.IsDict(p) dict.GetOr("At", missing, p) else missing end
-    if not (value.IsArray(at) and value.Len(at) <= 100000 and list.All([value.IsInt(q) and q >= 1 for q in at]))
+    if not (value.IsArray(at) and value.Len(at) <= 100000 and (value.Len(at) == 0 or (col.Kind(at) == "int" and list.Min(at) >= 1) or list.All([value.IsInt(q) and q >= 1 for q in at])))
       return "a layer has no positions of its points"
     end
-    if value.Len(at) > 0 and not (places(dict.GetOr("Xs", missing, p), value.Len(at)) and places(dict.GetOr("Ys", missing, p), value.Len(at)))
+    n = value.Len(at)
+    if n > 0 and not (places(dict.GetOr("Xs", missing, p), n) and places(dict.GetOr("Ys", missing, p), n))
       return "a layer has not a place on the screen for each of its points"
+    end
+    total = total + n
+    if total > mostPoints
+      return "its points are more than $mostPoints"
+    end
+    if full
+      label = dict.GetOr("Label", missing, p)
+      if not (value.IsInt(dict.GetOr("Layer", missing, p)) and dict.GetOr("Kind", missing, p) in ["line", "points", "text"] and (value.IsMissing(label) or (value.IsText(label) and value.Len(label) <= 200)))
+        return "a layer has no number, kind or label"
+      end
+      count = dict.GetOr("Count", missing, p)
+      if not (value.IsInt(count) and count >= 0 and count <= 1000000000 and (n == 0 or list.Max(at) <= count))
+        return "a layer has no count of its points"
+      end
+      vs = dict.GetOr("Values", missing, p)
+      if not (value.IsDict(vs) and finite(dict.GetOr("X", missing, vs), n) and finite(dict.GetOr("Y", missing, vs), n))
+        return "a layer has not a finite value for each of its points"
+      end
     end
   end
   missing
 end
 
-defn asksMark(k, state)
-  (** The state with the scene of the first graph of buffer k that wants another mark than the one it shows asked of the session, at the width it was
-      asked at, unless a cell runs or another question waits. *)
+defn finite(xs, n)
+  (** Is a value n finite numbers: checked by whole arrays when JSON gave numbers alone, where x - x is 0 for each finite x and NaN for any other. *)
+  if not value.IsArray(xs) or value.Len(xs) != n
+    return false
+  end
+  if n == 0
+    return true
+  end
+  if col.Kind(xs) in ["float", "int"]
+    return list.Sum(xs - xs) == 0
+  end
+  list.All([value.IsNumber(x) and x - x == 0 for x in xs])
+end
+
+defn AxesFault(axes)
+  (** What is wrong with the axes of a scene asked with its points, or missing: they are input. X and Y, or for a polar graph Center and Y, each axis
+      {Scale, Low, High, From, To}: a scale std/plot gives, finite ranges that aren't empty, above 0 on a log axis, and pixels from -1,000,000 to
+      1,000,000.
+
+        AxesFault({X: {Scale: "linear", Low: 0.0, High: 1.0, From: 10.0, To: 300.0}, Y: {Scale: "log", Low: 1.0, High: 100.0, From: 200.0, To: 10.0}}) --> missing
+        AxesFault({Center: [100.0, 100.0], Y: {Scale: "linear", Low: 90.0, High: 0.0, From: 0.0, To: 0.0}}) --> "an axis is no scale, range and pixels" *)
+  if not value.IsDict(axes)
+    return "its axes are no axes"
+  end
+  polar = dict.Has("Center", axes)
+  if polar and not places(axes.Center, 2)
+    return "its center is no place"
+  end
+  for a in if polar [dict.GetOr("Y", missing, axes)] else [dict.GetOr("X", missing, axes), dict.GetOr("Y", missing, axes)] end
+    if not (value.IsDict(a) and dict.GetOr("Scale", missing, a) in ["linear", "log", "names"] and finite([dict.GetOr("Low", missing, a), dict.GetOr("High", missing, a)], 2) and places([dict.GetOr("From", missing, a), dict.GetOr("To", missing, a)], 2) and a.Low != a.High and a.From != a.To and (a.Scale != "log" or (a.Low > 0 and a.High > 0)))
+      return "an axis is no scale, range and pixels"
+    end
+  end
+  missing
+end
+
+defn asksView(k, state)
+  (** The state with the scene of the first 2D graph of buffer k that wants another view than the one it shows asked of the session: its mark, its
+      ranges and, once it shows values, its points, at the width it was asked at; unless a cell runs or another question waits. One question at a time,
+      the latest view winning: a zoom of many notches asks once more when its scene comes. *)
   r = runOf(state.Buffers[k])
   if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task) or asking(r)
     return state
   end
-  x = list.FindFirst(b -> dict.GetOr("Cell", 0, b) > 0 and value.IsSome(dict.GetOr("Graph", missing, b)) and dict.Has("Wants", b.Graph) and not value.Equal(b.Graph.Wants, dict.GetOr("Mark", missing, b.Graph)), text.BlocksOf(state.Buffers[k]))
+  x = list.FindFirst(b -> dict.GetOr("Cell", 0, b) > 0 and isFlat(dict.GetOr("Graph", missing, b)) and wantsView(b.Graph), text.BlocksOf(state.Buffers[k]))
   if value.IsMissing(x)
     return state
   end
   one = r.Session
-  key = x.Graph.Key
-  mark = x.Graph.Wants
-  width = dict.GetOr("Asked", x.Graph.Scene.Width, x.Graph)
-  task = if value.IsMissing(mark) fiber.Spawn(() -> nb.Scene(one, key, width)) else fiber.Spawn(() -> nb.Scene(one, key, width, mark = mark)) end
-  r.Marking = {Task: task, Cell: x.Cell, Key: key, Mark: mark, Width: width}
+  g = x.Graph
+  key = g.Key
+  mark = if dict.Has("Wants", g) g.Wants else dict.GetOr("Mark", missing, g) end
+  zoom = dict.GetOr("Zoom", missing, g)
+  points = dict.GetOr("Live", false, g)
+  xlim = if value.IsMissing(zoom) missing else dict.GetOr("X", missing, zoom) end
+  ylim = if value.IsMissing(zoom) missing else dict.GetOr("Y", missing, zoom) end
+  width = dict.GetOr("Asked", g.Scene.Width, g)
+  task = fiber.Spawn(() -> nb.Scene(one, key, width, mark = mark, xlim = xlim, ylim = ylim, points = points))
+  r.Marking = {Task: task, Cell: x.Cell, Key: key, Mark: mark, Zoom: zoom, Points: points, Width: width}
   sys.Sleep(0)
   withRun(k, r, state)
 end
 
-defn pointMouse(key, action, point, state)
-  (** A press of the mouse on a graph that shows a mark: the point of a linked layer nearest to it, within 12 pixels, chooses its row in the table of the
-      cell of as many rows, which shows it; a press elsewhere does nothing. *)
-  k = state.Current
-  if action != "down"
-    return state
-  end
-  x = list.FindFirst(b -> value.IsSome(dict.GetOr("Graph", missing, b)) and value.Equal(b.Graph.Key, key) and dict.GetOr("Cell", 0, b) > 0, text.BlocksOf(state.Buffers[k]))
-  if value.IsMissing(x) or value.IsMissing(dict.GetOr("Mark", missing, x.Graph))
-    return state
-  end
-  g = x.Graph
-  px = point.X - 2 * state.Cell.Width
-  py = point.Y - dict.GetOr("Under", 0, x)
-  best = missing
-  far = 144.0
-  for p in g.Points
-    for j in 1..value.Len(p.At)
-      d = (p.Xs[j] - px) * (p.Xs[j] - px) + (p.Ys[j] - py) * (p.Ys[j] - py)
-      if d <= far
-        far = d
-        best = p.At[j]
-      end
-    end
-  end
-  if value.IsMissing(best)
-    return state
-  end
-  table = list.FindFirst(b -> value.IsSome(dict.GetOr("Table", missing, b)) and b.Table.Total == g.Mark[2], partsOf(k, x.Cell, state))
+(** Does a 2D graph want another view than the one it shows: another mark, other ranges, or its points? *)
+wantsView(g) = (dict.Has("Wants", g) and not value.Equal(g.Wants, dict.GetOr("Mark", missing, g))) or (dict.GetOr("Live", false, g) and not dict.GetOr("Pointed", false, g)) or
+  not value.Equal(dict.GetOr("Zoom", missing, g), dict.GetOr("Shown", missing, g))
+
+defn rowOfPoint(k, i, count, at, state)
+  (** The state with the row of a point chosen, at position at of a layer of count points: in the table of cell i of buffer k of as many rows, which
+      shows it, if there is one. *)
+  table = list.FindFirst(b -> value.IsSome(dict.GetOr("Table", missing, b)) and b.Table.Total == count, partsOf(k, i, state))
   if value.IsMissing(table)
     return state
   end
   t = table.Table
   if value.IsMissing(t.Sort) and t.Filter == ""
-    t = movedCell(best - t.Row, 0, t)
+    t = movedCell(at - t.Row, 0, t)
   else
-    t.Find = best
+    t.Find = at
   end
-  tableChosen(k, t, tableFocusedOn(k, t, state))
+  tableChosen(k, t, state)
+end
+
+(* ---- 2D graphs with the mouse and the keys. A graph that is neither an animation nor a 3D graph shows the values of its points: once the mouse comes
+   over it or it has the keys, its scene is asked again once with points = true, which gives the places and the values of the points of its lines, points
+   and texts and how its axes meet the pixels, and its shapes stay those drawn; its points are kept in buckets of 32 by 32 pixels, so that the one nearest
+   the mouse is found among few, with no question. The mouse over it shows the point nearest, within 12 pixels: a thin cross and its values in a box; a
+   click pins that box, or unpins it, and gives it the keys; then the arrows go from point to point, Space pins, the wheel zooms about the mouse, a drag
+   moves the view, 0 goes back to its own ranges, M-w copies the values and C-c e s saves it as SVG. Without the keys, the wheel moves the screen, as
+   before. Its state is in its graph, {Live, Pointed, Points, Axes, Near, Own, Hover, Pins, Spot, Zoom, Shown, Press}: whether its points are wanted and
+   came, its points, its axes and their buckets, its own ranges, the point under the mouse, the points pinned, the point of the keys, the ranges wanted
+   and those shown, missing for its own, and a press of the mouse on it. *)
+
+(** Is a graph of a block one of 2D, which shows the values of its points: neither an animation nor a 3D graph? *)
+isFlat(graph) = value.IsSome(graph) and not isAnimation(graph) and not isTurning(graph)
+
+(** The block of a cell of buffer k that shows the 2D graph of a key, or missing. *)
+flatOf(k, key, state) = if k < 1 or k > value.Len(state.Buffers) missing else list.FindFirst(x -> dict.GetOr("Cell", 0, x) > 0 and isFlat(dict.GetOr("Graph", missing, x)) and value.Equal(x.Graph.Key, key), text.BlocksOf(state.Buffers[k])) end
+
+(** The most pixels from the mouse to the point it shows. *)
+pointReach = 12.0
+
+(** The side of a bucket of points, in pixels. *)
+bucketSide = 32.0
+
+(** The most points pinned on a graph: past them, the first pinned goes. *)
+MostPins() = 50
+
+defn NearOf(points)
+  (** The points of a graph in buckets of 32 by 32 pixels, for the one nearest the mouse: {X, Y, Layer, J, Buckets}, the places of all, the layer of each
+      among the Points and its place in it, and for each bucket "column:row" the points in it, by their place in X.
+
+        NearOf([{At: [1, 2], Xs: [10.0, 50.0], Ys: [10.0, 10.0]}]).Buckets["1:0"] --> [2] *)
+  n = value.Len(points)
+  xs = list.Flatten([p.Xs for p in points])
+  ys = list.Flatten([p.Ys for p in points])
+  if value.Len(xs) == 0
+    return {X: [], Y: [], Layer: [], J: [], Buckets: {}}
+  end
+  bx = math.Floor(xs / bucketSide)
+  by = math.Floor(ys / bucketSide)
+  groups = col.Groups([bx * 4194304.0 + by])
+  parts = col.Split(groups, [j for j in 1..value.Len(xs)])
+  buckets = {}
+  for b in 1..groups.Count
+    f = groups.Firsts[b]
+    buckets["$(math.Div(bx[f], 1)):$(math.Div(by[f], 1))"] = parts[b]
+  end
+  {X: xs * 1.0, Y: ys * 1.0, Layer: list.Flatten([list.Fill(i, value.Len(points[i].At)) for i in 1..n]), J: list.Flatten([[j for j in 1..value.Len(points[i].At)] for i in 1..n if value.Len(points[i].At) > 0]), Buckets: buckets}
+end
+
+defn NearestIn(near, x, y)
+  (** The point nearest a place, x and y pixels from the top left of a graph, within 12 pixels, {Layer, J}, or missing: only the points of the buckets
+      that the circle of 12 pixels about it touches are measured, at most four.
+
+        NearestIn(NearOf([{At: [1, 2], Xs: [10.0, 50.0], Ys: [10.0, 10.0]}]), 45, 12) --> {Layer: 1, J: 2} *)
+  cands = []
+  for a in math.Div(math.Floor((x - pointReach) / bucketSide), 1)..math.Div(math.Floor((x + pointReach) / bucketSide), 1)
+    for b in math.Div(math.Floor((y - pointReach) / bucketSide), 1)..math.Div(math.Floor((y + pointReach) / bucketSide), 1)
+      cands = list.Concat(cands, dict.GetOr("$a:$b", [], near.Buckets))
+    end
+  end
+  if value.Len(cands) == 0
+    return missing
+  end
+  dx = col.Pick(cands, near.X) - x
+  dy = col.Pick(cands, near.Y) - y
+  d = dx * dx + dy * dy
+  least = list.Min(d)
+  if least > pointReach * pointReach
+    return missing
+  end
+  f = cands[col.Positions(d == least)[1]]
+  {Layer: near.Layer[f], J: near.J[f]}
+end
+
+(** The point of a graph under a place of its block, {Layer, J}, or missing: none before its points came. *)
+nearestAt(g, x, y) = if value.IsMissing(dict.GetOr("Near", missing, g)) missing else NearestIn(g.Near, x, y) end
+
+(** A point of a graph as it is pinned, from layer i of its Points and its place j there: {Layer, At, Count, Label, X, Y}, the layer of the graph, its
+    position in it, its count of points, its label, and its values. *)
+pointOf(g, i, j) = (p -> {Layer: p.Layer, At: p.At[j], Count: p.Count, Label: dict.GetOr("Label", missing, p), X: p.Values.X[j], Y: p.Values.Y[j]})(g.Points[i])
+
+defn NumberWords(x)
+  (** A value of a point as its box writes it, as std/plot writes the box of a mark: at most 6 significant digits, an integer as it is.
+
+        NumberWords(128.27000001) --> "128.27"
+        NumberWords(8.0) --> "8"
+        NumberWords(-0.8333333) --> "-0.833333" *)
+  if value.IsInt(x) or not (x - x == 0.0)
+    return "$x"
+  end
+  big = math.Abs(x)
+  if big != 0.0 and (big >= 1e9 or big < 1e-4)
+    return "$x"
+  end
+  d = if big == 0.0 0 else list.Max(0, list.Min(10, 5 - math.Div(math.Floor(math.Log(big) / math.Log(10.0)), 1))) end
+  t = str.Decimals(d, x)
+  while d > 0 and str.EndsWith("0", t)
+    t = str.ByteSlice(1, str.ByteLength(t) - 1, t)
+  end
+  if str.EndsWith(".", t) str.ByteSlice(1, str.ByteLength(t) - 1, t) else t end
+end
+
+(** The words of the box of a point: its values, after its label when the graph has more than one layer of points. *)
+pointWords(g, q) = "$(if value.Len(dict.GetOr("Points", [], g)) > 1 and value.IsText(q.Label) "$(fitted(q.Label, 30 * 8, {Width: 8})): " else "" end)x = $(NumberWords(q.X))  y = $(NumberWords(q.Y))"
+
+(** The scale of a value on an axis of a scene: its logarithm on a log axis. *)
+scaled(a, v) = if a.Scale == "log" math.Log(v) / math.Log(10.0) else v * 1.0 end
+
+(** A value on an axis from its place on the scale. *)
+unscaled(a, t) = if a.Scale == "log" 10.0 ^ t else t end
+
+(** The pixel of a value along an axis of a scene, from its range low to high. *)
+pixelAlong(a, low, high, v) = a.From + (scaled(a, v) - scaled(a, low)) / (scaled(a, high) - scaled(a, low)) * (a.To - a.From)
+
+defn placeOf(axes, x, y)
+  (** The place of the values of a point in the pixels of a graph, [px, py], by its axes, or missing when it is outside the plot: on a log axis a value
+      at 0 or below has none. *)
+  if dict.Has("Center", axes)
+    a = axes.Y
+    r = a.From + (y - a.Low) / (a.High - a.Low) * (a.To - a.From)
+    if not (r - r == 0.0) or r < -0.5 or r > a.To + 0.5
+      return missing
+    end
+    t = x * math.Pi / 180.0
+    return [axes.Center[1] + r * math.Sin(t), axes.Center[2] - r * math.Cos(t)]
+  end
+  if (axes.X.Scale == "log" and x <= 0) or (axes.Y.Scale == "log" and y <= 0)
+    return missing
+  end
+  px = pixelAlong(axes.X, axes.X.Low, axes.X.High, x)
+  py = pixelAlong(axes.Y, axes.Y.Low, axes.Y.High, y)
+  inside = (v, a) -> v - v == 0.0 and v >= list.Min(a.From, a.To) - 0.5 and v <= list.Max(a.From, a.To) + 0.5
+  if inside(px, axes.X) and inside(py, axes.Y) [px, py] else missing end
+end
+
+defn plotBox(axes, scene)
+  (** The rectangle of the plot of a scene, [x, y, width, height] in its pixels, from its axes, or the whole scene without them. *)
+  if value.IsMissing(axes)
+    return [0.0, 0.0, scene.Width * 1.0, scene.Height * 1.0]
+  end
+  if dict.Has("Center", axes)
+    return [axes.Center[1] - axes.Y.To, axes.Center[2] - axes.Y.To, 2.0 * axes.Y.To, 2.0 * axes.Y.To]
+  end
+  [list.Min(axes.X.From, axes.X.To), list.Min(axes.Y.From, axes.Y.To), math.Abs(axes.X.To - axes.X.From), math.Abs(axes.Y.To - axes.Y.From)]
+end
+
+defn shownPoints(g)
+  (** The points a 2D graph shows the values of, each {Q, Place, Keyed}, its point, its place in the pixels of the graph and whether the keys chose it:
+      each point pinned, the point of the keys and the point under the mouse, once each, but the one that the mark of a row of a table rings, whose values
+      the session drew. *)
+  axes = dict.GetOr("Axes", missing, g)
+  if value.IsMissing(axes) or not dict.GetOr("Pointed", false, g)
+    return []
+  end
+  out = []
+  seen = []
+  spot = dict.GetOr("Spot", missing, g)
+  hover = dict.GetOr("Hover", missing, g)
+  n = value.Len(g.Points)
+  ones = list.Concat([{Q: q, Keyed: false} for q in dict.GetOr("Pins", [], g)],
+    [{Q: pointOf(g, w.Layer, w.J), Keyed: w.Keyed} for w in [dict.Merge(spotted(g, spot), {Keyed: true}), dict.Merge(dict.GetOr("Hover", {}, g), {Keyed: false})] if dict.Has("J", w) and w.Layer <= n and w.J <= value.Len(g.Points[w.Layer].At)])
+  mark = dict.GetOr("Mark", missing, g)
+  for one in ones
+    q = one.Q
+    id = [q.Layer, q.At]
+    ringed = value.IsSome(mark) and q.Count == mark[2] and q.At == mark[1]
+    if not (id in seen) and not ringed
+      place = placeOf(axes, q.X, q.Y)
+      if value.IsSome(place)
+        out = list.Append({Q: q, Place: place, Keyed: one.Keyed}, out)
+      end
+    end
+    (* The point of the keys that is pinned shows once, in the color of the keys. *)
+    if one.Keyed and id in seen
+      out = [if value.Equal([o.Q.Layer, o.Q.At], id) dict.Put("Keyed", true, o) else o end for o in out]
+    end
+    seen = list.Append(id, seen)
+  end
+  out
+end
+
+defn spotted(g, spot)
+  (** The point of the keys of a graph, {Layer, J} in its Points, from its layer there and its position, or {} when it has none. *)
+  if value.IsMissing(spot) or spot.Layer > value.Len(g.Points) or value.Len(g.Points[spot.Layer].At) == 0
+    return {}
+  end
+  {Layer: spot.Layer, J: placeNear(g.Points[spot.Layer].At, spot.At)}
+end
+
+defn placeNear(ats, at)
+  (** The place in increasing positions of the one nearest a position, by halves.
+
+        placeNear([1, 4, 9], 5) --> 2 *)
+  low = 1
+  high = value.Len(ats)
+  while high - low > 1
+    mid = math.Div(low + high, 2)
+    if ats[mid] <= at
+      low = mid
+    else
+      high = mid
+    end
+  end
+  if math.Abs(ats[high] - at) < math.Abs(ats[low] - at) high else low end
+end
+
+defn GraphOverlay(graph, focused, top, cell, th)
+  (** What draws over a 2D graph, top pixels down its block, in the commands of the frame and not as shapes of the graph, so that sdl draws the graph
+      from what it made: at each point whose values it shows, see shownPoints, a thin cross, and its values in a box beside it, in the code font, inside
+      the plot, the box of the point of the keys edged in the accent color; and a ring in that color round the graph while it has the keys.
+
+        value.Len(GraphOverlay({Scene: {Width: 300, Height: 200}}, true, 4, {Width: 8, Height: 19}, {Ink: 1, Code: 2, Accent: 3})) --> 8 *)
+  left = 2 * cell.Width
+  out = []
+  box = plotBox(dict.GetOr("Axes", missing, graph), graph.Scene)
+  for one in shownPoints(graph)
+    px = math.Div(math.Floor(one.Place[1]), 1)
+    py = math.Div(math.Floor(one.Place[2]), 1)
+    words = pointWords(graph, one.Q)
+    wide = value.Len(words) * cell.Width + 8
+    high = cell.Height + 2
+    bx = if px + 10 + wide <= box[1] + box[3] px + 10 else list.Max(math.Div(math.Floor(box[1]), 1), px - 10 - wide) end
+    by = if py - 10 - high >= box[2] py - 10 - high else list.Min(math.Div(math.Floor(box[2] + box[4]), 1) - high, py + 10) end
+    edge = if one.Keyed th.Accent else th.Ink end
+    out = list.Concat(out, [{Kind: "rect", X: left + px - 6, Y: top + py, Width: 13, Height: 1, Color: edge}, {Kind: "rect", X: left + px, Y: top + py - 6, Width: 1, Height: 13, Color: edge},
+      {Kind: "box", X: left + bx, Y: top + by, Width: wide, Height: high, Color: th.Code, Radius: 0, Alpha: 235}])
+    out = list.Concat(out, edged(left + bx, top + by, wide, high, edge))
+    out = list.Append({Kind: "text", X: left + bx + 4, Y: top + by + 1, Text: words, Color: th.Ink, Font: "code"}, out)
+  end
+  if not focused
+    return out
+  end
+  wide = graph.Scene.Width + 6
+  high = graph.Scene.Height + 6
+  list.Concat(out, list.Concat(edged(left - 3, top - 3, wide, high, th.Accent), edged(left - 2, top - 2, wide - 2, high - 2, th.Accent)))
+end
+
+(* -- The mouse. *)
+
+defn graphHover(k, key, point, state)
+  (** The mouse over the 2D graph of a key in buffer k, at a point of its block, or gone from it, missing: the point nearest, within 12 pixels, shows
+      its cross and its values; the first time, the graph asks its points. A move that shows the same point changes nothing. *)
+  x = flatOf(k, key, state)
+  if value.IsMissing(x)
+    return state
+  end
+  g = x.Graph
+  if value.IsMissing(point)
+    if value.IsMissing(dict.GetOr("Hover", missing, g))
+      return state
+    end
+    g.Hover = missing
+    return rebuilt(k, x, g, state)
+  end
+  if not dict.GetOr("Live", false, g)
+    g.Live = true
+    return asksView(k, rebuilt(k, x, g, state))
+  end
+  if not dict.GetOr("Pointed", false, g)
+    return state
+  end
+  near = nearestAt(g, point.X - 2 * state.Cell.Width, point.Y - dict.GetOr("Under", 0, x))
+  if value.Equal(near, dict.GetOr("Hover", missing, g))
+    return state
+  end
+  g.Hover = near
+  rebuilt(k, x, g, state)
+end
+
+defn graphMouse(k, key, action, point, state)
+  (** A press, a move or a release of the mouse on the block of the 2D graph of a key in buffer k. A press on the graph gives it the keys; a release
+      where it was pressed is a click: on a point, within 12 pixels, it pins its values, or unpins them, makes it the point of the keys and chooses its
+      row in a table of the cell of as many rows. A drag moves the view, once the graph had the keys before the press, but a polar graph's. A press on
+      the lines above the graph gives missing: it goes to the text. *)
+  x = flatOf(k, key, state)
+  if value.IsMissing(x)
+    return if action == "down" missing else state end
+  end
+  g = x.Graph
+  px = point.X - 2 * state.Cell.Width
+  py = point.Y - dict.GetOr("Under", 0, x)
+  if action == "down"
+    if px < 0 or py < 0 or px >= g.Scene.Width or py >= g.Scene.Height
+      return missing
+    end
+    had = graphFocused(k, g, state)
+    s = if had state else graphFocusedOn(k, key, state) end
+    y = flatOf(k, key, s)
+    h = y.Graph
+    pans = had and pannable(h)
+    h.Press = {X: px, Y: py, Moved: false, Pans: pans, From: if pans limitsOf(h) else missing end}
+    return rebuilt(k, y, h, s)
+  end
+  press = dict.GetOr("Press", missing, g)
+  if value.IsMissing(press)
+    return state
+  end
+  if action == "move"
+    if not press.Moved and math.Abs(px - press.X) <= 4 and math.Abs(py - press.Y) <= 4
+      return state
+    end
+    g.Press = dict.Put("Moved", true, press)
+    if press.Pans
+      g.Zoom = panned(g, press.From, px - press.X, py - press.Y)
+      return asksView(k, rebuilt(k, x, g, state))
+    end
+    return rebuilt(k, x, g, state)
+  end
+  g.Press = missing
+  s = rebuilt(k, x, g, state)
+  if press.Moved s else clicked(k, key, px, py, s) end
+end
+
+defn clicked(k, key, px, py, state)
+  (** A click on the 2D graph of a key in buffer k: the point under it, within 12 pixels, pinned, or unpinned when it was, and the point of the keys,
+      once its values came; and its row chosen in a table of its cell, as soon as the places of its points came, as the scene of a mark gives them. *)
+  x = flatOf(k, key, state)
+  g = x.Graph
+  near = nearestAt(g, px, py)
+  if value.IsMissing(near)
+    return state
+  end
+  p = g.Points[near.Layer]
+  at = p.At[near.J]
+  mark = dict.GetOr("Mark", missing, g)
+  count = dict.GetOr("Count", if value.IsMissing(mark) 0 - 1 else mark[2] end, p)
+  s = state
+  if dict.GetOr("Pointed", false, g)
+    g.Pins = pinToggled(pointOf(g, near.Layer, near.J), dict.GetOr("Pins", [], g))
+    g.Spot = {Layer: near.Layer, At: at}
+    s = rebuilt(k, x, g, state)
+  end
+  rowOfPoint(k, x.Cell, count, at, s)
+end
+
+defn pinToggled(q, pins)
+  (** The pins with a point, or without it when it was one: at most MostPins(), the first pinned going first. *)
+  if list.Any([p.Layer == q.Layer and p.At == q.At for p in pins])
+    return [p for p in pins if not (p.Layer == q.Layer and p.At == q.At)]
+  end
+  list.TakeLast(MostPins(), list.Append(q, pins))
+end
+
+defn graphWheel(k, key, amount, point, state)
+  (** The wheel over the 2D graph of a key in buffer k: while the graph has the keys, it zooms the view about the mouse, a notch up 20 % nearer; else,
+      and over a graph that can't zoom, as a grid of graphs, it gives missing, and the wheel moves the screen. Each notch changes the ranges wanted, and
+      their scene is asked once the one before came. *)
+  x = flatOf(k, key, state)
+  if value.IsMissing(x) or not graphFocused(k, x.Graph, state)
+    return missing
+  end
+  g = x.Graph
+  if not dict.GetOr("Pointed", false, g)
+    (* The axes are asked: the wheel waits for them, and doesn't move the screen under a graph that has the keys. *)
+    return state
+  end
+  if value.IsMissing(dict.GetOr("Axes", missing, g))
+    return missing
+  end
+  zoom = zoomedAt(g, 0.8 ^ list.Max(-5.0, list.Min(5.0, amount)), point.X - 2 * state.Cell.Width, point.Y - dict.GetOr("Under", 0, x))
+  if value.Equal(zoom, dict.GetOr("Zoom", missing, g))
+    return state
+  end
+  g.Zoom = zoom
+  asksView(k, rebuilt(k, x, g, state))
+end
+
+(* -- Zoom and move: the ranges of the axes wanted, {X, Y}, each [low, high] or missing for its own, computed on the scale of each axis, logarithms on a
+   log axis, from the pixels of the scene shown. *)
+
+(** Can a drag move the view of a graph: one with axes that isn't polar? *)
+pannable(g) = value.IsSome(dict.GetOr("Axes", missing, g)) and not dict.Has("Center", g.Axes)
+
+(** The ranges of the axes of a scene, {X, Y}, as Axes gives them: the ones a zoom starts from. *)
+limitsIn(axes) = if dict.Has("Center", axes) {X: missing, Y: [axes.Y.Low, axes.Y.High]} else {X: [axes.X.Low, axes.X.High], Y: [axes.Y.Low, axes.Y.High]} end
+
+(** The ranges a graph wants, {X, Y}: those of its last zoom, or of the scene it shows. *)
+limitsOf(g) = if value.IsSome(dict.GetOr("Zoom", missing, g)) dict.Merge(limitsIn(g.Axes), dict.Dict([{Key: k, Value: g.Zoom[k]} for k in dict.Keys(g.Zoom) if value.IsSome(g.Zoom[k])])) else limitsIn(g.Axes) end
+
+defn ranged(a, lim, own, t0, t1)
+  (** A range of an axis from its new ends on its scale, [low, high], or lim when it would zoom past a millionth of the axis's own range or a million
+      times it, or isn't finite: the view stays within what a graph can draw. *)
+  span = math.Abs(scaled(a, own[2]) - scaled(a, own[1]))
+  w = math.Abs(t1 - t0)
+  low = unscaled(a, t0)
+  high = unscaled(a, t1)
+  if not (w - w == 0.0 and low - low == 0.0 and high - high == 0.0) or w < span * 1e-6 or w > span * 1e6 or low == high
+    return lim
+  end
+  [low, high]
+end
+
+defn zoomedAlong(a, lim, own, p, f)
+  (** The range lim of an axis zoomed by a factor f about pixel p along it: the value under p stays there. *)
+  t0 = scaled(a, lim[1])
+  t1 = scaled(a, lim[2])
+  tp = t0 + (p - a.From) / (a.To - a.From) * (t1 - t0)
+  ranged(a, lim, own, tp - (tp - t0) * f, tp + (t1 - tp) * f)
+end
+
+defn movedAlong(a, lim, own, d)
+  (** The range lim of an axis moved by d pixels along it, as a drag moves what is under the mouse. *)
+  t0 = scaled(a, lim[1])
+  t1 = scaled(a, lim[2])
+  shift = d * (t1 - t0) / (a.To - a.From)
+  ranged(a, lim, own, t0 - shift, t1 - shift)
+end
+
+defn zoomedAt(g, f, px, py)
+  (** The ranges of a graph zoomed by a factor f about a place of its pixels: each range shrinks to f of itself, the value under the place staying under
+      it; an axis of the names of bars keeps its own. A polar graph zooms the distance from its center alone. *)
+  a = g.Axes
+  lim = limitsOf(g)
+  own = dict.GetOr("Own", limitsIn(a), g)
+  if dict.Has("Center", a)
+    return {X: missing, Y: zoomedAlong(a.Y, lim.Y, own.Y, math.Sqrt((px - a.Center[1]) * (px - a.Center[1]) + (py - a.Center[2]) * (py - a.Center[2])), f)}
+  end
+  {X: if a.X.Scale == "names" missing else zoomedAlong(a.X, lim.X, own.X, px, f) end, Y: if a.Y.Scale == "names" missing else zoomedAlong(a.Y, lim.Y, own.Y, py, f) end}
+end
+
+defn panned(g, from, dx, dy)
+  (** The ranges of a graph moved by a drag of dx and dy pixels from the ranges it had at the press, from. *)
+  a = g.Axes
+  own = dict.GetOr("Own", limitsIn(a), g)
+  {X: if a.X.Scale == "names" missing else movedAlong(a.X, from.X, own.X, dx) end, Y: if a.Y.Scale == "names" missing else movedAlong(a.Y, from.Y, own.Y, dy) end}
+end
+
+(* -- The keys: C-c e f, Tab or a click gives them; the arrows go from point to point, Left and Right along a layer, Up and Down to the layer before and
+   after; Space pins; 0 goes back to its own ranges; M-w copies the values; C-c e s saves the graph as SVG; Escape unpins all, or leaves; C-g leaves. *)
+
+(** Does the 2D graph of a block in buffer k have the keys? *)
+graphFocused(k, graph, state) = isFlat(graph) and value.IsSome(commands.FocusOf(state)) and value.Equal(dict.GetOr("Graph", missing, commands.FocusOf(state)), graph.Key) and dict.GetOr("Buffer", 0, commands.FocusOf(state)) == k
+
+(** The rows of the band while a 2D graph has the keys. *)
+GraphHints() = [{Key: "← →", Name: "a point", Group: false}, {Key: "↑ ↓", Name: "a layer", Group: false}, {Key: "Space", Name: "pin, unpin", Group: false},
+  {Key: "wheel, drag", Name: "zoom, move", Group: false}, {Key: "0", Name: "its own ranges", Group: false}, {Key: "M-w", Name: "copy x, y", Group: false},
+  {Key: "C-c e s", Name: "save as SVG", Group: false}, {Key: "Escape", Name: "unpin, leave", Group: false}, {Key: "C-g", Name: "leave", Group: false}]
+
+(** The keys of a 2D graph that has them. *)
+GraphKeys() = {"right": graphStep(1, 0), "left": graphStep(-1, 0), "down": graphStep(0, 1), "up": graphStep(0, -1), "space": onGraph(graphPinned), "0": onGraph(graphOwn),
+  "M-w": onGraph(graphCopied), "C-c e s": SaveGraph, "tab": st -> controlTabbed(1, st), "S-tab": st -> controlTabbed(-1, st), "escape": onGraph(graphEscaped),
+  "C-g": commands.Unfocused}
+
+(** The command that does f to the 2D graph that has the keys: f of its buffer, its block and the state. *)
+onGraph(f) = state -> graphKeyed(f, state)
+
+defn graphKeyed(f, state)
+  (** The 2D graph that has the keys changed by f, or the keys left when it is no longer there. *)
+  focus = commands.FocusOf(state)
+  x = flatOf(focus.Buffer, focus.Graph, state)
+  if value.IsMissing(x) commands.Unfocused(state) else f(focus.Buffer, x, state) end
+end
+
+(** The command that moves the point of the keys some points along its layer and some layers across. *)
+graphStep(along, across) = onGraph((k, x, st) -> spotStepped(k, x, along, across, st))
+
+defn spotStepped(k, x, along, across, state)
+  (** The point of the keys of the graph of block x moved: along its layer, within it, or to the layer before or after that has points, at the position
+      nearest; the first point of the first such layer when none was chosen. Its row is chosen in a table of the cell of as many rows. *)
+  g = x.Graph
+  if not dict.GetOr("Pointed", false, g)
+    return commands.Say("The points of this graph are on their way.", state)
+  end
+  layers = [i for i in 1..value.Len(g.Points) if value.Len(g.Points[i].At) > 0]
+  if value.Len(layers) == 0
+    return commands.Say("This graph has no point of a line, points or texts in sight.", state)
+  end
+  at = spotted(g, dict.GetOr("Spot", missing, g))
+  i = if dict.Has("J", at) at.Layer else layers[1] end
+  j = if dict.Has("J", at) at.J else 1 end
+  if dict.Has("J", at) and across != 0
+    others = if across > 0 [l for l in layers if l > i] else list.Reverse([l for l in layers if l < i]) end
+    if value.Len(others) > 0
+      next = others[1]
+      j = placeNear(g.Points[next].At, g.Points[i].At[j])
+      i = next
+    end
+  else if dict.Has("J", at)
+    j = list.Max(1, list.Min(value.Len(g.Points[i].At), j + along))
+  end
+  q = pointOf(g, i, j)
+  g.Spot = {Layer: i, At: q.At}
+  rowOfPoint(k, x.Cell, q.Count, q.At, rebuilt(k, x, g, state))
+end
+
+defn graphPinned(k, x, state)
+  (** Space: the point of the keys pinned, or unpinned when it was. *)
+  g = x.Graph
+  at = if dict.GetOr("Pointed", false, g) spotted(g, dict.GetOr("Spot", missing, g)) else {} end
+  if not dict.Has("J", at)
+    return commands.Say("The arrows choose a point first.", state)
+  end
+  g.Pins = pinToggled(pointOf(g, at.Layer, at.J), dict.GetOr("Pins", [], g))
+  rebuilt(k, x, g, state)
+end
+
+defn graphOwn(k, x, state)
+  (** 0: the graph back to its own ranges. *)
+  g = x.Graph
+  g.Zoom = missing
+  asksView(k, rebuilt(k, x, g, state))
+end
+
+defn graphCopied(k, x, state)
+  (** M-w: the values of the points pinned, one a line, x and y apart by a tab, in the order they were pinned; without one, those of the point of the
+      keys. Numbers alone, as Cesia writes them. *)
+  g = x.Graph
+  at = if dict.GetOr("Pointed", false, g) spotted(g, dict.GetOr("Spot", missing, g)) else {} end
+  pins = dict.GetOr("Pins", [], g)
+  qs = if value.Len(pins) > 0 pins else if dict.Has("J", at) [pointOf(g, at.Layer, at.J)] else [] end
+  if value.Len(qs) == 0
+    return commands.Say("No point to copy: a click or Space pins one, the arrows choose one.", state)
+  end
+  words = str.Join("\n", ["$(numberText(q.X))\t$(numberText(q.Y))" for q in qs])
+  commands.Say(if value.Len(qs) == 1 "Copied x and y." else "Copied $(value.Len(qs)) points." end, commands.ToClipboard(words, state))
+end
+
+(** A value as the copy writes it: a number as Cesia writes it, and nothing for anything else, which the check of the points never lets through. *)
+numberText(v) = if value.IsNumber(v) "$v" else "" end
+
+defn graphEscaped(k, x, state)
+  (** Escape: the pins taken away, or, with none, the keys left. *)
+  g = x.Graph
+  if value.Len(dict.GetOr("Pins", [], g)) == 0
+    return commands.Unfocused(state)
+  end
+  g.Pins = []
+  commands.Say("Unpinned.", rebuilt(k, x, g, state))
+end
+
+defn graphFocusedOn(k, key, state)
+  (** The state with the keys on the 2D graph of a key in buffer k, drawn with its ring, its points asked if they never were, and the control that had
+      them without. *)
+  s = commands.Unfocused(state)
+  s.Focus = {Keys: GraphKeys(), Hints: GraphHints(), Leave: st -> graphDrawn(k, key, st), Buffer: k, Graph: key}
+  x = flatOf(k, key, s)
+  if value.IsMissing(x)
+    return s
+  end
+  g = x.Graph
+  g.Live = true
+  asksView(k, rebuilt(k, x, g, s))
+end
+
+defn graphDrawn(k, key, state)
+  (** The state with the block of the 2D graph of a key in buffer k drawn again, with its ring or without. *)
+  x = flatOf(k, key, state)
+  if value.IsMissing(x) state else rebuilt(k, x, x.Graph, state) end
+end
+
+defn controlTabbed(by, state)
+  (** Tab and S-Tab: the keys to the next table or 2D graph of the cell, or the one before, round. *)
+  f = commands.FocusOf(state)
+  k = f.Buffer
+  x = if dict.Has("Table", f) tableBlock(k, f.Table, state) else flatOf(k, f.Graph, state) end
+  if value.IsMissing(x)
+    return commands.Unfocused(state)
+  end
+  all = [b for b in partsOf(k, x.Cell, state) if value.IsSome(dict.GetOr("Table", missing, b)) or isFlat(dict.GetOr("Graph", missing, b))]
+  at = orFirst(list.FindFirst(j -> dict.GetOr("Part", 1, all[j]) == dict.GetOr("Part", 1, x), 1..value.Len(all)))
+  next = all[math.Mod(at - 1 + by + value.Len(all), value.Len(all)) + 1]
+  if value.IsSome(dict.GetOr("Table", missing, next)) tableFocusedOn(k, next.Table, state) else graphFocusedOn(k, next.Graph.Key, state) end
+end
+
+(* -- C-c e s: the graph as SVG, beside the file. *)
+
+(** The most bytes of an SVG that C-c e s writes. *)
+MostSvg() = 64000000
+
+defn SvgPath(path, title, i, nth)
+  (** The path of the SVG of graph nth of cell i of a file of cells, beside it: the file's name, then the title of the cell in small letters and digits,
+      apart by -, the accents of Latin letters taken off, or cell and its number for a cell without one; -2, -3 after it for the graphs after the
+      first. Nothing that a session sends is in it.
+
+        SvgPath("notes/sun.ce", "Day", 2, 1) --> "notes/sun-day.svg"
+        SvgPath("sun.ce", "Élévation du soleil", 3, 2) --> "sun-elevation-du-soleil-2.svg"
+        SvgPath("sun.ce", "../..", 4, 1) --> "sun-cell4.svg" *)
+  words = slug(if value.IsText(title) title else "" end)
+  name = if words == "" "cell$i" else words end
+  "$(str.Slice(1, value.Len(path) - 3, path))-$name$(if nth > 1 "-$nth" else "" end).svg"
+end
+
+(** The Latin letters with accents, and the letters they are written with in a name. *)
+plainLetters = {"à": "a", "á": "a", "â": "a", "ã": "a", "ä": "a", "å": "a", "æ": "ae", "ç": "c", "è": "e", "é": "e", "ê": "e", "ë": "e", "ì": "i", "í": "i",
+  "î": "i", "ï": "i", "ñ": "n", "ò": "o", "ó": "o", "ô": "o", "õ": "o", "ö": "o", "ø": "o", "œ": "oe", "ù": "u", "ú": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y"}
+
+defn slug(title)
+  (** A title as a name of a file: its letters a to z, without accents, in small letters, and its digits, the others as one -, none at the ends, at most
+      40 characters. *)
+  out = ""
+  gap = false
+  for c in str.Chars(str.Fold(title))
+    plain = dict.GetOr(c, c, plainLetters)
+    b = if str.ByteLength(plain) >= 1 str.Byte(1, plain) else 0 end
+    ok = str.ByteLength(plain) <= 2 and list.All([(x >= 97 and x <= 122) or (x >= 48 and x <= 57) for x in str.Bytes(plain)])
+    if ok and b > 0
+      out = if gap and out != "" "$out-$plain" else "$out$plain" end
+      gap = false
+    else
+      gap = true
+    end
+    if value.Len(out) >= 40
+      return str.Slice(1, 40, out)
+    end
+  end
+  out
+end
+
+defn SaveGraph(state)
+  (** C-c e s while a 2D graph has the keys: its SVG, as plot.Save writes it, beside the file of the cells, see SvgPath; a file or a link there already is
+      asked about first, as the page of C-c e h is. The SVG is the graph as its code draws it, at its own size and ranges, as the code would save it,
+      which a zoom doesn't change. *)
+  f = commands.FocusOf(state)
+  k = f.Buffer
+  x = flatOf(k, f.Graph, state)
+  if value.IsMissing(x)
+    return commands.Say("No graph has the keys.", commands.Unfocused(state))
+  end
+  b = state.Buffers[k]
+  r = runOf(b)
+  flats = [y for y in partsOf(k, x.Cell, state) if isFlat(dict.GetOr("Graph", missing, y))]
+  nth = orFirst(list.FindFirst(j -> value.Equal(flats[j].Graph.Key, f.Graph), 1..value.Len(flats)))
+  title = if x.Cell <= value.Len(r.Cells) dict.GetOr("Title", "", r.Cells[x.Cell]) else "" end
+  path = SvgPath(b.Path, title, x.Cell, nth)
+  key = f.Graph
+  if sys.Exists(path) or result.IsOk(sys.ReadLink(path))
+    return commands.Confirm("$(list.Last(str.Split("/", path))) exists. Replace it? (y or n) ", (yes, s) -> if yes == "y" svgAsked(k, key, path, s) else commands.Say("Nothing done.", s) end, state)
+  end
+  svgAsked(k, key, path, state)
+end
+
+defn svgAsked(k, key, path, state)
+  (** The SVG of the graph of a key asked of the session of buffer k, for a path: a tick asks it once the session is free, and writes it. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Session)
+    return commands.Say("No session holds this graph: C-c e e runs its cell again.", state)
+  end
+  if value.IsSome(dict.GetOr("Saving", missing, r))
+    return commands.Say("A graph is being saved.", state)
+  end
+  r.Saving = {Key: key, Path: path}
+  commands.Say("Saving $(list.Last(str.Split("/", path)))…", withRun(k, r, state))
+end
+
+defn svgSaved(k, state)
+  (** The state at a tick for buffer k: the SVG of a graph asked of the session once it is free, then written beside the file once it came, as the page
+      is written, and said. An SVG that is no text starting <svg, or past MostSvg() bytes, isn't written. *)
+  r = runOf(state.Buffers[k])
+  c = if value.IsMissing(r) missing else dict.GetOr("Saving", missing, r) end
+  if value.IsMissing(c)
+    return state
+  end
+  if not dict.Has("Task", c)
+    if value.IsMissing(r.Session) or value.IsSome(r.Task) or asking(r)
+      return state
+    end
+    one = r.Session
+    key = c.Key
+    c.Task = fiber.Spawn(() -> nb.Svg(one, key))
+    r.Saving = c
+    sys.Sleep(0)
+    return withRun(k, r, state)
+  end
+  got = fiber.Wait(c.Task, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  r.Saving = missing
+  s = withRun(k, r, state)
+  svg = if result.IsOk(got) got.Value else got end
+  if result.IsErr(svg)
+    return commands.Say("The graph isn't saved: $(svg.Error.Message)", s)
+  end
+  if not (value.IsText(svg.Value) and str.StartsWith("<svg", svg.Value) and str.ByteLength(svg.Value) <= MostSvg())
+    return commands.Say("The graph isn't saved: the session sent no SVG of at most $(MostSvg()) bytes.", s)
+  end
+  wrote = files.Replace(c.Path, svg.Value)
+  commands.Say(if result.IsErr(wrote) and wrote.Error.Kind != "saved" "Can't write $(c.Path): $(wrote.Error.Message)" else "Wrote $(c.Path)." end, s)
 end
 
 (* -- C-c e c: the whole table as CSV, its rows asked of the session 1000 at a time, sorted and filtered as it shows them. *)
@@ -3608,7 +4386,7 @@ defn tick(state)
   s = state
   for k in 1..value.Len(s.Buffers)
     if value.IsSome(runOf(s.Buffers[k]))
-      s = copying(k, marked(k, paged(k, turnLanded(k, played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, varied(k, s))))))))))))
+      s = svgSaved(k, copying(k, marked(k, paged(k, turnLanded(k, played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, varied(k, s)))))))))))))
     end
     if value.IsSome(replOf(s.Buffers[k]))
       s = answered(k, s)
@@ -3653,13 +4431,14 @@ end
 Moving(state) = list.Any([busy(b) or tableWaits(b) for b in state.Buffers]) or value.IsSome(stale(state.Buffers[state.Current], state)) or list.Any([playing(k, state) or aiming(k, state) for k in 1..value.Len(state.Buffers)])
 
 defn tableWaits(b)
-  (** Does a buffer with a session have a table that waits for rows, a graph that waits for its mark, or a copy that waits to start? *)
+  (** Does a buffer with a session have a table that waits for rows, a graph that waits for its mark, its ranges or its points, or a copy or an SVG that
+      waits to start? *)
   r = runOf(b)
   if value.IsMissing(r) or value.IsMissing(r.Session)
     return false
   end
   value.IsSome(dict.GetOr("Copying", missing, r)) or list.Any([(value.IsSome(dict.GetOr("Table", missing, x)) and wantsRows(x.Table)) or
-    (value.IsSome(dict.GetOr("Graph", missing, x)) and dict.Has("Wants", x.Graph) and not value.Equal(x.Graph.Wants, dict.GetOr("Mark", missing, x.Graph))) for x in text.BlocksOf(b)])
+    (dict.GetOr("Cell", 0, x) > 0 and isFlat(dict.GetOr("Graph", missing, x)) and wantsView(x.Graph)) for x in text.BlocksOf(b)]) or value.IsSome(dict.GetOr("Saving", missing, r))
 end
 
 defn Hooked(config)

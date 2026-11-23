@@ -117,7 +117,7 @@ isLatestPending() = press("right", press("right", focused())).Buffers[1].CellRun
 isTabRound() = commands.FocusOf(press("tab", focused())).Slider == "n" and commands.FocusOf(press("tab", press("tab", focused()))).Slider == "rho"
 isIntSlider() = line(press("up", press("tab", focused())), 5) == "n = cells.Slider(4, 0, 10)"
 isCgLeaves() = value.IsMissing(commands.FocusOf(press("C-g", focused()))) and value.Len(rho(press("C-g", focused())).Draw(1000, look)) == value.Len(rho(opened()).Draw(1000, look))
-isNoControlHere() = notebook.FocusControl(opened()).Message == "This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, a 3D graph of plot.Surface or plot.Line3, or a table."
+isNoControlHere() = notebook.FocusControl(opened()).Message == "This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, a 3D graph of plot.Surface or plot.Line3, a table or a graph."
 
 defn atSlider(name, s)
   (** The block of a slider on the screen with a point inside it, as the mouse finds it. *)
@@ -744,10 +744,164 @@ isMarkLands() = value.Equal(graphOf(markSent(tabled(dayValue), layer)).Graph.Mar
 isNoLayerNotLinked() = value.IsMissing(dict.GetOr("Mark", missing, graphOf(markSent(tabled(dayValue), [])).Graph)) and value.Equal(graphOf(markSent(tabled(dayValue), [])).Graph.Unlinked, [4])
 isBadPointsRefused() = value.IsMissing(dict.GetOr("Mark", missing, graphOf(markSent(tabled(dayValue), [{At: [1, 2], Xs: [1.0], Ys: [1.0, 2.0]}])).Graph)) and
   value.IsSome(notebook.PointsFault([{At: [0], Xs: [1.0], Ys: [1.0]}]))
+(** A click at a point of a block: its press, then its release. *)
+clickAt(point, x, s) = x.Mouse("up", point, x.Mouse("down", point, s))
 defn isClickPointChooses()
   s = markSent(tabled(dayValue), layer)
   g = graphOf(s)
-  t = g.Mouse("down", {X: 2 * cell.Width + 201, Y: g.Under + 99, Width: 1000}, s)
-  far = g.Mouse("down", {X: 2 * cell.Width + 150, Y: g.Under + 150, Width: 1000}, s)
+  t = clickAt({X: 2 * cell.Width + 201, Y: g.Under + 99, Width: 1000}, g, s)
+  far = clickAt({X: 2 * cell.Width + 150, Y: g.Under + 150, Width: 1000}, g, s)
   tableOf(t).Table.Selected == 3 and value.Equal(graphOf(t).Graph.Wants, [3, 4]) and tableOf(far).Table.Selected == 2
 end
+
+(* 2D graphs with the mouse and the keys, without a session: a graph of key 8 whose points and axes the session sent, as for the mouse; its session
+   busy with a cell, so that nothing else is asked. The line a has four points, the points b two; the axes put x from 0 to 5 on 0 to 500 pixels and y
+   from 0 to 35 on 350 to 0. *)
+graphSource = "use std/plot\n\n(* %% Wave *)\nwave\n"
+wavePoints = [{Layer: 1, Kind: "line", Label: "a", Count: 4, At: [1, 2, 3, 4], Xs: [100.0, 200.0, 300.0, 400.0], Ys: [250.0, 150.0, 100.0, 50.0], Values: {X: [1.0, 2.0, 3.0, 4.0], Y: [10.0, 20.0, 25.0, 30.0]}},
+  {Layer: 2, Kind: "points", Label: "b", Count: 2, At: [1, 2], Xs: [100.0, 300.0], Ys: [200.0, 200.0], Values: {X: [1.0, 3.0], Y: [15.0, 15.0]}}]
+waveAxes = {X: {Scale: "linear", Low: 0.0, High: 5.0, From: 0.0, To: 500.0}, Y: {Scale: "linear", Low: 0.0, High: 35.0, From: 350.0, To: 0.0}}
+
+defn pointsSent(state, answer, live = true)
+  (** The window once the session sent this answer to the question of the points of the graph of key 8 and a tick took it; then busy again with a
+      cell, so that nothing more is asked. *)
+  s = state
+  r = s.Buffers[1].CellRun
+  r.Task = missing
+  r.Marking = {Task: fiber.Spawn(() -> answer), Cell: 2, Key: 8, Mark: missing, Zoom: missing, Points: live, Width: notebook.GraphWidth(s)}
+  s.Buffers[1].CellRun = r
+  sys.Sleep(0.001)
+  t = ticked(s)
+  r = t.Buffers[1].CellRun
+  r.Task = "a cell runs"
+  t.Buffers[1].CellRun = r
+  t
+end
+
+defn plain(live = true)
+  (** The window once cell 2 showed the graph of key 8, as a run gives it, with no point yet; live when the mouse came over it. *)
+  s = notebook.Hooked({}).Idle(view.Start([text.Of(graphSource, "wave.ce")], look, cell, 1280, 720))
+  r = s.Buffers[1].CellRun
+  r.Session = "a session"
+  r.Task = "a cell runs"
+  s.Buffers[1].CellRun = r
+  g = dict.Merge(notebook.Prepared({Width: 500, Height: 350, Items: [], Dropped: 0}, "."), {Key: 8, Asked: notebook.GraphWidth(s), Live: live})
+  s.Buffers[1] = text.WithBlocks([dict.Merge(notebook.Block(4, [], cell, graph = g), {Cell: 2, Base: [], Inputs: {}, Status: missing, Part: 1})], s.Buffers[1])
+  s
+end
+
+(** The window once the points of the graph came. *)
+graphed() = pointsSent(plain(), result.Ok({Width: 500, Height: 350, Items: [], Dropped: 0, Points: wavePoints, Axes: waveAxes}))
+(** The block of the graph, and its graph. *)
+waveOf(s) = list.FindFirst(x -> value.IsSome(dict.GetOr("Graph", missing, x)), text.BlocksOf(s.Buffers[1]))
+waveGraph(s) = waveOf(s).Graph
+(** A place of the scene of the graph as a point of its block. *)
+inWave(x, y, s) = {X: 2 * cell.Width + x, Y: waveOf(s).Under + y, Width: 1000}
+(** The mouse over a place of the graph; a click there; the wheel there. *)
+hoverWave(x, y, s) = waveOf(s).Hover(inWave(x, y, s), s)
+clickWave(x, y, s) = clickAt(inWave(x, y, s), waveOf(s), s)
+wheelWave(x, y, amount, s) = waveOf(s).Wheel(amount, inWave(x, y, s), s)
+(** The texts and the boxes drawn over the graph. *)
+boxWords(s) = [c.Text for c in waveOf(s).Draw(1000, look) if c.Kind == "text"]
+(** The window with the keys on the graph, through C-c e f in its cell. *)
+defn waveFocused(s)
+  t = s
+  t.Buffers[1] = text.Place(4, 0, t.Buffers[1])
+  notebook.FocusControl(t)
+end
+
+isPointsLand() = waveGraph(graphed()).Pointed and value.Equal(waveGraph(graphed()).Axes, waveAxes) and value.Len(waveGraph(graphed()).Near.X) == 6 and value.Equal(waveGraph(graphed()).Own, {X: [0.0, 5.0], Y: [0.0, 35.0]})
+(* The mouse over the graph: the point nearest, within 12 pixels, shows a thin cross and its values, named by its layer as the graph has two; none
+   past 12 pixels; and none once the mouse leaves. *)
+isHoverNearest() = value.Equal(waveGraph(hoverWave(203, 148, graphed())).Hover, {Layer: 1, J: 2}) and value.Equal(boxWords(hoverWave(203, 148, graphed())), ["a: x = 2  y = 20"])
+isHoverNoneFar() = value.IsMissing(dict.GetOr("Hover", missing, waveGraph(hoverWave(150, 300, graphed())))) and value.Equal(boxWords(hoverWave(150, 300, graphed())), [])
+isHoverLeaves() = value.IsMissing(waveGraph(waveOf(hoverWave(203, 148, graphed())).Hover(missing, hoverWave(203, 148, graphed()))).Hover)
+defn isHoverCross()
+  rects = [c for c in waveOf(hoverWave(203, 148, graphed())).Draw(1000, look) if c.Kind == "rect" and (c.Width == 13 or c.Height == 13)]
+  value.Len(rects) == 2 and rects[1].X == 2 * cell.Width + 200 - 6 and rects[2].Y == waveOf(graphed()).Under + 150 - 6
+end
+(* The first time the mouse comes over a graph, it asks the session its points, once; a move asks nothing more. *)
+defn isFirstHoverAsks()
+  s = pointsSent(plain(live = false), result.Ok({Width: 500, Height: 350, Items: [], Dropped: 0}), live = false)
+  r = s.Buffers[1].CellRun
+  r.Task = missing
+  s.Buffers[1].CellRun = r
+  t = waveOf(s).Hover(inWave(100, 100, s), s)
+  m = t.Buffers[1].CellRun.Marking
+  waveGraph(t).Live and m.Points and m.Key == 8 and value.IsMissing(m.Mark)
+end
+(* Points or axes that aren't sane are refused: the graph shows no values, and asks them no more. *)
+defn isBadPointsNoValues()
+  bad = pointsSent(plain(), result.Ok({Width: 500, Height: 350, Items: [], Dropped: 0, Points: [dict.Put("Values", {X: ["<b>", 2.0, 3.0, 4.0], Y: [1.0, 2.0, 3.0, 4.0]}, wavePoints[1])], Axes: waveAxes}))
+  axes = pointsSent(plain(), result.Ok({Width: 500, Height: 350, Items: [], Dropped: 0, Points: wavePoints, Axes: {X: waveAxes.X, Y: dict.Put("Low", 35.0, waveAxes.Y)}}))
+  waveGraph(bad).Pointed and value.IsMissing(dict.GetOr("Near", missing, waveGraph(bad))) and value.IsMissing(dict.GetOr("Axes", missing, waveGraph(axes))) and value.IsMissing(dict.GetOr("Hover", missing, waveGraph(hoverWave(203, 148, bad))))
+end
+isPointsFaults() = value.IsSome(notebook.PointsFault([dict.Put("Count", 2, wavePoints[1])], full = true)) and value.IsSome(notebook.PointsFault([dict.Put("Label", str.Repeat(201, "x"), wavePoints[1])], full = true)) and
+  value.IsSome(notebook.PointsFault(list.Fill(wavePoints[1], 65))) and value.IsMissing(notebook.PointsFault(wavePoints, full = true)) and
+  value.IsSome(notebook.AxesFault({X: waveAxes.X, Y: {Scale: "log", Low: -1.0, High: 2.0, From: 0.0, To: 10.0}})) and value.IsSome(notebook.AxesFault({X: dict.Put("Scale", "time", waveAxes.X), Y: waveAxes.Y}))
+(* The buckets find the point that a measure of every point finds, on random clouds. *)
+defn nearestHolds(c)
+  points = [{At: [j for j in 1..value.Len(c.Xs)], Xs: c.Xs, Ys: c.Ys}]
+  near = notebook.NearOf(points)
+  got = notebook.NearestIn(near, c.X, c.Y)
+  ds = [(c.Xs[j] - c.X) * (c.Xs[j] - c.X) + (c.Ys[j] - c.Y) * (c.Ys[j] - c.Y) for j in 1..value.Len(c.Xs)]
+  least = list.Min(ds)
+  if least > 144.0 value.IsMissing(got) else value.IsSome(got) and ds[got.J] == least end
+end
+clouds = gen.Then(n -> gen.Of({Xs: gen.List(gen.Float(0, 200), min = n, max = n), Ys: gen.List(gen.Float(0, 200), min = n, max = n), X: gen.Float(-20, 220), Y: gen.Float(-20, 220)}), gen.Int(1, 60))
+isNearestFuzz() = test.ForAll(nearestHolds, clouds, cases = 300)
+
+(* A click on a point pins its values, and gives the graph the keys; again, unpins them; several pins stay together. A press above the graph goes to the
+   text. *)
+isClickPins() = value.Len(waveGraph(clickWave(301, 101, graphed())).Pins) == 1 and value.Equal(commands.FocusOf(clickWave(301, 101, graphed())).Graph, 8) and value.Equal(boxWords(clickWave(301, 101, graphed())), ["a: x = 3  y = 25"])
+isClickAgainUnpins() = value.Len(waveGraph(clickWave(301, 101, clickWave(301, 101, graphed()))).Pins) == 0
+isTwoPins() = value.Equal(list.Sort(boxWords(clickWave(99, 199, clickWave(301, 101, graphed())))), ["a: x = 3  y = 25", "b: x = 1  y = 15"])
+isPressAboveGivesText() = value.IsMissing(waveOf(graphed()).Mouse("down", {X: 2 * cell.Width + 10, Y: waveOf(graphed()).Under - 3, Width: 1000}, graphed()))
+(* The keys after C-c e f: the arrows go from point to point, along a layer and to the next; Space pins; M-w copies x and y; Escape unpins, then leaves. *)
+isFocusGraph() = value.Equal(commands.FocusOf(waveFocused(graphed())).Graph, 8) and value.Len([c for c in waveOf(waveFocused(graphed())).Draw(1000, look) if c.Kind == "rect" and c.Color == ui.Dark.Accent]) >= 8
+isArrowsWalk() = waveGraph(press("right", press("right", waveFocused(graphed())))).Spot.At == 2 and value.Equal(boxWords(press("right", press("right", waveFocused(graphed())))), ["a: x = 2  y = 20"])
+isDownNextLayer() = value.Equal(waveGraph(press("down", press("right", press("right", press("right", waveFocused(graphed())))))).Spot, {Layer: 2, At: 2})
+isArrowsStayInside() = waveGraph(press("left", press("left", waveFocused(graphed())))).Spot.At == 1 and waveGraph(press("up", press("right", waveFocused(graphed())))).Spot.Layer == 1
+isSpacePins() = value.Len(waveGraph(press("space", press("right", waveFocused(graphed())))).Pins) == 1
+isCopyPoint() = commands.Clipboard(press("M-w", press("right", press("right", waveFocused(graphed()))))) == "2.0\t20.0"
+isCopyPins() = commands.Clipboard(press("M-w", clickWave(99, 199, clickWave(301, 101, graphed())))) == "3.0\t25.0\n1.0\t15.0"
+isEscapeUnpinsThenLeaves() = value.IsSome(commands.FocusOf(press("escape", clickWave(301, 101, graphed())))) and value.Len(waveGraph(press("escape", clickWave(301, 101, graphed()))).Pins) == 0 and
+  value.IsMissing(commands.FocusOf(press("escape", press("escape", clickWave(301, 101, graphed())))))
+(* The wheel: without the keys, the graph gives it to the screen; with them, it zooms about the mouse, the value under it staying there; 0 goes back. *)
+isWheelWithoutKeys() = value.IsMissing(wheelWave(250, 175, 1.0, graphed()))
+defn isWheelZooms()
+  z = waveGraph(wheelWave(250, 175, 1.0, waveFocused(graphed()))).Zoom
+  near = (a, b) -> math.Abs(a[1] - b[1]) < 1e-9 and math.Abs(a[2] - b[2]) < 1e-9
+  near(z.X, [0.5, 4.5]) and near(z.Y, [3.5, 31.5])
+end
+isZeroBack() = value.IsMissing(waveGraph(textIn("0", wheelWave(250, 175, 1.0, waveFocused(graphed())))).Zoom)
+defn isDragMoves()
+  s = waveFocused(graphed())
+  d = waveOf(s).Mouse("down", inWave(250, 175, s), s)
+  m = waveOf(d).Mouse("move", inWave(300, 175, d), d)
+  z = waveGraph(m).Zoom
+  math.Abs(z.X[1] + 0.5) < 1e-9 and math.Abs(z.X[2] - 4.5) < 1e-9 and math.Abs(z.Y[1]) < 1e-9 and value.Len(dict.GetOr("Pins", [], waveGraph(waveOf(m).Mouse("up", inWave(300, 175, m), m)))) == 0
+end
+defn isDragWithoutKeysStays()
+  s = graphed()
+  d = waveOf(s).Mouse("down", inWave(250, 175, s), s)
+  value.IsMissing(dict.GetOr("Zoom", missing, waveGraph(waveOf(d).Mouse("move", inWave(300, 175, d), d))))
+end
+defn isZoomOnLog()
+  s = pointsSent(plain(), result.Ok({Width: 500, Height: 350, Items: [], Dropped: 0, Points: [], Axes: {X: {Scale: "log", Low: 1.0, High: 100.0, From: 0.0, To: 500.0}, Y: waveAxes.Y}}))
+  z = waveGraph(wheelWave(250, 175, 1.0, waveFocused(s))).Zoom
+  math.Abs(z.X[1] - 10.0 ^ 0.2) < 1e-9 and math.Abs(z.X[2] - 10.0 ^ 1.8) < 1e-9
+end
+defn isZoomPolarRadius()
+  s = pointsSent(plain(), result.Ok({Width: 500, Height: 350, Items: [], Dropped: 0, Points: [], Axes: {Center: [250.0, 175.0], Y: {Scale: "linear", Low: 90.0, High: 0.0, From: 0.0, To: 150.0}}}))
+  z = waveGraph(wheelWave(250, 100, 1.0, waveFocused(s))).Zoom
+  value.IsMissing(z.X) and math.Abs(z.Y[1] - 81.0) < 1e-9 and math.Abs(z.Y[2] - 9.0) < 1e-9
+end
+isZoomBounded() = value.Equal(waveGraph(list.Reduce((t, j) -> wheelWave(250, 175, 5.0, t), waveFocused(graphed()), 1..20)).Zoom.X[2] - waveGraph(list.Reduce((t, j) -> wheelWave(250, 175, 5.0, t), waveFocused(graphed()), 1..20)).Zoom.X[1] >= 5e-6, true)
+(* No key of the buffer changes while no graph has the keys: 0 is typed, M-w copies as it did. *)
+isKeysOfBufferKept() = value.IsMissing(commands.FocusOf(textIn("0", graphed()))) and line(textIn("0", graphed()), 1) == "0use std/plot"
+(* Tab goes from the table of a cell to its graph and back. *)
+isTabTableGraph() = value.Equal(commands.FocusOf(press("tab", onTable(tabled(dayValue)))).Graph, 5) and commands.FocusOf(press("tab", press("tab", onTable(tabled(dayValue))))).Table == "5.1"
+(* A box stays inside the plot: at the right edge, it goes to the left of its point. *)
+isBoxInsidePlot() = list.All([c.X + c.Width <= 2 * cell.Width + 500 for c in waveOf(clickWave(401, 51, graphed())).Draw(1000, look) if c.Kind == "box"])
+isSvgPathStaysBeside() = notebook.SvgPath("/a/b/sun.ce", "x/../../etc", 2, 1) == "/a/b/sun-x-etc.svg" and notebook.SvgPath("sun.ce", "Été 2026 : élévation", 2, 3) == "sun-ete-2026-elevation-3.svg"

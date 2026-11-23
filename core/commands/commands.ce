@@ -1693,7 +1693,8 @@ defn Drag(event, state)
       the press gets the move. With no button held, the block under it that has a Hover gets it, see Hover. *)
   h = holdingOf(state)
   if value.IsSome(h)
-    return h.Mouse("move", inBlock(event, h), state)
+    moved = h.Mouse("move", inBlock(event, h), state)
+    return if value.IsMissing(moved) state else moved end
   end
   if not state.Dragging
     i = panes.Active(state)
@@ -1743,7 +1744,8 @@ defn Release(event, state)
   if value.IsSome(h)
     s = state
     s.Holding = missing
-    return h.Mouse("up", inBlock(event, h), s)
+    up = h.Mouse("up", inBlock(event, h), s)
+    return if value.IsMissing(up) s else up end
   end
   b = current(state)
   s = state
