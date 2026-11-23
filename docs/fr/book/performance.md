@@ -371,6 +371,72 @@ et 11,5 ms au lieu de 28,7 et 29,3, une touche à sa ligne 500 avec sa vue 0,5 �
 19 000 du texte du gate, une touche tapée avec sa vue 1,55 ms dans les deux (trois séries de 301), une ligne qui défile
 2,2 ms au lieu de 2,9.
 
+La rangée d'une ligne à l'écran garde maintenant aussi les stops de sa traversée,
+[À l'intérieur de Cemacs](internals.md#les-couleurs), si bien qu'une touche à l'extrémité d'une ligne de code ne traverse que
+ce qui suit le dernier stop avant sa modification. Les touches du tableau ci-dessus sur les lignes de code, cette version et
+`main` à 02a2baf chacune à son tour, $n = 21$, médianes en millisecondes, avant → maintenant ; les autres lignes et endroits
+prennent ce qu'ils prenaient :
+
+| Ligne, endroit | `C-e` | `x` | backspace | `hello` |
+|---|---|---|---|---|
+| du code de 100 KB, fin | 0,5 → 0,6 | 25,7 → 15,7 | 25,5 → 15,6 | 125 → 75,0 |
+| du code de 1 MB, début | 165 → 169 | 83,6 → 80,7 | 75,6 → 76,8 | 404 → 398 |
+| du code de 1 MB, milieu | 168 → 96,8 | 162 → 91,3 | 160 → 90,9 | 797 → 447 |
+| du code de 1 MB, fin | 6,3 → 7,5 | 242 → 93,4 | 238 → 98,0 | 1 182 → 452 |
+
+`C-e` à la fin, là où le curseur est déjà, prend 7,3 à 7,7 ms avant et 7,3 à 7,8 maintenant quand on le mesure seul, trois
+séries de 41 chacune à son tour : le même temps. Au milieu, `C-e` traverse depuis le dernier stop de la rangée qu'il quitte.
+À la fin du mégaoctet de code, ce qu'une lettre prend encore est l'état à la fin de la ligne, pour les lignes en dessous,
+63 ms, les 64 KB au plus traversés depuis le dernier stop, et la touche et sa frame. Sur un fichier de 99,9 MB fait de lignes
+d'un mégaoctet de code, les 28 rangées de l'écran gardent 392 stops, 36 KB, moins de 0,01 % des 595 MB que le processus
+occupe après 20 lettres tapées là, 644 MB avec la version d'avant.
+
+Enter, Tab, `C-j` et `end` tapés sur des lignes des deux mêmes sortes, indentées de deux espaces dans un bloc, `if a`
+au-dessus d'elles et `end` en dessous, pour que `end` déplace sa ligne et qu'Enter et Tab lisent le bloc ; mesurés comme les
+touches ci-dessus, cette version et `main` à 02a2baf chacune à son tour, $n = 21$, médianes en millisecondes, avant →
+maintenant :
+
+| Ligne, endroit | Enter | Tab | `C-j` | `end` |
+|---|---|---|---|---|
+| un mot de 100 KB, début | 79,2 → 10,2 | 17,4 → 9,9 | 0,5 → 0,5 | 18,4 → 14,7 |
+| un mot de 100 KB, milieu | 72,1 → 10,7 | 17,6 → 10,0 | 0,5 → 0,5 | 19,5 → 20,0 |
+| un mot de 100 KB, fin | 62,2 → 11,0 | 21,7 → 14,1 | 0,5 → 0,5 | 33,3 → 30,2 |
+| un mot de 1 MB, début | 1 065 → 86,9 | 174 → 88,5 | 5,2 → 5,3 | 159 → 115 |
+| un mot de 1 MB, milieu | 930 → 91,0 | 169 → 84,7 | 5,0 → 5,5 | 158 → 155 |
+| un mot de 1 MB, fin | 813 → 89,9 | 193 → 95,2 | 5,0 → 5,4 | 267 → 255 |
+| du code de 100 KB, début | 133 → 9,4 | 62,7 → 39,9 | 0,5 → 0,5 | 83,1 → 27,8 |
+| du code de 100 KB, milieu | 147 → 28,9 | 63,6 → 39,4 | 0,5 → 0,5 | 52,8 → 52,3 |
+| du code de 100 KB, fin | 116 → 46,0 | 63,9 → 39,4 | 0,5 → 0,5 | 76,3 → 45,7 |
+| du code de 1 MB, début | 1 540 → 80,1 | 581 → 374 | 5,4 → 5,4 | 757 → 250 |
+| du code de 1 MB, milieu | 1 625 → 269 | 577 → 373 | 5,7 → 5,3 | 478 → 268 |
+| du code de 1 MB, fin | 1 279 → 436 | 581 → 366 | 5,3 → 5,2 | 705 → 268 |
+
+`C-j` n'a pas de commande dans Cemacs : c'est le suivi de l'écran et la frame d'une touche qui ne change rien. Sur les lignes
+d'un mégaoctet, c'est la médiane de cinq autres séries de 41, chacune à son tour, car les séries de 21 avaient des exécutions
+de 3 ms et de 6 ms dans les deux versions ; au milieu et à la fin du mot d'un mégaoctet, il prend 0,4 à 0,5 ms de plus dans
+chacune des cinq. Ce qui a changé, dans
+[À l'intérieur de Cemacs](internals.md#lindentation) :
+
+- Enter découpait la ligne en ses caractères, un texte chacun, pour la couper au curseur, et les relisait pour la place de
+  la nouvelle ligne : 1,5 s sur le mégaoctet de code. Il coupe maintenant la ligne à l'octet du curseur et la lit par ses
+  octets, et la place de la nouvelle ligne ne lit que ses deux premiers tokens. Ce qui reste au début de la ligne de code est
+  l'état des couleurs à la fin de la ligne, qui descend, 63 ms ; au début du mot, son premier token, un nom d'un mégaoctet,
+  parcouru un octet à la fois. Avant le curseur, l'indentation lit la ligne entière, pour les parenthèses, textes et
+  commentaires ouverts là et les blocs que la ligne ouvre et ferme : à la fin du mégaoctet de code, ses 233 000 tokens
+  prennent 0,3 s, à environ 300 ns l'octet, et les blocs 0,08 s.
+- Tab lisait son statement deux fois quand le curseur était au bout d'un mot, une fois pour savoir s'il fallait le
+  compléter, et par ses caractères ; une seule fois maintenant, par ses octets. Il lit le statement entier où que soit le
+  curseur, car `cesia fmt` place un statement comme un tout : 0,37 s sur le mégaoctet de code. Sur une ligne de 10 000 if,
+  chaque if cherchait les flèches dans le reste de la ligne, des secondes ; la ligne n'est plus parcourue qu'une fois.
+- `end` : chaque lettre tapée dans les premières colonnes d'une ligne lisait tous les caractères du reste de la ligne, deux
+  fois, pour savoir si son premier mot déplace la ligne ; elle ne les lit plus que jusqu'à ses espaces et six caractères. À
+  la fin de la ligne de code, les lettres prennent ce que les lettres y prennent, ci-dessus.
+
+À la ligne 500 de `core/view/view.ce`, à sa première colonne et à sa dixième, trois séries de 41 chacune à son tour, Enter
+prend 1,0 à 1,1 ms, Tab 1,0 à 1,2 ms, `C-j` 0,5 ms et `end` 1,6 à 2,0 ms, dans les deux versions ; `x` et backspace 0,8 à 0,9
+ms, `C-e` 0,5 ms et `hello` 2,5 à 2,6 ms, dans les deux aussi. Les tokens de ses 1 065 lignes prennent 11,2 à 11,4 ms avant et
+11,4 à 11,6 maintenant dans ces séries, et 11,4 à 11,8 ms dans les deux versions sur trois séries de 201 des tokens seuls.
+
 ### Enter et Tab dans un fichier de Cesia
 
 Une touche dans un fichier de Cesia, sans dessin : [commands.Update] de la touche, qui lance sa commande puis
@@ -720,10 +786,11 @@ dès que la touche arrive, là où il pouvait dormir jusqu'à 5 ms avant. Le buf
   dessinent les frames suivantes.
 - Un buffer Cesia de plus de 1 000 000 octets n'est pas vérifié : voir [Les erreurs dans les lignes](check.md#quand-elle-tourne).
 - Une seule vérification tourne à la fois, pour un seul buffer.
-- Une touche à l'extrémité d'une ligne d'un mégaoctet prend 0,09 s quand la ligne est un seul mot et 0,24 s quand elle est
-  du code : les couleurs d'une ligne sont lues depuis son début jusqu'à l'écran, car un commentaire ou un texte ouvert avant
-  les change, par ses commentaires et ses textes, et un long mot un octet à la fois ; voir
+- Une touche à l'extrémité d'une ligne d'un mégaoctet prend 0,09 s, que la ligne soit un seul mot ou du code : les couleurs
+  d'une ligne sont lues depuis son début jusqu'à l'écran, car un commentaire ou un texte ouvert avant les change, par ses
+  commentaires et ses textes, depuis le dernier endroit gardé avant la modification, et un long mot un octet à la fois ; voir
   [Une touche sur une très longue ligne](#une-touche-sur-une-très-longue-ligne). À son début, une touche prend ce qu'elle
   prend sur une ligne courte, moins de 20 ms avec la frame, et `M-f` traverse un mot de 32 000 lettres en 25 ms au lieu de
-  36 s. Enter et Tab sur une telle ligne d'un fichier de Cesia prennent 0,8 à 1,5 s et 0,2 à 0,6 s : l'indentation lit la
-  ligne par ses caractères.
+  36 s. Dans un fichier de Cesia, Enter y prend 0,09 s au début d'une telle ligne, et jusqu'à 0,44 s à sa fin, et Tab 0,09 à
+  0,37 s : l'indentation lit la ligne par ses octets, jusqu'au curseur pour Enter et entière pour Tab, car `cesia fmt` place
+  un statement comme un tout, à environ 300 ns l'octet de code.

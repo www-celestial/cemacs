@@ -339,6 +339,68 @@ On a file of usual lines nothing is slower: the tokens of the 1,065 lines of `co
 instead of 28.7 and 29.3, a key at its line 500 with its view 0.5 to 2.9 ms in both versions, and at line 19,000 of the text
 of the gate, a typed key with its view 1.55 ms in both (three series of 301), a scrolled line 2.2 ms instead of 2.9.
 
+The row of a line on the screen now also keeps the stops of its crossing, [Inside Cemacs](internals.md#the-colours), so a key
+at the far end of a line of code crosses only what follows the last stop before its edit. The keys of the table above on the
+lines of code, this version and `main` at 02a2baf taking turns, $n = 21$, medians in milliseconds, before → now; the other
+lines and places take what they took:
+
+| Line, place | `C-e` | `x` | backspace | `hello` |
+|---|---|---|---|---|
+| code of 100 KB, end | 0.5 → 0.6 | 25.7 → 15.7 | 25.5 → 15.6 | 125 → 75.0 |
+| code of 1 MB, start | 165 → 169 | 83.6 → 80.7 | 75.6 → 76.8 | 404 → 398 |
+| code of 1 MB, middle | 168 → 96.8 | 162 → 91.3 | 160 → 90.9 | 797 → 447 |
+| code of 1 MB, end | 6.3 → 7.5 | 242 → 93.4 | 238 → 98.0 | 1,182 → 452 |
+
+`C-e` at the end, where the cursor already is, takes 7.3 to 7.7 ms before and 7.3 to 7.8 now when it is measured alone, three
+series of 41 taking turns: the same. At the middle, `C-e` crosses from the last stop of the row it leaves. At the end of the
+megabyte of code, what a letter still takes is the state at the end of the line, for the lines under it, 63 ms, the 64 KB at
+most crossed from the last stop, and the key and its frame. On a file of 99.9 MB of lines of a megabyte of code, the 28 rows of
+the screen keep 392 stops, 36 KB, under 0.01 % of the 595 MB that the process holds after 20 letters there, 644 MB with the
+version before.
+
+Enter, Tab, `C-j` and `end` typed on lines of the same two kinds, indented two spaces inside a block, `if a` above them and
+`end` below, so that `end` moves its line and Enter and Tab read the block; measured as the keys above, this version and
+`main` at 02a2baf taking turns, $n = 21$, medians in milliseconds, before → now:
+
+| Line, place | Enter | Tab | `C-j` | `end` |
+|---|---|---|---|---|
+| one word of 100 KB, start | 79.2 → 10.2 | 17.4 → 9.9 | 0.5 → 0.5 | 18.4 → 14.7 |
+| one word of 100 KB, middle | 72.1 → 10.7 | 17.6 → 10.0 | 0.5 → 0.5 | 19.5 → 20.0 |
+| one word of 100 KB, end | 62.2 → 11.0 | 21.7 → 14.1 | 0.5 → 0.5 | 33.3 → 30.2 |
+| one word of 1 MB, start | 1,065 → 86.9 | 174 → 88.5 | 5.2 → 5.3 | 159 → 115 |
+| one word of 1 MB, middle | 930 → 91.0 | 169 → 84.7 | 5.0 → 5.5 | 158 → 155 |
+| one word of 1 MB, end | 813 → 89.9 | 193 → 95.2 | 5.0 → 5.4 | 267 → 255 |
+| code of 100 KB, start | 133 → 9.4 | 62.7 → 39.9 | 0.5 → 0.5 | 83.1 → 27.8 |
+| code of 100 KB, middle | 147 → 28.9 | 63.6 → 39.4 | 0.5 → 0.5 | 52.8 → 52.3 |
+| code of 100 KB, end | 116 → 46.0 | 63.9 → 39.4 | 0.5 → 0.5 | 76.3 → 45.7 |
+| code of 1 MB, start | 1,540 → 80.1 | 581 → 374 | 5.4 → 5.4 | 757 → 250 |
+| code of 1 MB, middle | 1,625 → 269 | 577 → 373 | 5.7 → 5.3 | 478 → 268 |
+| code of 1 MB, end | 1,279 → 436 | 581 → 366 | 5.3 → 5.2 | 705 → 268 |
+
+`C-j` has no command in Cemacs: it is the follow and the frame of a key that changes nothing. On the lines of a megabyte it is
+the median of five more series of 41, taking turns, as the series of 21 had runs of 3 ms and of 6 ms in both versions; in the
+middle and at the end of the word of a megabyte, it takes 0.4 to 0.5 ms more in each of the five. What changed, in [Inside Cemacs](internals.md#the-indent):
+
+- Enter split the line into its characters, one text each, to cut it at the cursor, and read them again for the place of the
+  new line: 1.5 s on the megabyte of code. It cuts the line at the byte of the cursor now and reads it by its bytes, and the
+  place of the new line reads its first two tokens only. What is left at the start of the line of code is the state of the
+  colours at the end of the line, which moves down, 63 ms; at the start of the word, its first token, a name of a megabyte,
+  walked a byte at a time. Before the cursor, the indent reads the line whole, for the brackets, texts and comments open
+  there and the blocks the line opens and closes: at the end of the megabyte of code, its 233,000 tokens take 0.3 s, at
+  about 300 ns a byte, and the blocks 0.08 s.
+- Tab read its statement twice when the cursor was at the end of a word, once to know whether to complete it, and by its
+  characters; once now, by its bytes. It reads the whole statement wherever the cursor is, as `cesia fmt` places a statement
+  as a whole: 0.37 s on the megabyte of code. On a line of 10,000 ifs, each if looked for the arrows in the rest of the line,
+  seconds; the line is looked through once now.
+- `end`: each letter typed in the first columns of a line read all the characters of the rest of the line, twice, to know
+  whether its first word moves the line; it reads them now only as far as its spaces and six characters. At the end of the
+  line of code, the letters take what letters take there, above.
+
+At line 500 of `core/view/view.ce`, at its first column and at its tenth, three series of 41 taking turns, Enter takes 1.0 to
+1.1 ms, Tab 1.0 to 1.2 ms, `C-j` 0.5 ms and `end` 1.6 to 2.0 ms, in both versions; `x` and backspace 0.8 to 0.9 ms, `C-e` 0.5
+ms and `hello` 2.5 to 2.6 ms, in both too. The tokens of its 1,065 lines take 11.2 to 11.4 ms before and 11.4 to 11.6 now in
+those series, and 11.4 to 11.8 ms in both versions in three series of 201 of the tokens alone.
+
 ### Enter and Tab in a file of Cesia
 
 One key in a file of Cesia, without drawing: [commands.Update] of the key, which runs its command and [view.FollowState]
@@ -659,9 +721,10 @@ then takes SDL's renderer, as in [Typing and scrolling](#typing-and-scrolling).
 - SDL keeps at most 8,192 shaped texts; past that, it forgets them all and shapes again what the next frames draw.
 - A Cesia buffer over 1,000,000 bytes is not checked: see [Errors in the lines](check.md#when-it-runs).
 - One check runs at a time, for one buffer.
-- A key at the far end of a line of a megabyte takes 0.09 s when the line is one word and 0.24 s when it is code: the
-  colours of a line are read from its start to the screen, as a comment or a text opened before changes them, by its comments
-  and texts, and a long word a byte at a time; see [A key on a very long line](#a-key-on-a-very-long-line). At its start, a
-  key takes what it takes on a short line, under 20 ms with the frame, and `M-f` crosses a word of 32,000 letters in 25 ms
-  instead of 36 s. Enter and Tab on such a line of a file of Cesia take 0.8 to 1.5 s and 0.2 to 0.6 s: the indent reads the
-  line by its characters.
+- A key at the far end of a line of a megabyte takes 0.09 s, the line one word or code: the colours of a line are read
+  from its start to the screen, as a comment or a text opened before changes them, by its comments and texts, from the last
+  place kept before the edit, and a long word a byte at a time; see [A key on a very long line](#a-key-on-a-very-long-line).
+  At its start, a key takes what it takes on a short line, under 20 ms with the frame, and `M-f` crosses a word of 32,000
+  letters in 25 ms instead of 36 s. In a file of Cesia, Enter there takes 0.09 s at the start of such a line, and up to
+  0.44 s at its end, and Tab 0.09 to 0.37 s: the indent reads the line by its bytes, up to the cursor for Enter and whole for
+  Tab, as `cesia fmt` places a statement as a whole, at about 300 ns a byte of code.

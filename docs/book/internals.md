@@ -192,6 +192,16 @@ code, a key reads its comments and texts, not its words:
 color.Tokens("defn f() (* a", color.FirstState, from = 8).Tokens --> [[6, ") "], [5, "(* a"]]
 ```
 
+The row of a line on the screen keeps where that crossing passed, with the state there: a stop every 64 KB at least, which
+[color.Tokens] gives with `stops` and takes back. An edit at the far end of the line leaves the bytes before it as they
+were, and a stop holds while the line is the same up to 8 bytes past it, more than a step of the crossing reads past its
+end. So the row made again after a key starts its crossing at the last stop before the screen that holds, and makes the
+same words, and the same stops, as a crossing from the start of the line: a property test checks it on random lines of 200
+KB cut at a random byte and given another end. At the end of a line of a megabyte of code, a letter crosses 64 KB at most
+instead of the whole line, 93 ms with its frame instead of 242. A stop takes about 92 bytes, and only the rows of the screen
+keep them: on a file of 100 MB made of lines of a megabyte, the 28 rows of the screen keep 392 stops, 36 KB, 0.04 % of the
+buffer, and never more than 0.14 % of the bytes they cross. It is the cache of `syntax-ppss` again, inside one line.
+
 Each buffer keeps the state at the start of each line, known down to some line, [color.StartOf]. An edit at line n forgets
 the states after n; drawing reads them again only down to the last line on the screen, and a line with no quote and no
 comment mark is not even read, since it can't change the state. So typing at line 19,000 of a file reads only the lines on
@@ -252,6 +262,16 @@ read from the line 2,000 lines up, in as many blocks as its indent says. So a li
 in, never the whole file. The reading from the anchor gives the state at the start of the line, the blocks and brackets open
 and the lines of the statement it may go on with, and from it [indent.Wanted] the place of a line being typed and
 [indent.Plan] the changes of Tab.
+
+The line is read by its bytes, as the colours read it, never as a list of its characters: fmt's scan walks it a byte at a
+time, and inside a comment, a text or brackets it goes to the next byte that can matter, found natively with
+[text.ByteFind]. Enter cuts the line at the byte of the cursor, the place of a line being typed reads its first two tokens
+only, Tab reads the lines of its statement once, and a letter typed at the start of a line reads what follows the cursor
+only as far as its spaces and six characters, to know whether it makes a word that moves the line. On a line of a megabyte
+of code, Enter at its start takes 80 ms with its frame, most of it the colours of the line that moves down, where the
+characters of the line, one text each, took 1.5 s. At its end, the indent needs the whole line, the brackets, texts and
+comments open at the cursor and the blocks the line opens and closes, and reads it once: 0.44 s instead of 1.28; see
+[A key on a very long line](performance.md#a-key-on-a-very-long-line).
 
 Enter keeps its reading: [text.NewLine] stores, in the buffer's `Layout`, the state at the start of the new line, and the next
 Enter, or the first word typed on that line, goes on from it when it is at most 256 lines above, instead of looking for the
