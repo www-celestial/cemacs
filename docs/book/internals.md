@@ -176,10 +176,20 @@ on an error, and an unfinished text or comment only carries its state to the nex
 The lexer walks the bytes of the line with [text.Byte], never a list of its characters: on a line of a megabyte, making a
 text of each character took 0.2 s before the first token. A character is what [value.Len] counts, a byte that doesn't
 continue one, `10xxxxxx` in [UTF-8](references.md#standards), with the bytes that continue it, so a file that isn't UTF-8 is
-cut as Cesia cuts it everywhere; every character of more than one byte is a letter. Inside a comment or a text it jumps from
-mark to mark, each found natively with [text.ByteFind], and each search goes on from where the last one stopped. A property
-test checks it against a reading a character at a time, the way it was written before, on random lines that hold bytes that
-are no UTF-8 too.
+cut as Cesia cuts it everywhere; every character of more than one byte is a letter. A name, a number or a run of spaces is
+read by its first two bytes; then the ASCII letters, digits and underscores that follow, or the spaces, tabs and carriage
+returns, are skipped natively, all at once, by [text.ByteFindAny], which reads eight bytes at a time. A byte from 128 on is
+read by [text.Byte], so a name of one letter, the most common in code, a space alone and a name of accents cost what they
+did, and only the last space of a run can be followed by a byte that continues a character, which makes it a longer one. A
+byte read by [text.Byte] in a loop costs about 60 ns, and a call of [text.ByteFindAny] 25 to 45 ns more than one of
+[text.Byte], plus under a nanosecond a byte: a run of one or two bytes is cheaper read inline, a longer one natively. Inside
+a comment the lexer jumps from mark to mark, its `(*` and `*)` each found natively with [text.ByteFind], and each search
+goes on from where the last one stopped, as a set of their bytes would stop at each `(`, `*` or `)` alone. Inside a text,
+[text.ByteFindAny] finds the next quote or backslash at once; one followed by a byte that continues is the start of a longer
+character, and the search goes on after it. A word of a megabyte is read in 1.0 ms instead of 69, a text of a megabyte that
+holds 200,000 escapes and doubled quotes in 58 ms instead of 211, and the 1,115 lines of `core/view/view.ce` in 3 % less
+time. A property test checks it against a reading a character at a time, the way it was written before, on random lines that
+hold bytes that are no UTF-8 too, and another on lines of long runs, each a piece repeated up to 300 times.
 
 The screen asks only for the words it shows: `from` is the byte where its first column starts, and the word that starts
 before it is cut there. To get there, the lexer crosses the comments and texts before `from` by their marks and doesn't read
@@ -228,11 +238,13 @@ at least `syntax-ppss-max-span`, 20,000 characters, apart.
 
 That reading needs only the state, not the words, so it doesn't go through the lexer: [color.StateAfter] gives the state at
 the end of a line by jumping from mark to mark, each found natively with [text.ByteFind]. In a comment it looks for the next
-`(*` or `*)`, as comments nest; in a text, for the next quote, a doubled quote `""` and the character after a backslash
-being part of the text; elsewhere, for the next quote or `(*`. A mark found is kept while it is ahead, and one that isn't
-there is not looked for again: a search for a backslash from each text of a line that has none read the rest of the line at
-each text, 6.9 s for a megabyte of code, now 63 ms. The lines come 100,000 at a time, one slice of the rope cut at its line
-ends. The state is the one the lexer gives, and a test checks it on 2,000 random lines from every kind of state:
+`(*` or `*)`, as comments nest; in a text, for the next quote or backslash, both at once with [text.ByteFindAny], a doubled
+quote `""` and the character after a backslash being part of the text; elsewhere, for the next quote or `(*`. A mark of a
+comment or of code found is kept while it is ahead, and one that isn't there is not looked for again: a search for a
+backslash from each text of a line that has none read the rest of the line at each text, 6.9 s for a megabyte of code, then
+67 ms with a search for each of the two marks of a text, 56 ms with one for both. The lines come 100,000 at a time, one
+slice of the rope cut at its line ends. The state is the one the lexer gives, and a test checks it on 2,000 random lines
+from every kind of state:
 
 ```cesia
 color.StateAfter("x = \"a (* b", color.FirstState) --> {Comment: 0, Text: true}
@@ -276,13 +288,18 @@ and the lines of the statement it may go on with, and from it [indent.Wanted] th
 [indent.Plan] the changes of Tab.
 
 The line is read by its bytes, as the colours read it, never as a list of its characters: fmt's scan walks it a byte at a
-time, and inside a comment, a text or brackets it goes to the next byte that can matter, found natively with
-[text.ByteFind]. Enter cuts the line at the byte of the cursor, the place of a line being typed reads its first two tokens
+time. Inside a comment it goes to the next `(*` or `*)`, each found natively with [text.ByteFind]; inside a text or brackets,
+to the next byte that can matter, all of them looked for at once with [text.ByteFindAny], a quote, a backslash or a `$` in a
+text, a bracket or a quote in brackets, where a search for each of them kept its place. After the second byte of a name, its
+ASCII letters, digits and underscores are skipped natively too, and so are a run of spaces past its first two and an indent
+past its first space, while a name of one letter and a space alone between two words are read as before, with no call. A
+word of a megabyte is read in 1.0 ms instead of 83, and a megabyte of code in 275 ms instead of 304, its 233,000 tokens being
+the most of it. Enter cuts the line at the byte of the cursor, the place of a line being typed reads its first two tokens
 only, Tab reads the lines of its statement once, and a letter typed at the start of a line reads what follows the cursor
 only as far as its spaces and six characters, to know whether it makes a word that moves the line. On a line of a megabyte
-of code, Enter at its start takes 80 ms with its frame, most of it the colours of the line that moves down, where the
+of code, Enter at its start takes 15 ms with its frame, the line that moves down keeping the stops of its colours, where the
 characters of the line, one text each, took 1.5 s. At its end, the indent needs the whole line, the brackets, texts and
-comments open at the cursor and the blocks the line opens and closes, and reads it once: 0.44 s instead of 1.28; see
+comments open at the cursor and the blocks the line opens and closes, and reads it once: 0.33 s instead of 1.28; see
 [A key on a very long line](performance.md#a-key-on-a-very-long-line).
 
 Enter keeps its reading: [text.NewLine] stores, in the buffer's `Layout`, the state at the start of the new line, and the next

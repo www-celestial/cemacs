@@ -158,3 +158,9 @@ Measured on the same machine as the rest, in the book's chapter on performance:
   state at the end of the line, which the lines under it start from, is read again from the last of these before the edit,
   2.5 ms instead of 67 at the far end. In the middle of the line, a letter takes 66 ms instead of 94. The colours keep one
   such line per buffer, with its text, and a file of usual lines is coloured as fast as before.
+- On a line of one word of a megabyte, a letter and backspace at its far end take 23 ms instead of 90, `end` there 66 ms
+  instead of 264, Enter and Tab anywhere in it 16 to 30 ms instead of 83 to 98, and `C-a` then `M-f` across it 20 ms
+  instead of 0.30 s, the colours, the indents and the places the same: the lexer of the colours, the indent and `M-f` skip
+  the ASCII letters, digits and underscores of a name, and the spaces of a run, natively past their first byte or two,
+  with Cesia's `text.ByteFindAny`, and cross a text by one native search for its quotes and backslashes; on a line of a
+  megabyte of code, the keys take up to 10 % less, and a file of usual lines is coloured 5 to 8 % faster.

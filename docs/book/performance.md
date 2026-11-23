@@ -428,6 +428,35 @@ call more, and only a screen whose colours are guessed reads its lines with it. 
 megabyte of code, the colours keep one line, with its text, and 14 stops: the process holds 562 MB after 20 letters at the
 far end of its line 50, 589 MB with the version before, as each letter left a reading of the whole line behind it.
 
+The lexer of the colours, the indent and `M-f` now skip the rest of a name or of a run of spaces natively, past its first
+byte or two, with [text.ByteFindAny], and cross a text by one native search for its quotes and backslashes, [Inside
+Cemacs](internals.md#the-colours). The keys of the tables above on the two lines of a megabyte inside a block, this version
+and `main` at f87d2fd taking turns, $n = 21$, three series, the middle of their medians in milliseconds, before → now:
+
+| Line, place | `x` | backspace | `end` | Enter | Tab |
+|---|---|---|---|---|---|
+| one word of 1 MB, start | 15.4 → 15.7 | 11.5 → 10.6 | 117 → 46.2 | 83.1 → 15.8 | 84.5 → 16.9 |
+| one word of 1 MB, middle | 54.6 → 21.7 | 54.0 → 21.0 | 159 → 59.2 | 87.7 → 20.7 | 85.9 → 17.3 |
+| one word of 1 MB, end | 90.1 → 23.4 | 90.0 → 23.6 | 264 → 66.3 | 90.4 → 22.8 | 97.6 → 30.2 |
+| code of 1 MB, start | 76.0 → 68.6 | 71.9 → 64.5 | 228 → 208 | 15.5 → 15.2 | 349 → 325 |
+| code of 1 MB, middle | 63.5 → 58.2 | 62.4 → 56.9 | 184 → 167 | 220 → 205 | 350 → 325 |
+| code of 1 MB, end | 26.7 → 26.1 | 27.0 → 25.6 | 73.0 → 70.7 | 353 → 332 | 349 → 329 |
+
+On the word, the screen shows its last columns, and the lexer reads the word from its start to know where the tokens there
+start, as a name has no place inside it to start from: a byte at a time, 66 ms for a megabyte, natively now, 2.1 ms with the
+rest of its row. The indent reads the word in 1.0 ms instead of 83, so Enter and Tab there take what the key and its frame
+take. `x` and backspace at the start of the word take what they took, as they never walked the word a byte at a time. On the
+code, the 233,000 tokens of the line, four bytes each on average, are read one by one as before, and a run of a few bytes
+gains little: the keys take up to 10 % less, from the names and spaces of more than two bytes and the texts. `C-a` then
+`M-f` across the word, with their follow, take 19.6 ms instead of 303; `C-a` alone took 3.4 ms before and 4.3 now in those
+series, measured after `M-f` in the same process, and 4.1 to 4.6 ms in both versions measured alone, two series of 41
+taking turns.
+
+On a file of usual lines nothing is slower: at line 500 of `core/view/view.ce`, at its first column and at its tenth, Enter,
+Tab, `C-j` and `end` take 0.7 to 1.8 ms, and `x`, backspace, `C-e` and `hello` 0.5 to 2.4 ms, in both versions; the tokens of
+its 1,115 lines take 10.9 ms instead of 11.5, and the states of 47,149 lines of Cesia, read by [color.ColoredTo] from none
+known, 54.8 ms instead of 58.9, and by [color.StateAfter] on each line 45.3 instead of 49.3.
+
 ### Enter and Tab in a file of Cesia
 
 One key in a file of Cesia, without drawing: [commands.Update] of the key, which runs its command and [view.FollowState]
@@ -748,12 +777,13 @@ then takes SDL's renderer, as in [Typing and scrolling](#typing-and-scrolling).
 - SDL keeps at most 8,192 shaped texts; past that, it forgets them all and shapes again what the next frames draw.
 - A Cesia buffer over 1,000,000 bytes is not checked: see [Errors in the lines](check.md#when-it-runs).
 - One check runs at a time, for one buffer.
-- A key at the far end of a line of a megabyte takes 0.03 s when the line is code and 0.09 s when it is one word: the
-  colours of a line are read from its start to the screen, as a comment or a text opened before changes them, by its comments
-  and texts, from the last place kept before the edit, and a long word a byte at a time; the state at the end of the line is
-  read from the last place kept before the edit too, so a letter at the start of a line of code, which changes the line from
-  its start, reads the line whole for it, 0.08 s; see [A key on a very long line](#a-key-on-a-very-long-line). At the start
-  of a line of one word, a key takes what it takes on a short line, under 20 ms with the frame, and `M-f` crosses a word of
-  32,000 letters in 25 ms instead of 36 s. In a file of Cesia, Enter there takes 0.02 s at the start of a line of code, 0.09 s at the start of a
-  word, and up to 0.38 s at its end, and Tab 0.09 to 0.37 s: the indent reads the line by its bytes, up to the cursor for
-  Enter and whole for Tab, as `cesia fmt` places a statement as a whole, at about 300 ns a byte of code.
+- A key at the far end of a line of a megabyte takes 0.03 s, the line being code or one word: the colours of a line are read
+  from its start to the screen, as a comment or a text opened before changes them, by its comments and texts, from the last
+  place kept before the edit, and a long word natively, eight bytes at a time; the state at the end of the line is read from
+  the last place kept before the edit too, so a letter at the start of a line of code, which changes the line from its start,
+  reads the line whole for it, 0.07 s; see [A key on a very long line](#a-key-on-a-very-long-line). At the start of a line of
+  one word, a key takes what it takes on a short line, under 20 ms with the frame, and `M-f` crosses a word of a million
+  letters in 20 ms. In a file of Cesia, Enter takes 0.02 s at the start of a line of code and anywhere in a word, and up to
+  0.33 s at the end of the code, and Tab 0.02 to 0.03 s in a word and 0.33 s in the code: the indent reads the line by its
+  bytes, up to the cursor for Enter and whole for Tab, as `cesia fmt` places a statement as a whole, at about 300 ns a byte
+  of code, a token at a time, and a word at once.
