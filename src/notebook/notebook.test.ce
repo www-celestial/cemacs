@@ -904,6 +904,22 @@ defn isZoomPolarRadius()
   z = waveGraph(wheelWave(250, 100, 1.0, waveFocused(s))).Zoom
   value.IsMissing(z.X) and math.Abs(z.Y[1] - 81.0) < 1e-9 and math.Abs(z.Y[2] - 9.0) < 1e-9
 end
+(* A zoom of many notches asks one scene at a time: the notches that come while one is asked change only the ranges wanted, which the next question
+   asks once the answer came. *)
+defn isZoomCoalesced()
+  s = waveFocused(graphed())
+  alive = fiber.Channel()
+  fiber.Close(alive)
+  r = s.Buffers[1].CellRun
+  r.Session = {Path: "wave.ce", Alive: alive}
+  r.Task = missing
+  s.Buffers[1].CellRun = r
+  one = wheelWave(250, 175, 1.0, s)
+  three = wheelWave(250, 175, 1.0, wheelWave(250, 175, 1.0, one))
+  asked = one.Buffers[1].CellRun.Marking
+  value.IsSome(asked) and value.Equal(three.Buffers[1].CellRun.Marking.Zoom, asked.Zoom) and not value.Equal(waveGraph(three).Zoom, asked.Zoom) and
+    math.Abs(waveGraph(three).Zoom.X[2] - waveGraph(three).Zoom.X[1] - 5.0 * 0.8 ^ 3) < 1e-9
+end
 isZoomBounded() = value.Equal(waveGraph(list.Reduce((t, j) -> wheelWave(250, 175, 5.0, t), waveFocused(graphed()), 1..20)).Zoom.X[2] - waveGraph(list.Reduce((t, j) -> wheelWave(250, 175, 5.0, t), waveFocused(graphed()), 1..20)).Zoom.X[1] >= 5e-6, true)
 (* No key of the buffer changes while no graph has the keys: 0 is typed, M-w copies as it did. *)
 isKeysOfBufferKept() = value.IsMissing(commands.FocusOf(textIn("0", graphed()))) and line(textIn("0", graphed()), 1) == "0use std/plot"
