@@ -21,7 +21,7 @@ what a key can lead to, so no key has to be learnt before the start.
   not, and the line under the panes says how to leave: `backspace: folder above, q: close, ?: keys`.
 - Incremental search, `C-s` and `C-r` as in Emacs; a list's filter matches its words apart, in any order, ranked by fzy's
   score as Vim and Neovim do; `C-x p f` lists the files of the project's Git repository and `C-x p g` searches its lines.
-- In a file of Cesia, Enter starts the new line where `cesia fmt` puts it, Tab puts a line at its place or completes the
+- In a file of Cesia, Enter, or `C-j` as in Emacs, starts the new line where `cesia fmt` puts it, Tab puts a line at its place or completes the
   word from the words around, the other buffers and the names of Cesia; a file is saved as `cesia fmt` writes it, in one
   step of undo; `C-c i` writes the forms of Cesia, a function, a struct, a loop, a match, a test and a cell. A do block
   after the `)` of a call opens a block for Enter and Tab.

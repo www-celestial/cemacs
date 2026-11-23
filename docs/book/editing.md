@@ -99,7 +99,7 @@ numeric keypad, and the text of an input method. A key with Control or Alt types
 
 | Keys | Command | Inserts |
 |---|---|---|
-| `enter`, `S-enter` | [commands.NewLine] | a line end; in a file of Cesia, then the spaces that put the new line where `cesia fmt` puts it; in another file, the spaces and tabs that start the current line, up to the cursor |
+| `enter`, `S-enter`, `C-j` | [commands.NewLine] | a line end; in a file of Cesia, then the spaces that put the new line where `cesia fmt` puts it; in another file, the spaces and tabs that start the current line, up to the cursor |
 | `tab`, `S-tab` | [commands.Tab] | in a file of Cesia, nothing: the line, or the selected lines, go to their place, or the word before the cursor is completed; in another file, the text of [emacs.TabText]: two spaces |
 
 The indent of a line is the spaces at its start, which show the code inside a block. In a file of another language, Enter

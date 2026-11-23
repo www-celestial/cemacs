@@ -411,7 +411,7 @@ maintenant :
 | du code de 1 MB, milieu | 1 625 → 269 | 577 → 373 | 5,7 → 5,3 | 478 → 268 |
 | du code de 1 MB, fin | 1 279 → 436 | 581 → 366 | 5,3 → 5,2 | 705 → 268 |
 
-`C-j` n'a pas de commande dans Cemacs : c'est le suivi de l'écran et la frame d'une touche qui ne change rien. Sur les lignes
+`C-j` n'avait pas de commande dans Cemacs lors de cette mesure, avant de devenir celle d'Enter, comme dans Emacs : c'était le suivi de l'écran et la frame d'une touche qui ne change rien. Sur les lignes
 d'un mégaoctet, c'est la médiane de cinq autres séries de 41, chacune à son tour, car les séries de 21 avaient des exécutions
 de 3 ms et de 6 ms dans les deux versions ; au milieu et à la fin du mot d'un mégaoctet, il prend 0,4 à 0,5 ms de plus dans
 chacune des cinq. Ce qui a changé, dans

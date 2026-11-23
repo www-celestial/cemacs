@@ -109,7 +109,7 @@ Une touche avec Control ou Alt ne tape rien, et lance sa commande.
 
 | Touches | Commande | Insère |
 |---|---|---|
-| `enter`, `S-enter` | [commands.NewLine] | une fin de ligne ; dans un fichier de Cesia, puis les espaces qui mettent la nouvelle ligne là où `cesia fmt` la met ; dans un autre fichier, les espaces et les tabulations qui commencent la ligne courante, jusqu'au curseur |
+| `enter`, `S-enter`, `C-j` | [commands.NewLine] | une fin de ligne ; dans un fichier de Cesia, puis les espaces qui mettent la nouvelle ligne là où `cesia fmt` la met ; dans un autre fichier, les espaces et les tabulations qui commencent la ligne courante, jusqu'au curseur |
 | `tab`, `S-tab` | [commands.Tab] | dans un fichier de Cesia, rien : la ligne, ou les lignes sélectionnées, vont à leur place, ou le mot avant le curseur est complété ; dans un autre fichier, le texte de [emacs.TabText] : deux espaces |
 
 L'indentation d'une ligne, ce sont les espaces à son début, qui montrent le code à l'intérieur d'un bloc. Dans un fichier

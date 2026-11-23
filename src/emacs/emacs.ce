@@ -75,7 +75,7 @@ Keys() = {
   "C-g": commands.Cancel,
   "C-s": commands.SearchForward, "C-r": commands.SearchBackward,
   "tab": commands.Tab, "S-tab": commands.Tab,
-  "enter": commands.NewLine, "S-enter": commands.NewLine,
+  "enter": commands.NewLine, "S-enter": commands.NewLine, "C-j": commands.NewLine,
   "C-x C-s": commands.Save,
   "C-x C-f": commands.FindFile,
   "C-x b": commands.NextBuffer,

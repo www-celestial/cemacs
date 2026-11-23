@@ -377,7 +377,7 @@ Enter, Tab, `C-j` and `end` typed on lines of the same two kinds, indented two s
 | code of 1 MB, middle | 1,625 → 269 | 577 → 373 | 5.7 → 5.3 | 478 → 268 |
 | code of 1 MB, end | 1,279 → 436 | 581 → 366 | 5.3 → 5.2 | 705 → 268 |
 
-`C-j` has no command in Cemacs: it is the follow and the frame of a key that changes nothing. On the lines of a megabyte it is
+`C-j` had no command in Cemacs when this was measured, before it became Enter's, as in Emacs: it was the follow and the frame of a key that changes nothing. On the lines of a megabyte it is
 the median of five more series of 41, taking turns, as the series of 21 had runs of 3 ms and of 6 ms in both versions; in the
 middle and at the end of the word of a megabyte, it takes 0.4 to 0.5 ms more in each of the five. What changed, in [Inside Cemacs](internals.md#the-indent):
 
