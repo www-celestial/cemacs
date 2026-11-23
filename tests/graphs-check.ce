@@ -1,0 +1,141 @@
+(** Checks of the 2D graphs of the cells with the mouse and the keys, against a real session of std/cells, on a file in a new folder that mktemp makes:
+    the mouse over a graph asks its points once, then shows the values of the point nearest; a click pins them and gives the graph the keys; the arrows
+    go from point to point, M-w copies; the wheel zooms about the mouse and a drag moves the view, each asking the session the scene of the new ranges,
+    and 0 goes back; C-c e s writes the SVG of the graph beside the file, and asks before it replaces one; without the keys, the wheel over a graph
+    leaves it as it is; a click on a point of a graph linked to a table chooses its row. It is a script, not a test file: it needs permissions. Run it
+    from the root of cemacs with cesia run --allow read,write,exec=mktemp,exec=rm,exec=rmdir,env=PWD --allow exec=CESIA tests/graphs-check.ce, CESIA the
+    real path of the cesia that runs it. It prints ok at the end and stops at the first failure. *)
+use core/commands
+use core/text
+use core/view
+use src/notebook
+use src/ui
+use std/bug
+use std/dict
+use std/io
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+defn settled(state)
+  (** The state once the cells stop moving, ticked as the editor ticks it, or a failure after twenty seconds. *)
+  s = state
+  waited = 0.0
+  while notebook.Moving(s)
+    check(waited < 20.0, "the cells never ended")
+    sys.Sleep(0.002)
+    waited = waited + 0.002
+    s = notebook.Hooked({}).Idle(s)
+  end
+  s
+end
+
+(** The block of the graph of cell i, or missing. *)
+graphIn(i, s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i and value.IsSome(dict.GetOr("Graph", missing, x)), text.BlocksOf(s.Buffers[1]))
+(** The block of the table of cell i, or missing. *)
+tableIn(i, s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i and value.IsSome(dict.GetOr("Table", missing, x)), text.BlocksOf(s.Buffers[1]))
+(** A point of the scene of the graph of a block, as a point of the block. *)
+inGraph(x, px, py) = {X: 2 * 8 + px, Y: x.Under + py, Width: 1400}
+(** A key of the control that has the keys. *)
+press(chord, s) = commands.FocusOf(s).Keys[chord](s)
+(** A text typed, as the editor gives it. *)
+typed(words, s) = commands.Update({Kind: "text", Text: words}, s)
+(** The texts drawn over a graph. *)
+words(x) = [c.Text for c in x.Draw(1400, look) if c.Kind == "text" and c.Y >= x.Under]
+(** The pixel of a value along a linear axis of a scene. *)
+pixelOf(a, v) = a.From + (v - a.Low) / (a.High - a.Low) * (a.To - a.From)
+
+look = ui.Look(ui.Light, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/sun.ce"
+source = "use std/cells\nuse std/frame\nuse std/plot\n\n(* %% Waves *)\nplot.Of([plot.Line([0, 1, 2, 3, 4], [0.0, 10.5, 20.25, 30.0, 40.0], label = \"a\"), plot.Points([1, 3], [5.0, 15.0], label = \"b\")], x = \"x\", y = \"y\", size = [600, 400])\n\n(* %% Day *)\nhours = frame.Of({hour: [7, 8, 9, 10], elevation: [0.48, 9.99, 18.14, 24.35]})\ncells.Show(hours)\nplot.Of([plot.Line(frame.Column(\"hour\", hours), frame.Column(\"elevation\", hours))], size = [600, 400])\n"
+result.Unwrap(sys.Write(path, source))
+s = view.Start([text.Of(source, path)], look, {Width: 8, Height: 19}, 1400, 900)
+s = settled(notebook.RunAll(s))
+
+(* The mouse over the graph asks its points once; then the point nearest shows its values. *)
+g = graphIn(2, s)
+check(value.IsSome(g) and not dict.GetOr("Live", false, g.Graph), "the graph of Waves is drawn, its points not asked")
+s = settled(g.Hover(inGraph(g, 10, 10), s))
+g = graphIn(2, s)
+check(g.Graph.Pointed and value.Len(g.Graph.Points) == 2 and g.Graph.Axes.X.Scale == "linear", "the points and the axes came: $(dict.GetOr("Points", missing, g.Graph))")
+a = g.Graph.Axes
+px = pixelOf(a.X, 2.0)
+py = pixelOf(a.Y, 20.25)
+started = sys.Now()
+s = g.Hover(inGraph(g, px + 3, py - 2), s)
+took = sys.Now() - started
+g = graphIn(2, s)
+check(value.Equal(words(g), ["a: x = 2  y = 20.25"]), "the box of the point under the mouse: $(words(g))")
+
+(* A click pins it and gives the graph the keys; the arrows go along the line, M-w copies x and y. *)
+at = inGraph(g, px, py)
+s = settled(g.Mouse("up", at, g.Mouse("down", at, s)))
+g = graphIn(2, s)
+check(value.Len(g.Graph.Pins) == 1 and value.Equal(commands.FocusOf(s).Graph, g.Graph.Key), "a click pins the point and focuses the graph")
+s = press("M-w", press("right", s))
+check(commands.Clipboard(s) == "2.0\t20.25", "M-w copies the pin: $(commands.Clipboard(s))")
+s = press("escape", s)
+s = press("M-w", s)
+check(commands.Clipboard(s) == "3.0\t30.0", "Escape unpins, M-w copies the point of the keys: $(commands.Clipboard(s))")
+
+(* The wheel zooms about the mouse: the session draws the new ranges, the value under the mouse stays there. *)
+g = graphIn(2, s)
+mx = pixelOf(a.X, 2.0)
+my = pixelOf(a.Y, 20.0)
+s = settled(g.Wheel(1.0, inGraph(g, mx, my), s))
+g = graphIn(2, s)
+z = g.Graph.Axes
+check(value.Equal(g.Graph.Shown, g.Graph.Zoom) and math.Abs(pixelOf(z.X, 2.0) - mx) < 0.01 and math.Abs(pixelOf(z.Y, 20.0) - my) < 0.01 and z.X.High - z.X.Low < (a.X.High - a.X.Low) * 0.81, "zoomed about the mouse: $(z.X) $(z.Y)")
+(* A drag moves the view: what was under the mouse follows it. *)
+s = g.Mouse("down", inGraph(g, mx, my), s)
+s = g.Mouse("move", inGraph(g, mx + 50, my), s)
+s = settled(g.Mouse("up", inGraph(g, mx + 50, my), s))
+g = graphIn(2, s)
+check(math.Abs(pixelOf(g.Graph.Axes.X, 2.0) - (mx + 50)) < 0.5 and value.Len(g.Graph.Pins) == 0, "a drag moves the view: $(g.Graph.Axes.X)")
+s = settled(typed("0", s))
+g = graphIn(2, s)
+check(value.IsMissing(g.Graph.Shown) and g.Graph.Axes.X.Low == a.X.Low and g.Graph.Axes.X.High == a.X.High, "0 goes back to its own ranges")
+
+(* C-c e s writes the SVG beside the file, named after its cell; again, it asks first. *)
+s = settled(press("C-c e s", s))
+svg = sys.Read("$folder/sun-waves.svg")
+check(result.IsOk(svg) and str.StartsWith("<svg", svg.Value), "C-c e s wrote sun-waves.svg: $(s.Message)")
+s = press("C-c e s", s)
+check(value.IsSome(s.Prompt) and str.Contains("sun-waves.svg exists", s.Prompt.Label), "C-c e s asks before it replaces the file")
+s = settled(commands.Update({Kind: "text", Text: "y"}, s))
+check(s.Message == "Wrote $folder/sun-waves.svg.", "y replaces it: $(s.Message)")
+
+(* Without the keys, the wheel over the graph doesn't zoom it. *)
+s = commands.Unfocused(s)
+g = graphIn(2, s)
+check(value.IsMissing(g.Wheel(1.0, inGraph(g, mx, my), s)), "without the keys, the wheel goes to the screen")
+
+(* A click on a point of the graph of Day chooses its row in the table of the cell, and gives the graph the keys. *)
+d = graphIn(3, s)
+s = settled(d.Hover(inGraph(d, 10, 10), s))
+d = graphIn(3, s)
+layer = d.Graph.Points[1]
+k = list.IndexOf(3, layer.At)
+at = inGraph(d, layer.Xs[k] + 2, layer.Ys[k] + 2)
+s = settled(d.Mouse("up", at, d.Mouse("down", at, s)))
+check(tableIn(3, s).Table.Selected == 3 and value.Equal(graphIn(3, s).Graph.Mark, [3, 4]) and value.Equal(commands.FocusOf(s).Graph, d.Graph.Key), "a click on point 3 chooses row 3 and keeps the keys on the graph")
+s = settled(press("right", s))
+check(tableIn(3, s).Table.Selected == 4, "Right on the graph chooses the next row")
+s = press("tab", s)
+check(value.IsSome(dict.GetOr("Table", missing, commands.FocusOf(s))), "Tab goes to the table")
+
+io.Print("the point under the mouse in $(str.Decimals(3, took * 1000.0)) ms")
+_ = sys.Run("rm", [path, "$folder/sun-waves.svg"])
+_ = sys.Run("rmdir", [folder])
+io.Print("ok")

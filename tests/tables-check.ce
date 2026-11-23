@@ -126,7 +126,8 @@ g = graphIn(2, s)
 check(value.IsSome(g.Graph.Mark), "the graph shows a mark")
 layer = g.Graph.Points[1]
 k = list.IndexOf(7, layer.At)
-s = settled(g.Mouse("down", {X: 2 * 8 + layer.Xs[k] + 3, Y: g.Under + layer.Ys[k] - 2, Width: 1400}, s))
+at = {X: 2 * 8 + layer.Xs[k] + 3, Y: g.Under + layer.Ys[k] - 2, Width: 1400}
+s = settled(g.Mouse("up", at, g.Mouse("down", at, s)))
 t = tableIn(2, s).Table
 check(t.Positions[t.Selected - t.First + 1] == 7 and t.Selected == 12 and value.Equal(graphIn(2, s).Graph.Mark, [7, 12]), "a click on point 7 chooses its row, the last when sorted by elevation: $(t.Selected)")
 
