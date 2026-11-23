@@ -263,7 +263,7 @@ defn isRunAsCharacters(p)
   value.Equal(whole, charTokens(p.Words, p.Start)) and isFromAsCut(p) and (not str.IsUtf8(p.Words) or value.Equal(color.StateAfter(p.Words, p.Start), whole.State))
 end
 isRunsAsCharacters() = test.ForAll(isRunAsCharacters, runCase, cases = 300)
-isFromOutsideTheLine() =value.Equal(color.Tokens("ab c", color.FirstState, from = 9).Tokens, []) and value.Equal(color.Tokens("ab c", color.FirstState, from = 0), color.Tokens("ab c", color.FirstState)) and
+isFromOutsideTheLine() = value.Equal(color.Tokens("ab c", color.FirstState, from = 9).Tokens, []) and value.Equal(color.Tokens("ab c", color.FirstState, from = 0), color.Tokens("ab c", color.FirstState)) and
   color.Tokens("(* a", color.FirstState, from = 9).State.Comment == 1
 
 (* The stops of a crossing, given back for a line that starts with the same bytes up to StopMargin() past each, make the same words, the same state and
