@@ -42,7 +42,8 @@ Enter is a new line, as always.
 
 A result is drawn under the last line of its cell that isn't blank, after a thin bar: what the cell printed, then its value,
 or its error in red with its line, as `cesia run` shows it. A graph of
-[std/plot](https://www-celestial.github.io/cesia-lang/graphs.html) is drawn, 400 pixels high and as wide as the pane. A frame shows as a table of its first 20 rows and its count, a
+[std/plot](https://www-celestial.github.io/cesia-lang/graphs.html) is drawn as wide as the pane, or as its own width when that is less, and with
+the shape of its own size: 640 by 400 by default, a polar graph square. A frame shows as a table of its first 20 rows and its count, a
 matrix as its shape and its first 10 × 10 values, any other value as its text. A cell that runs shows `running…` and the
 seconds so far; the cells after it in the queue show `waiting`. A cell that printed nothing and gives no value draws
 nothing. Each part is cut at 40 lines, the last one saying how many more there are.
@@ -79,14 +80,16 @@ cell. The screen, the mouse and the cursor count its rows: a page shows fewer li
 ## Graphs
 
 A cell whose last expression is a graph, as `plot.Line(t, y)` or `plot.Of([...])`, shows it under its code. The session
-computes its *scene*, the shapes of the graph in pixels at the width of the pane, and Cemacs draws the scene: its lines with
+computes its *scene*, the shapes of the graph in pixels at the width of the pane, never past the graph's own width, and as
+high as the shape of its own size asks, `size = [w, h]` of `plot.Of` or 640 by 400, and Cemacs draws the scene: its lines with
 soft edges, its areas, bars, marks and cells, and its texts in JetBrains Mono, the font of the code, which std/plot
 measured them with, without kerning, the adjustment of the space between two letters, and without hinting, so that each
 text takes the width std/plot gave it; a character JetBrains Mono lacks, as the superscript minus of `10⁻³`, is drawn in
 Noto Sans Medium. The graph is drawn as part of the page, not pasted on it: the axes, the grid, the texts and the layers
 without a colour of their own take the colours of the theme, black on white in the light one, as the SVG of `plot.Save`;
 a layer given a colour keeps it, and so do heatmaps and surfaces. When the pane
-changes its width, the session draws the scene again at the new one; the graph keeps its shape until it comes. `*repl*`
+changes its width, the session draws the scene again at the new one, its height following; the graph keeps its size until
+it comes, and a graph narrower than the pane, at its own width, stays as it is. `*repl*`
 draws a graph under its answer in the same way, and the page of `C-c e h` holds each graph as SVG. The screen slides over a
 graph a row at a time, its lower part showing when the screen starts inside it: see
 [The screen of a pane](windows.md#the-screen-of-a-pane).

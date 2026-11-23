@@ -168,6 +168,16 @@ animSource = "use std/plot\n\n(* %% Wave *)\nplot.Frames([plot.Line([1, 2], [k, 
 (** The scene of frame k of the animation, as wide as the pane draws graphs. *)
 frameScene(k, width) = {Width: width, Height: 400, Items: [{Kind: "text", X: 10, Y: 20, Text: "frame $k", Size: 12, Color: "ink", Anchor: "start", Angle: 0, Width: 40, Role: "title"}], Dropped: 0, Frames: 3, Fps: 30}
 
+(* A graph keeps the shape of its own size: one narrower than the pane, asked at the pane's width, isn't asked again at each tick; one asked at another
+   width is; its block is as high as its scene, a polar graph's square. *)
+defn isNarrowGraphKept()
+  s = notebook.Hooked({}).Idle(view.Start([text.Of(animSource, "anim.ce")], look, cell, 1280, 720))
+  want = notebook.GraphWidth(s)
+  narrow = dict.Merge(notebook.Prepared({Width: 300, Height: 300, Items: [], Dropped: 0}, "."), {Key: 7, Asked: want})
+  at = (g) -> text.WithBlocks([dict.Merge(notebook.Block(4, [], cell, graph = g), {Cell: 2, Base: [], Inputs: {}, Status: missing})], s.Buffers[1])
+  value.IsMissing(stale(at(narrow), s)) and value.IsSome(stale(at(dict.Put("Asked", want - 100, narrow)), s)) and notebook.Block(4, [], cell, graph = narrow).Rows == math.Div(300 + 8 + cell.Height - 1, cell.Height)
+end
+
 defn animated()
   (** The window once cell 2 showed the first frame of the animation, paused, as a run gives it. *)
   s = notebook.Hooked({}).Idle(view.Start([text.Of(animSource, "anim.ce")], look, cell, 1280, 720))
