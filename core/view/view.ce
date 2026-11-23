@@ -250,8 +250,12 @@ defn stopsKept(earlier, words, state)
   end
   stops = earlier.Row.Stops
   holds(k) = stops[k].At + color.StopMargin() <= earlier.Row.Size and str.StartsWith(str.ByteSlice(1, stops[k].At + color.StopMargin(), earlier.Text), words)
+  (* The last first: after a key at the far end of the line, it holds, and each of these takes a slice of the line. *)
+  if value.Len(stops) == 0 or holds(value.Len(stops))
+    return stops
+  end
   low = 0
-  high = value.Len(stops)
+  high = value.Len(stops) - 1
   while low < high
     middle = math.Div(low + high + 1, 2)
     if holds(middle)
