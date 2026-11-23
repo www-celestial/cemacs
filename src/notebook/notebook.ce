@@ -3443,7 +3443,7 @@ defn viewLanded(k, x, m, scene, state)
     (* A grid of graphs, or a graph std/plot gives no axes, has no values to show: no fault. *)
     why = AxesFault(scene.Value.Axes)
   end
-  linked = value.IsMissing(why) and (value.IsMissing(m.Mark) or (if points list.Any([dict.GetOr("Count", -1, p) == m.Mark[2] for p in scene.Value.Points]) else value.Len(dict.GetOr("Points", [], scene.Value)) > 0 end))
+  linked = value.IsMissing(why) and (value.IsMissing(m.Mark) or (if points list.Any([dict.GetOr("Count", -1, p) == m.Mark[2] for p in dict.GetOr("Points", [], scene.Value)]) else value.Len(dict.GetOr("Points", [], scene.Value)) > 0 end))
   if value.IsSome(why) or not linked
     (* A scene that can't come, or no layer of as many points: the graph stays as it is, and isn't asked that mark again, nor these ranges or points
        when the scene can't come. *)

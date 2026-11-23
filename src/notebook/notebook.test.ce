@@ -843,6 +843,17 @@ defn isGridNoValues()
   g = waveGraph(s)
   g.Pointed and value.Len(g.Points) == 0 and value.IsMissing(dict.GetOr("Axes", missing, g)) and s.Message == "" and value.IsMissing(wheelWave(250, 175, 1.0, waveFocused(s)))
 end
+(* A mark asked with the points of a graph that has none, as a grid, leaves it as it is and isn't asked again. *)
+defn isMarkOnGridLeft()
+  s = plain()
+  r = s.Buffers[1].CellRun
+  r.Task = missing
+  r.Marking = {Task: fiber.Spawn(() -> result.Ok({Width: 500, Height: 350, Items: [], Dropped: 0})), Cell: 2, Key: 8, Mark: [2, 4], Zoom: missing, Points: true, Width: notebook.GraphWidth(s)}
+  s.Buffers[1].CellRun = r
+  sys.Sleep(0.001)
+  g = waveGraph(ticked(s))
+  value.Equal(g.Unlinked, [4]) and value.IsMissing(dict.GetOr("Mark", missing, g))
+end
 isPointsFaults() = value.IsSome(notebook.PointsFault([dict.Put("Count", 2, wavePoints[1])], full = true)) and value.IsSome(notebook.PointsFault([dict.Put("Label", str.Repeat(201, "x"), wavePoints[1])], full = true)) and
   value.IsSome(notebook.PointsFault(list.Fill(wavePoints[1], 65))) and value.IsMissing(notebook.PointsFault(wavePoints, full = true)) and
   value.IsSome(notebook.AxesFault({X: waveAxes.X, Y: {Scale: "log", Low: -1.0, High: 2.0, From: 0.0, To: 10.0}})) and value.IsSome(notebook.AxesFault({X: dict.Put("Scale", "time", waveAxes.X), Y: waveAxes.Y}))
