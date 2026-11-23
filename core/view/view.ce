@@ -220,11 +220,47 @@ defn screenOf(first, last, left, width, b)
   if last < first
     return out
   end
+  (* Only a screen moved right reads its lines past their first byte, and only such a reading crosses a line and keeps stops. *)
+  earlier = if left > 0 crossedRows(kept) else dict.Dict() end
   fulls = screenLines(first, last, b)
   for k in 1..value.Len(fulls)
-    out = dict.Put(fulls[k], tokensOf(fulls[k], left, width, stateAt(first + k - 1, b), kept), out)
+    out = dict.Put(fulls[k], tokensOf(fulls[k], left, width, stateAt(first + k - 1, b), kept, first + k - 1, earlier), out)
   end
   out
+end
+
+defn crossedRows(kept)
+  (** The rows kept whose reading crossed the line before the screen, by the number of their line, each with its text, {Text, Row}: a row made again
+      for that line, after an edit, starts its crossing from their stops that still hold, see stopsKept. *)
+  out = dict.Dict()
+  for p in dict.Pairs(kept)
+    if value.Len(dict.GetOr("Stops", [], p.Value)) > 0
+      out = dict.Put(p.Value.Line, {Text: p.Key, Row: p.Value}, out)
+    end
+  end
+  out
+end
+
+defn stopsKept(earlier, words, state)
+  (** The stops of an earlier row of a line, {Text, Row}, that still hold for the words of the line now, cut to the screen: those of a row read from the
+      same state, up to the last one past which, by color.StopMargin() bytes, the words are the same as they were (see color.Tokens). It is looked for by
+      halves, so a line of a megabyte is compared a few times at most. *)
+  if value.IsMissing(earlier) or not (earlier.Row.State == state)
+    return []
+  end
+  stops = earlier.Row.Stops
+  holds(k) = stops[k].At + color.StopMargin() <= earlier.Row.Size and str.StartsWith(str.ByteSlice(1, stops[k].At + color.StopMargin(), earlier.Text), words)
+  low = 0
+  high = value.Len(stops)
+  while low < high
+    middle = math.Div(low + high + 1, 2)
+    if holds(middle)
+      low = middle
+    else
+      high = middle - 1
+    end
+  end
+  list.Take(low, stops)
 end
 
 (** The rows that follow kept for a buffer, or none for a state from before this field. *)
@@ -241,17 +277,24 @@ screenLines(first, last, b) = str.Split("\n", rope.Slice(rope.LineStart(first, b
     of an eval are all cut so. *)
 cutTo(width, full) = if value.Len(full) > width str.Slice(1, width, full) else full end
 
-defn tokensOf(full, left, width, state, kept)
-  (** The row of a line of this text, cut to width characters, from this state, its tokens from column left on: the one kept if it was made for the
-      same, else read now. Only the tokens the screen shows are made: at the end of a long line, those of its last columns, from the byte where column
-      left starts. A row from before Left has none, and is read again. *)
+defn tokensOf(full, left, width, state, kept, line, earlier)
+  (** The row of line number line, of this text, cut to width characters, from this state, its tokens from column left on: the one kept if it was made
+      for the same, else read now. Only the tokens the screen shows are made: at the end of a long line, those of its last columns, from the byte where
+      column left starts. A row from before Left has none, and is read again. A row read past the first byte of its line keeps the number of its line,
+      the bytes of the words read and the stops of the crossing too, {Width, Left, State, Tokens, Line, Size, Stops}: made again from the earlier row of
+      that line, among the rows of crossedRows, it crosses the line from the stops that still hold, see stopsKept, so a key at the end of a line of a
+      megabyte crosses only the bytes after the last stop before its edit. *)
   old = dict.Get(full, kept)
   if not value.IsMissing(old) and old.Width == width and dict.GetOr("Left", -1, old) == left and old.State == state
     old
   else
     words = cutTo(width, full)
     from = if left >= value.Len(words) str.ByteLength(words) + 1 else str.ByteLength(str.Slice(1, left, words)) + 1 end
-    {Width: width, Left: left, State: state, Tokens: color.Tokens(words, state, from = from).Tokens}
+    if from == 1
+      return {Width: width, Left: left, State: state, Tokens: color.Tokens(words, state).Tokens}
+    end
+    read = color.Tokens(words, state, from = from, stops = stopsKept(dict.Get(line, earlier), words, state))
+    {Width: width, Left: left, State: state, Tokens: read.Tokens, Line: line, Size: str.ByteLength(words), Stops: read.Stops}
   end
 end
 
@@ -345,7 +388,7 @@ defn line(b, n, full, y, columns, rect, look)
   cw = look.Width("M", "code")
   width = b.Left + columns
   (* The tokens of a row of a list start at column 0; those of code at the left of the screen, where tokensOf starts them. *)
-  tokens = if lists.IsList(b) rowTokens(lists.PartsAt(n, b), cutTo(width, full)) else tokensOf(full, b.Left, width, stateAt(n, b), keptRows(b)).Tokens end
+  tokens = if lists.IsList(b) rowTokens(lists.PartsAt(n, b), cutTo(width, full)) else tokensOf(full, b.Left, width, stateAt(n, b), keptRows(b), n, dict.Dict()).Tokens end
   x0 = rect.X + Gutter
   here = marksAt(n, b)
   numbered = inside("code", rect.X + Gutter - 16 - value.Len("$n") * cw, y, "$n", if value.Len(here) > 0 markColor(here[1]) else th.Faint end)

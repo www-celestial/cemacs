@@ -199,20 +199,43 @@ defn synced(words, start, from, n)
   start
 end
 
-defn resumeAt(words, state, from, n)
-  (** Where Tokens can start to read a line, with the state there, {At, Comment, Text}, and still make from byte from on the words that a reading from
-      the start makes. The comments and texts before from are crossed from mark to mark, each found natively, and the code between them is not read:
+(** How many bytes apart the crossing of a line keeps its stops, at least: see Tokens. A function: a variable added under --watch is read before it has
+    a value. *)
+stopBytes() = 65536
+
+(** How many bytes past its end a step of the crossing reads, at most, and some more: a stop holds for a line whose bytes are those of the line it was
+    made on up to this many bytes past it, see Tokens. *)
+StopMargin() = 8
+
+defn resumeAt(words, state, from, n, stops)
+  (** Where Tokens can start to read a line, with the state there, {At, Comment, Text, Stops}, and still make from byte from on the words that a reading
+      from the start makes. The comments and texts before from are crossed from mark to mark, each found natively, and the code between them is not read:
       in code, only a quote or the opening of a comment changes the state, and each starts a word. A comment or a text that reaches from is read from
-      its start; code, from the place synced finds. *)
+      its start; code, from the place synced finds. The crossing starts at the last of the stops before from, and keeps a stop, {At, Comment, Text},
+      at the first place between two steps stopBytes() past the last one: Stops are those, the ones given before from among them. *)
   depth = state.Comment
   inText = state.Text
-  marks = noMarks()
   i = 1
+  out = []
+  for s in stops
+    if s.At < from
+      out = list.Append(s, out)
+      depth = s.Comment
+      inText = s.Text
+      i = s.At
+    end
+  end
+  stop = i + stopBytes()
+  marks = noMarks()
   while i < from
+    if i >= stop
+      out = list.Append({At: i, Comment: depth, Text: inText}, out)
+      stop = i + stopBytes()
+    end
     if depth > 0
       r = commentEnd(words, i, n, depth, marks)
       if r.At > from
-        return {At: i, Comment: depth, Text: inText}
+        return {At: i, Comment: depth, Text: inText, Stops: out}
       end
       depth = r.Depth
       i = r.At
@@ -220,7 +243,7 @@ defn resumeAt(words, state, from, n)
     else if inText
       r = textEnd(words, i, n, marks)
       if r.At > from
-        return {At: i, Comment: 0, Text: true}
+        return {At: i, Comment: 0, Text: true, Stops: out}
       end
       inText = r.Open
       i = r.At
@@ -230,12 +253,12 @@ defn resumeAt(words, state, from, n)
       marks.Open = seek("(*", marks.Open, i, words, n)
       next = earlier(marks.Quote, marks.Open)
       if value.IsMissing(next) or next >= from
-        return {At: synced(words, i, from, n), Comment: 0, Text: false}
+        return {At: synced(words, i, from, n), Comment: 0, Text: false, Stops: out}
       end
       if next == marks.Quote
         r = textEnd(words, next + 1, n, marks)
         if r.At > from
-          return {At: next, Comment: 0, Text: false}
+          return {At: next, Comment: 0, Text: false, Stops: out}
         end
         inText = r.Open
         i = r.At
@@ -243,7 +266,7 @@ defn resumeAt(words, state, from, n)
       else
         r = commentEnd(words, next + 2, n, 1, marks)
         if r.At > from
-          return {At: next, Comment: 0, Text: false}
+          return {At: next, Comment: 0, Text: false, Stops: out}
         end
         depth = r.Depth
         i = r.At
@@ -251,15 +274,19 @@ defn resumeAt(words, state, from, n)
       end
     end
   end
-  {At: i, Comment: depth, Text: inText}
+  {At: i, Comment: depth, Text: inText, Stops: out}
 end
 
-defn Tokens(line, state, from = 1)
-  (** Reads one line given the state at its start: the words with their roles, in order and with every character, and the state at its end. Two
-      plain words in a row make one. With from, the byte where a character starts, only the words from there on are made, the one that starts before
-      it cut there: a screen that shows the end of a long line makes only the words it shows, and the line before them is crossed by its comments and
-      texts only. The line is walked a byte at a time, the inside of a comment or a text from mark to mark, each found natively, so a line of a
-      megabyte costs its bytes once at most.
+defn Tokens(line, state, from = 1, stops = missing)
+  (** Reads one line given the state at its start: the words with their roles, in order and with every character, and the state at its end, {Tokens,
+      State}. Two plain words in a row make one. With from, the byte where a character starts, only the words from there on are made, the one
+      that starts before it cut there: a screen that shows the end of a long line makes only the words it shows, and the line before them is crossed by
+      its comments and texts only. The line is walked a byte at a time, the inside of a comment or a text from mark to mark, each found natively, so a
+      line of a megabyte costs its bytes once at most.
+      With stops, a list, the result has Stops too: the places where the crossing passed, with the state there, {At, Comment, Text}, one every
+      64 KB at least, in order. Given back as stops for a line read from the same state whose bytes are the same up to StopMargin() bytes past each
+      stop, the crossing starts at the last of them before from, as it would get there in the same state: after an edit at the end of a line of a
+      megabyte, the screen crosses only the bytes after the last stop before the edit, and makes the same words and the same stops.
 
         Tokens("defn f", FirstState).Tokens[1] --> [1, "defn"]
         Tokens("defn f", FirstState, from = 3).Tokens --> [[1, "fn"], [6, " f"]] *)
@@ -269,7 +296,7 @@ defn Tokens(line, state, from = 1)
   marks = noMarks()
   plain = 0
   (* From a byte past the start, the reading starts where resumeAt says: the words before it are not made, and most of the line is not read. *)
-  at = if first > 1 resumeAt(line, state, first, n) else {At: 1, Comment: state.Comment, Text: state.Text} end
+  at = if first > 1 resumeAt(line, state, first, n, if value.IsMissing(stops) [] else stops end) else {At: 1, Comment: state.Comment, Text: state.Text} end
   depth = at.Comment
   inText = at.Text
   i = at.At
@@ -333,7 +360,11 @@ defn Tokens(line, state, from = 1)
   if plain > 0 and n >= first
     out = list.Append([Plain, str.ByteSlice(list.Max(plain, first), n, line)], out)
   end
-  {Tokens: out, State: {Comment: depth, Text: inText}}
+  if value.IsMissing(stops)
+    {Tokens: out, State: {Comment: depth, Text: inText}}
+  else
+    {Tokens: out, State: {Comment: depth, Text: inText}, Stops: if first > 1 at.Stops else [] end}
+  end
 end
 
 (** Nothing is known yet but the state at the start of the first line. The states known are kept in Chunks, lists of chunkLines() states each, the

@@ -604,6 +604,27 @@ end
 rowSteps = gen.List(gen.Of({Line: gen.Int(1, 9), Column: gen.Int(0, 30), Words: gen.Text(max = 4, chars = "x\"(*) \né"), Follow: gen.Bool()}), max = 12)
 isKeptRowsSameView() = test.ForAll(isSameViewAfter, gen.Of({Text: gen.Text(max = 60, chars = "ab \"(*)\n\\é"), Steps: rowSteps}), cases = 300)
 
+(* At the end of a line of 300 KB of code, the row of the line keeps the stops of its crossing; after an edit, the row made again crosses from the stops
+   before the edit, and the view is the one that a reading from the start of the line gives: edits at the end, in the middle and at the start, of a
+   comment, of a text and of a quote, the screen kept at the end of the line, each followed or not. *)
+longCode = str.Repeat(9677, "f(a, \"b c\", 12) + x.y (* z *) ")
+defn isStopsSameView()
+  s = view.FollowState(0, stateOf([text.Place(2, value.Len(longCode), text.Of("first\n$longCode\nlast", "a.ce"))], 800, 600))
+  crossed = value.Len(dict.Get(longCode, s.Buffers[1].Screen).Stops) == 4
+  for step in [[300000, "x", true], [299990, "(* ", true], [150000, "\"", true], [299995, "y", false], [10, "*)", true], [200000, "\"", true],
+      [300010, "z", true]]
+    b = text.InsertWords(step[2], text.Place(2, step[1], s.Buffers[1]))
+    s.Buffers[1] = text.Place(2, text.LineWidth(2, b), b)
+    if step[3]
+      s = view.FollowState(0, s)
+    end
+    if not value.Equal(view.View(s), view.View(withoutRows(s)))
+      return false
+    end
+  end
+  crossed
+end
+
 defn isRowsKeptByText()
   (** Follow keeps one row per text of the lines on the screen, made for the width and the state at the start of each line. *)
   b = view.Follow(3, 80, 0, text.Of("a = 1\n(* b\nc *)\nd", "a.ce"))
