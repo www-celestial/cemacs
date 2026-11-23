@@ -428,26 +428,27 @@ defn StateAfter(words, state)
   if not mayChange(words)
     return state
   end
-  walk(words, state, []).State
+  walk(words, state, missing)
 end
 
 defn walk(words, state, stops)
-  (** The reading of a line that StateAfter makes, {State, Stops}: from the last of the stops given, with the state there, else from the start of the line
-      in the state given. It keeps a stop, {At, Comment, Text}, at the first place between two steps stopBytes() past the last one, as the crossing of
-      Tokens does, and Stops are the ones given and those, in order. A step reads no byte after the one where the next starts, the one after a quote,
-      so a stop holds for a line read from the same state whose bytes are those of the line it was made on up to it: the reading from it goes as the
-      reading from the start would, and keeps the same stops. *)
+  (** The reading of a line that StateAfter makes, from the start of the line in the state given. With stops missing, it gives the state at the end of
+      the line. With a list, it gives {State, Stops}, and starts from the last of the stops given, with the state there, if any: it keeps a stop, {At,
+      Comment, Text}, at the first place between two steps stopBytes() past the last one, as the crossing of Tokens does, and Stops are the ones given
+      and those, in order. A step reads no byte after the one where the next starts, the one after a quote, so a stop holds for a line read from the
+      same state whose bytes are those of the line it was made on up to it: the reading from it goes as the reading from the start would, and keeps
+      the same stops. *)
   depth = state.Comment
   inText = state.Text
   i = 1
-  if value.Len(stops) > 0
+  if not value.IsMissing(stops) and value.Len(stops) > 0
     depth = list.Last(stops).Comment
     inText = list.Last(stops).Text
     i = list.Last(stops).At
   end
   out = stops
-  stop = i + stopBytes()
   n = str.ByteLength(words)
+  stop = if value.IsMissing(stops) n + 1 else i + stopBytes() end
   (* The places found are kept while they are ahead, so that each mark is looked for once: see kept. *)
   open = 0
   close = 0
@@ -499,7 +500,11 @@ defn walk(words, state, stops)
       end
     end
   end
-  {State: {Comment: depth, Text: inText}, Stops: out}
+  if value.IsMissing(stops)
+    {Comment: depth, Text: inText}
+  else
+    {State: {Comment: depth, Text: inText}, Stops: out}
+  end
 end
 
 defn held(long, words, state)
@@ -512,11 +517,15 @@ defn held(long, words, state)
   stops = long.Stops
   size = str.ByteLength(long.Text)
   holds(k) = stops[k].At + StopMargin() <= size and str.StartsWith(str.ByteSlice(1, stops[k].At + StopMargin(), long.Text), words)
-  (* The last first: after a key at the far end of the line, it holds, and each of these takes a slice of the line. *)
-  if value.Len(stops) == 0 or holds(value.Len(stops))
+  (* The first and the last first, as each of these takes a slice of the line as long as the bytes before its stop: after a key at the start of the
+     line the first fails, and at its far end the last holds. *)
+  if value.Len(stops) == 0 or not holds(1)
+    return []
+  end
+  if holds(value.Len(stops))
     return stops
   end
-  low = 0
+  low = 1
   high = value.Len(stops) - 1
   while low < high
     middle = math.Div(low + high + 1, 2)
@@ -554,14 +563,20 @@ defn ColoredTo(line, lineOf, colors)
   state = StartOf(have, colors)
   long = longOf(colors)
   kept = missing
+  (* As StateAfter, a line with no mark is not read; the first long one found is read with stops, and the size of a line is asked only until then. *)
+  looking = true
+  big = stopBytes()
   for n in have..(line - 1)
     words = lineOf(n)
-    if value.IsMissing(kept) and str.ByteLength(words) > stopBytes() and mayChange(words)
-      r = walk(words, state, held(long, words, state))
-      kept = {State: state, Text: words, Stops: r.Stops}
-      state = r.State
-    else
-      state = StateAfter(words, state)
+    if mayChange(words)
+      if looking and str.ByteLength(words) > big
+        r = walk(words, state, held(long, words, state))
+        kept = {State: state, Text: words, Stops: r.Stops}
+        looking = false
+        state = r.State
+      else
+        state = walk(words, state, missing)
+      end
     end
     if value.Len(part) == chunkLines()
       chunks[last] = part
