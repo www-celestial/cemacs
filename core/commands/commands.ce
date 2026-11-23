@@ -173,11 +173,14 @@ defn Tab(state)
       text of a tab, in place of the selection. *)
   b = current(state)
   if not indent.IsCesia(b)
-    typed(config(state).TabText(), state)
-  else if not hasSelection(b) and complete.Prefix(b) != "" and value.Len(indent.Plan(b.Cursor.Line, b.Cursor.Line, b)) == 0
+    return typed(config(state).TabText(), state)
+  end
+  (* The statement is read once, by Indent: a line it leaves as it is, the cursor too, is at its place. *)
+  out = text.Indent(b)
+  if not hasSelection(b) and out.Version == b.Version and value.Equal(out.Cursor, b.Cursor) and complete.Prefix(b) != ""
     Complete(state)
   else
-    put(unmarked(text.Indent(b)), state)
+    put(unmarked(out), state)
   end
 end
 
