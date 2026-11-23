@@ -427,8 +427,9 @@ defn Prepared(scene, home)
 end
 
 defn themed(items, th)
-  (** The items with the colors of the theme in place of "ink", for the axes and the texts, and "grid", for the grid. *)
-  [if value.IsText(x.Color) dict.Put("Color", if x.Color == "grid" th.Line else th.Ink end, x) else x end for x in items]
+  (** The items with the colors of the theme in place of "ink", for the axes, the texts and the layers without a colour, "grid", for the grid, and
+      "paper", the ground of the code, behind the box of a note. *)
+  [if value.IsText(x.Color) dict.Put("Color", if x.Color == "grid" th.Line else if x.Color == "paper" th.Code else th.Ink end, x) else x end for x in items]
 end
 
 (** The width that a graph under a cell takes in the pane being edited, in pixels: the pane's text width, past the bar of the block. *)
