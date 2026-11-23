@@ -1,0 +1,6 @@
+with Noto Sans: a bar of at most 4 rows: true
+missing
+alone: a box of more than 10 rows: true
+missing
+Ok("closed")
+exit 0

@@ -1,0 +1,13 @@
+(** Tests of the shapes of a graph made before they go to C: the pieces of a dashed line. *)
+use std/list
+use std/math
+use std/value
+
+(** The pieces of a line from 0 to x, along the axis, each [start, end], with a dash. *)
+along(x, dash) = [[p.Xs[1], p.Xs[value.Len(p.Xs)]] for p in dashed({Xs: [0.0, x], Ys: [0.0, 0.0], Dash: dash})]
+near(a, b) = value.Len(a) == value.Len(b) and list.All([math.Abs(a[k][1] - b[k][1]) < 1e-9 and math.Abs(a[k][2] - b[k][2]) < 1e-9 for k in 1..value.Len(a)])
+
+isDashed() = near(along(10.0, [3.7, 1.6]), [[0.0, 3.7], [5.3, 9.0]])
+(* A dash-dot repeats its four lengths: a dash, a gap, a dot, a gap. *)
+isDashDot() = near(along(20.0, [6.4, 1.6, 1.0, 1.6]), [[0.0, 6.4], [8.0, 9.0], [10.6, 17.0], [18.6, 19.6]])
+isSolid() = near(along(5.0, missing), [[0.0, 5.0]])

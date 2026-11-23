@@ -197,7 +197,8 @@ end
 
 defn Block(line, lines, cell, graph = missing, focused = false, out = missing, at = 0)
   (** A block of lines under a line, each {Role, Words}, with a thin bar on its left: drawn at the width of the pane, cut to it. A graph, {Key,
-      Scene, Font}, comes under the lines, its scene drawn by sdl at its own width, 400 pixels high; an animation's has its bar under it, see BarItems,
+      Scene, Font}, comes under the lines, its scene drawn by sdl at its own size, which keeps the shape of the graph: the width of the pane or the
+      graph's own when it is less, a polar graph square; an animation's has its bar under it, see BarItems,
       and a 3D graph the line of its view, see ViewItems, each with a ring when focused. Out, a label as Out[3]:, marks a result as Jupyter does: the
       lines after the first at ones, which are its status and its note, start after it, on its row, and the others under them; a result with no line
       gives the label a row of its own, above its graph.
@@ -215,7 +216,7 @@ defn Block(line, lines, cell, graph = missing, focused = false, out = missing, a
   draw = (width, look) -> list.Concat(list.Concat(list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
     [lineText(k, rowed[k], if k > at pad else 0 end, width, look, cell) for k in 1..value.Len(rowed)]),
     [rowText(l.At, "  $(l.Words)", colorOf("note", look.Theme), cell) for l in label]),
-    if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font}] end),
+    if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font, Fallback: graph.Fallback}] end),
     if bar == 0 [] else if isAnimation(graph) BarItems(graph, focused, width, under, cell, look.Theme) else ViewItems(graph, focused, top, under, cell, look.Theme) end)
   {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Lines: lines, Out: out}
 end
@@ -321,8 +322,8 @@ defn itemFault(item, lim)
       return {Fault: "a line is no width from 0 to 50"}
     end
     dash = dict.GetOr("Dash", missing, item)
-    if k == "line" and value.IsSome(dash) and not (value.IsArray(dash) and value.Len(dash) == 2 and list.All([within(d, 0.5, 1000) for d in dash]))
-      return {Fault: "a dash is no pair of lengths"}
+    if k == "line" and value.IsSome(dash) and not (value.IsArray(dash) and (value.Len(dash) == 2 or value.Len(dash) == 4) and list.All([within(d, 0.5, 1000) for d in dash]))
+      return {Fault: "a dash is no two or four lengths"}
     end
     if k == "marks" and not within(dict.GetOr("Size", missing, item), 0, 100)
       return {Fault: "marks have no size from 0 to 100"}
@@ -403,7 +404,8 @@ end
 
 defn Prepared(scene, home)
   (** A scene of std/plot ready for the screen: its colors as numbers, once, an Id for each item, by which sdl knows that the item it drew is the
-      same, and the font its texts are measured in, that of Cemacs's folder.
+      same, and the font its texts are measured in, JetBrains Mono, the font of the code, from Cemacs's folder, with Noto Sans Medium as its Fallback
+      for the characters it lacks.
 
         Prepared({Width: 100, Height: 80, Items: [{Kind: "rect", Color: "#ff0000"}]}, ".").Scene.Items[1].Color --> 16711680 *)
   items = []
@@ -422,12 +424,13 @@ defn Prepared(scene, home)
   end
   out = scene
   out.Items = items
-  {Scene: out, Font: "$home/fonts/NotoSans-Medium.ttf"}
+  {Scene: out, Font: "$home/fonts/JetBrainsMono-Regular.ttf", Fallback: "$home/fonts/NotoSans-Medium.ttf"}
 end
 
 defn themed(items, th)
-  (** The items with the colors of the theme in place of "ink", for the axes and the texts, and "grid", for the grid. *)
-  [if value.IsText(x.Color) dict.Put("Color", if x.Color == "grid" th.Line else th.Ink end, x) else x end for x in items]
+  (** The items with the colors of the theme in place of "ink", for the axes, the texts and the layers without a colour, "grid", for the grid, and
+      "paper", the ground of the code, behind the box of a note. *)
+  [if value.IsText(x.Color) dict.Put("Color", if x.Color == "grid" th.Line else if x.Color == "paper" th.Code else th.Ink end, x) else x end for x in items]
 end
 
 (** The width that a graph under a cell takes in the pane being edited, in pixels: the pane's text width, past the bar of the block. *)
@@ -505,7 +508,7 @@ end
 (** Does cell i run again for a slider, its last result kept in sight? *)
 keeps(i, r) = i in dict.GetOr("Keeping", [], r)
 
-defn resultParts(ran, state)
+defn resultParts(ran, state, asked = missing)
   (** The parts of the result of a run, each {Lines, Graph}, in the order they came: what the cell printed and what cells.Show showed, then its value or
       its error; each graph ends a part. Each text is cut at MaxLines() lines. A graph that isn't drawn says why on an error line, and a run that
       failed is its message alone. *)
@@ -520,7 +523,7 @@ defn resultParts(ran, state)
   for p in dict.GetOr("Shown", [], done)
     lines = list.Concat(lines, printed(from, p.After))
     from = list.Max(from, p.After + 1)
-    g = graphFrom(p.Value, state)
+    g = graphFrom(p.Value, state, asked = asked)
     if p.Value.Kind == "error"
       lines = list.Concat(lines, [{Role: "error", Words: l} for l in str.Lines(p.Value.Text)])
     else if value.IsSome(g) and dict.Has("Fault", g)
@@ -536,15 +539,16 @@ defn resultParts(ran, state)
   if value.IsSome(done.Error)
     return list.Append({Lines: list.Concat(lines, [{Role: "error", Words: l} for l in str.Lines(done.Error.Text)]), Graph: missing}, out)
   end
-  g = graphFrom(done.Value, state)
+  g = graphFrom(done.Value, state, asked = asked)
   if value.IsSome(g) and dict.Has("Fault", g)
     return list.Append({Lines: list.Append({Role: "error", Words: g.Fault}, lines), Graph: missing}, out)
   end
   list.Append({Lines: list.Concat(lines, capped(valueLines(done.Value))), Graph: g}, out)
 end
 
-defn graphFrom(v, state)
-  (** A graph that a run shows, ready for the screen, or missing for a value that is no graph; a scene that isn't sane gives its Fault. *)
+defn graphFrom(v, state, asked = missing)
+  (** A graph that a run shows, ready for the screen, or missing for a value that is no graph; a scene that isn't sane gives its Fault. Asked is the
+      width the session was asked to draw it at, the pane's when the run started: the scene may be narrower, a graph is never drawn past its own width. *)
   if value.IsMissing(v) or v.Kind != "graph"
     return missing
   end
@@ -552,7 +556,7 @@ defn graphFrom(v, state)
   if value.IsSome(fault)
     return {Fault: "This graph isn't drawn: $fault."}
   end
-  g = dict.Put("Key", v.Key, Prepared(v.Scene, commands.Home(state)))
+  g = dict.Merge(Prepared(v.Scene, commands.Home(state)), {Key: v.Key, Asked: if value.IsMissing(asked) GraphWidth(state) else asked end})
   (* An animation starts paused on its first frame, as at each run of its cell; a 3D graph at the view of its code. *)
   if dict.Has("View", v.Scene)
     seen = clampedView(v.Scene.View)
@@ -584,6 +588,7 @@ defn next(k, state)
       r = heldBy(i, r)
       r.Inputs = inputsOf(i, r)
       r.Task = fiber.Spawn(() -> nb.Run(one, cell, width = width))
+      r.Asked = width
       r.Index = i
       r.Started = sys.Now()
       s = if keeps(i, r) withStatus(k, i, running(0.0)[1], withRun(k, r, s)) else withBlock(k, i, running(0.0), withRun(k, r, s)) end
@@ -653,7 +658,7 @@ defn taken(k, state)
   r.Keeping = [j for j in dict.GetOr("Keeping", [], r) if j != i or j in r.Queue]
   (* Each result is numbered as Jupyter numbers its outputs: the runs of the session so far, this one counted. *)
   r.Runs = dict.GetOr("Runs", 0, r) + 1
-  s = withParts(k, i, resultParts(ran, state), withRun(k, r, state), inputs = dict.GetOr("Inputs", {}, r), out = "Out[$(r.Runs)]:")
+  s = withParts(k, i, resultParts(ran, state, asked = dict.GetOr("Asked", missing, r)), withRun(k, r, state), inputs = dict.GetOr("Inputs", {}, r), out = "Out[$(r.Runs)]:")
   if result.IsErr(ran)
     r = dropped(r)
     r.Session = missing
@@ -760,11 +765,12 @@ end
 (* ---- Graphs drawn again at the width of their pane. *)
 
 defn stale(b, state)
-  (** The first block of a buffer whose graph isn't drawn at the width of the pane, or missing. *)
+  (** The first block of a buffer whose graph wasn't asked at the width of the pane, or missing: a graph narrower than the pane, as wide as it is
+      itself, is asked again only when the pane changes. *)
   want = GraphWidth(state)
   for x in text.BlocksOf(b)
     g = dict.GetOr("Graph", missing, x)
-    if value.IsSome(g) and dict.GetOr("Cell", 0, x) > 0 and not dict.GetOr("Fixed", false, g) and math.Abs(g.Scene.Width - want) > 2
+    if value.IsSome(g) and dict.GetOr("Cell", 0, x) > 0 and not dict.GetOr("Fixed", false, g) and math.Abs(dict.GetOr("Asked", g.Scene.Width, g) - want) > 2
       return x
     end
   end
@@ -797,7 +803,7 @@ defn widened(k, state)
       (* A graph the session no longer holds, or a scene that isn't sane, keeps its width. *)
       return rebuilt(k, old, dict.Put("Fixed", true, old.Graph), s)
     end
-    return rebuilt(k, old, dict.Merge(old.Graph, Prepared(scene.Value, commands.Home(s))), s)
+    return rebuilt(k, old, dict.Merge(old.Graph, dict.Put("Asked", pending.Width, Prepared(scene.Value, commands.Home(s)))), s)
   end
   x = stale(b, state)
   if value.IsMissing(x)
@@ -808,7 +814,7 @@ defn widened(k, state)
   width = GraphWidth(state)
   frame = dict.GetOr("Frame", 1, x.Graph)
   turn = if isTurning(x.Graph) x.Graph.View else missing end
-  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)), Cell: x.Cell, Key: key}
+  r.Rescene = {Task: fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)), Cell: x.Cell, Key: key, Width: width}
   withRun(k, r, state)
 end
 
@@ -1096,7 +1102,7 @@ defn answered(k, state)
     if isAnimation(graph)
       (* *repl* shows the first frame of an animation: a cell plays it, with its bar. *)
       words = "$(words)an animation of $(graph.Frames) frames at $(rateText(graph.Fps)) a second: its first; a cell plays it\n"
-      graph = {Scene: graph.Scene, Font: graph.Font, Key: graph.Key}
+      graph = {Scene: graph.Scene, Font: graph.Font, Fallback: graph.Fallback, Key: graph.Key}
     end
     after = appended(words, after)
     if value.IsSome(graph)

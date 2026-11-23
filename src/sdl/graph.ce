@@ -1,9 +1,10 @@
-(* The command that draws a graph of std/plot from its scene: {Kind: "graph", X, Y, Width, Height, Visible, Hidden, Items, Font}. Its items are those of
+(* The command that draws a graph of std/plot from its scene: {Kind: "graph", X, Y, Width, Height, Visible, Hidden, Items, Font, Fallback}. Its items are those of
    plot.Scene in pixels from the top left of the graph, with their colors as 0xRRGGBB: lines, areas, rectangles, marks, cells and the quads of a
    surface become triangles, which the Nth shape of a frame keeps in its memory and writes again only when it changes, so that a graph on the screen
    costs a call a shape; a surface turned writes again only the places of its points.
    A shape is made as arrays of numbers, its positions, its colors and its indices, and each goes to C in one c.Write;
-   texts are drawn with the font Font at their size, without kerning and without hinting, as std/plot measured them, and a text turned by -90
+   texts are drawn with the font Font at their size, without kerning and without hinting, as std/plot measured them, a character it lacks with the
+   font Fallback, and a text turned by -90
    degrees is drawn once into an image that turns. The pane shows it from Hidden to Visible, in pixels from its top: its top part when the bottom of the
    pane cuts it, its lower part when the screen starts inside it. *)
 use std/bug
@@ -48,7 +49,8 @@ end
 pieces(item) = list.FlatMap(dashed, runs(item))
 
 defn dashed(item)
-  (** The pieces of a line drawn with its dash: [on, off] lengths in pixels repeat along it; a line without one is one piece. *)
+  (** The pieces of a line drawn with its dash: [on, off] lengths in pixels, or [on, off, on, off] for a dash-dot, repeat along it; a line
+      without one is one piece. *)
   if value.IsMissing(item.Dash) or value.Len(item.Dash) < 2
     return [{Xs: item.Xs, Ys: item.Ys}]
   end
@@ -83,7 +85,7 @@ defn dashed(item)
         ys = [py]
       end
       on = not on
-      k = if k == 1 2 else 1 end
+      k = if k == value.Len(item.Dash) 1 else k + 1 end
       left = item.Dash[k]
     end
     left = left - (length - done)
@@ -503,18 +505,28 @@ defn shaped(item, window)
   next
 end
 
-defn plotFont(size, path, window)
-  (** The font of the texts of graphs at a size, opened the first time, without kerning and without hinting: the widths std/plot measured. *)
+defn plotFont(size, one, window)
+  (** The font of the texts of a graph at a size, opened the first time, without kerning and without hinting: the widths std/plot measured; with
+      the graph's Fallback, opened at the same size, for the characters it lacks, as the superscript minus of 10⁻³ in JetBrains Mono. *)
   name = "plot$(size)"
   if dict.Has(name, window.Fonts)
     return {Name: name, Window: window}
   end
-  loaded = window.Ttf.OpenFont(path, size * 1.0)
+  loaded = window.Ttf.OpenFont(one.Font, size * 1.0)
   if value.IsMissing(loaded)
     bug.Panic(window.Sdl.Error())
   end
   window.Ttf.Kerning(loaded, false)
   window.Ttf.Hinting(loaded, 3)
+  more = dict.GetOr("Fallback", missing, one)
+  if value.IsSome(more)
+    other = window.Ttf.OpenFont(more, size * 1.0)
+    if value.IsMissing(other) or not window.Ttf.Fallback(loaded, other)
+      bug.Panic(window.Sdl.Error())
+    end
+    window.Ttf.Kerning(other, false)
+    window.Ttf.Hinting(other, 3)
+  end
   next = window
   next.Fonts = dict.Put(name, loaded, window.Fonts)
   {Name: name, Window: next}
@@ -548,9 +560,9 @@ defn turned(item, font, window)
   {Image: image, Window: w}
 end
 
-defn plotText(item, path, window)
+defn plotText(item, one, window)
   (** A text of a graph: its baseline at Y, its anchor at X; turned by -90 degrees about that point for an axis title. *)
-  f = plotFont(item.Size, path, window)
+  f = plotFont(item.Size, one, window)
   w = f.Window
   if dict.GetOr("Angle", 0, item) == 0
     ascent = w.Ttf.Ascent(fontNamed(f.Name, w))
@@ -575,7 +587,7 @@ defn clipTo(clip, hidden, visible, one, window)
 end
 
 defn DrawGraph(one, window)
-  (** Draws a graph from its scene: {Kind: "graph", X, Y, Width, Height, Visible, Hidden, Items, Font}, the items in the order of the scene, each
+  (** Draws a graph from its scene: {Kind: "graph", X, Y, Width, Height, Visible, Hidden, Items, Font, Fallback}, the items in the order of the scene, each
       cut to its Clip and to the rows that the pane shows, from Hidden to Visible from the top of the graph. The texts turned are made first, while no
       viewport is set. *)
   w = window
@@ -586,14 +598,14 @@ defn DrawGraph(one, window)
   end
   for item in one.Items
     if item.Kind == "text" and dict.GetOr("Angle", 0, item) != 0
-      f = plotFont(item.Size, one.Font, w)
+      f = plotFont(item.Size, one, w)
       w = turned(item, f.Name, f.Window).Window
     end
   end
   checked(w.Sdl.Viewport(w.Renderer, irect(one.X, one.Y, one.Width, one.Height, w)), w)
   for item in one.Items
     clipTo(dict.GetOr("Clip", missing, item), hidden, visible, one, w)
-    w = if item.Kind == "text" plotText(item, one.Font, w) else shaped(item, w) end
+    w = if item.Kind == "text" plotText(item, one, w) else shaped(item, w) end
   end
   checked(w.Sdl.Clip(w.Renderer, missing), w)
   checked(w.Sdl.Viewport(w.Renderer, missing), w)

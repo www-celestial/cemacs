@@ -55,6 +55,11 @@ what a key can lead to, so no key has to be learnt before the start.
 - A graph of std/plot under its cell, drawn from its scene; sliders under their lines in a cell of sliders, moved by the
   mouse or by `C-c e f` and the arrows, their number written in the buffer; animations played by Space on their bar; 3D
   graphs turned by a drag or by the arrows, each view asked of the session.
+- A graph is drawn black on white as Cesia's `plot.Save` writes it, its texts in JetBrains Mono, the font of the code,
+  and the characters it lacks, as the superscript minus of `10⁻³`, in Noto Sans Medium; its layers without a colour take
+  the ink of the theme. A dash-dot line is drawn with its dots, where a scene with one was refused.
+- A graph under a cell keeps the shape of its own size, as wide as the pane or as itself when that is less, a polar graph
+  square, where every graph was 400 pixels high; a graph narrower than the pane is not asked again at each tick.
 
 ### Changing Cemacs
 

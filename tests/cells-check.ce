@@ -15,6 +15,7 @@ use std/bug
 use std/dict
 use std/io
 use std/list
+use std/math
 use std/result
 use std/sys
 use std/text as str
@@ -112,20 +113,22 @@ moved.Still = 1.0
 rested = notebook.Hooked({}).Idle(moved)
 check(shown(rested.Buffers[rested.Current])[1].Line == 11, "a line added above moves the results with their cells")
 
-(* A graph of std/plot under its cell, drawn by sdl from its scene at the width of the pane, and again when that width changes. *)
+(* A graph of std/plot under its cell, drawn by sdl from its scene at the width of the pane, or its own 640 when the pane is wider, with the shape of
+   its own size, 640 by 400; and again when that width changes. *)
+shaped(g, want) = g.Scene.Width == list.Min(640, want) and math.Abs(g.Scene.Height - g.Scene.Width * 0.625) <= 0.5 and g.Asked == want
 plotted = again
 plotted.Buffers[plotted.Current] = text.InsertWords("\n(* %% Plot *)\nuse std/plot\nplot.Line([1, 2, 3], [1, 4, 9])\n", text.ToFileEnd(again.Buffers[again.Current]))
 plotted = settled(notebook.RunCell(plotted))
 graphs = [x for x in text.BlocksOf(plotted.Buffers[plotted.Current]) if value.IsSome(dict.GetOr("Graph", missing, x))]
-check(value.Len(graphs) == 1 and graphs[1].Graph.Scene.Width == notebook.GraphWidth(plotted), "a graph shows under its cell at the width of the pane")
+check(value.Len(graphs) == 1 and shaped(graphs[1].Graph, notebook.GraphWidth(plotted)), "a graph shows under its cell at the width of the pane, at most its own, with its shape")
 drawn = [c for c in graphs[1].Draw(1000, look) if c.Kind == "graph"]
 check(value.Len(drawn) == 1 and value.Len(drawn[1].Items) > 10 and value.IsNumber(drawn[1].Items[1].Color), "the block draws the scene, its colors as numbers")
 narrow = plotted
-narrow.Width = 900
+narrow.Width = 600
 check(notebook.Moving(narrow), "a graph whose pane changed its width asks for ticks")
 narrowed = settled(narrow)
 again2 = [x for x in text.BlocksOf(narrowed.Buffers[narrowed.Current]) if value.IsSome(dict.GetOr("Graph", missing, x))]
-check(again2[1].Graph.Scene.Width == notebook.GraphWidth(narrowed) and notebook.GraphWidth(narrowed) < notebook.GraphWidth(plotted), "the graph is drawn again at the new width")
+check(shaped(again2[1].Graph, notebook.GraphWidth(narrowed)) and notebook.GraphWidth(narrowed) < 640, "the graph is drawn again at the new width, narrower than its own, with its shape")
 (* cells.Show: a graph, a text and the value's graph of one cell, in their order, each graph with its key, and both drawn again at a new width. *)
 showing = narrowed
 showing.Buffers[showing.Current] = text.InsertWords("\n(* %% Two *)\nuse std/cells\nio.Print(\"first\")\ncells.Show(plot.Line([1, 2], [2, 1]))\nio.Print(\"then\")\ncells.Show(9)\nplot.Line([1, 2], [1, 2])\n",
@@ -139,7 +142,7 @@ check(value.Len(two) == 2 and value.Equal(twoWords, [["first"], ["then", "9"]]) 
 wide = showing
 wide.Width = 1100
 wide = settled(wide)
-check(list.All([x.Graph.Scene.Width == notebook.GraphWidth(wide) for x in partsOf(wide)]) and notebook.GraphWidth(wide) != notebook.GraphWidth(showing), "both graphs of the cell are drawn again at the new width")
+check(list.All([shaped(x.Graph, notebook.GraphWidth(wide)) for x in partsOf(wide)]) and notebook.GraphWidth(wide) != notebook.GraphWidth(showing), "both graphs of the cell are drawn again at the new width")
 prompt = notebook.OpenRepl(commands.ToBuffer(1, wide))
 drawing = prompt
 drawing.Buffers[drawing.Current] = text.InsertWords("plot.Of([plot.Line([1, 2], [3, 4])], title = \"In the prompt\")", prompt.Buffers[prompt.Current])
