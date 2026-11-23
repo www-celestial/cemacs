@@ -57,8 +57,8 @@ defn found(part, from, words, n)
 end
 
 (** Does at, where a mark was found from an earlier byte, still answer from byte from on: missing, there was none and there is none; a place still
-    ahead is the first. 0 is a mark not looked for yet. Each search of a line goes on from where the last one stopped, so its marks cost its bytes once,
-    where a search from each text to the end of a line with no backslash cost the line once a text. *)
+    ahead is the first. 0 is a mark not looked for yet. Each search of a line goes on from where the last one stopped, so its marks cost its bytes once:
+    the openings and closings of comments, and the quotes that start texts in code. *)
 kept(at, from) = value.IsMissing(at) or (at != 0 and at >= from)
 
 (** The first place of part from byte from on, as found gives it, knowing at, the place found before. *)
@@ -67,8 +67,8 @@ seek(part, at, from, words, n) = if kept(at, from) at else found(part, from, wor
 (** The earlier of two byte positions, either of which may be missing. *)
 earlier(a, b) = if value.IsMissing(a) b else if value.IsMissing(b) a else list.Min(a, b) end
 
-(** No mark looked for yet in a line, for commentEnd and textEnd. *)
-noMarks() = {Open: 0, Close: 0, Quote: 0, Slash: 0}
+(** No mark looked for yet in a line, for commentEnd and the crossing of resumeAt. *)
+noMarks() = {Open: 0, Close: 0, Quote: 0}
 
 defn commentEnd(words, from, n, depth, marks)
   (** Where a comment that holds depth openings ends: {At, Depth, Marks}, at being the first byte after what was read. The next opening and closing
@@ -92,38 +92,44 @@ defn commentEnd(words, from, n, depth, marks)
   {At: list.Min(i, n + 1), Depth: depth, Marks: m}
 end
 
-defn textEnd(words, from, n, marks)
-  (** Where a text that is open ends: {At, Open, Marks}, at being the first byte after what was read. A backslash takes the character after it, and a
-      doubled quote stays in the text; the next quote and backslash are each found natively, and the places found are kept in marks for the rest of
-      the line. *)
+defn textEnd(words, from, n)
+  (** Where a text that is open ends: {At, Open}, at being the first byte after what was read. A backslash takes the character after it, and a
+      doubled quote stays in the text. The next quote or backslash is found natively, both at once: one followed by a byte that continues is the
+      start of a longer character, and the search goes on after it. A text of a megabyte costs a call for each of its quotes and backslashes. *)
   i = from
-  m = marks
   while i <= n
-    m.Quote = seek("\"", m.Quote, i, words, n)
-    m.Slash = seek("\\", m.Slash, i, words, n)
-    if value.IsMissing(m.Quote) and value.IsMissing(m.Slash)
-      return {At: n + 1, Open: true, Marks: m}
+    j = str.ByteFindAny("\"\\", i, words)
+    if value.IsMissing(j)
+      return {At: n + 1, Open: true}
     end
-    if not value.IsMissing(m.Slash) and (value.IsMissing(m.Quote) or m.Slash < m.Quote)
-      i = m.Slash + 2
+    w = if j < n str.Byte(j + 1, words) else 0 end
+    if continues(w)
+      i = j + 1
+    else if str.Byte(j, words) == 92
+      i = j + 2
       while i <= n and continues(str.Byte(i, words))
         i += 1
       end
-    else if m.Quote < n and str.Byte(m.Quote + 1, words) == 34 and alone(m.Quote + 1, words, n)
-      i = m.Quote + 2
+    else if w == 34 and alone(j + 1, words, n)
+      i = j + 2
     else
-      return {At: m.Quote + 1, Open: false, Marks: m}
+      return {At: j + 1, Open: false}
     end
   end
-  {At: n + 1, Open: true, Marks: m}
+  {At: n + 1, Open: true}
 end
 
 defn nameEnd(words, from, n)
-  (** The first byte after the letters, digits and underscores from from on, a character of more than one byte being a letter. *)
+  (** The first byte after the letters, digits and underscores from from on, a character of more than one byte being a letter. After an ASCII
+      letter, digit or underscore, the ones that follow it are skipped natively, at once: a name of a megabyte costs a few calls. A byte that
+      continues a character, or starts one of more than one byte, is read here: a name of one letter, or of accents, costs what it did. *)
   i = from
   while i <= n
     v = str.Byte(i, words)
-    if (v >= 97 and v <= 122) or (v >= 65 and v <= 90) or (v >= 48 and v <= 57) or v == 95 or (v >= 128 and v < 192)
+    if (v >= 97 and v <= 122) or (v >= 65 and v <= 90) or (v >= 48 and v <= 57) or v == 95
+      j = str.ByteFindAny("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", i + 1, words, not = true)
+      i = if value.IsMissing(j) n + 1 else j end
+    else if v >= 128 and v < 192
       i += 1
     else if i < n and continues(str.Byte(i + 1, words))
       i += 2
@@ -144,17 +150,24 @@ defn numberEnd(words, from, n)
 end
 
 defn spaceEnd(words, from, n)
-  (** The first byte after the spaces, tabs and carriage returns from from on: one followed by a byte that continues is a longer character. *)
-  i = from
-  while i <= n
-    v = str.Byte(i, words)
-    if (v == 32 or v == 9 or v == 13) and (i == n or not continues(str.Byte(i + 1, words)))
-      i += 1
-    else
-      return i
-    end
+  (** The first byte after the spaces, tabs and carriage returns from from on: one followed by a byte that continues is a longer character. The
+      first is read here, so a space alone costs no call; the others are skipped natively, and only the last of a run can be followed by a byte
+      that continues. *)
+  if from > n
+    return from
   end
-  i
+  v = str.Byte(from, words)
+  if not (v == 32 or v == 9 or v == 13)
+    return from
+  end
+  j = str.ByteFindAny(" \t\r", from + 1, words, not = true)
+  if value.IsMissing(j)
+    n + 1
+  else if continues(str.Byte(j, words))
+    j - 1
+  else
+    j
+  end
 end
 
 defn isBlock(words, start, stop, n)
@@ -241,13 +254,12 @@ defn resumeAt(words, state, from, n, stops)
       i = r.At
       marks = r.Marks
     else if inText
-      r = textEnd(words, i, n, marks)
+      r = textEnd(words, i, n)
       if r.At > from
         return {At: i, Comment: 0, Text: true, Stops: out}
       end
       inText = r.Open
       i = r.At
-      marks = r.Marks
     else
       marks.Quote = seek("\"", marks.Quote, i, words, n)
       marks.Open = seek("(*", marks.Open, i, words, n)
@@ -256,13 +268,12 @@ defn resumeAt(words, state, from, n, stops)
         return {At: synced(words, i, from, n), Comment: 0, Text: false, Stops: out}
       end
       if next == marks.Quote
-        r = textEnd(words, next + 1, n, marks)
+        r = textEnd(words, next + 1, n)
         if r.At > from
           return {At: next, Comment: 0, Text: false, Stops: out}
         end
         inText = r.Open
         i = r.At
-        marks = r.Marks
       else
         r = commentEnd(words, next + 2, n, 1, marks)
         if r.At > from
@@ -281,8 +292,9 @@ defn Tokens(line, state, from = 1, stops = missing)
   (** Reads one line given the state at its start: the words with their roles, in order and with every character, and the state at its end, {Tokens,
       State}. Two plain words in a row make one. With from, the byte where a character starts, only the words from there on are made, the one
       that starts before it cut there: a screen that shows the end of a long line makes only the words it shows, and the line before them is crossed by
-      its comments and texts only. The line is walked a byte at a time, the inside of a comment or a text from mark to mark, each found natively, so a
-      line of a megabyte costs its bytes once at most.
+      its comments and texts only. The line is walked a byte at a time, the inside of a comment or a text from mark to mark, each found natively, and a
+      name or a run of spaces past its first byte natively too, so a line of a megabyte costs its bytes once at most, and a word of a megabyte a few
+      calls.
       With stops, a list, the result has Stops too: the places where the crossing passed, with the state there, {At, Comment, Text}, one every
       64 KB at least, in order. Given back as stops for a line read from the same state whose bytes are the same up to StopMargin() bytes past each
       stop, the crossing starts at the last of them before from, as it would get there in the same state: after an edit at the end of a line of a
@@ -310,10 +322,9 @@ defn Tokens(line, state, from = 1, stops = missing)
       marks = r.Marks
       role = Comment
     else if inText
-      r = textEnd(line, i, n, marks)
+      r = textEnd(line, i, n)
       inText = r.Open
       i = r.At
-      marks = r.Marks
       role = String
     else
       (* The byte of the character and the one after it tell what starts here; one that continues makes the character longer, and a letter. *)
@@ -327,10 +338,9 @@ defn Tokens(line, state, from = 1, stops = missing)
         marks = r.Marks
         role = Comment
       else if v == 34 and one
-        r = textEnd(line, i + 1, n, marks)
+        r = textEnd(line, i + 1, n)
         inText = r.Open
         i = r.At
-        marks = r.Marks
         role = String
       else if v >= 48 and (v <= 56 or (v == 57 and one))
         i = numberEnd(line, i + 1, n)
@@ -453,7 +463,6 @@ defn walk(words, state, stops)
   open = 0
   close = 0
   quote = 0
-  slash = 0
   while i <= n
     if i >= stop
       out = list.Append({At: i, Comment: depth, Text: inText}, out)
@@ -473,17 +482,17 @@ defn walk(words, state, stops)
         i = close + 2
       end
     else if inText
-      quote = if kept(quote, i) quote else str.ByteFind("\"", i, words) end
-      slash = if kept(slash, i) slash else str.ByteFind("\\", i, words) end
-      if value.IsMissing(quote)
+      (* The next quote or backslash, found natively at once; the quote found before, for the code, is behind it. *)
+      j = str.ByteFindAny("\"\\", i, words)
+      if value.IsMissing(j)
         i = n + 1
-      else if not value.IsMissing(slash) and slash < quote
-        i = slash + 1 + charBytes(slash + 1, words)
-      else if quote < n and str.Byte(quote + 1, words) == 34
-        i = quote + 2
+      else if str.Byte(j, words) == 92
+        i = j + 1 + charBytes(j + 1, words)
+      else if j < n and str.Byte(j + 1, words) == 34
+        i = j + 2
       else
         inText = false
-        i = quote + 1
+        i = j + 1
       end
     else
       quote = if kept(quote, i) quote else str.ByteFind("\"", i, words) end

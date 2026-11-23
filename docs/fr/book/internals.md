@@ -194,10 +194,22 @@ Le lexer parcourt les octets de la ligne avec [text.Byte], jamais une liste de s
 mégaoctet, faire un texte de chaque caractère prenait 0,2 s avant le premier token. Un caractère est ce que compte
 [value.Len] : un octet qui n'en continue pas un autre, `10xxxxxx` en [UTF-8](references.md#normes), avec les octets qui le
 continuent, si bien qu'un fichier qui n'est pas de l'UTF-8 est découpé comme Cesia le découpe partout ; tout caractère de
-plus d'un octet est une lettre. Dans un commentaire ou un texte, il saute de marque en marque, chacune cherchée en code
-natif avec [text.ByteFind], et chaque recherche reprend là où la précédente s'est arrêtée. Un property-based test (un test
-qui vérifie une règle sur des cas tirés au hasard) le compare à une lecture d'un caractère à la fois, telle qu'elle était
-écrite avant, sur des lignes au hasard qui contiennent aussi des octets qui ne sont pas de l'UTF-8.
+plus d'un octet est une lettre. Un nom, un nombre ou une suite d'espaces se lit par ses deux premiers octets ; ensuite les
+lettres, chiffres et soulignés ASCII qui suivent, ou les espaces, tabulations et retours chariot, sont sautés en code natif,
+tous d'un coup, par [text.ByteFindAny], qui lit huit octets à la fois. Un octet de 128 ou plus se lit par [text.Byte] : un
+nom d'une lettre, le plus courant dans le code, un espace seul et un nom d'accents coûtent ce qu'ils coûtaient, et seul le
+dernier espace d'une suite peut être suivi d'un octet qui continue un caractère, ce qui en fait un caractère plus long. Un
+octet lu par [text.Byte] dans une boucle coûte environ 60 ns, et un appel de [text.ByteFindAny] de 25 à 45 ns de plus qu'un
+de [text.Byte], plus moins d'une nanoseconde par octet : une suite d'un ou deux octets se lit moins cher dans la boucle, une
+plus longue en code natif. Dans un commentaire, le lexer saute de marque en marque, ses `(*` et `*)` cherchés chacun en code
+natif avec [text.ByteFind], et chaque recherche reprend là où la précédente s'est arrêtée, car un ensemble de leurs octets
+s'arrêterait à chaque `(`, `*` ou `)` seul. Dans un texte, [text.ByteFindAny] trouve d'un coup le prochain guillemet ou la
+prochaine barre oblique inverse ; celui ou celle que suit un octet qui continue est le début d'un caractère plus long, et la
+recherche reprend après. Un mot d'un mégaoctet se lit en 1,0 ms au lieu de 69, un texte d'un mégaoctet qui contient 200 000
+échappements et guillemets doublés en 58 ms au lieu de 211, et les 1 115 lignes de `core/view/view.ce` en 3 % de temps en
+moins. Un property-based test (un test qui vérifie une règle sur des cas tirés au hasard) le compare à une lecture d'un
+caractère à la fois, telle qu'elle était écrite avant, sur des lignes au hasard qui contiennent aussi des octets qui ne sont
+pas de l'UTF-8, et un autre sur des lignes de longues suites, chacune d'un morceau répété jusqu'à 300 fois.
 
 L'écran ne demande que les mots qu'il montre : `from` est l'octet où commence sa première colonne, et le mot qui commence
 avant lui y est coupé. Pour y arriver, le lexer traverse les commentaires et les textes d'avant `from` par leurs marques, et
@@ -251,11 +263,13 @@ pour la même raison : ses entrées sont espacées d'au moins `syntax-ppss-max-s
 
 Cette lecture n'a besoin que de l'état, pas des mots : elle ne passe donc pas par le lexer. [color.StateAfter] donne l'état à
 la fin d'une ligne en sautant de marque en marque, chacune cherchée en code natif avec [text.ByteFind]. Dans un commentaire,
-il cherche le prochain `(*` ou `*)`, car les commentaires s'emboîtent ; dans un texte, le prochain guillemet, un guillemet
-doublé `""` et le caractère après une barre oblique inverse faisant partie du texte ; ailleurs, le prochain guillemet ou
-`(*`. Une marque trouvée est gardée tant qu'elle est devant, et une marque absente n'est pas cherchée à nouveau : la
-recherche d'une barre oblique inverse depuis chaque texte d'une ligne qui n'en a pas relisait le reste de la ligne à chaque
-texte, 6,9 s pour un mégaoctet de code, 63 ms maintenant. Les lignes viennent 100 000 à la fois, une seule slice de la
+il cherche le prochain `(*` ou `*)`, car les commentaires s'emboîtent ; dans un texte, le prochain guillemet ou la prochaine
+barre oblique inverse, les deux d'un coup avec [text.ByteFindAny], un guillemet doublé `""` et le caractère après une barre
+oblique inverse faisant partie du texte ; ailleurs, le prochain guillemet ou `(*`. Une marque d'un commentaire ou du code
+trouvée est gardée tant qu'elle est devant, et une marque absente n'est pas cherchée à nouveau : la recherche d'une barre
+oblique inverse depuis chaque texte d'une ligne qui n'en a pas relisait le reste de la ligne à chaque texte, 6,9 s pour un
+mégaoctet de code, puis 67 ms avec une recherche pour chacune des deux marques d'un texte, 56 ms avec une seule pour les
+deux. Les lignes viennent 100 000 à la fois, une seule slice de la
 rope coupée à ses fins de ligne. L'état est celui que donne le lexer, et un test le vérifie sur 2 000 lignes au hasard, à
 partir de chaque sorte d'état :
 
@@ -304,15 +318,21 @@ donne l'état au début de la ligne, les blocs et les parenthèses ouverts et le
 de cet état, [indent.Wanted] tire la place d'une ligne que l'on tape, et [indent.Plan] les changements de Tab.
 
 La ligne se lit par ses octets, comme les couleurs la lisent, jamais comme une liste de ses caractères : le scan de fmt la
-parcourt un octet à la fois, et dans un commentaire, un texte ou des parenthèses, il va au prochain octet qui peut compter,
-cherché en code natif avec [text.ByteFind]. Enter coupe la ligne à l'octet du curseur, la place d'une ligne que l'on tape ne
-lit que ses deux premiers tokens, Tab lit une seule fois les lignes de son statement, et une lettre tapée au début d'une ligne
-ne lit ce qui suit le curseur que jusqu'à ses espaces et six caractères, pour savoir si elle fait un mot qui déplace la
-ligne. Sur une ligne d'un mégaoctet de code, Enter à son début prend 80 ms avec sa frame, surtout les couleurs de la ligne
-qui descend, là où les caractères de la ligne, un texte chacun, prenaient 1,5 s. À sa fin, l'indentation a besoin de la ligne
-entière, des parenthèses, textes et commentaires ouverts au curseur et des blocs que la ligne ouvre et ferme, et la lit une
-fois : 0,44 s au lieu de 1,28 ; voir
-[Une touche sur une très longue ligne](performance.md#une-touche-sur-une-très-longue-ligne).
+parcourt un octet à la fois. Dans un commentaire, il va au prochain `(*` ou `*)`, cherché chacun en code natif avec
+[text.ByteFind] ; dans un texte ou des parenthèses, au prochain octet qui peut compter, tous cherchés d'un coup avec
+[text.ByteFindAny], un guillemet, une barre oblique inverse ou un `$` dans un texte, une parenthèse, un crochet, une
+accolade ou un guillemet entre parenthèses, là où une recherche pour chacun gardait sa place. Après le deuxième octet d'un
+nom, ses lettres, chiffres et soulignés ASCII sont sautés en code natif aussi, de même qu'une suite d'espaces après ses deux
+premiers et une indentation après son premier espace, tandis qu'un nom d'une lettre et un espace seul entre deux mots se
+lisent comme avant, sans appel. Un mot d'un mégaoctet se lit en 1,0 ms au lieu de 83, et un mégaoctet de code en 275 ms au
+lieu de 304, ses 233 000 tokens en étant l'essentiel. Enter coupe la ligne à l'octet du curseur, la place d'une ligne que
+l'on tape ne lit que ses deux premiers tokens, Tab lit une seule fois les lignes de son statement, et une lettre tapée au
+début d'une ligne ne lit ce qui suit le curseur que jusqu'à ses espaces et six caractères, pour savoir si elle fait un mot
+qui déplace la ligne. Sur une ligne d'un mégaoctet de code, Enter à son début prend 15 ms avec sa frame, la ligne qui
+descend gardant les stops de ses couleurs, là où les caractères de la ligne, un texte chacun, prenaient 1,5 s. À sa fin,
+l'indentation a besoin de la ligne entière, des parenthèses, textes et commentaires ouverts au curseur et des blocs que la
+ligne ouvre et ferme, et la lit une fois : 0,33 s au lieu de 1,28 ; voir [Une touche sur une très longue
+ligne](performance.md#une-touche-sur-une-très-longue-ligne).
 
 Enter garde sa lecture : [text.NewLine] range, dans le `Layout` du buffer, l'état au début de la nouvelle ligne, et l'Enter
 suivant, ou le premier mot tapé sur cette ligne, repart de lui quand il est au plus 256 lignes plus haut, au lieu de chercher

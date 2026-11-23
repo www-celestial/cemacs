@@ -466,6 +466,37 @@ lit ses lignes avec lui. Sur le fichier de 99,9 MB de lignes d'un mégaoctet de 
 texte, et 14 stops : le processus occupe 562 MB après 20 lettres à l'extrémité de sa ligne 50, 589 MB avec la version d'avant,
 car chaque lettre laissait derrière elle une lecture de la ligne entière.
 
+Le lexer des couleurs, l'indentation et `M-f` sautent maintenant en code natif le reste d'un nom ou d'une suite d'espaces,
+après son premier octet ou ses deux premiers, avec [text.ByteFindAny], et traversent un texte par une seule recherche native
+de ses guillemets et barres obliques inverses, [À l'intérieur de Cemacs](internals.md#les-couleurs). Les touches des
+tableaux ci-dessus sur les deux lignes d'un mégaoctet dans un bloc, cette version et `main` à f87d2fd chacune à son tour,
+$n = 21$, trois séries, le milieu de leurs médianes en millisecondes, avant → maintenant :
+
+| Ligne, endroit | `x` | backspace | `end` | Enter | Tab |
+|---|---|---|---|---|---|
+| un mot de 1 MB, début | 15,4 → 15,7 | 11,5 → 10,6 | 117 → 46,2 | 83,1 → 15,8 | 84,5 → 16,9 |
+| un mot de 1 MB, milieu | 54,6 → 21,7 | 54,0 → 21,0 | 159 → 59,2 | 87,7 → 20,7 | 85,9 → 17,3 |
+| un mot de 1 MB, fin | 90,1 → 23,4 | 90,0 → 23,6 | 264 → 66,3 | 90,4 → 22,8 | 97,6 → 30,2 |
+| code de 1 MB, début | 76,0 → 68,6 | 71,9 → 64,5 | 228 → 208 | 15,5 → 15,2 | 349 → 325 |
+| code de 1 MB, milieu | 63,5 → 58,2 | 62,4 → 56,9 | 184 → 167 | 220 → 205 | 350 → 325 |
+| code de 1 MB, fin | 26,7 → 26,1 | 27,0 → 25,6 | 73,0 → 70,7 | 353 → 332 | 349 → 329 |
+
+Sur le mot, l'écran montre ses dernières colonnes, et le lexer lit le mot depuis son début pour savoir où commencent les
+tokens qui y sont, car un nom n'a pas d'endroit en son milieu d'où partir : un octet à la fois, 66 ms pour un mégaoctet, en
+code natif maintenant, 2,1 ms avec le reste de sa rangée. L'indentation lit le mot en 1,0 ms au lieu de 83, si bien qu'Enter
+et Tab y prennent ce que prennent la touche et sa frame. `x` et backspace au début du mot prennent ce qu'ils prenaient, car
+ils n'ont jamais parcouru le mot un octet à la fois. Sur le code, les 233 000 tokens de la ligne, de quatre octets chacun en
+moyenne, se lisent un par un comme avant, et une suite de quelques octets gagne peu : les touches prennent jusqu'à 10 % de
+moins, grâce aux noms et aux espaces de plus de deux octets et aux textes. `C-a` puis `M-f` à travers le mot, avec leur suivi
+de l'écran, prennent 19,6 ms au lieu de 303 ; `C-a` seul prenait 3,4 ms avant et 4,3 maintenant dans ces séries, mesuré après
+`M-f` dans le même processus, et 4,1 à 4,6 ms dans les deux versions mesuré seul, deux séries de 41 chacune à son tour.
+
+Sur un fichier de lignes usuelles rien n'est plus lent : à la ligne 500 de `core/view/view.ce`, à sa première colonne et à
+sa dixième, Enter, Tab, `C-j` et `end` prennent 0,7 à 1,8 ms, et `x`, backspace, `C-e` et `hello` 0,5 à 2,4 ms, dans les deux
+versions ; les tokens de ses 1 115 lignes prennent 10,9 ms au lieu de 11,5, et les états de 47 149 lignes de Cesia, lus par
+[color.ColoredTo] sans aucun de connu, 54,8 ms au lieu de 58,9, et par [color.StateAfter] sur chaque ligne 45,3 au lieu de
+49,3.
+
 ### Enter et Tab dans un fichier de Cesia
 
 Une touche dans un fichier de Cesia, sans dessin : [commands.Update] de la touche, qui lance sa commande puis
@@ -815,13 +846,14 @@ dès que la touche arrive, là où il pouvait dormir jusqu'à 5 ms avant. Le buf
   dessinent les frames suivantes.
 - Un buffer Cesia de plus de 1 000 000 octets n'est pas vérifié : voir [Les erreurs dans les lignes](check.md#quand-elle-tourne).
 - Une seule vérification tourne à la fois, pour un seul buffer.
-- Une touche à l'extrémité d'une ligne d'un mégaoctet prend 0,03 s quand la ligne est du code et 0,09 s quand c'est un seul
-  mot : les couleurs d'une ligne sont lues depuis son début jusqu'à l'écran, car un commentaire ou un texte ouvert avant les
-  change, par ses commentaires et ses textes, depuis le dernier endroit gardé avant la modification, et un long mot un octet à
-  la fois ; l'état à la fin de la ligne se lit aussi depuis le dernier endroit gardé avant la modification, si bien qu'une
-  lettre au début d'une ligne de code, qui change la ligne depuis son début, la lit entière pour lui, 0,08 s ; voir [Une
-  touche sur une très longue ligne](#une-touche-sur-une-très-longue-ligne). Au début d'une ligne d'un seul mot, une touche
-  prend ce qu'elle prend sur une ligne courte, moins de 20 ms avec la frame, et `M-f` traverse un mot de 32 000 lettres en
-  25 ms au lieu de 36 s. Dans un fichier de Cesia, Enter y prend 0,02 s au début d'une ligne de code, 0,09 s au début d'un
-  mot, et jusqu'à 0,38 s à sa fin, et Tab 0,09 à 0,37 s : l'indentation lit la ligne par ses octets, jusqu'au curseur pour
-  Enter et entière pour Tab, car `cesia fmt` place un statement comme un tout, à environ 300 ns l'octet de code.
+- Une touche à l'extrémité d'une ligne d'un mégaoctet prend 0,03 s, que la ligne soit du code ou un seul mot : les couleurs
+  d'une ligne sont lues depuis son début jusqu'à l'écran, car un commentaire ou un texte ouvert avant les change, par ses
+  commentaires et ses textes, depuis le dernier endroit gardé avant la modification, et un long mot en code natif, huit
+  octets à la fois ; l'état à la fin de la ligne se lit aussi depuis le dernier endroit gardé avant la modification, si bien
+  qu'une lettre au début d'une ligne de code, qui change la ligne depuis son début, la lit entière pour lui, 0,07 s ; voir
+  [Une touche sur une très longue ligne](#une-touche-sur-une-très-longue-ligne). Au début d'une ligne d'un seul mot, une
+  touche prend ce qu'elle prend sur une ligne courte, moins de 20 ms avec la frame, et `M-f` traverse un mot d'un million de
+  lettres en 20 ms. Dans un fichier de Cesia, Enter prend 0,02 s au début d'une ligne de code et partout dans un mot, et
+  jusqu'à 0,33 s à la fin du code, et Tab 0,02 à 0,03 s dans un mot et 0,33 s dans le code : l'indentation lit la ligne par
+  ses octets, jusqu'au curseur pour Enter et entière pour Tab, car `cesia fmt` place un statement comme un tout, à environ
+  300 ns l'octet de code, un token à la fois, et un mot d'un coup.

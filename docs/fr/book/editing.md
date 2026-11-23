@@ -79,10 +79,10 @@ ne fait rien.
 Un mot est une suite de lettres, de chiffres et de soulignés, `_`. Un caractère qui n'est pas ASCII (les 128 caractères du
 texte anglais simple) compte comme une lettre : `été` est donc un seul mot. Cesia ne connaît la casse (majuscule ou
 minuscule) que des lettres ASCII, et traiter les autres caractères comme des lettres garde chaque alphabet dans les mots.
-`M-f` saute d'abord ce qui n'est pas un mot, puis le mot. Il lit une fois chaque ligne qu'il traverse, un octet à la fois,
-si bien qu'un mot d'un million de lettres, comme en contient un fichier minifié (du code dont on a enlevé les espaces et
-les fins de ligne) ou une data URI (un fichier entier écrit dans une adresse), se traverse en quelques dixièmes de
-seconde :
+`M-f` saute d'abord ce qui n'est pas un mot, puis le mot. Il lit une fois chaque ligne qu'il traverse, et saute en code
+natif les lettres, chiffres et soulignés ASCII d'un mot, chaque suite d'un coup, si bien qu'un mot d'un million de lettres,
+comme en contient un fichier minifié (du code dont on a enlevé les espaces et les fins de ligne) ou une data URI (un
+fichier entier écrit dans une adresse), se traverse en 20 ms environ :
 
 ```cesia
 cursorOf(press.Press(["one two", "C-a", "M-f"], editor(""))) --> {Line: 1, Column: 3}

@@ -110,6 +110,11 @@ defn isWordMovedAsPlain(p)
   same(at(text.MoveWord(p.By, b)), plainMoveWord(p.By, at(b), p.Text))
 end
 isMoveWordIsPlain() = test.ForAll(isWordMovedAsPlain, wordCase, cases = 500)
+(* The same on long runs, which a move forward across a word skips natively: each piece repeated up to 200 times. *)
+wordPieces = ["a", "Z9_", "é", "aé", "€x", " ", ".", "\r\n", "\n", "_"]
+runCase = gen.Of({Text: gen.Map(ps -> str.Join("", ps), gen.List(gen.Map(p -> str.Repeat(p.Times, p.Piece), gen.Of({Piece: gen.Pick(wordPieces),
+  Times: gen.Int(1, 200)})), max = 8)), Line: gen.Int(1, 4), Column: gen.Int(0, 600), By: gen.Int(-3, 3)})
+isMoveWordOnRunsIsPlain() = test.ForAll(isWordMovedAsPlain, runCase, cases = 300)
 isMovePage() = same(at(text.MovePage(1, 3, text.Of(str.Join("\n", list.Map(n -> "l", list.Range(1, 10))), missing))), [4, 0]) and same(at(text.MovePage(-1, 3, atPlace(2, 0, str.Join("\n", list.Map(n -> "l", list.Range(1, 10)))))), [1, 0])
 isMovePageKeepsColumn() = same(at(text.MovePage(1, 2, text.MoveLine(1, atPlace(1, 3, "abcd\nx\nabcd\nabcd")))), [4, 3])
 isColorsForgotten() = text.InsertWords("x", text.Of("a\nb\nc", missing)).Colors.Known == 1 and color.ColoredTo(3, n -> "x", text.Of("a", missing).Colors).Known == 3

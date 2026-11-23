@@ -250,6 +250,19 @@ defn isLongFromAsCut()
   end
   true
 end
+(* Long runs, which the walks of names, spaces and texts skip natively past their first byte: each piece repeated up to 300 times, a run ended by each
+   kind of byte, bytes that continue a character after the last of a run of spaces, of a name or of a mark of a text among them. Read a character at a
+   time, and from a byte on, the line gives the same; the state at its end alone too, on a line of UTF-8, where StateAfter reads as Tokens does. *)
+runPieces = ["a", "Z9_", "é", "aé", " ", "\t", "\r", " \t", "\"", "\\", "\"\"", "\\\"", "(*", "*)", "x€", "1.5", "f(", "do", str.FromBytes([128]),
+  str.FromBytes([191]), str.FromBytes([195]), str.FromBytes([255])]
+runCase = gen.Of({Words: gen.Map(ps -> str.Join("", ps), gen.List(gen.Map(p -> str.Repeat(p.Times, p.Piece), gen.Of({Piece: gen.Pick(runPieces),
+  Times: gen.Int(1, 300)})), max = 12)), Start: gen.Pick(starts), Column: gen.Int(0, 4000)})
+defn isRunAsCharacters(p)
+  (** The words, roles and state of a line of long runs, read a byte at a time with its runs skipped natively, as a character at a time. *)
+  whole = color.Tokens(p.Words, p.Start)
+  value.Equal(whole, charTokens(p.Words, p.Start)) and isFromAsCut(p) and (not str.IsUtf8(p.Words) or value.Equal(color.StateAfter(p.Words, p.Start), whole.State))
+end
+isRunsAsCharacters() = test.ForAll(isRunAsCharacters, runCase, cases = 300)
 isFromOutsideTheLine() = value.Equal(color.Tokens("ab c", color.FirstState, from = 9).Tokens, []) and value.Equal(color.Tokens("ab c", color.FirstState, from = 0), color.Tokens("ab c", color.FirstState)) and
   color.Tokens("(* a", color.FirstState, from = 9).State.Comment == 1
 
