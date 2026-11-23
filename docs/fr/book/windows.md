@@ -116,7 +116,8 @@ graphe d'un coup.
 
 La molette déplace l'écran par rangées, à travers les graphes comme à travers les lignes, et emmène le curseur, qui reste
 aussi loin du bord. Dans un graphe plus haut que le pane, où aucune ligne ne se voit, le curseur reste où il était jusqu'à
-la touche suivante, qui ramène l'écran à lui. Un clic laisse l'écran où il est, même sur une ligne de la marge, pour que le
+la touche suivante, qui ramène l'écran à lui. Au-dessus d'une table des cells, la molette déplace d'abord les rangées de
+la table, et l'écran une fois la table à sa première ou à sa dernière rangée : voir [Tables](cells.md#tables). Un clic laisse l'écran où il est, même sur une ligne de la marge, pour que le
 texte ne bouge pas sous la souris ; la marge revient à la touche suivante. `ScrollMargin` mis à `() -> 0` ne déplace
 l'écran que quand le curseur en sort : voir [Les réglages](customising.md#les-réglages).
 

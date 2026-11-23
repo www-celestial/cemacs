@@ -36,7 +36,8 @@ Les touches des cells sont un groupe de `C-c`, `e` pour *execute* (exécuter), q
 | `C-c e s` | [notebook.StopCell] | arrête la cell qui tourne ; les cells qui attendent après elle ne tournent pas |
 | `C-c e h` | [notebook.WriteHtml] | écrit la page du fichier à côté de lui, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | efface les résultats dessinés ; les noms de la session restent |
-| `C-c e f` | [notebook.FocusControl] | donne les touches au premier input de la cell du curseur, un slider ou un autre, à la barre de son animation, ou à son graphe 3D : voir Sliders, Inputs, Animations et Graphes 3D |
+| `C-c e f` | [notebook.FocusControl] | donne les touches au premier input de la cell du curseur, un slider ou un autre, à la barre de son animation, à son graphe 3D ou à sa table : voir Sliders, Inputs, Animations, Graphes 3D et Tables |
+| `C-c e c` | [notebook.CopyTable] | copie une table en CSV : celle qui a les touches, ou les a eues en dernier, ou la première de la cell du curseur |
 
 Dans `*repl*`, Enter lance ce qui a été tapé, et `M-p` et `M-n` reculent et avancent dans ce qui a été tapé avant ;
 partout ailleurs, Enter est un saut de ligne, comme toujours.
@@ -45,8 +46,9 @@ partout ailleurs, Enter est un saut de ligne, comme toujours.
 
 Un résultat est dessiné sous la dernière ligne non vide de sa cell, après une fine barre : ce que la cell a affiché, puis
 sa valeur, ou son erreur en rouge avec sa ligne, comme `cesia run` la montre. Un graphe de
-[std/plot](https://www-celestial.github.io/cesia-lang/graphs.html) est dessiné, haut de 400 pixels et aussi large que le pane (la partie de la fenêtre qui montre un buffer). Une frame (un tableau de données en colonnes) s'affiche comme une table de ses 20 premières rangées et leur nombre, une
-matrice comme sa forme et ses 10 × 10 premières valeurs, toute autre valeur comme son texte. Une cell qui tourne montre
+[std/plot](https://www-celestial.github.io/cesia-lang/graphs.html) est dessiné, haut de 400 pixels et aussi large que le pane (la partie de la fenêtre qui montre un buffer). Une frame (un tableau de données en colonnes), une matrice, une liste de maps ou de structs et
+un struct s'affichent comme une table, comme le dit [Tables](#tables), une liste comme ses premières valeurs, toute autre
+valeur comme son texte. Une cell qui tourne montre
 `running…` (en cours) et les secondes écoulées ; les cells qui la suivent dans la file montrent `waiting` (en attente). Une
 cell qui n'a rien affiché et ne donne aucune valeur ne dessine rien. Chaque partie est coupée à 40 lignes, la dernière
 disant combien il en reste.
@@ -94,6 +96,70 @@ largeur, la session dessine à nouveau la scene à la nouvelle ; le graphe garde
 `*repl*` dessine un graphe sous sa réponse de la même façon, et la page de `C-c e h` contient chaque graphe en SVG.
 L'écran glisse sur un graphe une rangée à la fois, sa partie basse visible quand l'écran commence dedans : voir
 [L'écran d'un pane](windows.md#lécran-dun-pane).
+
+## Tables
+
+Une frame, une matrice, une liste de maps ou de structs et un struct s'affichent comme une *table* (un tableau) sous leur
+cell, dessinée comme la page de SunEarthTools dessine ses tables : des bords fins, une rangée d'en-tête dans la police
+forte, les nombres à droite de leur colonne, chaque point décimal sous ceux des autres, les textes à gauche, dans la police
+du code, à l'encre du thème sur son papier. Le cadre de la table et le trait sous son en-tête sont à l'encre, les lignes
+entre les rangées et les colonnes dans la couleur des lignes ; une ligne sous la table dit ses rangées,
+`rows 21–40 of 1000000`, les mots de son filtre et son tri.
+
+Une table montre 20 rangées au plus. Une plus longue défile dans son bloc : la molette au-dessus d'elle la déplace de trois
+rangées par cran, et à sa première ou à sa dernière rangée la molette déplace de nouveau l'écran. Ses rangées viennent de
+la session cent à la fois, autour de celles qui se voient, par `cells.Rows` de
+[std/cells](https://www-celestial.github.io/cesia-lang/cells.html) : la valeur ne quitte jamais la session, si bien qu'une
+frame d'un million de rangées s'ouvre comme une de vingt, et qu'un écran d'elle coûte un écran. Le texte d'une case est
+coupé à 40 caractères, le dernier `…` ; une table plus large que le pane montre les colonnes qui tiennent, à partir de
+celle du curseur.
+
+`C-c e f` dans sa cell, Tab depuis une autre table de la cell, ou un clic sur elle donne les touches à la table, comme un
+input les a : un anneau de la couleur d'accent l'entoure, la case du curseur a un cadre de cette couleur, et la rangée
+choisie est en inverse, l'encre et le papier échangés.
+
+| Touches | Ce qu'elles font |
+|---|---|
+| `←` `→` `↑` `↓` | le curseur d'une case ; la rangée du curseur est la rangée choisie |
+| `PgUp` `PgDn` | un écran, 20 rangées, le curseur là où il était sur l'écran |
+| `Home` `End` | la première rangée, la dernière |
+| `s` | trie par la colonne du curseur, en croissant ; de nouveau, en décroissant ; de nouveau, comme elle est donnée. Un clic sur un en-tête fait de même |
+| `/` | un filtre : les mots tapés gardent les rangées qui contiennent chacun d'eux, dans n'importe quelle colonne, dans n'importe quel ordre, ses lettres ASCII en majuscule comme en minuscule ; il s'applique pendant la frappe, Enter le garde, Escape le retire |
+| `M-w` | copie le texte de la case du curseur |
+| `C-u M-w` | copie la rangée du curseur, ses cases séparées par des tabulations |
+| `C-c e c` | copie toute la table en CSV (des valeurs séparées par des virgules), comme std/csv l'écrit : son en-tête, puis ses rangées comme elle les montre, triées et filtrées, 100 000 au plus |
+| `Tab` `S-Tab` | la table suivante de la cell, la précédente |
+| `Escape` `C-g` | quitte la table |
+
+Le tri et le filtre se font dans la session, qui garde l'ordre pour l'écran suivant : les nombres se trient comme des
+nombres, NaN (*not a number*, la valeur d'un calcul qui n'a pas de résultat) et les valeurs manquantes à la fin dans les
+deux sens, et les rangées de valeurs égales gardent leur ordre. Une rangée choisie reste choisie quand la table est triée
+de nouveau ou filtrée, à sa nouvelle place, tant que le filtre la garde. Tant qu'aucune table n'a les touches, chaque
+touche fait ce qu'elle faisait : `s` et `/` s'écrivent dans le buffer, `M-w` copie la région.
+
+### Une rangée et son point
+
+Dans les résultats d'une cell, une table de $n$ rangées et chaque ligne, points ou textes d'un graphe de $n$ points sont
+liés par leur position, la rangée $i$ au point $i$, comme le dit
+[std/cells](https://www-celestial.github.io/cesia-lang/cells.html) :
+
+```cesia norun
+use std/cells
+use std/frame
+use std/plot
+
+(* %% Day *)
+hours = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, 18.14, 24.35, 28.02, 28.66]})
+cells.Show(hours)
+plot.Points(frame.Column("hour", hours), frame.Column("elevation", hours))
+```
+
+Une rangée choisie, par un clic ou les flèches, marque son point sur chaque graphe de la cell qui en a autant : un anneau
+au point, à sa place exacte, même un point que le graphe a écarté en allégeant une longue ligne, et une case de ses
+valeurs à côté, `x = 9  y = 18.14`, que la session dessine, une question pour chaque marque. Un clic sur un point d'un
+graphe marqué, à 12 pixels près, choisit sa rangée : la table défile jusqu'à elle, triée et filtrée comme elle l'est, et
+la montre en inverse. Une table et un graphe de longueurs différentes ne sont pas liés, et rien n'est lié d'une cell à
+l'autre.
 
 ## Sliders
 
@@ -360,13 +426,26 @@ avec leurs nombres, de 1 à 200 par côté, les places d'exactement leurs points
 1 000 000, une palette de 1 à 256 couleurs `#rrggbb`, une couleur de celle-ci ou -1 pour chaque quad, et un ordre de 1 ou
 -1 pour leurs lignes et leurs colonnes ; la vue d'un graphe 3D est faite de deux nombres, l'élévation de -90 à 90 : tout
 le reste est refusé, et une vue refusée laisse le graphe à celle qu'il montre, et dit pourquoi. Cemacs pose à la session
-une question à la fois, une image, le nombre d'un slider, une vue ou une scene, pour qu'aucune réponse n'aille à une autre
-question. La
+une question à la fois, une image, le nombre d'un slider, une vue, une scene, les rangées d'une table ou une marque, pour
+qu'aucune réponse n'aille à une autre question. Les rangées d'une table sont une entrée aussi : 1 000 rangées et 256
+colonnes au plus, un texte de 200 caractères au plus pour chaque colonne de chaque rangée, et pour chacune une position de
+1 au nombre de rangées de la valeur ; des rangées qui ne le sont pas sont refusées, et la table garde ce qu'elle montre et
+n'en demande pas plus. Les places des points d'un graphe marqué sont 100 000 au plus par layer (une couche du graphe), de
+64 layers, chacune un nombre de -1 000 000 à 1 000 000. Les mots d'un filtre vont à la session comme un texte, qu'elle
+cherche tel quel et ne lit jamais comme un motif ni comme du code. La
 vérification lit chaque nombre une fois : 16 ms pour 100 000 marques, 25 ms pour une heatmap (une carte de chaleur, une grille de cases
 colorées selon leur valeur) d'un million de cases. La mémoire que prennent les formes est écrite par `c.Write`, qui vérifie
 sa longueur entière contre le bloc avant d'écrire.
 
 ## Vitesse
+
+Une table d'un million de rangées : `PgDn` prend 0,48 ms, la médiane de 63 écrans depuis le haut, de la touche à son bloc
+dessiné de nouveau ; quand ses rangées sont demandées à la session, un écran sur deux, 4,0 ms de la touche aux rangées
+dessinées, 11,3 ms au plus, sous les 16,7 ms d'un rafraîchissement à 60 Hz (trois lancements, la médiane de leurs
+médianes). Une cell qui montre une frame de 1 000 rangées apparaît en 2,62 ms, de `C-c e e` à sa table dessinée, contre
+2,74 quand elle montrait la frame comme un texte, les médianes de 21 lancements à tour de rôle : sa table est dessinée au
+tick (le pas de la boucle de l'éditeur) où son résultat arrive, et les noms de `*variables*` viennent à un tick suivant.
+Cemacs atteint sa première frame en 30,84 ms, comme avant les tables (30,86).
 
 Taper dans un fichier de cells coûte ce que coûte taper dans n'importe quel fichier : les cells ne sont relues que lorsqu'une
 cell tourne, et une demi-seconde après la dernière touche pour remettre les résultats sous leurs cells, jamais à chaque

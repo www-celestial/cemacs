@@ -33,7 +33,8 @@ The keys of the cells are a group of `C-c`, `e` for *execute*, which the band of
 | `C-c e s` | [notebook.StopCell] | stops the cell that runs; the cells waiting after it don't run |
 | `C-c e h` | [notebook.WriteHtml] | writes the page of the file beside it, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | clears the results drawn; the names of the session stay |
-| `C-c e f` | [notebook.FocusControl] | gives the keys to the first input of the cursor's cell, a slider or another, to the bar of its animation, or to its 3D graph: see Sliders, Inputs, Animations and 3D graphs |
+| `C-c e f` | [notebook.FocusControl] | gives the keys to the first input of the cursor's cell, a slider or another, to the bar of its animation, to its 3D graph or to its table: see Sliders, Inputs, Animations, 3D graphs and Tables |
+| `C-c e c` | [notebook.CopyTable] | copies a table as CSV: the one that has the keys, or had them last, or the first of the cursor's cell |
 
 In `*repl*`, Enter runs what was typed, and `M-p` and `M-n` go back and on through what was typed before; anywhere else,
 Enter is a new line, as always.
@@ -43,8 +44,8 @@ Enter is a new line, as always.
 A result is drawn under the last line of its cell that isn't blank, after a thin bar: what the cell printed, then its value,
 or its error in red with its line, as `cesia run` shows it. A graph of
 [std/plot](https://www-celestial.github.io/cesia-lang/graphs.html) is drawn as wide as the pane, or as its own width when that is less, and with
-the shape of its own size: 640 by 400 by default, a polar graph square. A frame shows as a table of its first 20 rows and its count, a
-matrix as its shape and its first 10 × 10 values, any other value as its text. A cell that runs shows `running…` and the
+the shape of its own size: 640 by 400 by default, a polar graph square. A frame, a matrix, a list of maps or structs and a
+struct show as a table, as [Tables](#tables) tells, a list as its first values, any other value as its text. A cell that runs shows `running…` and the
 seconds so far; the cells after it in the queue show `waiting`. A cell that printed nothing and gives no value draws
 nothing. Each part is cut at 40 lines, the last one saying how many more there are.
 
@@ -93,6 +94,65 @@ it comes, and a graph narrower than the pane, at its own width, stays as it is. 
 draws a graph under its answer in the same way, and the page of `C-c e h` holds each graph as SVG. The screen slides over a
 graph a row at a time, its lower part showing when the screen starts inside it: see
 [The screen of a pane](windows.md#the-screen-of-a-pane).
+
+## Tables
+
+A frame, a matrix, a list of maps or structs and a struct show as a *table* under their cell, drawn as the page of
+SunEarthTools draws its tables: thin borders, a header row in the strong font, numbers on the right of their column,
+each decimal point under those of the others, texts on the left, in the font of the code, the ink of the theme on its
+paper. The frame of the table and the rule under its header are in ink, the lines between rows and columns in the color
+of lines; a line under the table says its rows, `rows 21–40 of 1000000`, the words of its filter and its sort.
+
+A table shows 20 rows at most. A longer one scrolls inside its block: the wheel over it moves it three rows a notch,
+and at its first or its last row the wheel moves the screen again. Its rows come from the session a hundred at a time,
+around those shown, by `cells.Rows` of [std/cells](https://www-celestial.github.io/cesia-lang/cells.html): the value
+never leaves the session, so a frame of a million rows opens as one of twenty, and a screen of it costs a screen. A
+cell's text is cut at 40 characters, the last one `…`; a table wider than the pane shows the columns that fit, from the
+one of the cursor.
+
+`C-c e f` in its cell, Tab from another table of the cell, or a click on it gives the table the keys, as an input has
+them: a ring of the accent color goes round it, the cell of the cursor has a box of that color, and the row chosen is in
+reverse, ink and paper swapped.
+
+| Keys | What they do |
+|---|---|
+| `←` `→` `↑` `↓` | the cursor a cell; the row of the cursor is the row chosen |
+| `PgUp` `PgDn` | a screen, 20 rows, the cursor where it was on the screen |
+| `Home` `End` | the first row, the last |
+| `s` | sorts by the column of the cursor, increasing; again, decreasing; again, as given. A click on a header does the same |
+| `/` | a filter: the words typed keep the rows that hold each of them, in any column, in any order, its ASCII letters in either case; it applies as you type, Enter keeps it, Escape takes it back |
+| `M-w` | copies the text of the cell of the cursor |
+| `C-u M-w` | copies the row of the cursor, its cells apart by tabs |
+| `C-c e c` | copies the whole table as CSV, as std/csv writes it: its header, then its rows as it shows them, sorted and filtered, at most 100,000 |
+| `Tab` `S-Tab` | the next table of the cell, the previous one |
+| `Escape` `C-g` | leaves the table |
+
+The sort and the filter happen in the session, which keeps the order for the next screen: numbers sort as numbers, NaN
+and missing last both ways, and rows of equal values keep their order. A row chosen stays chosen when the table is
+sorted again or filtered, at its new place, as long as the filter keeps it. While no table has the keys, every key does
+what it did: `s` and `/` are typed in the buffer, `M-w` copies the region.
+
+### A row and its point
+
+Within the results of one cell, a table of $n$ rows and each line, points or texts of a graph with $n$ points are linked
+by position, row $i$ to point $i$, as [std/cells](https://www-celestial.github.io/cesia-lang/cells.html) says:
+
+```cesia norun
+use std/cells
+use std/frame
+use std/plot
+
+(* %% Day *)
+hours = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, 18.14, 24.35, 28.02, 28.66]})
+cells.Show(hours)
+plot.Points(frame.Column("hour", hours), frame.Column("elevation", hours))
+```
+
+A row chosen, by a click or the arrows, marks its point on each graph of the cell of as many points: a ring at the
+point, at its exact place, even one that the graph thinned out of a long line, and a box of its values beside it,
+`x = 9  y = 18.14`, which the session draws, one question for each mark. A click on a point of a marked graph, within 12
+pixels, chooses its row: the table scrolls to it, sorted and filtered as it is, and shows it in reverse. A table and a
+graph of other lengths are not linked, and nothing is linked across cells.
 
 ## Sliders
 
@@ -334,11 +394,23 @@ says why. The quads of a surface come as counts, from 1 to 200 a side, the place
 from -1,000,000 to 1,000,000, a palette of 1 to 256 colors `#rrggbb`, a color of it or -1 for each quad, and an order of
 1 or -1 for its rows and its columns; a 3D graph's view is two numbers, the elevation from -90 to 90: anything else is
 refused, and a view refused leaves the graph at the one it shows, and says why. Cemacs asks the session one question at
-a time, a frame, a slider's number, a view or a scene, so that no answer goes to another question. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
+a time, a frame, a slider's number, a view, a scene, the rows of a table or a mark, so that no answer goes to another
+question. The rows of a table are input too: at most 1,000 rows and 256 columns, a text of at most 200 characters for
+each column of each row, and a position for each from 1 to the rows of the value; rows that are not are refused, and the
+table keeps what it shows and asks no more. The places of the points of a marked graph are at most 100,000 a layer, of
+64 layers, each a number from -1,000,000 to 1,000,000. The words of a filter go to the session as a text, which finds
+them as they are and never reads them as a pattern or as code. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
 a million cells. The memory the shapes take is written by `c.Write`, which checks its whole length against the block
 before it writes.
 
 ## Speed
+
+A table of a million rows: `PgDn` takes 0.48 ms, the median of 63 screens from the top, from the key to its block drawn
+again; when its rows are asked of the session, every other screen, 4.0 ms from the key to the rows drawn, 11.3 ms at
+most, under the 16.7 ms of one refresh at 60 Hz (three runs, the median of their medians). A cell that shows a frame of
+1,000 rows appears in 2.62 ms, from `C-c e e` to its table drawn, against 2.74 when it showed the frame as text, the
+medians of 21 runs taking turns: its table is drawn at the tick its result lands, and the names of `*variables*` come at
+a later tick. Cemacs reaches its first frame in 30.84 ms, as before tables (30.86).
 
 Typing in a file of cells costs what typing in any file costs: the cells are read again only when a cell runs, and half a
 second after the last key to put the results back under their cells, never at each key. Measured in a window of 1920 by

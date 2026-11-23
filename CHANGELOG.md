@@ -66,6 +66,17 @@ what a key can lead to, so no key has to be learnt before the start.
   A change writes its value in place of the old one, escaped as Cesia reads it, one step of undo, then runs again only
   the cells that read it. `C-c e f` and Tab go round every input of a cell, sliders among them; no key is taken while no
   input has the keys.
+- A frame, a matrix, a list of maps or structs and a struct under a cell draw as a table, as the tables of SunEarthTools:
+  thin borders, a header in the strong font, numbers on the right aligned on their decimal point, texts on the left, in
+  the font of the code, where a frame showed as text cut at 20 rows and a matrix as its first 10 × 10 values. A table
+  shows 20 rows and scrolls inside its block, by the wheel or the keys, its rows asked of the session of Cesia 1.3 a
+  hundred at a time, `cells.Rows`, so a frame of a million rows opens as one of twenty. `C-c e f`, Tab or a click give
+  it the keys: the arrows move a cell, `s` sorts by its column, `/` filters the rows by words in any column, `M-w`
+  copies the cell, `C-u M-w` the row, `C-c e c` the table as CSV, and Escape leaves; no key is taken while no table has
+  them.
+- A row chosen in a table rings its point on each line, points or texts of the graphs of its cell that have as many
+  points, with a box of its values, and a click on a point of such a graph chooses its row.
+- The wheel over a table moves its rows first, and the screen once the table is at its first or its last row.
 
 ### Changing Cemacs
 
@@ -84,6 +95,10 @@ Measured on the same machine as the rest, in the book's chapter on performance:
 - A still window sleeps until the next event: 0.0 % of a core at rest instead of 1.4 %, a key read 0.7 ms after it was
   sent instead of 3.1.
 - The start, to the first frame: 51.3 ms with Cesia 1.2 against 57.4 with Cesia 1.1.0; Emacs 89.1, Neovim 13.8, Vim 9.3.
+- A table of a million rows scrolls a screen in 0.48 ms, 4.0 when it asks the session for its rows, 11.3 at most; a cell
+  that shows a frame of 1,000 rows appears in 2.62 ms against 2.74 when it showed it as text, and the first frame stays at
+  30.84 ms against 30.86 (medians of 21 runs, alternated), as Cesia 1.3 reads a file of more than 256 functions from its
+  cache with no young collection.
 
 ### Fixes
 
