@@ -852,7 +852,7 @@ defn widened(k, state)
     end
     fresh = dict.Merge(old.Graph, dict.Put("Asked", pending.Width, Prepared(scene.Value, commands.Home(s))))
     fresh.Hover = missing
-    if dict.GetOr("Pointed", false, old.Graph) and value.IsMissing(PointsFault(dict.GetOr("Points", [], scene.Value), full = true)) and value.IsMissing(AxesFault(dict.GetOr("Axes", missing, scene.Value)))
+    if dict.GetOr("Pointed", false, old.Graph) and value.IsMissing(PointsFault(dict.GetOr("Points", [], scene.Value), full = true)) and (not dict.Has("Axes", scene.Value) or value.IsMissing(AxesFault(scene.Value.Axes)))
       return rebuilt(k, old, pointed(fresh, scene.Value), s)
     end
     if dict.GetOr("Pointed", false, old.Graph)
@@ -3439,8 +3439,9 @@ defn viewLanded(k, x, m, scene, state)
   if value.IsMissing(why) and (value.IsSome(m.Mark) or points)
     why = PointsFault(dict.GetOr("Points", [], scene.Value), full = points)
   end
-  if value.IsMissing(why) and points
-    why = AxesFault(dict.GetOr("Axes", missing, scene.Value))
+  if value.IsMissing(why) and points and dict.Has("Axes", scene.Value)
+    (* A grid of graphs, or a graph std/plot gives no axes, has no values to show: no fault. *)
+    why = AxesFault(scene.Value.Axes)
   end
   linked = value.IsMissing(why) and (value.IsMissing(m.Mark) or (if points list.Any([dict.GetOr("Count", -1, p) == m.Mark[2] for p in scene.Value.Points]) else value.Len(dict.GetOr("Points", [], scene.Value)) > 0 end))
   if value.IsSome(why) or not linked
@@ -3477,11 +3478,11 @@ defn pointed(g, scene)
       the first scene, which no zoom asked. *)
   out = g
   out.Pointed = true
-  out.Points = scene.Points
-  out.Axes = scene.Axes
-  out.Near = NearOf(scene.Points)
-  if value.IsMissing(dict.GetOr("Own", missing, g)) and value.IsMissing(dict.GetOr("Shown", missing, out))
-    out.Own = limitsIn(scene.Axes)
+  out.Points = dict.GetOr("Points", [], scene)
+  out.Axes = dict.GetOr("Axes", missing, scene)
+  out.Near = NearOf(out.Points)
+  if value.IsSome(out.Axes) and value.IsMissing(dict.GetOr("Own", missing, g)) and value.IsMissing(dict.GetOr("Shown", missing, out))
+    out.Own = limitsIn(out.Axes)
   end
   out
 end

@@ -837,6 +837,12 @@ defn isBadPointsNoValues()
   axes = pointsSent(plain(), result.Ok({Width: 500, Height: 350, Items: [], Dropped: 0, Points: wavePoints, Axes: {X: waveAxes.X, Y: dict.Put("Low", 35.0, waveAxes.Y)}}))
   waveGraph(bad).Pointed and value.IsMissing(dict.GetOr("Near", missing, waveGraph(bad))) and value.IsMissing(dict.GetOr("Axes", missing, waveGraph(axes))) and value.IsMissing(dict.GetOr("Hover", missing, waveGraph(hoverWave(203, 148, bad))))
 end
+(* A grid of graphs has no axes: it shows no values, and says nothing; the wheel over it moves the screen. *)
+defn isGridNoValues()
+  s = pointsSent(plain(), result.Ok({Width: 500, Height: 350, Items: [], Dropped: 0}))
+  g = waveGraph(s)
+  g.Pointed and value.Len(g.Points) == 0 and value.IsMissing(dict.GetOr("Axes", missing, g)) and s.Message == "" and value.IsMissing(wheelWave(250, 175, 1.0, waveFocused(s)))
+end
 isPointsFaults() = value.IsSome(notebook.PointsFault([dict.Put("Count", 2, wavePoints[1])], full = true)) and value.IsSome(notebook.PointsFault([dict.Put("Label", str.Repeat(201, "x"), wavePoints[1])], full = true)) and
   value.IsSome(notebook.PointsFault(list.Fill(wavePoints[1], 65))) and value.IsMissing(notebook.PointsFault(wavePoints, full = true)) and
   value.IsSome(notebook.AxesFault({X: waveAxes.X, Y: {Scale: "log", Low: -1.0, High: 2.0, From: 0.0, To: 10.0}})) and value.IsSome(notebook.AxesFault({X: dict.Put("Scale", "time", waveAxes.X), Y: waveAxes.Y}))
