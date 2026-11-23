@@ -2,7 +2,8 @@
     never saved. C-c e e runs the cell of the cursor and the cells that read what it defines, C-c e a every cell from the top; each cell file has a session
     of std/cells, a Cesia process that keeps the names its cells defined. `*variables*` lists them beside, `*repl*` below runs code in the same session, and
     C-c e h writes the page of the file. A cell of sliders, name = cells.Slider(28.0, 0.0, 50.0), draws a slider under each line, which the mouse and C-c e f
-    move: the number is written in the buffer, and only the cells that read it run again. An animation of plot.Frames shows its first frame over a bar,
+    move: the number is written in the buffer, and only the cells that read it run again. The other inputs of a form, cells.Choice, cells.Check,
+    cells.Field and cells.Date, draw their boxes under their lines and change the same way. An animation of plot.Frames shows its first frame over a bar,
     ▶ 1 / 120, that Space plays after C-c e f, or the mouse; its frames come from the session one at a time. A 3D graph of plot.Surface or plot.Line3
     turns when dragged, or with the arrows after C-c e f: the session draws each view, and the code keeps its own. The work is std/cells': runs wait
     in fibers, and each tick takes their results, so that typing never waits.
@@ -18,6 +19,7 @@ use src/rope
 use std/cells as nb
 use std/cesia
 use std/columns as col
+use std/date
 use std/debug
 use std/dict
 use std/fiber
@@ -728,7 +730,7 @@ end
 defn ClearResults(state)
   (** C-c e k: the results drawn under the cells cleared; the session keeps its names. *)
   s = state
-  s.Buffers[state.Current] = text.WithBlocks([x for x in text.BlocksOf(state.Buffers[state.Current]) if dict.Has("Slider", x)], state.Buffers[state.Current])
+  s.Buffers[state.Current] = text.WithBlocks([x for x in text.BlocksOf(state.Buffers[state.Current]) if isInputBlock(x)], state.Buffers[state.Current])
   commands.Say("Results cleared.", s)
 end
 
@@ -752,7 +754,7 @@ defn moved(k, state)
   r = analysed(k, r, state)
   out = []
   for x in blocks
-    if not dict.Has("Slider", x)
+    if not isInputBlock(x)
       i = CellAt(x.Line, r.Cells)
       out = list.Append(dict.Merge(x, {Line: anchor(r.Cells[i], b), Cell: i}), out)
     end
@@ -1189,11 +1191,11 @@ defn readersOf(analysis, cell, name)
 end
 
 defn inputsOf(i, r)
-  (** The sliders that cell i reads, directly or not, with the number the session holds for each: what its result is computed with. *)
+  (** The inputs that cell i reads, directly or not, sliders among them, with the value the session holds for each: what its result is computed with. *)
   out = {}
   held = dict.GetOr("Values", {}, r)
   for c in 2..value.Len(r.Analysis)
-    for s in dict.GetOr("Sliders", [], r.Analysis[c])
+    for s in inputsIn(c, r)
       if dict.Has(s.Name, held) and i in readersOf(r.Analysis, c, s.Name)
         out[s.Name] = held[s.Name]
       end
@@ -1203,24 +1205,27 @@ defn inputsOf(i, r)
 end
 
 defn heldBy(i, r)
-  (** The run once cell i starts: the session will hold the numbers that the sliders of cell i write, if it has any. *)
+  (** The run once cell i starts: the session will hold the values that the inputs of cell i write, if it has any. *)
   out = r
   held = dict.GetOr("Values", {}, r)
-  for s in dict.GetOr("Sliders", [], r.Analysis[i])
+  for s in inputsIn(i, r)
     held = dict.Put(s.Name, s.Value, held)
   end
   out.Values = held
   out
 end
 
-(** The number of a slider written in the buffer now, or missing. *)
-written(name, r) = if value.IsMissing(sliderAt(name, r)) missing else sliderAt(name, r).Slider.Value end
+(** The value of an input written in the buffer now, a slider's number, or missing. *)
+written(name, r) = if value.IsMissing(inputAt(name, r)) missing else inputAt(name, r).Input.Value end
 
 defn staleNote(inputs, r)
-  (** The note of a result computed with other numbers than those the file writes now, or missing: stale: computed with rho = 28.0. *)
-  off = [n for n in list.Sort(dict.Keys(inputs)) if value.IsSome(written(n, r)) and written(n, r) != inputs[n]]
-  if value.Len(off) == 0 missing else {Role: "note", Words: "stale: computed with $(str.Join(", ", ["$n = $(inputs[n])" for n in off]))"} end
+  (** The note of a result computed with other values than those the file writes now, or missing: stale: computed with rho = 28.0. *)
+  off = [n for n in list.Sort(dict.Keys(inputs)) if value.IsSome(written(n, r)) and differs(written(n, r), inputs[n])]
+  if value.Len(off) == 0 missing else {Role: "note", Words: "stale: computed with $(str.Join(", ", ["$n = $(shownOf(inputs[n]))" for n in off]))"} end
 end
+
+(** Are two values of an input different: numbers as numbers, 3 and 3.0 the same, the others as values, a date as its fields? *)
+differs(a, b) = if value.IsNumber(a) and value.IsNumber(b) a != b else not value.Equal(a, b) end
 
 defn restaled(k, state)
   (** The state with each result of buffer k that reads a slider drawn again with its note when the file now writes another number than the one it
@@ -1297,8 +1302,8 @@ defn SliderItems(s, words, took, focused, width, columns, cell, th)
   out
 end
 
-(** The columns that the names of the sliders of cell i take, so that their tracks line up. *)
-nameColumns(i, r) = list.Max(1, list.Reduce((w, s) -> list.Max(w, value.Len(s.Name)), 0, dict.GetOr("Sliders", [], r.Analysis[i])))
+(** The columns that the names of the inputs of cell i take, sliders among them, so that their tracks and boxes line up. *)
+nameColumns(i, r) = list.Max(1, list.Reduce((w, s) -> list.Max(w, value.Len(s.Name)), 0, inputsIn(i, r)))
 
 (** The words of a slider's number as the buffer writes it: its span on its line. *)
 wordsOf(s, b) = str.Slice(s.Column, s.End, rope.Line(s.Line, b.Rope))
@@ -1317,10 +1322,10 @@ defn sliderBlock(s, i, b, r, state)
 end
 
 defn laid(k, state)
-  (** The state with the sliders of buffer k drawn again from its analysis, each under its line. *)
+  (** The state with the inputs of buffer k drawn again from its analysis, each under its line: sliders, and the boxes of the others. *)
   b = state.Buffers[k]
   r = runOf(b)
-  kept = [x for x in text.BlocksOf(b) if not dict.Has("Slider", x)]
+  kept = [x for x in text.BlocksOf(b) if not isInputBlock(x)]
   if value.IsMissing(r)
     return if value.Len(kept) == value.Len(text.BlocksOf(b)) state else withBlocksOf(k, kept, state) end
   end
@@ -1329,6 +1334,11 @@ defn laid(k, state)
     for s in dict.GetOr("Sliders", [], r.Analysis[i])
       if s.Line <= rope.LineCount(b.Rope) and s.End <= value.Len(rope.Line(s.Line, b.Rope))
         made = list.Append(sliderBlock(s, i, b, r, state), made)
+      end
+    end
+    for x in inputsIn(i, r)
+      if x.Kind != "slider" and x.Line <= rope.LineCount(b.Rope) and x.End <= value.Len(rope.Line(x.Line, b.Rope))
+        made = list.Append(inputBlock(x, i, r, state), made)
       end
     end
   end
@@ -1400,23 +1410,26 @@ defn keyed(by, state)
 end
 
 defn tabbed(by, state)
-  (** The keys to the next slider of the cell, or the previous one, round. *)
+  (** The keys to the next input of the cell, or the previous one, round, sliders and the others in the order of their lines. *)
   f = commands.FocusOf(state)
   r = runOf(state.Buffers[f.Buffer])
-  found = if value.IsMissing(r) missing else sliderAt(f.Slider, r) end
+  found = if value.IsMissing(r) missing else inputAt(dict.GetOr("Slider", dict.GetOr("Input", "", f), f), r) end
   if value.IsMissing(found)
     return commands.Unfocused(state)
   end
-  all = r.Analysis[found.Cell].Sliders
+  all = inputsIn(found.Cell, r)
   next = all[math.Mod(found.Index - 1 + by, value.Len(all)) + 1]
-  focusedOn(f.Buffer, next.Name, state)
+  controlOn(f.Buffer, next, state)
 end
+
+(** The state with the keys on an input of buffer k, a slider or another. *)
+controlOn(k, x, state) = if x.Kind == "slider" focusedOn(k, x.Name, state) else inputFocusedOn(k, x.Name, state) end
 
 (** The rows of the band while a slider has the keys. *)
 FocusHints() = [{Key: "← →", Name: "a step", Group: false}, {Key: "PgUp PgDn", Name: "ten steps", Group: false}, {Key: "Home End", Name: "its min, its max", Group: false},
-  {Key: "Tab S-Tab", Name: "the next slider, the previous one", Group: false}, {Key: "C-g", Name: "leave", Group: false}]
+  {Key: "Tab S-Tab", Name: "the next input, the previous one", Group: false}, {Key: "C-g", Name: "leave", Group: false}]
 
-(** The keys of a slider that has them: the arrows a step, the pages ten, Home and End its min and its max, Tab and S-Tab the next slider of the cell
+(** The keys of a slider that has them: the arrows a step, the pages ten, Home and End its min and its max, Tab and S-Tab the next input of the cell
     and the previous one, C-g leaves. *)
 SliderKeys() = {"right": stepped(1), "up": stepped(1), "left": stepped(-1), "down": stepped(-1), "pageup": stepped(10), "pagedown": stepped(-10),
   "home": stepped(-2000000), "end": stepped(2000000), "tab": st -> tabbed(1, st), "S-tab": st -> tabbed(-1, st), "C-g": commands.Unfocused}
@@ -1440,7 +1453,9 @@ end
 
 defn FocusControl(state)
   (** C-c e f: gives the keys to the first control of the cell of the cursor. A slider: the arrows move it a step, the pages ten, Home and End to its
-      min and its max, Tab and S-Tab go to the next slider of the cell and the previous one. The bar of an animation: Space plays it or pauses it, the
+      min and its max, Tab and S-Tab go to the next input of the cell and the previous one. A choice: Enter opens its list, the arrows move in it, Enter
+      chooses. A check box: Space checks it or not. A field: what is typed goes in its box, Enter sets it. A date: Left and Right pick its year, its
+      month or its day, Up and Down change it, Enter sets it. The bar of an animation: Space plays it or pauses it, the
       arrows go a frame back or on, the pages ten, Home and End to the first frame and the last. A 3D graph: the arrows move the eye 10°, Right and
       Left round it, Up and Down higher and lower, and Home back to the view of the code. C-g, a click in the text or any other key leaves it. *)
   k = state.Current
@@ -1451,9 +1466,9 @@ defn FocusControl(state)
   s = fresh(k, state)
   r = runOf(s.Buffers[k])
   i = CellAt(b.Cursor.Line, r.Cells)
-  all = dict.GetOr("Sliders", [], r.Analysis[i])
+  all = inputsIn(i, r)
   if value.Len(all) > 0
-    return focusedOn(k, all[1].Name, s)
+    return controlOn(k, all[1], s)
   end
   bar = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == i and isAnimation(dict.GetOr("Graph", missing, x)), text.BlocksOf(s.Buffers[k]))
   if value.IsSome(bar)
@@ -1463,7 +1478,7 @@ defn FocusControl(state)
   if value.IsSome(solid)
     return turnFocusedOn(k, solid.Graph.Key, s)
   end
-  commands.Say("This cell has no control: a slider, name = cells.Slider(value, min, max) on a line of a cell of its own, an animation of plot.Frames, or a 3D graph of plot.Surface or plot.Line3.", s)
+  commands.Say("This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, or a 3D graph of plot.Surface or plot.Line3.", s)
 end
 
 (* -- A move: the number written in the buffer, then the session told, the latest value winning. *)
@@ -1528,6 +1543,11 @@ defn Edited(k, name, at, how, state)
   moved.Value = at.Value
   moved.End = sl.Column + value.Len(at.Text) - 1
   r.Analysis[found.Cell].Sliders[found.Index] = moved
+  (* Inputs lists the slider too: it says the same. *)
+  same = inputAt(name, r)
+  if value.IsSome(same) and dict.Has("Inputs", r.Analysis[same.Cell])
+    r.Analysis[same.Cell].Inputs[same.Index] = dict.Merge(same.Input, {Value: moved.Value, End: moved.End})
+  end
   r.Cells[found.Cell].Source = str.Join("\n", [rope.Line(n, edited.Rope) for n in cell.From..cell.To])
   r.Version = edited.Version
   r.Joinable = {Name: name, Version: edited.Version, How: if how == "keys" "keys" else "drag" end}
@@ -1538,12 +1558,12 @@ defn Edited(k, name, at, how, state)
 end
 
 defn pushed(k, name, number, state)
-  (** The state once a slider moved to a number: its Set started if none of its own runs, else the number kept as Pending, the latest winning. Without
-      a session, the number stays written in the buffer and nothing runs: the code of a file runs only after C-c e e or C-c e a, which the person asks
-      for, never from a press of the mouse on a file opened from elsewhere. *)
+  (** The state once an input changed to a value, a slider to a number: its Set started if none of its own runs, else the value kept as Pending, the
+      latest winning. Without a session, the value stays written in the buffer and nothing runs: the code of a file runs only after C-c e e or C-c e a,
+      which the person asks for, never from a press of the mouse on a file opened from elsewhere. *)
   r = runOf(state.Buffers[k])
   if value.IsMissing(r) or value.IsMissing(r.Session)
-    return commands.Say("$name is $number in the text: C-c e a runs the cells with it.", state)
+    return commands.Say("$name is $(shownOf(number)) in the text: C-c e a runs the cells with it.", state)
   end
   m = moveOf(name, r)
   if m.Busy or asking(r)
@@ -1591,7 +1611,7 @@ defn setAnswered(k, state)
     r.Values = dict.Put(set.Name, answer.Value.Value, dict.GetOr("Values", {}, r))
   end
   m = moveOf(set.Name, r)
-  found = sliderAt(set.Name, r)
+  found = inputAt(set.Name, r)
   if set.Dropped or value.IsMissing(found)
     m.Busy = false
     m.Pending = missing
@@ -1659,6 +1679,469 @@ defn dropped(r)
     out.Setting = set
   end
   out
+end
+
+(* ---- The other inputs of a form: each line name = cells.Choice(...), cells.Check(...), cells.Field(...) or cells.Date(...) of a cell of inputs draws
+   its box under it, from the analysis alone, before any run, as a slider does. A click or C-c e f gives it the keys: Enter opens a choice's list, the
+   arrows move in it and Enter chooses; Space checks a box or not; a field takes what is typed and sets it at Enter, a field of a number only a number;
+   a date's Left and Right pick its year, its month or its day, Up and Down change it, and Enter sets it. The new value, as cells.Snap writes it, takes
+   the place of the old one in the buffer, one step of undo, then cells.Set gives it to the session and only the cells that read it run again, as after
+   a slider's move. No key is taken while no input has the keys: every key does what it did. *)
+
+(** The inputs of cell i of the analysis of a run, sliders among them, in the order of their lines: a Cesia whose Analyse gives no Inputs has its
+    sliders alone. *)
+inputsIn(i, r) = if dict.Has("Inputs", r.Analysis[i]) r.Analysis[i].Inputs else [dict.Put("Kind", "slider", x) for x in dict.GetOr("Sliders", [], r.Analysis[i])] end
+
+defn inputAt(name, r)
+  (** The input of a name in the analysis of a run, a slider or another, with its cell and its place among the inputs of that cell: {Input, Cell,
+      Index}, or missing. *)
+  for i in 1..value.Len(r.Analysis)
+    all = inputsIn(i, r)
+    for j in 1..value.Len(all)
+      if all[j].Name == name
+        return {Input: all[j], Cell: i, Index: j}
+      end
+    end
+  end
+  missing
+end
+
+(** Is a block the drawing of an input, a slider or a box, which the analysis draws again, and which C-c e k leaves? *)
+isInputBlock(x) = dict.Has("Slider", x) or dict.Has("Input", x)
+
+defn shownOf(x)
+  (** A value of an input as its box shows it: a text as it is, its ends of line, tabs and carriage returns as \n, \t and \r, so that it stays on its
+      row; a date as 2026-11-23; a number, true or false as Cesia writes them.
+
+        shownOf("a\nb") --> "a\\nb"
+        shownOf(28.0) --> "28.0" *)
+  if value.IsText(x)
+    str.Replace("\t", "\\t", str.Replace("\r", "\\r", str.Replace("\n", "\\n", x)))
+  else if value.IsStruct(x) and not value.IsDict(x)
+    date.FormatDate(x)
+  else
+    "$x"
+  end
+end
+
+defn BoxColumns(x)
+  (** The columns of the box of an input inside its edges: its longest option and its v for a choice, a day and its v for a date, at least 24 for a
+      field.
+
+        BoxColumns({Kind: "choice", Options: ["GMT-5", "GMT-10"]}) --> 10 *)
+  if x.Kind == "choice"
+    list.Max(8, list.Reduce((w, o) -> list.Max(w, value.Len(shownOf(o))), 0, x.Options) + 4)
+  else if x.Kind == "date"
+    14
+  else
+    list.Max(24, value.Len(shownOf(x.Value)) + 2)
+  end
+end
+
+(** The rows of the open list of a choice, at most 8: the others scroll. *)
+ListRows() = 8
+
+(** The first option a list of n shows, from 1, so that the option at stays in its 8 rows. *)
+listTop(at, n) = list.Max(1, list.Min(at - math.Div(ListRows(), 2), n - ListRows() + 1))
+
+(** The columns of the parts of a date in its box, from 0: the year, the month, the day. *)
+dayParts = [{From: 0, To: 3}, {From: 5, To: 6}, {From: 8, To: 9}]
+
+defn edged(x, y, w, h, color)
+  (** The edges of a box, 1 pixel wide. *)
+  [{Kind: "rect", X: x, Y: y, Width: w, Height: 1, Color: color}, {Kind: "rect", X: x, Y: y + h - 1, Width: w, Height: 1, Color: color},
+    {Kind: "rect", X: x, Y: y, Width: 1, Height: h, Color: color}, {Kind: "rect", X: x + w - 1, Y: y, Width: 1, Height: h, Color: color}]
+end
+
+defn ringed(x, w, cell, th)
+  (** The ring of 2 pixels in the accent color round a control that has the keys, as a slider's. *)
+  left = x - 6
+  wide = w + 12
+  [{Kind: "rect", X: left, Y: 0, Width: wide, Height: 2, Color: th.Accent}, {Kind: "rect", X: left, Y: cell.Height - 2, Width: wide, Height: 2, Color: th.Accent},
+    {Kind: "rect", X: left, Y: 0, Width: 2, Height: cell.Height, Color: th.Accent}, {Kind: "rect", X: left + wide - 2, Y: 0, Width: 2, Height: cell.Height, Color: th.Accent}]
+end
+
+(** A text of the code font. *)
+inkText(x, y, t, color) = {Kind: "text", X: x, Y: y, Text: t, Color: color, Font: "code"}
+
+defn InputItems(x, f, took, width, columns, cell, th)
+  (** What draws an input other than a slider under its line, in the code font, in the ink and on the paper, the ground of the code, of the theme: a
+      check box as [ ] or [x] then its label, or its name; another input as its name, then its box, its edges 1 pixel wide in ink, its value inside,
+      and a v at its right for a choice and a date. While it has the keys, f, the edges of its box, or a ring round a check box, take the accent
+      color, 2 pixels wide: a field shows what is typed and its cursor, a date its part under the cursor in reverse, and a choice's open list hangs
+      under its box, its option under the cursor in reverse. The time of its last rerun follows, in muted ink.
+
+        value.Len(InputItems({Name: "on", Kind: "check", Value: true, Label: "Bold"}, missing, missing, 800, 2, {Width: 8, Height: 19}, {Ink: 1, Line: 2, Muted: 3, Accent: 4, Code: 5})) --> 1 *)
+  p = SliderPlaces(width, columns, cell)
+  focused = value.IsSome(f)
+  after = (at, out) -> if value.IsSome(took) list.Append(inkText(at, 0, "rerun $(math.Div(math.Floor(took * 1000.0 + 0.5), 1)) ms", th.Muted), out) else out end
+  if x.Kind == "check"
+    label = "$(if x.Value "[x]" else "[ ]" end) $(shownOf(if value.IsText(dict.GetOr("Label", missing, x)) x.Label else x.Name end))"
+    wide = value.Len(label) * cell.Width
+    out = [inkText(p.Name, 0, label, th.Ink)]
+    out = if focused list.Concat(out, ringed(p.Name, wide, cell, th)) else out end
+    return after(p.Name + wide + 2 * cell.Width, out)
+  end
+  cols = list.Max(4, list.Min(BoxColumns(x), math.Div(width - p.Track, cell.Width) - 2))
+  w = cols * cell.Width
+  h = cell.Height
+  chevron = x.Kind == "choice" or x.Kind == "date"
+  room = cols - (if chevron 4 else 2 end)
+  shown = if focused and dict.Has("Draft", f) f.Draft else if focused and dict.Has("Day", f) date.FormatDate(f.Day) else shownOf(x.Value) end
+  inside = p.Track + cell.Width
+  first = if focused and dict.Has("Caret", f) list.Max(0, f.Caret - room + 1) else 0 end
+  (* The box fills its row, as the text in it does: its edges take the accent color, 2 pixels wide, while it has the keys. *)
+  edges = if focused list.Concat(edged(p.Track, 0, w, h, th.Accent), edged(p.Track + 1, 1, w - 2, h - 2, th.Accent)) else edged(p.Track, 0, w, h, th.Ink) end
+  out = list.Concat([inkText(p.Name, 0, x.Name, th.Ink), {Kind: "rect", X: p.Track, Y: 0, Width: w, Height: h, Color: th.Code}], edges)
+  out = list.Append(inkText(inside, 0, str.Join("", list.Take(room, list.Skip(first, str.Chars(shown)))), th.Ink), out)
+  if chevron
+    out = list.Append(inkText(p.Track + (cols - 2) * cell.Width, 0, "v", th.Ink), out)
+  end
+  if focused and dict.Has("Caret", f)
+    out = list.Append({Kind: "rect", X: inside + (f.Caret - first) * cell.Width, Y: 2, Width: 2, Height: h - 4, Color: th.Ink}, out)
+  end
+  if focused and dict.Has("Part", f)
+    part = dayParts[f.Part]
+    out = list.Concat(out, [{Kind: "rect", X: inside + part.From * cell.Width, Y: 1, Width: (part.To - part.From + 1) * cell.Width, Height: h - 2, Color: th.Ink},
+      inkText(inside + part.From * cell.Width, 0, str.Slice(part.From + 1, part.To + 1, shown), th.Code)])
+  end
+  if focused and dict.GetOr("Open", false, f)
+    n = value.Len(x.Options)
+    top = listTop(f.At, n)
+    for k in top..list.Min(n, top + ListRows() - 1)
+      y = (k - top + 1) * cell.Height
+      lit = k == f.At
+      out = list.Concat(out, [{Kind: "rect", X: p.Track, Y: y, Width: w, Height: h, Color: if lit th.Ink else th.Code end}, inkText(inside, y, str.Join("", list.Take(room, str.Chars(shownOf(x.Options[k])))), if lit th.Code else th.Ink end)])
+    end
+    out = list.Concat(out, edged(p.Track, cell.Height, w, (list.Min(n, top + ListRows() - 1) - top + 1) * cell.Height, th.Ink))
+  end
+  after(p.Track + w + 2 * cell.Width, out)
+end
+
+defn inputFocus(name, k, state)
+  (** The control that has the keys when it is the input of a name in buffer k, or missing. *)
+  f = commands.FocusOf(state)
+  if value.IsSome(f) and dict.GetOr("Input", "", f) == name and dict.GetOr("Buffer", 0, f) == k f else missing end
+end
+
+defn inputBlock(x, i, r, state)
+  (** The block of an input other than a slider under its line: drawn from the analysis, it takes the mouse, and keeps the keys at a press, which it
+      gives or keeps itself; a choice whose list is open has a row for each option it shows. *)
+  f = inputFocus(x.Name, state.Current, state)
+  took = moveOf(x.Name, r).Took
+  columns = nameColumns(i, r)
+  cell = state.Cell
+  name = x.Name
+  open = value.IsSome(f) and dict.GetOr("Open", false, f)
+  rows = if open 1 + list.Min(ListRows(), value.Len(x.Options)) else 1 end
+  {Line: x.Line, Rows: rows, Cell: 0, Input: name, Keeps: true, Draw: (width, look) -> InputItems(x, f, took, width, columns, cell, look.Theme),
+    Mouse: (action, point, st) -> inputMouse(name, action, point, st)}
+end
+
+(* -- The keys of an input, which C-c e f or a click gives it. *)
+
+defn InputHints(kind)
+  (** The rows of the band while an input other than a slider has the keys. *)
+  tab = {Key: "Tab S-Tab", Name: "the next input, the previous one", Group: false}
+  leave = {Key: "C-g", Name: "leave", Group: false}
+  match kind
+    "choice" -> [{Key: "Enter", Name: "open the list, choose", Group: false}, {Key: "↑ ↓", Name: "an option", Group: false}, tab, leave]
+    "check" -> [{Key: "Space", Name: "check or not", Group: false}, tab, leave]
+    "date" -> [{Key: "← →", Name: "the year, the month, the day", Group: false}, {Key: "↑ ↓", Name: "change it", Group: false}, {Key: "Enter", Name: "set", Group: false}, tab, leave]
+    else -> [{Key: "Enter", Name: "set what is typed", Group: false}, tab, leave]
+  end
+end
+
+defn InputKeys(kind)
+  (** The keys of an input other than a slider that has them: Tab and S-Tab go to the next input of the cell and the previous one, C-g and Escape close
+      a list, or leave; a choice's Enter opens its list and chooses, the arrows move in it, Home and End to its first and its last option, the pages 8
+      options; a check box's Space checks it or not; a field's Enter sets what is typed, Backspace and Delete erase, Left, Right, Home and End move the
+      cursor; a date's Left and Right pick its part, Up and Down change it, Enter sets it. *)
+  common = {"tab": st -> tabbed(1, st), "S-tab": st -> tabbed(-1, st), "C-g": closedOrLeft, "escape": closedOrLeft}
+  own = match kind
+    "choice" -> {"enter": chosen, "up": st -> listMoved(-1, st), "down": st -> listMoved(1, st), "pageup": st -> listMoved(-ListRows(), st),
+      "pagedown": st -> listMoved(ListRows(), st), "home": st -> listMoved(-1000000, st), "end": st -> listMoved(1000000, st)}
+    "check" -> {"space": checked}
+    "date" -> {"enter": daySet, "left": st -> partMoved(-1, st), "right": st -> partMoved(1, st), "up": st -> dayMoved(1, st), "down": st -> dayMoved(-1, st)}
+    else -> {"enter": fieldSet, "backspace": st -> erased(-1, st), "delete": st -> erased(0, st), "left": st -> caretMoved(-1, st), "right": st -> caretMoved(1, st),
+      "home": st -> caretMoved(-1000000, st), "end": st -> caretMoved(1000000, st)}
+  end
+  dict.Merge(common, own)
+end
+
+defn inputFocusedOn(k, name, state, at = missing)
+  (** The state with the keys on the input of a name in buffer k, drawn with its ring, and the one that had them without: a choice with its list shut,
+      a field with what the file writes and its cursor at its end, or at a column for a click, a date with its day picked. *)
+  s = commands.Unfocused(state)
+  r = runOf(s.Buffers[k])
+  found = if value.IsMissing(r) missing else inputAt(name, r) end
+  if value.IsMissing(found)
+    return s
+  end
+  x = found.Input
+  f = {Keys: InputKeys(x.Kind), Hints: InputHints(x.Kind), Leave: st -> laid(k, st), Buffer: k, Input: name, Kind: x.Kind}
+  f = match x.Kind
+    "choice" -> dict.Merge(f, {Open: false, At: orFirst(list.FindFirst(j -> x.Options[j] == x.Value, 1..value.Len(x.Options)))})
+    "date" -> dict.Merge(f, {Day: x.Value, Part: if value.IsMissing(at) 3 else partAt(at) end})
+    "field" -> dict.Merge(f, {Draft: shownOf(x.Value), Caret: list.Min(value.Len(shownOf(x.Value)), if value.IsMissing(at) 1000000 else at end), Typed: typedIn})
+    else -> f
+  end
+  s.Focus = f
+  laid(k, s)
+end
+
+(** A place found, or the first one. *)
+orFirst(at) = if value.IsMissing(at) 1 else at end
+
+(** The part of a date under a column of its box, from 0: its year, its month or its day. *)
+partAt(column) = if column <= 4 1 else if column <= 7 2 else 3 end
+
+defn withFocus(f, state)
+  (** The state with the control f that has the keys, drawn again. *)
+  s = state
+  s.Focus = f
+  laid(f.Buffer, s)
+end
+
+defn focusedInput(state)
+  (** The input that has the keys in its buffer as the analysis reads it now, {Focus, Input}, or missing when it is gone. *)
+  f = commands.FocusOf(state)
+  if value.IsMissing(f) or not dict.Has("Input", f)
+    return missing
+  end
+  s = fresh(f.Buffer, state)
+  found = inputAt(f.Input, runOf(s.Buffers[f.Buffer]))
+  if value.IsMissing(found) missing else {Focus: f, Input: found.Input, State: s} end
+end
+
+defn closedOrLeft(state)
+  (** C-g or Escape: an open list shuts, else the input leaves the keys. *)
+  f = commands.FocusOf(state)
+  if dict.GetOr("Open", false, f)
+    f.Open = false
+    return withFocus(f, state)
+  end
+  commands.Unfocused(state)
+end
+
+defn listMoved(by, state)
+  (** The arrows of a choice: its list opens, and the option under the cursor moves by some, within the first and the last. *)
+  got = focusedInput(state)
+  if value.IsMissing(got)
+    return commands.Unfocused(state)
+  end
+  f = got.Focus
+  f.Open = true
+  f.At = list.Max(1, list.Min(value.Len(got.Input.Options), f.At + by))
+  withFocus(f, got.State)
+end
+
+defn chosen(state)
+  (** Enter on a choice: its list opens; in the open list, the option under the cursor is chosen and the list shuts. *)
+  got = focusedInput(state)
+  if value.IsMissing(got)
+    return commands.Unfocused(state)
+  end
+  f = got.Focus
+  if not f.Open
+    f.Open = true
+    return withFocus(f, got.State)
+  end
+  f.Open = false
+  Changed(f.Buffer, f.Input, got.Input.Options[f.At], withFocus(f, got.State))
+end
+
+defn checked(state)
+  (** Space on a check box: the other value, true for false. *)
+  got = focusedInput(state)
+  if value.IsMissing(got) commands.Unfocused(state) else Changed(got.Focus.Buffer, got.Focus.Input, not got.Input.Value, got.State) end
+end
+
+defn typedIn(typed, state)
+  (** A text typed in the field that has the keys, at its cursor. *)
+  f = commands.FocusOf(state)
+  cs = str.Chars(f.Draft)
+  f.Draft = str.Join("", list.Concat(list.Concat(list.Take(f.Caret, cs), [typed]), list.Skip(f.Caret, cs)))
+  f.Caret = f.Caret + value.Len(typed)
+  withFocus(f, state)
+end
+
+defn erased(by, state)
+  (** Backspace, by -1, erases the character before the cursor of the field, Delete, by 0, the one after it. *)
+  f = commands.FocusOf(state)
+  cs = str.Chars(f.Draft)
+  at = f.Caret + by
+  if at < 0 or at >= value.Len(cs)
+    return state
+  end
+  f.Draft = str.Join("", list.Concat(list.Take(at, cs), list.Skip(at + 1, cs)))
+  f.Caret = at
+  withFocus(f, state)
+end
+
+defn caretMoved(by, state)
+  (** The cursor of the field moved by some characters, within its text. *)
+  f = commands.FocusOf(state)
+  f.Caret = list.Max(0, list.Min(value.Len(f.Draft), f.Caret + by))
+  withFocus(f, state)
+end
+
+defn fieldSet(state)
+  (** Enter in a field: what is typed is its new value, a number for a field of a number, which refuses anything else. *)
+  got = focusedInput(state)
+  if value.IsMissing(got)
+    return commands.Unfocused(state)
+  end
+  f = got.Focus
+  x = got.Input
+  if value.IsText(x.Value)
+    if f.Draft == shownOf(x.Value)
+      return got.State
+    end
+    return Changed(f.Buffer, f.Input, f.Draft, got.State)
+  end
+  n = str.Number(str.Trim(f.Draft))
+  if value.IsMissing(n) or n - n != 0
+    return commands.Say("$(f.Input) takes a number: $(f.Draft) is none.", got.State)
+  end
+  Changed(f.Buffer, f.Input, n, got.State)
+end
+
+defn partMoved(by, state)
+  (** Left and Right on a date: the part under the cursor, its year, its month or its day. *)
+  f = commands.FocusOf(state)
+  f.Part = list.Max(1, list.Min(3, f.Part + by))
+  withFocus(f, state)
+end
+
+defn dayMoved(by, state)
+  (** Up and Down on a date: its part under the cursor one more or one less, the month round the year, the day kept within its month, the year within
+      0 to 9999. *)
+  f = commands.FocusOf(state)
+  d = f.Day
+  y = d.Year
+  m = d.Month
+  if f.Part == 1
+    y = list.Max(0, list.Min(9999, y + by))
+  else if f.Part == 2
+    m = math.Mod(m - 1 + by, 12) + 1
+  end
+  last = date.DaysInMonth(y, m)
+  day = if f.Part == 3 math.Mod(list.Min(d.Day, last) - 1 + by, last) + 1 else list.Min(d.Day, last) end
+  f.Day = date.Date(y, m, day)
+  withFocus(f, state)
+end
+
+defn daySet(state)
+  (** Enter on a date: the day in its box is its new value. *)
+  got = focusedInput(state)
+  if value.IsMissing(got) commands.Unfocused(state) else Changed(got.Focus.Buffer, got.Focus.Input, got.Focus.Day, got.State) end
+end
+
+(* -- The mouse. *)
+
+defn inputMouse(name, action, point, state)
+  (** A press of the mouse on the block of an input: it gives the input the keys. On a check box it checks it or not; on a choice's box it opens its
+      list, or shuts it, and on an option of the open list it chooses it; on a field it puts the cursor under the point; on a date it picks the part
+      under the point. Moves and releases do nothing. *)
+  k = state.Current
+  r = runOf(state.Buffers[k])
+  found = if value.IsMissing(r) missing else inputAt(name, r) end
+  if action != "down" or value.IsMissing(found)
+    return state
+  end
+  x = found.Input
+  cell = state.Cell
+  p = SliderPlaces(point.Width, nameColumns(found.Cell, r), cell)
+  column = math.Div(point.X - p.Track, cell.Width) - 1
+  held = inputFocus(name, k, state)
+  if x.Kind == "check"
+    s = if value.IsSome(held) state else inputFocusedOn(k, name, state) end
+    return Changed(k, name, not x.Value, s)
+  end
+  if x.Kind == "choice" and value.IsSome(held) and dict.GetOr("Open", false, held) and point.Y >= cell.Height
+    f = held
+    f.At = list.Min(value.Len(x.Options), listTop(f.At, value.Len(x.Options)) + math.Div(point.Y, cell.Height) - 1)
+    f.Open = false
+    return Changed(k, name, x.Options[f.At], withFocus(f, state))
+  end
+  if x.Kind == "choice"
+    s = if value.IsSome(held) state else inputFocusedOn(k, name, state) end
+    f = commands.FocusOf(s)
+    f.Open = not (value.IsSome(held) and dict.GetOr("Open", false, held))
+    return withFocus(f, s)
+  end
+  if x.Kind == "field" and value.IsSome(held)
+    f = held
+    f.Caret = list.Max(0, list.Min(value.Len(f.Draft), column))
+    return withFocus(f, state)
+  end
+  if x.Kind == "date" and value.IsSome(held)
+    f = held
+    f.Part = partAt(column)
+    return withFocus(f, state)
+  end
+  inputFocusedOn(k, name, state, at = list.Max(0, column))
+end
+
+(* -- A change: the value written in the buffer, then the session told, as a slider's move. *)
+
+defn plausible(held, x)
+  (** Do the columns of an input hold a value of its kind as the file writes it: a text in quotes, true or false, the number of its value, or its day
+      in quotes? *)
+  if x.Kind == "check"
+    held == "$(x.Value)"
+  else if x.Kind == "date"
+    held == nb.Snap(x, x.Value).Text
+  else if value.IsText(x.Value)
+    value.Len(held) >= 2 and str.StartsWith("\"", held) and str.EndsWith("\"", held)
+  else
+    str.Number(held) == x.Value
+  end
+end
+
+defn Changed(k, name, x, state)
+  (** The state after the input of a name in buffer k, other than a slider, is given the value x: its text as cells.Snap writes it, a text in quotes
+      that the file never reads as code, written in the buffer in place of the old one, if that place lies on a line of the input's cell and still holds
+      a value of its kind, one step of undo; the box drawn again at once, and the results that the new value makes stale noted; then the session told,
+      as a slider's move. A value that writes the same text changes nothing. *)
+  s = fresh(k, state)
+  b = s.Buffers[k]
+  r = runOf(b)
+  found = inputAt(name, r)
+  if value.IsMissing(found) or found.Input.Kind == "slider"
+    return s
+  end
+  x0 = found.Input
+  cell = r.Cells[found.Cell]
+  line = if x0.Line <= rope.LineCount(b.Rope) rope.Line(x0.Line, b.Rope) else "" end
+  if x0.Line < cell.From or x0.Line > cell.To or x0.Column < 1 or x0.End > value.Len(line) or not plausible(str.Slice(x0.Column, x0.End, line), x0)
+    return commands.Say("The input $name isn't where its value was: the cells are read again at the next key.", s)
+  end
+  at = nb.Snap(x0, x)
+  if str.Slice(x0.Column, x0.End, line) == at.Text
+    return s
+  end
+  edited = text.Replaced([{Line: x0.Line, Column: x0.Column - 1, End: x0.End, Text: at.Text}], b)
+  moved = dict.Merge(x0, {Value: at.Value, End: x0.Column + value.Len(at.Text) - 1})
+  r.Analysis[found.Cell].Inputs[found.Index] = moved
+  r.Cells[found.Cell].Source = str.Join("\n", [rope.Line(n, edited.Rope) for n in cell.From..cell.To])
+  r.Version = edited.Version
+  r.Joinable = missing
+  (* The analysis says what the text says: the cells are not read again at rest for this edit. *)
+  edited.CellsSeen = edited.Version
+  s.Buffers[k] = edited
+  (* A field and a date that keep the keys show the value set. *)
+  f = inputFocus(name, k, s)
+  if value.IsSome(f) and dict.Has("Draft", f)
+    f.Draft = shownOf(at.Value)
+    f.Caret = list.Min(f.Caret, value.Len(f.Draft))
+    s.Focus = f
+  else if value.IsSome(f) and dict.Has("Day", f)
+    f.Day = at.Value
+    s.Focus = f
+  end
+  pushed(k, name, at.Value, restaled(k, laid(k, withRun(k, r, s))))
 end
 
 (* ---- Animations: a graph of plot.Frames shows one frame at a time, over a bar, ▶ 12 / 120, that plays it at its rate. Its frames come from the

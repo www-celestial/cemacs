@@ -1,8 +1,10 @@
 (** Tests of the checks of a scene from the session, which is input: wrong shapes and sizes past the limits are refused before anything is made. And
-    of the sliders, without a session: drawn from the text, moved by an edit of their number that is checked first, by the keys and by the mouse. *)
+    of the sliders and the other inputs of a form, without a session: drawn from the text, changed by an edit of their value that is checked first, by
+    the keys and by the mouse. *)
 use core/commands
 use core/text
 use core/view
+use src/emacs
 use src/notebook
 use src/rope
 use src/sdl
@@ -115,7 +117,7 @@ isLatestPending() = press("right", press("right", focused())).Buffers[1].CellRun
 isTabRound() = commands.FocusOf(press("tab", focused())).Slider == "n" and commands.FocusOf(press("tab", press("tab", focused()))).Slider == "rho"
 isIntSlider() = line(press("up", press("tab", focused())), 5) == "n = cells.Slider(4, 0, 10)"
 isCgLeaves() = value.IsMissing(commands.FocusOf(press("C-g", focused()))) and value.Len(rho(press("C-g", focused())).Draw(1000, look)) == value.Len(rho(opened()).Draw(1000, look))
-isNoControlHere() = notebook.FocusControl(opened()).Message == "This cell has no control: a slider, name = cells.Slider(value, min, max) on a line of a cell of its own, an animation of plot.Frames, or a 3D graph of plot.Surface or plot.Line3."
+isNoControlHere() = notebook.FocusControl(opened()).Message == "This cell has no control: an input, as name = cells.Slider(value, min, max) or name = cells.Choice(value, options) on a line of a cell of inputs, an animation of plot.Frames, or a 3D graph of plot.Surface or plot.Line3."
 
 defn atSlider(name, s)
   (** The block of a slider on the screen with a point inside it, as the mouse finds it. *)
@@ -161,6 +163,158 @@ defn isFarSliderDrawn()
   shown = sliders(notebook.Hooked({}).Idle(view.Start([text.Of(far, "nb.ce")], look, cell, 1280, 720)))
   value.Len(shown) == 1 and value.Len(shown[1].Draw(1000, look)) > 0
 end
+
+(* The other inputs of a form, without a session: drawn from the text under their lines, before any run; changed by their keys and by the mouse, each
+   change written in place of the old value, one step of undo, a text in quotes that the file never reads as code; and every key does what it did
+   while no input has the keys. *)
+form = "use std/cells\n\n(* %% Place and day *)\nyear = cells.Choice(2026, [2025, 2026, 2027])\nzone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])\nday = cells.Date(\"2026-11-23\")\nplace = cells.Field(\"40.76, -73.984\")\nhigh = cells.Field(50)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nbold = cells.Check(false, label = \"Bold line\")\n\n(* %% Use *)\nyear\n"
+(** A window on the form after its first tick, which draws its inputs from its text. *)
+formOpened() = notebook.Hooked({}).Idle(view.Start([text.Of(form, "form.ce")], look, cell, 1280, 720))
+boxes(s) = [x for x in text.BlocksOf(s.Buffers[1]) if dict.Has("Input", x)]   (** The blocks of the inputs other than sliders. *)
+box(name, s) = list.FindFirst(x -> x.Input == name, boxes(s))   (** The block of an input. *)
+names = ["year", "zone", "day", "place", "high", "rho", "bold"]
+
+defn busyForm(state)
+  (** The state whose run has a session busy with each input: a change only keeps its value as Pending. *)
+  s = state
+  r = s.Buffers[1].CellRun
+  r.Session = "a session"
+  r.Moves = dict.Zipmap(names, [{Busy: true, Pending: missing, Left: [3], Since: 0.0, Took: missing} for n in names])
+  s.Buffers[1].CellRun = r
+  s
+end
+
+defn formFocused(n)
+  (** The busy form after C-c e f in its cell, then n presses of Tab. *)
+  s = busyForm(formOpened())
+  s.Buffers[1] = text.Place(5, 0, s.Buffers[1])
+  s = notebook.FocusControl(s)
+  for k in 1..n
+    s = press("tab", s)
+  end
+  s
+end
+typedIn(t, s) = commands.FocusOf(s).Typed(t, s)   (** A text typed while an input has the keys. *)
+undoneAt(s, n) = rope.Line(n, text.Undo(s.Buffers[1]).Rope)   (** Line n once the last step is undone. *)
+focusName(s) = dict.GetOr("Input", dict.GetOr("Slider", "", commands.FocusOf(s)), commands.FocusOf(s))   (** The input that has the keys. *)
+readBack(s) = nb.Analyse(nb.Parse(rope.Text(s.Buffers[1].Rope)))[2]   (** The inputs and the errors of the form, as the text says now. *)
+
+isBoxesBeforeRun() = value.Equal([[x.Input, x.Line] for x in boxes(formOpened())], [["year", 4], ["zone", 5], ["day", 6], ["place", 7], ["high", 8], ["bold", 10]]) and value.Len(sliders(formOpened())) == 1
+isBoxWords() = value.Equal([words(box(n, formOpened())) for n in ["zone", "day", "place", "high", "bold"]], [["zone", "GMT-5", "v"], ["day", "2026-11-23", "v"], ["place", "40.76, -73.984"], ["high", "50"], ["[ ] Bold line"]])
+isBoxInInkOnPaper() = list.All([c.Color == look.Theme.Ink for c in box("zone", formOpened()).Draw(1000, look) if c.Kind == "text"]) and list.Any([c.Kind == "rect" and c.Color == look.Theme.Code for c in box("zone", formOpened()).Draw(1000, look)])
+isBoxesLineUp() = [c.X for c in box("zone", formOpened()).Draw(1000, look) if c.Kind == "rect"][1] == notebook.SliderPlaces(1000, 5, cell).Track
+isFirstInputFocused() = focusName(formFocused(0)) == "year" and value.Len(commands.FocusOf(formFocused(0)).Hints) == 4
+isTabOrder() = value.Equal([focusName(formFocused(k)) for k in 0..7], ["year", "zone", "day", "place", "high", "rho", "bold", "year"])
+isBackTab() = focusName(press("S-tab", formFocused(0))) == "bold"
+isFocusRingBox() = value.Len(box("zone", formFocused(1)).Draw(1000, look)) == value.Len(box("zone", formOpened()).Draw(1000, look)) + 4
+isCgLeavesInput() = value.IsMissing(commands.FocusOf(press("C-g", formFocused(1))))
+
+(* A choice: Enter opens its list, the arrows move in it, Enter chooses. *)
+isEnterOpens() = commands.FocusOf(press("enter", formFocused(0))).Open and box("year", press("enter", formFocused(0))).Rows == 4
+isListDrawn() = value.Equal(words(box("year", press("enter", formFocused(0)))), ["year", "2026", "v", "2025", "2026", "2027"])
+isChoose() = line(press("enter", press("down", press("enter", formFocused(0)))), 4) == "year = cells.Choice(2027, [2025, 2026, 2027])"
+isChooseShuts() = not commands.FocusOf(press("enter", press("down", press("enter", formFocused(0))))).Open
+isChooseOneUndo() = undoneAt(press("enter", press("down", press("enter", formFocused(0)))), 4) == "year = cells.Choice(2026, [2025, 2026, 2027])"
+isChooseText() = line(press("enter", press("up", press("enter", formFocused(1)))), 5) == "zone = cells.Choice(\"GMT-6\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])"
+isListClamped() = commands.FocusOf(press("down", press("end", formFocused(0)))).At == 3 and commands.FocusOf(press("up", press("home", formFocused(0)))).At == 1
+isListShutByCg() = value.IsSome(commands.FocusOf(press("C-g", press("enter", formFocused(0))))) and not commands.FocusOf(press("C-g", press("enter", formFocused(0)))).Open
+isSameChoiceNoEdit() = press("enter", press("enter", formFocused(0))).Buffers[1].Version == formFocused(0).Buffers[1].Version
+isPendingChoice() = press("enter", press("down", press("enter", formFocused(0)))).Buffers[1].CellRun.Moves["year"].Pending == 2027
+
+(* A date: Left and Right pick its part, Up and Down change it, Enter sets it. *)
+isDayUp() = line(press("enter", press("up", formFocused(2))), 6) == "day = cells.Date(\"2026-11-24\")"
+isMonthUp() = line(press("enter", press("up", press("left", formFocused(2)))), 6) == "day = cells.Date(\"2026-12-23\")"
+isMonthRound() = line(press("enter", press("up", press("up", press("left", formFocused(2))))), 6) == "day = cells.Date(\"2026-01-23\")"
+isYearDown() = line(press("enter", press("down", press("left", press("left", formFocused(2))))), 6) == "day = cells.Date(\"2025-11-23\")"
+isDateWaitsForEnter() = line(press("up", formFocused(2)), 6) == "day = cells.Date(\"2026-11-23\")" and words(box("day", press("up", formFocused(2))))[2] == "2026-11-24"
+isDatePartDrawn() = list.Any([c.Kind == "text" and c.Text == "23" and c.Color == look.Theme.Code for c in box("day", formFocused(2)).Draw(1000, look)])
+
+(* A field: what is typed goes in its box, Enter sets it; a field of a number takes only a number. *)
+isFieldTyped() = line(press("enter", typedIn("!", formFocused(3))), 7) == "place = cells.Field(\"40.76, -73.984!\")"
+isFieldWaitsForEnter() = line(typedIn("x", formFocused(3)), 7) == "place = cells.Field(\"40.76, -73.984\")" and words(box("place", typedIn("x", formFocused(3))))[2] == "40.76, -73.984x"
+isFieldErased() = words(box("place", press("backspace", formFocused(3))))[2] == "40.76, -73.98" and words(box("place", press("delete", press("home", formFocused(3)))))[2] == "0.76, -73.984"
+isFieldCaret() = line(press("enter", typedIn("+", press("home", formFocused(3)))), 7) == "place = cells.Field(\"+40.76, -73.984\")"
+isFieldOneUndo() = undoneAt(press("enter", typedIn("!", formFocused(3))), 7) == "place = cells.Field(\"40.76, -73.984\")"
+defn isFieldHostile()
+  (** A text with quotes, \, $(...) and <script> typed in a field is written in quotes, escaped, and reads back as itself, and as no code. *)
+  t = "\" \\ $$(io.Print(1)) $$x <script>"
+  s = press("enter", typedIn(t, press("backspace", formFocused(3))))
+  a = readBack(s)
+  line(s, 7) == "place = cells.Field(\"40.76, -73.98\\\" \\\\ $$$$(io.Print(1)) $$$$x <script>\")" and a.Inputs[4].Value == "40.76, -73.98$t" and value.Len(a.Errors) == 0
+end
+defn isNumberFieldRefuses()
+  s = press("enter", typedIn("abc", press("backspace", press("backspace", formFocused(4)))))
+  line(s, 8) == "high = cells.Field(50)" and s.Message == "high takes a number: abc is none."
+end
+isNumberField() = line(press("enter", typedIn("62.5", press("backspace", press("backspace", formFocused(4))))), 8) == "high = cells.Field(62.5)"
+
+(* A check box: Space checks it or not. *)
+isCheckSpace() = line(press("space", formFocused(6)), 10) == "bold = cells.Check(true, label = \"Bold line\")" and value.Equal(words(box("bold", press("space", formFocused(6)))), ["[x] Bold line"])
+isCheckOneUndo() = undoneAt(press("space", formFocused(6)), 10) == "bold = cells.Check(false, label = \"Bold line\")"
+isCheckTwice() = line(press("space", press("space", formFocused(6))), 10) == "bold = cells.Check(false, label = \"Bold line\")"
+
+(* Every key does what it did while no input has the keys, and any key an input doesn't take leaves it. *)
+keyEvent(k) = {Kind: "key", Key: k, Ctrl: false, Alt: false, Shift: false, Super: false}   (** A key without a modifier. *)
+(** A state with the keys of Emacs and of the cells, as Cemacs has them. *)
+defn keyed(state)
+  s = state
+  s.Config = () -> emacs.Config(() -> dict.Merge(emacs.Keys(), notebook.Keys()))
+  s
+end
+defn isEnterStillANewLine()
+  s = keyed(busyForm(formOpened()))
+  s.Buffers[1] = text.Place(5, 0, s.Buffers[1])
+  t = commands.Update(keyEvent("enter"), s)
+  value.IsMissing(commands.FocusOf(t)) and line(t, 6) == "zone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])" and line(t, 5) == ""
+end
+defn isSpaceStillTyped()
+  s = busyForm(formOpened())
+  s.Buffers[1] = text.Place(10, 0, s.Buffers[1])
+  t = commands.Update({Kind: "text", Text: " "}, commands.Update({Kind: "key", Key: "space", Ctrl: false, Alt: false, Shift: false, Super: false}, s))
+  line(t, 10) == " bold = cells.Check(false, label = \"Bold line\")"
+end
+isTypedNotInBuffer() = line(commands.Update({Kind: "text", Text: "x"}, formFocused(3)), 7) == "place = cells.Field(\"40.76, -73.984\")"
+defn isOtherKeyLeaves()
+  t = commands.Update({Kind: "key", Key: "f", Ctrl: true, Alt: false, Shift: false, Super: false}, keyed(formFocused(3)))
+  value.IsMissing(commands.FocusOf(t)) and t.Buffers[1].Cursor.Column == 1
+end
+
+(* The mouse: a press gives an input the keys, checks a box, opens a list and chooses in it. *)
+defn atInput(name, s)
+  (** The block of an input on the screen, its first row, as the mouse finds it. *)
+  for y in 0..719
+    hit = view.BlockAt(200, y, s)
+    if value.IsSome(hit) and dict.GetOr("Input", "", hit.Block) == name
+      return dict.Put("Y", y + 2, hit)
+    end
+  end
+  missing
+end
+defn clickedOn(name, dx, row, s)
+  (** A press on the block of an input, dx pixels right of its box, on a row of it, from 0. *)
+  hit = atInput(name, s)
+  x = hit.Left + notebook.SliderPlaces(hit.Width, 5, cell).Track + dx
+  commands.Press({Kind: "mouse", Action: "down", X: x, Y: hit.Y + row * cell.Height, Button: 1}, s)
+end
+isClickChecks() = line(clickedOn("bold", -40, 0, busyForm(formOpened())), 10) == "bold = cells.Check(true, label = \"Bold line\")"
+isClickOpens() = commands.FocusOf(clickedOn("zone", 10, 0, busyForm(formOpened()))).Open
+isClickShuts() = not commands.FocusOf(clickedOn("zone", 10, 0, clickedOn("zone", 10, 0, busyForm(formOpened())))).Open
+isClickChooses() = line(clickedOn("zone", 10, 1, clickedOn("zone", 10, 0, busyForm(formOpened()))), 5) == "zone = cells.Choice(\"GMT-6\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])"
+isClickField() = focusName(clickedOn("place", 10, 0, busyForm(formOpened()))) == "place" and commands.FocusOf(clickedOn("place", 3 * cell.Width + 2, 0, clickedOn("place", 10, 0, busyForm(formOpened())))).Caret == 2
+isClickDatePart() = commands.FocusOf(clickedOn("day", 7 * cell.Width, 0, clickedOn("day", 10, 0, busyForm(formOpened())))).Part == 2
+isClickTextLeaves() = value.IsMissing(commands.FocusOf(commands.Press({Kind: "mouse", Action: "down", X: 200, Y: 10, Button: 1}, formFocused(1))))
+isClearKeepsBoxes() = value.Len(boxes(notebook.ClearResults(formOpened()))) == 6
+
+(* The place of a value is checked before it is written: one that holds no value of the input's kind any more is refused. *)
+defn isChangeRefusedElsewhere()
+  s = busyForm(formOpened())
+  r = s.Buffers[1].CellRun
+  r.Analysis[2].Inputs[2] = dict.Put("Column", 1, r.Analysis[2].Inputs[2])
+  s.Buffers[1].CellRun = r
+  t = notebook.Changed(1, "zone", "GMT-4", s)
+  line(t, 5) == "zone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])" and str.Contains("isn't where its value was", t.Message)
+end
+isNoSessionNoRun() = notebook.Changed(1, "bold", true, formOpened()).Message == "bold is true in the text: C-c e a runs the cells with it."
 
 (* Animations, without a session: the block of a cell whose graph is an animation of 3 frames, at key 7, draws its bar; C-c e f, its keys and the mouse
    play it, pause it and move it; a frame that the session sent, faked here, comes ahead and shows when it is due, and none is asked while it rests. *)

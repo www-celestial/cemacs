@@ -1,0 +1,77 @@
+(* The inputs of a form under their lines, drawn by the window as Cemacs draws them, on the light theme, black on white: a choice that has the keys,
+   its box's edges in the accent color and its paper inside, its value, its v, and its open list, the option under the cursor in reverse; a field's
+   box, its edges in ink, and its text; a check box and its label. Each part is read from the pixels at the places the blocks give. *)
+use core/commands
+use core/text
+use core/view
+use src/notebook
+use src/sdl
+use src/ui
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/value
+use tests/sdl/probe
+
+form = "use std/cells\n\n(* %% Place and day *)\nyear = cells.Choice(2026, [2025, 2026, 2027])\nzone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])\nday = cells.Date(\"2026-11-23\")\nplace = cells.Field(\"40.76, -73.984\")\nhigh = cells.Field(50)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nbold = cells.Check(false, label = \"Bold line\")\n"
+width = 900
+height = 560
+paper = ui.Light.Code
+ink = ui.Light.Ink
+
+defn opened()
+  (** The window with the fonts of Cemacs, as core/editor opens it. *)
+  first = sdl.Open("test", width, height, "../../fonts/AdwaitaSans-Regular.ttf", size = 14, light = true)?
+  second = sdl.AddFont("strong", "../../fonts/NotoSans-Medium.ttf", 14, first, light = true)?
+  sdl.AddFont("code", "../../fonts/JetBrainsMono-Regular.ttf", 14, second)
+end
+
+defn at(name, s)
+  (** The block of an input on the screen, {Left, Top, Width, Block}, as the mouse finds it. *)
+  for y in 0..height - 1
+    hit = view.BlockAt(200, y, s)
+    if value.IsSome(hit) and dict.GetOr("Input", "", hit.Block) == name
+      return hit
+    end
+  end
+  missing
+end
+
+defn check()
+  window = opened()?
+  measured = sdl.Measure(window)
+  look = ui.Look(ui.Light, measured.Width, measured.Height)
+  cell = {Width: look.Width("M", "code"), Height: sdl.TextSize("Ag", window, font = "code").Height + view.LineGap}
+  s = view.Start([text.Of(form, "form.ce")], look, cell, width, height)
+  s.Window = window
+  s = notebook.Hooked({}).Idle(s)
+  (* C-c e f in the cell of the form, Tab to the zone, Enter opens its list. *)
+  s.Buffers[1] = text.Place(5, 0, s.Buffers[1])
+  s = notebook.FocusControl(s)
+  s = commands.FocusOf(s).Keys["tab"](s)
+  s = commands.FocusOf(s).Keys["enter"](s)
+  drawn = sdl.Draw(view.View(s), window)
+  image = probe.Pixels(drawn, width, height)
+  zone = at("zone", s)
+  track = zone.Left + notebook.SliderPlaces(zone.Width, 5, cell).Track
+  wide = notebook.BoxColumns({Kind: "choice", Options: ["GMT-6", "GMT-5", "GMT-4"]}) * cell.Width
+  top = zone.Top
+  io.Print("the edges of the box that has the keys in the accent color: $(probe.Pixel(track, top + 5, image) == ui.Light.Accent and probe.Pixel(track + wide - 1, top + 5, image) == ui.Light.Accent and probe.Pixel(track + 5, top, image) == ui.Light.Accent)")
+  io.Print("paper inside: $(probe.Pixel(track + 3, top + 3, image) == paper)")
+  io.Print("its value written: $(probe.Differing(track + cell.Width, top + 2, 5 * cell.Width, cell.Height - 4, paper, image) > 0)")
+  io.Print("its v: $(probe.Differing(track + (wide - 2 * cell.Width), top + 2, cell.Width, cell.Height - 4, paper, image) > 0)")
+  io.Print("an option on paper: $(probe.Pixel(track + 3, top + cell.Height + 3, image) == paper)")
+  io.Print("the option under the cursor in reverse: $(probe.Pixel(track + 3, top + 2 * cell.Height + 3, image) == ink)")
+  io.Print("the list has its three rows: $(probe.Differing(track + cell.Width, top + 3 * cell.Height + 2, 5 * cell.Width, cell.Height - 4, paper, image) > 0 and zone.Block.Rows == 4)")
+  place = at("place", s)
+  ptrack = place.Left + notebook.SliderPlaces(place.Width, 5, cell).Track
+  io.Print("a field's box, its edges in ink, and its text: $(probe.Pixel(ptrack, place.Top + 5, image) == ink and probe.Pixel(ptrack + 5, place.Top, image) == ink and probe.Differing(ptrack + cell.Width, place.Top + 2, 14 * cell.Width, cell.Height - 4, paper, image) > 0)")
+  bold = at("bold", s)
+  io.Print("a check box and its label: $(probe.Differing(bold.Left + 2 * cell.Width, bold.Top + 2, 13 * cell.Width, cell.Height - 4, paper, image) > 0)")
+  sdl.Frame([{Kind: "clear", Color: paper}], drawn)
+  io.Print(sdl.Close(drawn))
+  result.Ok("closed")
+end
+
+io.Print(check())

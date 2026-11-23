@@ -1471,8 +1471,8 @@ end
 
 defn FocusOf(state)
   (** The control of an app that has the keys, {Keys, Hints}, or missing. A command of an app gives it, as C-c e f of the cells does: its Keys, chords
-      and the commands they run, come before every other key, a text typed too when its Keys name it, as space; any other chord, text or press of the
-      mouse leaves it, see Unfocused;
+      and the commands they run, come before every other key, a text typed too when its Keys name it, as space; a control with Typed, a function of
+      the text and the state, as a field of the cells, has every other text typed; any other chord, text or press of the mouse leaves it, see Unfocused;
       C-g is the app's to bind, as WAI-ARIA's Escape. Hints are the rows of the band, {Key, Name, Group}, and Leave, if given, what leaving does
       besides. A state from before this field has none.
 
@@ -1564,6 +1564,9 @@ defn onText(event, state)
   else if value.IsSome(FocusOf(state)) and dict.Has(secondOf(event.Text), FocusOf(state).Keys)
     (* A key that types, as the space bar, is the control's when its Keys name it: Space plays an animation. *)
     ran(FocusOf(state).Keys[secondOf(event.Text)], withChords(secondOf(event.Text), s))
+  else if value.IsSome(FocusOf(state)) and dict.Has("Typed", FocusOf(state))
+    (* A control that takes text, as a field of the cells, has what is typed, as it is. *)
+    FocusOf(state).Typed(event.Text, s)
   else
     s.Chain = false
     s = Unfocused(s)
@@ -1689,14 +1692,18 @@ defn Release(event, state)
 end
 
 defn Press(event, state)
-  (** A mouse button pressed, which counts as a command: it ends the first key of a pair, a chain of cuts and a step of typing. Only the first button does more. *)
+  (** A mouse button pressed, which counts as a command: it ends the first key of a pair, a chain of cuts and a step of typing. Only the first button does more.
+      The control that has the keys leaves them, unless the press is on a block with Keeps, as an input of the cells, which gives them or keeps them itself:
+      a click on an option of a list that is open reaches the list. *)
   s = state
   s.Pending = ""
   s.Message = ""
   s.Chain = false
   s.Buffers[state.Current].Typing = false
   s.Completion = missing
-  s = Unfocused(s)
+  j = if event.Button == 1 view.PaneAt(event.X, event.Y, s) else 0 end
+  hit = if event.Button == 1 view.BlockAt(event.X, event.Y, if j > 0 focused(j, s) else s end) else missing end
+  s = if value.IsSome(hit) and dict.GetOr("Keeps", false, hit.Block) s else Unfocused(s) end
   if event.Button == 1 down(event, s) else s end
 end
 

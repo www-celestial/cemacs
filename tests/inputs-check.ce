@@ -1,0 +1,118 @@
+(** Checks of the inputs of a form against a real session of std/cells, on a file in a new folder under /tmp: drawn before any run; a choice, a check
+    box, a field and a date changed by their keys, each written in the buffer in place of its old value, then set in the session in place, and only the
+    cells that read it run again with it; a text with quotes, \, $(...) and <script> typed in a field reaches the session as that text, and runs nothing;
+    and the file, saved, says what the session holds. It is a script, not a test file: it needs permissions. Run it from the root of cemacs with
+    cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/inputs-check.ce, CESIA the real path of the cesia that runs it.
+    It prints ok at the end and stops at the first failure. *)
+use core/commands
+use core/text
+use core/view
+use src/notebook
+use src/rope
+use src/ui
+use std/bug
+use std/cells as nb
+use std/cesia
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+(** The run of the buffer of cells. *)
+runIn(s) = s.Buffers[1].CellRun
+
+defn settled(state)
+  (** The state once the cells stop moving, ticked as the editor ticks it, or a failure after ten seconds. *)
+  s = state
+  waited = 0.0
+  while notebook.Moving(s)
+    check(waited < 10.0, "the cells never ended")
+    sys.Sleep(0.005)
+    waited = waited + 0.005
+    s = notebook.Hooked({}).Idle(s)
+  end
+  s
+end
+
+defn shownIn(title, s)
+  (** The words of the block of the cell whose title is given, or missing. *)
+  r = runIn(s)
+  for x in text.BlocksOf(s.Buffers[1])
+    if dict.GetOr("Cell", 0, x) > 0 and r.Cells[x.Cell].Title == title
+      return [str.Trim(c.Text) for c in x.Draw(2000, look) if c.Kind == "text" and not str.StartsWith("Out[", str.Trim(c.Text))]
+    end
+  end
+  missing
+end
+
+(** Line n of the file. *)
+line(s, n) = rope.Line(n, s.Buffers[1].Rope)
+(** A key of the input that has the keys. *)
+press(chord, s) = commands.FocusOf(s).Keys[chord](s)
+
+defn focusedOn(name, state)
+  (** The state with the keys on the input of a name, through C-c e f in the cell of the form, then Tab. *)
+  s = state
+  s.Buffers[1] = text.Place(7, 0, s.Buffers[1])
+  s = notebook.FocusControl(s)
+  for k in 1..8
+    if dict.GetOr("Input", "", commands.FocusOf(s)) == name
+      return s
+    end
+    s = press("tab", s)
+  end
+  check(false, "no input $name")
+end
+
+look = ui.Look(ui.Light, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/form.ce"
+source = "use std/cells\nuse std/date\nuse std/io\n\n(* %% Place and day *)\nyear = cells.Choice(2026, [2025, 2026, 2027])\nzone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])\nday = cells.Date(\"2026-11-23\")\nplace = cells.Field(\"40.76, -73.984\")\nbold = cells.Check(false, label = \"Bold line\")\n\n(* %% Zone *)\nio.Print(\"zone $$zone\")\nzone\n\n(* %% Rest *)\nio.Print(\"$$year $$(date.FormatDate(day)) $$bold\")\nplace\n"
+_ = result.Unwrap(sys.Write(path, source))
+state = commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720))
+first = notebook.Hooked({}).Idle(state)
+check(value.Len([x for x in text.BlocksOf(first.Buffers[1]) if dict.Has("Input", x)]) == 5, "the boxes show before any run")
+
+(* Every cell, then a choice: Zone runs again with the new zone, Rest doesn't. *)
+all = settled(notebook.RunAll(first))
+check(shownIn("Zone", all)[1] == "zone GMT-5", "Zone shows GMT-5: $(shownIn("Zone", all))")
+rest = shownIn("Rest", all)
+chosen = settled(press("enter", press("down", press("enter", focusedOn("zone", all)))))
+check(line(chosen, 7) == "zone = cells.Choice(\"GMT-4\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])", "the choice is written in the buffer: $(line(chosen, 7))")
+check(shownIn("Zone", chosen)[1] == "zone GMT-4", "Zone ran again with GMT-4: $(shownIn("Zone", chosen))")
+check(value.Equal(shownIn("Rest", chosen), rest), "Rest, which doesn't read zone, didn't run again")
+check(runIn(chosen).Values["zone"] == "GMT-4", "the session holds GMT-4")
+
+(* A check box, a choice of numbers and a date: Rest runs again with each. *)
+checked = settled(press("space", focusedOn("bold", chosen)))
+check(line(checked, 10) == "bold = cells.Check(true, label = \"Bold line\")" and str.EndsWith(" true", shownIn("Rest", checked)[1]), "the box is checked in the file and in the session: $(shownIn("Rest", checked))")
+year = settled(press("enter", press("up", press("enter", focusedOn("year", checked)))))
+check(str.StartsWith("2025 ", shownIn("Rest", year)[1]), "Rest runs with 2025: $(shownIn("Rest", year))")
+day = settled(press("enter", press("down", focusedOn("day", year))))
+check(line(day, 8) == "day = cells.Date(\"2026-11-22\")" and str.Contains(" 2026-11-22 ", shownIn("Rest", day)[1]), "Rest runs with the day before: $(shownIn("Rest", day))")
+
+(* A field: a text with quotes, \, $(...) and <script> reaches the session as that text and runs nothing. *)
+typed = "\" \\ $$(io.Print(\"ran\")) $$zone <script>"
+f = focusedOn("place", day)
+f = commands.FocusOf(f).Typed(typed, f)
+field = settled(press("enter", f))
+check(line(field, 9) == "place = cells.Field(\"40.76, -73.984\\\" \\\\ $$$$(io.Print(\\\"ran\\\")) $$$$zone <script>\")", "the text is written escaped: $(line(field, 9))")
+check(shownIn("Rest", field)[2] == "40.76, -73.984$typed", "the session holds the text as typed: $(shownIn("Rest", field))")
+check(not list.Any([str.Trim(w) == "ran" for w in shownIn("Rest", field)]), "nothing of the text ran")
+
+(* The file, saved, means what the session holds: cesia run gives the same. *)
+_ = commands.Save(field)
+ran = result.Unwrap(sys.Run(cesia.Binary(), ["run", path]))
+check(str.Contains("zone GMT-4", ran.Out) and str.Contains("2025 2026-11-22 true", ran.Out), "cesia run reads the values of the file: $(ran.Out) $(ran.Err)")
+_ = result.Unwrap(sys.Run("rm", ["-r", folder]))
+io.Print("ok")
