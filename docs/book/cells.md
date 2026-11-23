@@ -80,9 +80,12 @@ cell. The screen, the mouse and the cursor count its rows: a page shows fewer li
 
 A cell whose last expression is a graph, as `plot.Line(t, y)` or `plot.Of([...])`, shows it under its code. The session
 computes its *scene*, the shapes of the graph in pixels at the width of the pane, and Cemacs draws the scene: its lines with
-soft edges, its areas, bars, marks and cells, and its texts in Noto Sans Medium, the font std/plot measured them with,
-without kerning, the adjustment of the space between two letters, and without hinting, so that each text takes the width
-std/plot gave it. The axes, the grid and the texts take the colours of the theme; the data keep their own. When the pane
+soft edges, its areas, bars, marks and cells, and its texts in JetBrains Mono, the font of the code, which std/plot
+measured them with, without kerning, the adjustment of the space between two letters, and without hinting, so that each
+text takes the width std/plot gave it; a character JetBrains Mono lacks, as the superscript minus of `10⁻³`, is drawn in
+Noto Sans Medium. The graph is drawn as part of the page, not pasted on it: the axes, the grid, the texts and the layers
+without a colour of their own take the colours of the theme, black on white in the light one, as the SVG of `plot.Save`;
+a layer given a colour keeps it, and so do heatmaps and surfaces. When the pane
 changes its width, the session draws the scene again at the new one; the graph keeps its shape until it comes. `*repl*`
 draws a graph under its answer in the same way, and the page of `C-c e h` holds each graph as SVG. The screen slides over a
 graph a row at a time, its lower part showing when the screen starts inside it: see

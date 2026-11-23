@@ -215,7 +215,7 @@ defn Block(line, lines, cell, graph = missing, focused = false, out = missing, a
   draw = (width, look) -> list.Concat(list.Concat(list.Concat(list.Prepend({Kind: "rect", X: 0, Y: 2, Width: 2, Height: rows * cell.Height - 4, Color: look.Theme.Line},
     [lineText(k, rowed[k], if k > at pad else 0 end, width, look, cell) for k in 1..value.Len(rowed)]),
     [rowText(l.At, "  $(l.Words)", colorOf("note", look.Theme), cell) for l in label]),
-    if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font}] end),
+    if value.IsMissing(graph) [] else [{Kind: "graph", X: 2 * cell.Width, Y: top, Width: graph.Scene.Width, Height: graph.Scene.Height, Items: themed(graph.Scene.Items, look.Theme), Font: graph.Font, Fallback: graph.Fallback}] end),
     if bar == 0 [] else if isAnimation(graph) BarItems(graph, focused, width, under, cell, look.Theme) else ViewItems(graph, focused, top, under, cell, look.Theme) end)
   {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Lines: lines, Out: out}
 end
@@ -321,8 +321,8 @@ defn itemFault(item, lim)
       return {Fault: "a line is no width from 0 to 50"}
     end
     dash = dict.GetOr("Dash", missing, item)
-    if k == "line" and value.IsSome(dash) and not (value.IsArray(dash) and value.Len(dash) == 2 and list.All([within(d, 0.5, 1000) for d in dash]))
-      return {Fault: "a dash is no pair of lengths"}
+    if k == "line" and value.IsSome(dash) and not (value.IsArray(dash) and (value.Len(dash) == 2 or value.Len(dash) == 4) and list.All([within(d, 0.5, 1000) for d in dash]))
+      return {Fault: "a dash is no two or four lengths"}
     end
     if k == "marks" and not within(dict.GetOr("Size", missing, item), 0, 100)
       return {Fault: "marks have no size from 0 to 100"}
@@ -403,7 +403,8 @@ end
 
 defn Prepared(scene, home)
   (** A scene of std/plot ready for the screen: its colors as numbers, once, an Id for each item, by which sdl knows that the item it drew is the
-      same, and the font its texts are measured in, that of Cemacs's folder.
+      same, and the font its texts are measured in, JetBrains Mono, the font of the code, from Cemacs's folder, with Noto Sans Medium as its Fallback
+      for the characters it lacks.
 
         Prepared({Width: 100, Height: 80, Items: [{Kind: "rect", Color: "#ff0000"}]}, ".").Scene.Items[1].Color --> 16711680 *)
   items = []
@@ -422,7 +423,7 @@ defn Prepared(scene, home)
   end
   out = scene
   out.Items = items
-  {Scene: out, Font: "$home/fonts/NotoSans-Medium.ttf"}
+  {Scene: out, Font: "$home/fonts/JetBrainsMono-Regular.ttf", Fallback: "$home/fonts/NotoSans-Medium.ttf"}
 end
 
 defn themed(items, th)
@@ -1096,7 +1097,7 @@ defn answered(k, state)
     if isAnimation(graph)
       (* *repl* shows the first frame of an animation: a cell plays it, with its bar. *)
       words = "$(words)an animation of $(graph.Frames) frames at $(rateText(graph.Fps)) a second: its first; a cell plays it\n"
-      graph = {Scene: graph.Scene, Font: graph.Font, Key: graph.Key}
+      graph = {Scene: graph.Scene, Font: graph.Font, Fallback: graph.Fallback, Key: graph.Key}
     end
     after = appended(words, after)
     if value.IsSome(graph)

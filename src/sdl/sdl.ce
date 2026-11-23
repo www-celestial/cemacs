@@ -92,7 +92,8 @@ defn bindTtf(lib)
   hinting = f("TTF_SetFontHinting", ["ptr", "i32"], "void")?
   kerning = f("TTF_SetFontKerning", ["ptr", "bool"], "void")?
   ascent = f("TTF_GetFontAscent", ["ptr"], "i32")?
-  result.Ok({SetFont: setFont, Hinting: hinting, Kerning: kerning, Ascent: ascent, Init: init, CreateEngine: createEngine, OpenFont: openFont, CreateText: createText, SetText: setText,
+  fallback = f("TTF_AddFallbackFont", ["ptr", "ptr"], "bool")?
+  result.Ok({SetFont: setFont, Hinting: hinting, Kerning: kerning, Ascent: ascent, Fallback: fallback, Init: init, CreateEngine: createEngine, OpenFont: openFont, CreateText: createText, SetText: setText,
     Color: color, DrawText: drawText, StringSize: stringSize, DestroyText: destroyText, CloseFont: closeFont,
     DestroyEngine: destroyEngine, Quit: quit})
 end

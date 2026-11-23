@@ -27,6 +27,10 @@ isTooManyMarksRefused() = str.StartsWith("a marks has", notebook.SceneFault(scen
 isTextPointRefused() = value.IsSome(notebook.SceneFault(scene([{Kind: "area", Xs: [1.0, "x"], Ys: [1.0, 2.0], Color: "#000000"}])))
 isCellsWithoutColorsRefused() = value.IsSome(notebook.SceneFault(scene([{Kind: "cells", Xs: [0.0, 1.0, 2.0], Ys: [0.0, 1.0], Colors: ["#000000"]}])))
 isUnknownKindRefused() = value.IsSome(notebook.SceneFault(scene([{Kind: "polygon"}])))
+(* A dash-dot line of std/plot has four lengths, on, off, on, off; three, or a length below half a pixel, is no dash. *)
+isDashDotAccepted() = value.IsMissing(notebook.SceneFault(scene([{Kind: "line", Xs: [1.0, 2.0], Ys: [3.0, 4.0], Width: 1, Dash: [6.4, 1.6, 1.0, 1.6], Color: "ink"}]))) and value.IsSome(notebook.SceneFault(scene([{Kind: "line", Xs: [1.0, 2.0], Ys: [3.0, 4.0], Width: 1, Dash: [6.4, 1.6, 1.0], Color: "ink"}]))) and value.IsSome(notebook.SceneFault(scene([{Kind: "line", Xs: [1.0, 2.0], Ys: [3.0, 4.0], Width: 1, Dash: [0.1, 1.6], Color: "ink"}])))
+(* The texts of a graph are drawn in the font of the code, JetBrains Mono, as std/plot measures them, and the characters it lacks in Noto Sans. *)
+isGraphFontTheCode() = value.Equal(notebook.Prepared({Width: 100, Height: 80, Items: []}, "/c"), {Scene: {Width: 100, Height: 80, Items: []}, Font: "/c/fonts/JetBrainsMono-Regular.ttf", Fallback: "/c/fonts/NotoSans-Medium.ttf"})
 isTooManyVerticesRefused() = str.Contains("vertices", notebook.SceneFault(scene(list.Fill({Kind: "line", Xs: list.Fill(1.0, 900000), Ys: list.Fill(1.0, 900000), Width: 1}, 2))))
 
 (* Sliders. A run whose session is busy with each slider keeps a move as its Pending, so that nothing starts a session here. *)
