@@ -50,6 +50,46 @@ Les temps intérieurs d'Emacs, de Neovim et de Vim ne comptent pas le dessin du 
 Cemacs comptent le sien. Les autres montrent ces fichiers comme du texte simple, là où Cemacs les colore. Neovim et Vim
 appellent `fsync` avant de dire qu'un fichier est écrit, Emacs 31 non ; Cemacs le fait depuis cette version.
 
+Les mêmes médianes en graphiques. Le démarrage, puis l'ouverture d'un fichier :
+
+```cesia allow=read,write
+use std/plot
+startOpen = plot.Bars(["first frame", "0.79 MB", "15.9 MB", "99.9 MB"], [[51.3, 66.9, 97.8, 266], [89.1, 98.4, 145, 393],
+  [13.8, 20.5, 53.2, 235], [9.3, 18.0, 51.5, 247]], label = ["Cemacs", "Emacs", "Neovim", "Vim"],
+  color = ["#3a5ad9", "#000000", "#666666", "#b3b3b3"])
+starting = plot.Of([startOpen], title = "Start, and start and open a file: milliseconds", y = "milliseconds",
+  size = [640, 340])
+plot.Save(starting, "comparison-start.svg") -->
+```
+
+À l'intérieur de chaque éditeur, sur une échelle logarithmique, où chaque puissance de dix prend la même longueur : une
+touche et une ligne défilée à la ligne 19 000, Entrée au milieu du petit fichier, la recherche, le collage et son
+annulation dans 99,9 MB, l'enregistrement de 15,9 MB :
+
+```cesia allow=read,write
+use std/math
+inside = ["key", "scroll", "Enter", "search", "paste", "undo", "save"]
+editors = [
+  {Name: "Cemacs", Ms: [2.6, 2.6, 0.734, 48.8, 44.7, 1.47, 64.0], Shape: "circle", Color: "#3a5ad9"},
+  {Name: "Emacs", Ms: [1.06, 1.51, 0.197, 48.4, 238, 230, 131], Shape: "square", Color: "#000000"},
+  {Name: "Neovim", Ms: [0.045, 0.020, 18.8, 181, 2.82, 61.0, 85.6], Shape: "triangle", Color: "#000000"},
+  {Name: "Vim", Ms: [0.059, 0.052, math.Nan, 300, 2.84, 3.11, 83.4], Shape: "cross", Color: "#000000"}]
+edited = plot.Of([plot.Points([p + (k - 2.5) * 0.12 for p in 1..7], editors[k].Ms, label = editors[k].Name,
+  shape = editors[k].Shape, color = editors[k].Color, size = 7) for k in 1..4],
+  title = "Inside each editor: milliseconds, median", y = "milliseconds (log scale)", yscale = "log",
+  xticks = 1..7, xlabels = inside, size = [640, 380])
+plot.Save(edited, "comparison-edits.svg") -->
+```
+
+La mémoire, vide et avec le fichier de 99,9 MB :
+
+```cesia allow=read,write
+memories = plot.Bars(["empty, PSS", "99.9 MB open, RSS"], [[41.8, 220], [49.0, 151], [10.1, 137], [7.8, 133]],
+  label = ["Cemacs", "Emacs", "Neovim", "Vim"], color = ["#3a5ad9", "#000000", "#666666", "#b3b3b3"])
+memory = plot.Of([memories], title = "Memory: MB, median", y = "MB", size = [640, 320])
+plot.Save(memory, "comparison-memory.svg") -->
+```
+
 Ce qu'ils disent :
 
 - **Vim et Neovim démarrent plusieurs fois plus vite que Cemacs.** Ce sont des programmes en C compilés en code machine, qui
