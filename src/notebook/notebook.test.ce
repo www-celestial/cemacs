@@ -668,9 +668,12 @@ dayRows = [["06:52:10", "-0.833", "116.59"], ["7:00:00", "0.48", "117.87"], ["8:
 (** The value of a table of four rows of the day, as a run gives it, its key 5.1. *)
 dayValue = {Kind: "table", Columns: ["heure", "elevation", "azimuth"], Rows: dayRows, Count: 4, Key: "5.1"}
 
-defn tabled(v)
-  (** The window once cell 2 showed a value as a table, and a graph of key 5 under it, as a run gives them; its session busy, so that nothing asks. *)
-  s = notebook.Hooked({}).Idle(view.Start([text.Of(tableSource, "day.ce")], look, cell, 1280, 720))
+(** The window once cell 2 showed a value as a table, and a graph of key 5 under it, as a run gives them; its session busy, so that nothing asks. *)
+tabled(v) = tabledIn(tableSource, v)
+
+defn tabledIn(source, v)
+  (** The window on a source once its cell 2 showed a value as a table, and a graph of key 5 under it: see tabled. *)
+  s = notebook.Hooked({}).Idle(view.Start([text.Of(source, "day.ce")], look, cell, 1280, 720))
   r = s.Buffers[1].CellRun
   r.Session = "a session"
   r.Task = "a cell runs"
@@ -747,6 +750,110 @@ defn isKeysUnchangedWithoutFocus()
 end
 isFixedRefusesSort() = value.IsMissing(tableOf(textIn("s", onTable(tabled(dict.Drop("Key", dayValue))))).Table.Sort)
 isCopyFixedTable() = str.StartsWith("heure,elevation,azimuth\n06:52:10,-0.833,116.59\n", commands.Clipboard(notebook.CopyTable(onTable(tabled(dict.Drop("Key", dayValue))))))
+
+(* An edit of a value: a table written in the file, frame.Of of lists, edited at the cursor by Enter, e or a double click; what is typed takes the place
+   of the old value in the file, one step of undo, checked for the kind of its column, and the cell runs again; Escape takes it back; a table that comes
+   from code is refused. *)
+writtenSource = "use std/frame\n\n(* %% Day *)\nhours = frame.Of({heure: [\"06:52:10\", \"7:00:00\", \"8:00:00\", \"12:00:00\"], elevation: [-0.833, 0.48, 9.99, 28.66], azimuth: [116.59, 117.87, 128.27, 184.7]})\nhours\n"
+written() = onTable(tabledIn(writtenSource, dayValue))   (** The window with the keys on the table that the file writes. *)
+editing() = press("enter", press("right", press("down", written())))   (** The value 0.48 being edited. *)
+(** What is typed in the value being edited, after erasing it. *)
+retyped(words, s) = textIn(words, press("backspace", press("backspace", press("backspace", press("backspace", s)))))
+isEditStarts() = tableOf(editing()).Table.Edit.Draft == "0.48" and tableOf(editing()).Table.Edit.Caret == 4 and dict.Has("delete", commands.FocusOf(editing()).Keys) and
+  tableOf(press("e", press("right", press("down", written())))).Table.Edit.Position == 2
+defn isEditWrites()
+  s = press("enter", retyped("12.5", editing()))
+  r = s.Buffers[1].CellRun
+  str.Contains("elevation: [-0.833, 12.5, 9.99, 28.66]", line(s, 4)) and value.IsMissing(tableOf(s).Table.Edit) and dict.Has("s", commands.FocusOf(s).Keys) and
+    value.Equal(r.Queue, [2]) and r.Carry.Cell == 2 and r.Carry.At == 2 and line(commands.Undo(s), 4) == line(written(), 4)
+end
+isEditWholeWritten() = str.Contains("elevation: [-0.833, 3.0, 9.99", line(press("enter", retyped("3", editing())), 4))
+defn isEditTextWritten()
+  s = press("enter", textIn(" \"x\"", press("enter", written())))
+  str.Contains("heure: [\"06:52:10 \\\"x\\\"\", \"7:00:00\"", line(s, 4))
+end
+defn isEditWrongKindRefused()
+  s = press("enter", retyped("abc", editing()))
+  s.Message == "elevation takes a number: abc is none." and tableOf(s).Table.Edit.Draft == "abc" and line(s, 4) == line(written(), 4)
+end
+isEditEscape() = value.IsMissing(tableOf(press("escape", retyped("1", editing()))).Table.Edit) and line(press("escape", retyped("1", editing())), 4) == line(written(), 4)
+isEditSameWritesNothing() = press("enter", editing()).Buffers[1].Version == written().Buffers[1].Version
+isEditCaretMoves() = tableOf(textIn("9", press("home", editing()))).Table.Edit.Draft == "90.48" and tableOf(press("delete", press("left", editing()))).Table.Edit.Draft == "0.4"
+isEditFromCodeRefused() = str.StartsWith("Only a table written in the file as values is edited here", press("enter", onTable(tabled(dayValue))).Message)
+defn isEditDoubleClick()
+  s = written()
+  x = tableOf(s)
+  c = list.FindFirst(i -> i.Kind == "text" and i.Text == "0.48", x.Draw(1000, look))
+  at = {X: c.X + 1, Y: c.Y + 1, Width: 1000, Clicks: 2}
+  t = x.Mouse("down", at, s)
+  tableOf(t).Table.Edit.Draft == "0.48" and value.IsMissing(dict.GetOr("Edit", missing, tableOf(x.Mouse("down", dict.Put("Clicks", 1, at), s)).Table))
+end
+defn isEditDrawn()
+  items = tableOf(textIn("7", editing())).Draw(1000, look)
+  list.Any([i.Kind == "text" and i.Text == "0.487" for i in items]) and "edit: Enter writes it in the file, Escape takes it back" in [c.Text for c in textsIn(tableOf(editing()), "code")]
+end
+
+(* The width of a column: < and > a character narrower or wider, = as wide as the values shown, the border of its header dragged, a double click there.
+   A column narrower than its values cuts them and its header with …. *)
+handOn(s) = tableOf(s).Table.Hand[1]
+isWider() = handOn(press(">", written())) == 9 and handOn(press(">", press(">", written()))) == 10
+defn isNarrower()
+  s = written()
+  for k in 1..20
+    s = press("<", s)
+  end
+  texts = [c.Text for c in tableOf(s).Draw(1000, look) if c.Kind == "text" and c.Font == "code" and c.X == 3 * cell.Width]
+  handOn(s) == 1 and list.All([t == "…" for t in texts]) and value.Len(texts) == 4
+end
+isHeadCut() = list.Any([c.Text == "he…" for c in textsIn(tableOf(press("<", press("<", press("<", press("<", press("<", written())))))), "strong")])
+isFitColumn() = handOn(press("=", press(">", press(">", written())))) == 8
+defn isBorderDragged()
+  s = written()
+  x = tableOf(s)
+  edge = 2 * cell.Width + 10 * cell.Width
+  down = x.Mouse("down", {X: edge + 1, Y: 5, Width: 1000}, s)
+  moved = tableOf(down).Mouse("move", {X: edge + 40, Y: 5, Width: 1000}, down)
+  up = tableOf(moved).Mouse("up", {X: edge + 40, Y: 5, Width: 1000}, moved)
+  fit = tableOf(up).Mouse("down", {X: edge + 40, Y: 5, Width: 1000, Clicks: 2}, up)
+  tableOf(down).Table.Drag.Column == 1 and handOn(moved) == 13 and value.IsMissing(tableOf(up).Table.Drag) and handOn(fit) == 8 and value.IsMissing(tableOf(down).Table.Sort)
+end
+
+(* The totals row: t shows it, its sums, then means, least, greatest and counts, then none; the totals that the session sends are checked, and drawn
+   under the rows with the decimals of their column; the line under the table says what they count. *)
+totaled(s) = tableOf(s).Table.Totals   (** The totals row of the table. *)
+defn isTotalsTurn()
+  s = written()
+  stats = []
+  for k in 1..6
+    s = textIn("t", s)
+    stats = list.Append(if value.IsMissing(totaled(s)) "none" else totaled(s).Stat end, stats)
+  end
+  value.Equal(stats, ["sum", "mean", "min", "max", "count", "none"]) and notebook.TableHeight(tableOf(textIn("t", written())).Table) == 7 and tableOf(textIn("t", written())).Rows == 7
+end
+dayTotals = {Count: 4, Total: 4, Columns: [{Name: "heure", Count: 4, Missing: 0, Sum: missing, Mean: missing, Min: missing, Max: missing},
+  {Name: "elevation", Count: 4, Missing: 0, Sum: 38.297000000000004, Mean: 9.574250000000001, Min: -0.833, Max: 28.66}, {Name: "azimuth", Count: 3, Missing: 1, Sum: 362.73, Mean: 120.91, Min: 116.59, Max: 128.27}]}
+defn totalsSent(state, answer)
+  (** The window as if the session had sent the totals of the table, for the next tick to take. *)
+  s = textIn("t", state)
+  r = s.Buffers[1].CellRun
+  r.Task = missing
+  r.Totaling = {Task: fiber.Spawn(() -> answer), Buffer: 1, Key: "5.1", Filter: ""}
+  s.Buffers[1].CellRun = r
+  sys.Sleep(0.001)
+  ticked(s)
+end
+defn isTotalsDrawn()
+  s = totalsSent(written(), result.Ok(dayTotals))
+  texts = [c.Text for c in textsIn(tableOf(s), "code")]
+  mean = [c.Text for c in textsIn(tableOf(textIn("t", s)), "code")]
+  "38.297" in texts and "4 values" in texts and "362.73" in texts and list.Last(texts) == "4 rows · Σ of 4 rows, 1 missing in azimuth skipped" and "9.57425" in mean and
+    not notebook.Moving(s)
+end
+isTotalsFaultSaid() = str.Contains("totals: they don't count", list.Last(textsIn(tableOf(totalsSent(written(), result.Ok(dict.Put("Columns", [], dayTotals)))), "code")).Text)
+isTotalsErrSaid() = str.Contains("totals: gone", list.Last(textsIn(tableOf(totalsSent(written(), result.Err({Kind: "cells", Message: "gone"}))), "code")).Text)
+isTotalsFaultRefuses() = value.IsSome(notebook.TotalsFault({Count: 1, Total: 1, Columns: [{Name: "a", Count: 1, Missing: 0, Sum: "2"}]}, {Columns: ["a"]})) and
+  value.IsSome(notebook.TotalsFault({Count: 2, Total: 1, Columns: []}, {Columns: []})) and value.IsSome(notebook.TotalsFault("x", {Columns: []}))
+isTotalsWithoutSession() = notebook.TableHeight(tableOf(textIn("t", onTable(tabled(dict.Drop("Key", dayValue))))).Table) == 6
 
 (* A table of a thousand rows scrolls: the wheel over it moves it three rows a notch, and gives the screen the wheel at its first row. *)
 bigValue = {Kind: "table", Columns: ["i"], Rows: [["$k"] for k in 1..20], Count: 1000, Key: "6"}

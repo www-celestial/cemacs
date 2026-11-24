@@ -745,7 +745,7 @@ defn taken(k, state)
   r.Keeping = [j for j in dict.GetOr("Keeping", [], r) if j != i or j in r.Queue]
   (* Each result is numbered as Jupyter numbers its outputs: the runs of the session so far, this one counted. *)
   r.Runs = dict.GetOr("Runs", 0, r) + 1
-  s = withParts(k, i, resultParts(ran, state, asked = dict.GetOr("Asked", missing, r)), withRun(k, r, state), inputs = dict.GetOr("Inputs", {}, r), out = "Out[$(r.Runs)]:")
+  s = carried(k, i, withParts(k, i, resultParts(ran, state, asked = dict.GetOr("Asked", missing, r)), withRun(k, r, state), inputs = dict.GetOr("Inputs", {}, r), out = "Out[$(r.Runs)]:"))
   if result.IsErr(ran)
     r = dropped(r)
     r.Session = missing
@@ -2074,7 +2074,7 @@ end
     own. *)
 asking(r) = value.IsSome(dict.GetOr("Setting", missing, r)) or value.IsSome(dict.GetOr("Rescene", missing, r)) or value.IsSome(dict.GetOr("Framing", missing, r)) or
   value.IsSome(dict.GetOr("Turning", missing, r)) or value.IsSome(dict.GetOr("Paging", missing, r)) or value.IsSome(dict.GetOr("Marking", missing, r)) or
-  value.IsSome(dict.GetOr("Varying", missing, r)) or
+  value.IsSome(dict.GetOr("Varying", missing, r)) or value.IsSome(dict.GetOr("Totaling", missing, r)) or
   copyAsked(dict.GetOr("Copying", missing, r)) or copyAsked(dict.GetOr("Saving", missing, r))
 
 (** Does the copy of a table hold the session: has it asked its rows? *)
@@ -3180,10 +3180,12 @@ end
    numbers on the right of their column, their decimal points in a line, texts on the left, in the code font, the ink of the theme on its paper. It shows
    20 rows at most and scrolls inside its block, by the wheel over it or by the keys once it has them: its rows come from the session a screen at a time,
    cells.Rows, sorted and filtered there, so that a table of a million rows costs a screen. Its state is in its block, {Key, Kind, Columns, Count, Total,
-   First, Rows, Positions, Top, Row, Column, Left, Sort, Filter, Draft, Selected, Widths, Stale, Find, Fixed}: the rows fetched from First with their
-   positions in the value, the first row shown, the cell of the cursor, the first column shown, the sort and the filter, a filter being typed, the row
-   chosen, the widths of the columns, whether the rows shown must be asked, a position whose place is asked, and whether it can be asked at all. A row
-   chosen marks its point on the graphs of its cell that have as many points, and a click on such a point chooses its row. *)
+   First, Rows, Positions, Top, Row, Column, Left, Sort, Filter, Draft, Selected, Widths, Stale, Find, Fixed, Hand, Totals, Edit, Drag}: the rows fetched
+   from First with their positions in the value, the first row shown, the cell of the cursor, the first column shown, the sort and the filter, a filter
+   being typed, the row chosen, the widths of the columns, whether the rows shown must be asked, a position whose place is asked, and whether it can be
+   asked at all; the widths given by hand, in characters, 0 for a column as wide as its values; the totals row, {Stat, Values, For, Fault, Texts}, or
+   missing; a value being edited, {Row, Position, Column, Draft, Caret, Start, Found, Version}, or missing; and a border dragged, {Column}, or missing. A row chosen marks
+   its point on the graphs of its cell that have as many points, and a click on such a point chooses its row. *)
 
 (** The most rows a table shows at once: past them it scrolls. *)
 TableRows() = 20
@@ -3221,7 +3223,7 @@ defn TableOf(v)
   rows = v.Rows
   t = {Key: dict.GetOr("Key", missing, v), Kind: v.Kind, Columns: columns, Count: count, Total: count, First: 1, Rows: rows, Positions: [j for j in 1..value.Len(rows)],
     Top: 1, Row: 1, Column: 1, Left: 1, Sort: missing, Filter: "", Draft: missing, Selected: missing, Widths: [], Stale: matrix and (count > value.Len(rows) or v.Shape[2] > 10),
-    Find: missing, Fixed: value.IsMissing(dict.GetOr("Key", missing, v)), Prefix: false}
+    Find: missing, Fixed: value.IsMissing(dict.GetOr("Key", missing, v)), Prefix: false, Hand: [], Totals: missing, Edit: missing, Drag: missing}
   measured(t)
 end
 
@@ -3274,8 +3276,14 @@ end
 (** The rows a table shows: at most TableRows(), none for a table with none. *)
 shownRows(t) = list.Max(0, list.Min(TableRows(), t.Count))
 
-(** The rows of the block of a table: its header, the rows it shows and its note. *)
-TableHeight(t) = shownRows(t) + 2
+(** The rows of the block of a table: its header, the rows it shows, its totals row when it shows one, and its note. *)
+TableHeight(t) = shownRows(t) + 2 + footRows(t)
+
+(** The totals row of a table: 1 when it shows one, else 0. *)
+footRows(t) = if value.IsSome(dict.GetOr("Totals", missing, t)) 1 else 0 end
+
+(** The width of column j given by hand, in characters, or 0 for a column as wide as its values. *)
+handOf(j, t) = (hand -> if j <= value.Len(hand) hand[j] else 0 end)(dict.GetOr("Hand", [], t))
 
 (** The row fetched at a place of the table, from 1, or missing when it isn't fetched. *)
 rowAt(q, t) = if q >= t.First and q < t.First + value.Len(t.Rows) t.Rows[q - t.First + 1] else missing end
@@ -3285,14 +3293,13 @@ positionAt(q, t) = if q >= t.First and q < t.First + value.Len(t.Positions) t.Po
 
 defn TableLayout(t, width, cell, look)
   (** The places of the columns of a table drawn width pixels wide, from its column Left: each {Column, X, Width} in pixels from the left of the block, the
-      width as its widest number or text, at most CellColumns() characters, or its header in the strong font, with a character of room each side. *)
+      width as its widest number or text, at most CellColumns() characters, or its header in the strong font, with a character of room each side; or as
+      many characters as its width given by hand. *)
   x = 2 * cell.Width
   out = []
   for j in t.Left..value.Len(t.Columns)
-    w = t.Widths[j]
-    chars = list.Min(CellColumns(), list.Max(w.Whole + w.Fraction, w.Text))
-    head = headWidth(j, t, look) + (if value.IsSome(t.Sort) and t.Sort.Column == t.Columns[j] 2 * cell.Width else 0 end)
-    wide = list.Max(chars * cell.Width, head) + 2 * cell.Width
+    hand = handOf(j, t)
+    wide = if hand > 0 (hand + 2) * cell.Width else naturalWidth(j, t, cell, look) end
     if value.Len(out) > 0 and x + wide > width
       return out
     end
@@ -3302,35 +3309,97 @@ defn TableLayout(t, width, cell, look)
   out
 end
 
+defn naturalWidth(j, t, cell, look)
+  (** The width of column j in pixels as its values and its header make it, without a width given by hand: its widest number or text, at most
+      CellColumns() characters, or its header in the strong font and the arrow of its sort, with a character of room each side. *)
+  w = t.Widths[j]
+  chars = list.Min(CellColumns(), list.Max(w.Whole + w.Fraction, w.Text))
+  head = headWidth(j, t, look) + (if value.IsSome(t.Sort) and t.Sort.Column == t.Columns[j] 2 * cell.Width else 0 end)
+  list.Max(chars * cell.Width, head) + 2 * cell.Width
+end
+
 (** The width of the header of column j in the strong font: as the block measured it once, or the look measures it. *)
 headWidth(j, t, look) = if j <= value.Len(dict.GetOr("Heads", [], t)) t.Heads[j] else look.Width(t.Columns[j], "strong") end
 
 defn NoteWords(t)
-  (** What the line under a table says: its rows, those it shows when it scrolls, those that hold the words of its filter, and its sort; or the filter
-      being typed.
+  (** What the line under a table says: its rows, those it shows when it scrolls, those that hold the words of its filter, and its sort, then what its
+      totals row counts and the missing values it skipped; or the filter being typed, or the edit of a value.
 
-        NoteWords({Count: 1000, Total: 1000, Top: 21, Sort: {Column: "x", Descending: true}, Filter: "", Draft: missing}) --> "rows 21–40 of 1000 · by x, decreasing" *)
+        NoteWords({Count: 1000, Total: 1000, Top: 21, Sort: {Column: "x", Descending: true}, Filter: "", Draft: missing}) --> "rows 21–40 of 1000 · by x, decreasing"
+        NoteWords({Count: 6, Total: 6, Top: 1, Sort: missing, Filter: "", Draft: missing, Totals: {Stat: "sum", For: "", Values: {Count: 6, Columns: [{Name: "x", Missing: 2}]}}}) --> "6 rows · Σ of 6 rows, 2 missing in x skipped" *)
   if value.IsSome(t.Draft)
     return "filter: $(t.Draft)▏"
   end
+  if value.IsSome(dict.GetOr("Edit", missing, t))
+    return "edit: Enter writes it in the file, Escape takes it back"
+  end
   rows = if t.Count > TableRows() "rows $(t.Top)–$(list.Min(t.Count, t.Top + TableRows() - 1)) of $(t.Count)" else "$(t.Count) rows" end
   held = if t.Filter == "" rows else "$rows holding \"$(t.Filter)\", of $(t.Total)" end
-  if value.IsMissing(t.Sort) held else "$held · by $(t.Sort.Column), $(if t.Sort.Descending "decreasing" else "increasing" end)" end
+  sorted = if value.IsMissing(t.Sort) held else "$held · by $(t.Sort.Column), $(if t.Sort.Descending "decreasing" else "increasing" end)" end
+  tt = dict.GetOr("Totals", missing, t)
+  if value.IsMissing(tt)
+    return sorted
+  end
+  if value.IsSome(dict.GetOr("Fault", missing, tt))
+    return "$sorted · totals: $(tt.Fault)"
+  end
+  if value.IsMissing(tt.Values) or dict.GetOr("For", missing, tt) != t.Filter
+    return "$sorted · $(statNames[tt.Stat]) …"
+  end
+  gaps = [c for c in tt.Values.Columns if c.Missing > 0]
+  skipped = if value.Len(gaps) == 0 "" else ", $(str.Join(", ", ["$(c.Missing) missing in $(c.Name)" for c in list.Take(3, gaps)]))$(if value.Len(gaps) > 3 ", …" else "" end) skipped" end
+  "$sorted · $(statNames[tt.Stat]) of $(tt.Values.Count) rows$skipped"
+end
+
+(** The totals that the totals row shows, in the order t goes through them, and how the line under the table names each. *)
+Stats() = ["sum", "mean", "min", "max", "count"]
+statNames = {sum: "Σ", mean: "mean", min: "min", max: "max", count: "count"}
+statFields = {sum: "Sum", mean: "Mean", min: "Min", max: "Max"}   (** The field of cells.Totals of each total. *)
+
+defn cutTo(words, chars)
+  (** A text cut to some characters: a longer one ends with …. *)
+  if value.Len(words) <= chars words else "$(str.Join("", list.Take(list.Max(0, chars - 1), str.Chars(words))))…" end
+end
+
+defn headCut(name, room, look)
+  (** The header of a column cut to a width in pixels in the strong font, its last character …: a column narrowed by hand shows the start of its name. *)
+  cs = str.Chars(name)
+  n = value.Len(cs) - 1
+  while n > 0 and look.Width("$(str.Join("", list.Take(n, cs)))…", "strong") > room
+    n -= 1
+  end
+  "$(str.Join("", list.Take(n, cs)))…"
+end
+
+defn placed(words, whole, c, w, cell)
+  (** Where a cell's words go in its column c, {X, Text}: a number, whole its characters before its decimal point or -1 for a text, on the right of its
+      column, its decimal point under those of the others, when the column has room for them all; else on the right when it fits; a text on the left;
+      and a text or a number longer than the column, cut, on the left. *)
+  inner = list.Max(1, math.Div(c.Width, cell.Width) - 2)
+  if whole >= 0 and whole + w.Fraction <= inner
+    {X: c.X + c.Width - cell.Width - (w.Fraction + whole) * cell.Width, Text: words}
+  else if value.Len(words) <= inner
+    {X: if whole >= 0 c.X + c.Width - cell.Width - value.Len(words) * cell.Width else c.X + cell.Width end, Text: words}
+  else
+    {X: c.X + cell.Width, Text: cutTo(words, inner)}
+  end
 end
 
 defn TableItems(t, focused, width, top, cell, th, look)
   (** What draws a table top pixels down its block: its paper, its header in the strong font, the sorted column marked ↑ or ↓, each row shown in the code
       font, a number on the right of its column, its decimal point under those of the others, a text on the left, a row not yet fetched blank; the row
       chosen in reverse, the cell of the cursor in a box of the accent color while the table has the keys, and the table in a ring of it; its frame and
-      the rule under its header in ink, the lines between rows and columns in the color of lines; and the line under it.
+      the rule under its header in ink, the lines between rows and columns in the color of lines; its totals row under its rows, a rule in ink above it;
+      the value being edited in its box, with its cursor; and the line under it. A column narrower than its values cuts them, and its header, with ….
 
         value.Len(TableItems({Columns: ["a"], Rows: [["1"]], First: 1, Positions: [1], Count: 1, Total: 1, Top: 1, Row: 1, Column: 1, Left: 1, Sort: missing, Filter: "", Draft: missing, Selected: missing, Widths: [{Whole: 1, Fraction: 0, Text: 0}], Wholes: [[1]], Numeric: [true]}, false, 800, 0, {Width: 8, Height: 19}, {Ink: 1, Line: 2, Muted: 3, Accent: 4, Code: 5, Faint: 6}, {Width: (w, f) -> 8 * value.Len(w)})) --> 9 *)
   cols = TableLayout(t, width, cell, look)
   h = shownRows(t)
+  foot = footRows(t)
   ch = cell.Height
   left = 2 * cell.Width
   right = if value.Len(cols) == 0 left + 4 * cell.Width else list.Last(cols).X + list.Last(cols).Width end
-  bottom = top + (h + 1) * ch
+  bottom = top + (h + 1 + foot) * ch
   out = [{Kind: "rect", X: left, Y: top, Width: right - left, Height: bottom - top, Color: th.Code}]
   for c in cols
     j = c.Column
@@ -3338,8 +3407,11 @@ defn TableItems(t, focused, width, top, cell, th, look)
     sorted = value.IsSome(t.Sort) and t.Sort.Column == name
     arrow = if sorted 2 * cell.Width else 0 end
     wide = headWidth(j, t, look)
+    room = c.Width - 2 * cell.Width - arrow
+    head = if wide <= room or handOf(j, t) == 0 name else headCut(name, room, look) end
+    wide = if head == name wide else look.Width(head, "strong") end
     x = if t.Numeric[j] c.X + c.Width - cell.Width - arrow - wide else c.X + cell.Width end
-    out = list.Append({Kind: "text", X: x, Y: top, Text: name, Color: th.Ink, Font: "strong"}, out)
+    out = list.Append({Kind: "text", X: x, Y: top, Text: head, Color: th.Ink, Font: "strong"}, out)
     if sorted
       out = list.Append({Kind: "text", X: x + wide + math.Div(cell.Width, 2), Y: top, Text: if t.Sort.Descending "↓" else "↑" end, Color: th.Ink, Font: "code"}, out)
     end
@@ -3356,11 +3428,9 @@ defn TableItems(t, focused, width, top, cell, th, look)
     for c in cols
       j = c.Column
       words = if value.IsMissing(row) or j > value.Len(row) "" else row[j] end
-      w = t.Widths[j]
-      whole = if j <= value.Len(wholes) wholes[j] else -1 end
-      x = if whole >= 0 c.X + c.Width - cell.Width - (w.Fraction + whole) * cell.Width else c.X + cell.Width end
       if words != ""
-        out = list.Append({Kind: "text", X: x, Y: y, Text: words, Color: if lit th.Code else th.Ink end, Font: "code"}, out)
+        at = placed(words, if j <= value.Len(wholes) wholes[j] else -1 end, c, t.Widths[j], cell)
+        out = list.Append({Kind: "text", X: at.X, Y: y, Text: at.Text, Color: if lit th.Code else th.Ink end, Font: "code"}, out)
       end
       if focused and q == t.Row and j == t.Column
         out = list.Concat(out, edged(c.X + 1, y + 1, c.Width - 1, ch - 1, th.Accent))
@@ -3368,7 +3438,19 @@ defn TableItems(t, focused, width, top, cell, th, look)
       end
     end
   end
-  (* The lines: between the rows and the columns in the color of lines, then the frame and the rule under the header in ink, over them. *)
+  if foot == 1
+    (* Totals of another filter than the one shown are asked again: … until they come, – when the session can't give them. *)
+    texts = if dict.GetOr("For", missing, t.Totals) == t.Filter dict.GetOr("Texts", [], t.Totals) else [] end
+    gap = if value.IsSome(dict.GetOr("Fault", missing, t.Totals)) and value.Len(texts) == 0 "–" else "…" end
+    for c in cols
+      j = c.Column
+      f = if j <= value.Len(texts) texts[j] else {Text: gap, Whole: -1} end
+      at = placed(f.Text, f.Whole, c, t.Widths[j], cell)
+      out = list.Append({Kind: "text", X: at.X, Y: top + (h + 1) * ch, Text: at.Text, Color: th.Ink, Font: "code"}, out)
+    end
+  end
+  (* The lines: between the rows and the columns in the color of lines, then the frame and the rules under the header and above the totals in ink, over
+     them. *)
   for k in 2..h
     out = list.Append({Kind: "rect", X: left, Y: top + k * ch, Width: right - left, Height: 1, Color: th.Line}, out)
   end
@@ -3377,11 +3459,26 @@ defn TableItems(t, focused, width, top, cell, th, look)
   end
   out = list.Concat(out, edged(left, top, right - left + 1, bottom - top + 1, th.Ink))
   out = list.Append({Kind: "rect", X: left, Y: top + ch, Width: right - left, Height: 1, Color: th.Ink}, out)
+  if foot == 1
+    out = list.Append({Kind: "rect", X: left, Y: top + (h + 1) * ch, Width: right - left, Height: 1, Color: th.Ink}, out)
+  end
   more = if value.Len(cols) > 0 and (t.Left > 1 or list.Last(cols).Column < value.Len(t.Columns)) " · columns $(t.Left)–$(list.Last(cols).Column) of $(value.Len(t.Columns))" else "" end
-  out = list.Append({Kind: "text", X: left, Y: bottom + 1, Text: "$(NoteWords(t))$more", Color: if value.IsSome(t.Draft) th.Ink else th.Faint end, Font: "code"}, out)
+  out = list.Append({Kind: "text", X: left, Y: bottom + 1, Text: "$(NoteWords(t))$more", Color: if value.IsSome(t.Draft) or value.IsSome(dict.GetOr("Edit", missing, t)) th.Ink else th.Faint end, Font: "code"}, out)
   if focused
     out = list.Concat(out, edged(left - 3, top - 3, right - left + 7, bottom - top + 7, th.Accent))
     out = list.Concat(out, edged(left - 2, top - 2, right - left + 5, bottom - top + 5, th.Accent))
+  end
+  e = dict.GetOr("Edit", missing, t)
+  c = if value.IsMissing(e) missing else list.FindFirst(x -> x.Column == e.Column, cols) end
+  if value.IsSome(c) and e.Row >= t.Top and e.Row < t.Top + h
+    (* The value being edited, over its cell and past it when it is longer: its text, its cursor, and a box of the accent color. *)
+    y = top + (e.Row - t.Top + 1) * ch
+    wide = list.Max(c.Width, (value.Len(e.Draft) + 3) * cell.Width)
+    out = list.Append({Kind: "rect", X: c.X, Y: y, Width: wide, Height: ch, Color: th.Code}, out)
+    out = list.Append({Kind: "text", X: c.X + cell.Width, Y: y, Text: e.Draft, Color: th.Ink, Font: "code"}, out)
+    out = list.Append({Kind: "rect", X: c.X + cell.Width + e.Caret * cell.Width, Y: y + 2, Width: 2, Height: ch - 4, Color: th.Ink}, out)
+    out = list.Concat(out, edged(c.X, y, wide + 1, ch + 1, th.Accent))
+    out = list.Concat(out, edged(c.X + 1, y + 1, wide - 1, ch - 1, th.Accent))
   end
   out
 end
@@ -3548,12 +3645,19 @@ end
 
 (* -- The keys of a table: C-c e f, Tab or a click gives them; the arrows move the cursor a cell, the pages a screen, Home and End to the first row and
    the last; s sorts by the column of the cursor, increasing, then decreasing, then as given; / types a filter, its words in any column, Enter keeps it
-   and Escape takes it back; M-w copies the cell, C-u M-w the row, apart by tabs, and C-c e c the whole table as CSV; Escape or C-g leaves. *)
+   and Escape takes it back; M-w copies the cell, C-u M-w the row, apart by tabs, and C-c e c the whole table as CSV; Enter or e edits the value of the
+   cursor in the file, when the table is written there; < and > make its column a character narrower or wider, = as wide as the values it shows; t shows
+   the totals row, its sums, then their means, their least, their greatest, their counts, then none; Escape or C-g leaves. *)
 
 (** The rows of the band while a table has the keys. *)
 TableHints() = [{Key: "← → ↑ ↓", Name: "a cell", Group: false}, {Key: "PgUp PgDn", Name: "a screen", Group: false}, {Key: "s", Name: "sort by the column", Group: false},
-  {Key: "/", Name: "filter", Group: false}, {Key: "M-w", Name: "copy the cell, C-u the row", Group: false}, {Key: "C-c e c", Name: "copy as CSV", Group: false},
+  {Key: "/", Name: "filter", Group: false}, {Key: "Enter e", Name: "edit the value", Group: false}, {Key: "< > =", Name: "narrower, wider, fit", Group: false},
+  {Key: "t", Name: "totals: Σ, mean, min…", Group: false}, {Key: "M-w", Name: "copy the cell, C-u the row", Group: false}, {Key: "C-c e c", Name: "copy as CSV", Group: false},
   {Key: "C-g", Name: "leave", Group: false}]
+
+(** The rows of the band while a value of a table is edited. *)
+EditHints() = [{Key: "Enter", Name: "write it in the file", Group: false}, {Key: "Escape", Name: "take it back", Group: false},
+  {Key: "← → Home End", Name: "move the cursor", Group: false}, {Key: "Backspace Delete", Name: "erase", Group: false}]
 
 (** The rows of the band while a filter is typed. *)
 FilterHints() = [{Key: "Enter", Name: "keep the filter", Group: false}, {Key: "Escape", Name: "take it back", Group: false}]
@@ -3584,7 +3688,16 @@ TableKeys() = {"up": onTable((t, s) -> movedCell(-1, 0, t)), "down": onTable((t,
   "right": onTable((t, s) -> movedCell(0, 1, t)), "pageup": onTable((t, s) -> screened(-TableRows(), t)), "pagedown": onTable((t, s) -> screened(TableRows(), t)),
   "home": onTable((t, s) -> movedCell(-t.Count, 0, t)), "end": onTable((t, s) -> movedCell(t.Count, 0, t)), "s": onTable((t, s) -> if t.Fixed unsorted(s) else sortedBy(t) end),
   "/": onTable((t, s) -> if t.Fixed unsorted(s) else typing(t, s) end), "M-w": onTable((t, s) -> copiedCell(t, s)), "C-u": onTable((t, s) -> dict.Put("Prefix", true, t)),
+  "enter": onTable((t, s) -> editStarted(t, s)), "e": onTable((t, s) -> editStarted(t, s)), "<": onTable((t, s) -> resized(-1, t, s)), ">": onTable((t, s) -> resized(1, t, s)),
+  "=": onTable((t, s) -> fitColumn(t.Column, t, s)), "t": onTable((t, s) -> if t.Fixed unsorted(s) else totalsTurned(t) end),
   "tab": st -> controlTabbed(1, st), "S-tab": st -> controlTabbed(-1, st), "C-g": commands.Unfocused, "escape": commands.Unfocused}
+
+(** The keys of a table while a value of it is edited: what is typed goes in it, at its cursor; Tab and S-Tab leave it for the next table or graph of the
+    cell, as a field's leave it for the next input. *)
+EditKeys() = {"enter": onTable((t, s) -> editWritten(t, s)), "escape": onTable((t, s) -> editTakenBack(t, s)), "C-g": onTable((t, s) -> editTakenBack(t, s)),
+  "backspace": onTable((t, s) -> editErased(-1, t)), "delete": onTable((t, s) -> editErased(0, t)), "left": onTable((t, s) -> editMoved(-1, t)),
+  "right": onTable((t, s) -> editMoved(1, t)), "home": onTable((t, s) -> editMoved(-t.Edit.Caret, t)), "end": onTable((t, s) -> editMoved(value.Len(t.Edit.Draft), t)),
+  "tab": st -> controlTabbed(1, st), "S-tab": st -> controlTabbed(-1, st)}
 
 (** The keys of a table while its filter is typed: what is typed goes in it. *)
 FilterKeys() = {"enter": onTable((t, s) -> filterKept(t, s)), "escape": onTable((t, s) -> filterTakenBack(t, s)), "C-g": onTable((t, s) -> filterTakenBack(t, s)),
@@ -3725,6 +3838,8 @@ defn tableDrawn(k, key, state)
   end
   t = x.Table
   t.Draft = missing
+  t.Edit = missing
+  t.Drag = missing
   withTable(k, t, state)
 end
 
@@ -3745,32 +3860,492 @@ defn tableChosen(k, t, state)
   marking(k, x.Cell, out, withTable(k, out, state))
 end
 
+(* -- A value edited: Enter, e or a double click on a cell of a table written in the file, a list of maps or frame.Of of lists that cells.Tables reads,
+   edits its value there, as an input is: what is typed takes the place of the old value in the file, one step of undo, cells.Edit checking its kind, and
+   the cell that writes the table runs again, with the cells that read it, the table keeping its sort, its filter, its cursor and its widths. *)
+
+defn holds(w, t)
+  (** Does a table written in the file hold what a table shows: its columns, its rows, and each row fetched, at its position, as the session wrote it? *)
+  if not (value.Equal(w.Columns, t.Columns) and w.Count == t.Total)
+    return false
+  end
+  for k in 1..value.Len(t.Rows)
+    p = t.Positions[k]
+    if p < 1 or p > w.Count
+      return false
+    end
+    row = w.Cells[p]
+    for c in 1..value.Len(t.Columns)
+      x = row[c]
+      if cutCell(value.Text(if value.IsMissing(x) missing else x.Value end, 200)) != t.Rows[k][c]
+        return false
+      end
+    end
+  end
+  true
+end
+
+defn writtenFor(k, i, t, state)
+  (** The table written in the file of buffer k that a table of cell i shows, {Table, Cell}: one that cell i writes, or that a cell writes as the value of a
+      name that cell i reads, and that holds what the table shows; or {Fault}, what to say when none does, or two do. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or i < 1 or i > value.Len(r.Analysis)
+    return {Fault: "This table isn't in the cells of the file any more."}
+  end
+  reads = r.Analysis[i].Reads
+  found = []
+  for j in 1..value.Len(r.Cells)
+    if j == i or list.Any([d in reads for d in r.Analysis[j].Defines])
+      for w in nb.Tables(r.Cells, j)
+        if (j == i or (value.IsSome(w.Name) and w.Name in reads)) and holds(w, t)
+          found = list.Append({Table: w, Cell: j}, found)
+        end
+      end
+    end
+  end
+  if value.Len(found) == 1
+    return found[1]
+  end
+  if value.Len(found) > 1
+    return {Fault: "Tables written at lines $(str.Join(" and ", ["$(f.Table.Line)" for f in list.Take(2, found)])) hold these values both: edit the one you mean there."}
+  end
+  {Fault: "Only a table written in the file as values is edited here, a list of maps or frame.Of of lists: this one comes from code, or the file changed since its cell ran."}
+end
+
+defn editStarted(t, state)
+  (** Enter or e on a table: the value of the cell of the cursor edited, when the table is written in the file: what the file writes there, a text as it
+      is, as the box of a field shows it, a number as it is written. *)
+  f = commands.FocusOf(state)
+  k = f.Buffer
+  if value.IsMissing(rowAt(t.Row, t)) or t.Count == 0
+    return commands.Say("This row isn't here yet.", state)
+  end
+  s = fresh(k, state)
+  x = tableBlock(k, t.Key, s)
+  r = runOf(s.Buffers[k])
+  if value.IsMissing(x) or (value.IsSome(r.Task) and r.Index == x.Cell) or x.Cell in r.Queue
+    return commands.Say("Its cell runs: the table is edited once it shows what the file writes.", s)
+  end
+  found = writtenFor(k, x.Cell, t, s)
+  if dict.Has("Fault", found)
+    return commands.Say(found.Fault, s)
+  end
+  p = positionAt(t.Row, t)
+  at = found.Table.Cells[p][t.Column]
+  if value.IsMissing(at)
+    return commands.Say("Row $p writes no $(t.Columns[t.Column]): write it in the file first.", s)
+  end
+  line = rope.Line(at.Line, s.Buffers[k].Rope)
+  words = if value.IsText(at.Value) shownOf(at.Value) else if value.IsMissing(at.Value) "" else str.Slice(at.Column, at.End, line) end
+  out = t
+  out.Edit = {Row: t.Row, Position: p, Column: t.Column, Draft: words, Caret: value.Len(words), Start: words, Found: found, Version: s.Buffers[k].Version}
+  g = commands.FocusOf(s)
+  g.Keys = EditKeys()
+  g.Hints = EditHints()
+  g.Typed = (typed, st) -> onTable((tt, ss) -> editTyped(typed, tt))(st)
+  s.Focus = g
+  withTable(k, out, s)
+end
+
+defn editTyped(typed, t)
+  (** A text typed in the value being edited, at its cursor, ends of line and tabs as spaces. *)
+  out = t
+  e = t.Edit
+  cs = str.Chars(e.Draft)
+  words = str.Replace("\n", " ", str.Replace("\t", " ", typed))
+  e.Draft = str.Join("", list.Concat(list.Concat(list.Take(e.Caret, cs), [words]), list.Skip(e.Caret, cs)))
+  e.Caret = e.Caret + value.Len(words)
+  out.Edit = e
+  out
+end
+
+defn editErased(by, t)
+  (** Backspace, by -1, erases the character before the cursor of the value being edited, Delete, by 0, the one after it. *)
+  out = t
+  e = t.Edit
+  cs = str.Chars(e.Draft)
+  at = e.Caret + by
+  if at < 0 or at >= value.Len(cs)
+    return t
+  end
+  e.Draft = str.Join("", list.Concat(list.Take(at, cs), list.Skip(at + 1, cs)))
+  e.Caret = at
+  out.Edit = e
+  out
+end
+
+defn editMoved(by, t)
+  (** The cursor of the value being edited moved by some characters, within its text. *)
+  out = t
+  e = t.Edit
+  e.Caret = list.Max(0, list.Min(value.Len(e.Draft), e.Caret + by))
+  out.Edit = e
+  out
+end
+
+defn editTakenBack(t, state)
+  (** Escape in an edit: the value stays as the file writes it, and the keys move in the table again. *)
+  out = t
+  out.Edit = missing
+  tableFocusedOn(commands.FocusOf(state).Buffer, out, state)
+end
+
+defn editWritten(t, state)
+  (** Enter in an edit: what is typed, checked by cells.Edit for the kind of its column, written in the file in place of the old value, one step of undo;
+      then the cell that writes the table runs again, with the cells that read it. Words of another kind are refused, the edit kept for them to be
+      changed; words that didn't change write nothing. *)
+  k = commands.FocusOf(state).Buffer
+  e = t.Edit
+  closed = t
+  closed.Edit = missing
+  if e.Draft == e.Start
+    return tableFocusedOn(k, closed, state)
+  end
+  s = fresh(k, state)
+  x = tableBlock(k, t.Key, s)
+  if value.IsMissing(x)
+    return commands.Unfocused(s)
+  end
+  (* The table found when the edit opened, while the text is the same; else found again. *)
+  found = if dict.GetOr("Version", missing, e) == s.Buffers[k].Version e.Found else writtenFor(k, x.Cell, t, s) end
+  if dict.Has("Fault", found)
+    return commands.Say(found.Fault, tableFocusedOn(k, closed, s))
+  end
+  got = nb.Edit(found.Table, e.Position, e.Column, if value.IsText(found.Table.Cells[e.Position][e.Column].Value) unshown(e.Draft) else e.Draft end)
+  if result.IsErr(got)
+    return commands.Say(got.Error.Message, s)
+  end
+  w = got.Value
+  b = s.Buffers[k]
+  s = tableFocusedOn(k, closed, s)
+  if str.Slice(w.Column, w.End, rope.Line(w.Line, b.Rope)) == w.Text
+    return s
+  end
+  s.Buffers[k] = text.Replaced([{Line: w.Line, Column: w.Column - 1, End: w.End, Text: w.Text}], s.Buffers[k])
+  rerunEdited(k, found.Cell, x, closed, s)
+end
+
+defn unshown(words)
+  (** The text of the box of a field as a value: \n, \t and \r, which the box shows for ends of line, tabs and carriage returns, as those. *)
+  out = []
+  cs = str.Chars(words)
+  i = 1
+  while i <= value.Len(cs)
+    two = if i < value.Len(cs) "$(cs[i])$(cs[i + 1])" else "" end
+    if two == "\\n" or two == "\\t" or two == "\\r"
+      out = list.Append(if two == "\\n" "\n" else if two == "\\t" "\t" else "\r" end, out)
+      i += 2
+    else
+      out = list.Append(cs[i], out)
+      i += 1
+    end
+  end
+  str.Join("", out)
+end
+
+defn rerunEdited(k, j, x, t, state)
+  (** The state once a value of a table written in cell j of buffer k changed in the file: cell j and the cells that read it run again, their results kept
+      in sight until the new ones come, and the table of block x shows the new one with its view, see carried. Without a session, the value stays
+      written and nothing runs, as for an input. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Session)
+    return commands.Say("Written in the file: C-c e a runs the cells with it.", state)
+  end
+  r = analysed(k, r, state)
+  order = nb.ToRun(r.Analysis, j)
+  r.Keeping = list.Unique(list.Concat(dict.GetOr("Keeping", [], r), order))
+  r.Carry = {Cell: x.Cell, Part: dict.GetOr("Part", 1, x), Key: t.Key, Columns: t.Columns, View: t, At: positionAt(t.Row, t)}
+  queued(k, order, withRun(k, r, state))
+end
+
+defn carried(k, i, state)
+  (** The state once cell i of buffer k showed its result again after an edit of a table: the table at the place of the one edited, with its columns, has
+      its sort, its filter, its cursor, its widths and its totals row, its rows asked again as they are sorted and filtered, the row of the cursor looked
+      for by its position, its point marked on the graphs of the cell, and the keys when the one edited had them. *)
+  r = runOf(state.Buffers[k])
+  c = if value.IsMissing(r) missing else dict.GetOr("Carry", missing, r) end
+  if value.IsMissing(c) or c.Cell != i
+    return state
+  end
+  r.Carry = missing
+  s = withRun(k, r, state)
+  x = list.FindFirst(b -> dict.GetOr("Cell", 0, b) == i and dict.GetOr("Part", 1, b) == c.Part and value.IsSome(dict.GetOr("Table", missing, b)), text.BlocksOf(s.Buffers[k]))
+  if value.IsMissing(x) or not value.Equal(x.Table.Columns, c.Columns)
+    return s
+  end
+  v = c.View
+  o = x.Table
+  o.Hand = v.Hand
+  o.Left = v.Left
+  o.Column = v.Column
+  o.Totals = if value.IsMissing(v.Totals) missing else {Stat: v.Totals.Stat, Values: missing, For: missing} end
+  o.Top = list.Max(1, list.Min(v.Top, o.Count - shownRows(o) + 1))
+  o.Row = list.Max(1, list.Min(v.Row, o.Count))
+  o.Selected = if value.IsSome(v.Selected) o.Row else missing end
+  if value.IsSome(v.Sort) or v.Filter != ""
+    o.Sort = v.Sort
+    o.Filter = v.Filter
+    o.Stale = not o.Fixed
+    o.Rows = []
+    o.Positions = []
+    o.First = 1
+    o.Find = c.At
+    o = measured(o)
+  end
+  focus = commands.FocusOf(s)
+  if value.IsSome(focus) and value.Equal(dict.GetOr("Table", missing, focus), c.Key) and dict.GetOr("Buffer", 0, focus) == k
+    return marking(k, i, o, tableFocusedOn(k, o, s))
+  end
+  marking(k, i, o, withTable(k, o, s))
+end
+
+(* -- The width of a column: < and > a character narrower or wider, = as wide as the values it shows; the mouse drags the border of its header, and a
+   double click there makes it as wide as its values. A width given so is the view's, never written in the file, and stays while the table shows. *)
+
+defn shownChars(j, t, cell, look)
+  (** The characters that column j takes now, as wide as its values or as its width given by hand. *)
+  hand = handOf(j, t)
+  if hand > 0 hand else math.Div(naturalWidth(j, t, cell, look), cell.Width) - 2 end
+end
+
+defn handed(j, chars, t)
+  (** The table with column j given a width by hand, from 1 to CellColumns() characters. *)
+  out = t
+  hand = dict.GetOr("Hand", [], t)
+  n = list.Max(value.Len(hand), j)
+  out.Hand = [if m == j list.Max(1, list.Min(CellColumns(), chars)) else (if m <= value.Len(hand) hand[m] else 0 end) end for m in 1..n]
+  out
+end
+
+defn resized(by, t, state)
+  (** < and >: the column of the cursor a character narrower or wider. *)
+  look = dict.GetOr("Look", missing, state)
+  if value.IsMissing(look)
+    return t
+  end
+  handed(t.Column, shownChars(t.Column, t, state.Cell, look) + by, t)
+end
+
+defn fitColumn(j, t, state)
+  (** = or a double click on the border of its header: column j as wide as the widest of the values it shows, its header and its total, at most
+      CellColumns() characters. *)
+  look = dict.GetOr("Look", missing, state)
+  if value.IsMissing(look)
+    return t
+  end
+  texts = list.Concat([(row -> if value.IsMissing(row) or j > value.Len(row) "" else row[j] end)(rowAt(q, t)) for q in t.Top..t.Top + shownRows(t) - 1],
+    if footRows(t) == 1 and j <= value.Len(dict.GetOr("Texts", [], t.Totals)) [t.Totals.Texts[j].Text] else [] end)
+  head = math.Div(headWidth(j, t, look) + state.Cell.Width - 1, state.Cell.Width) + (if value.IsSome(t.Sort) and t.Sort.Column == t.Columns[j] 2 else 0 end)
+  handed(j, list.Max(head, list.Max(list.Concat([1], [value.Len(x) for x in texts]))), t)
+end
+
+(* -- The totals row: t shows it under the rows, the sum of each column of numbers, then their means, their least, their greatest, their counts, then
+   none; a column of other values shows how many it holds. cells.Totals computes them in the session, over every row that the filter keeps, not only
+   those shown, the missing values and NaN skipped and counted, one question at a time as rows are asked. *)
+
+defn totalsTurned(t)
+  (** t: the totals row shown with the sums, then the next totals, then none. *)
+  out = t
+  tt = dict.GetOr("Totals", missing, t)
+  at = if value.IsMissing(tt) 0 else list.IndexOf(tt.Stat, Stats()) end
+  if at == value.Len(Stats())
+    out.Totals = missing
+    return out
+  end
+  values = if value.IsMissing(tt) missing else tt.Values end
+  out.Totals = {Stat: Stats()[at + 1], Values: values, For: if value.IsMissing(tt) missing else tt.For end, Fault: if value.IsMissing(tt) missing else dict.GetOr("Fault", missing, tt) end}
+  footed(out)
+end
+
+(** Does a table want its totals asked: it shows its totals row without those of its filter, and its rows came? *)
+wantsTotals(t) = (tt -> value.IsSome(tt) and not t.Fixed and not t.Stale and value.IsMissing(t.Find) and (value.IsMissing(tt.For) or tt.For != t.Filter))(dict.GetOr("Totals", missing, t))
+
+defn TotalsFault(a, t)
+  (** What is wrong with totals that the session sent for a table, or missing: they are input, checked before anything is made of them. A count of rows
+      and of the table, and for each of its columns a name, counts, and a sum, a mean, a least and a greatest that are numbers or missing.
+
+        TotalsFault({Count: 1, Total: 1, Columns: [{Name: "a", Count: 1, Missing: 0, Sum: 2, Mean: 2.0, Min: 2, Max: 2}]}, {Columns: ["a"]}) --> missing *)
+  if not (value.IsDict(a) and value.IsInt(dict.GetOr("Count", missing, a)) and value.IsInt(dict.GetOr("Total", missing, a)) and value.IsArray(dict.GetOr("Columns", missing, a)))
+    return "they are no totals"
+  end
+  if value.Len(a.Columns) != value.Len(t.Columns) or a.Count < 0 or a.Count > a.Total
+    return "they don't count the columns or the rows of the table"
+  end
+  for c in a.Columns
+    if not (value.IsDict(c) and value.IsInt(dict.GetOr("Count", missing, c)) and value.IsInt(dict.GetOr("Missing", missing, c)) and c.Count >= 0 and c.Missing >= 0 and
+        list.All([(x -> value.IsMissing(x) or value.IsNumber(x))(dict.GetOr(f, missing, c)) for f in ["Sum", "Mean", "Min", "Max"]]))
+      return "a column has no counts, or totals that are no numbers"
+    end
+  end
+  missing
+end
+
+defn footed(t)
+  (** The table with the texts of its totals row, {Text, Whole}, for each column, and the widths of its columns grown to hold them: a total of numbers
+      with the decimals of the column, a mean two more, a least and a greatest as the column writes them, a count whole; a column of other values the
+      count of those it holds, as 6 values; – where there is none, … while they are asked. *)
+  tt = t.Totals
+  if value.IsMissing(tt.Values)
+    return t
+  end
+  out = t
+  texts = []
+  for j in 1..value.Len(t.Columns)
+    c = tt.Values.Columns[j]
+    x = if tt.Stat == "count" c.Count else dict.GetOr(statFields[tt.Stat], missing, c) end
+    words = if value.IsMissing(c.Sum) "$(c.Count) values" else if value.IsMissing(x) "–" else statWords(x, tt.Stat, decimalsOf(j, t)) end
+    whole = if value.IsMissing(c.Sum) or value.IsMissing(x) (-1) else splitNumber(words)[1] end
+    texts = list.Append({Text: words, Whole: whole}, texts)
+    w = out.Widths[j]
+    out.Widths[j] = if whole >= 0 {Whole: list.Max(w.Whole, whole), Fraction: list.Max(w.Fraction, value.Len(words) - whole), Text: w.Text} else {Whole: w.Whole, Fraction: w.Fraction, Text: list.Max(w.Text, value.Len(words))} end
+  end
+  tt.Texts = texts
+  out.Totals = tt
+  out
+end
+
+defn decimalsOf(j, t)
+  (** The decimals that the numbers of column j are written with, in the rows fetched: the most of them, or missing for a column that writes one with an
+      exponent, as 1e-7. *)
+  most = 0
+  for k in 1..value.Len(t.Rows)
+    words = if j <= value.Len(t.Rows[k]) t.Rows[k][j] else "" end
+    at = if j <= value.Len(t.Wholes[k]) t.Wholes[k][j] else -1 end
+    if at >= 0
+      if str.Contains("e", words)
+        return missing
+      end
+      most = list.Max(most, value.Len(words) - at - 1)
+    end
+  end
+  most
+end
+
+defn statWords(x, stat, decimals)
+  (** A total as the totals row writes it: a whole number as it is; a least and a greatest as Cesia writes them, as the column does; a sum with the
+      decimals of its column, a mean two more, or for a column written with exponents twelve digits that count, as Cesia writes them.
+
+        statWords(109.64000000000001, "sum", 2) --> "109.64"
+        statWords(9.536666666666667, "mean", 2) --> "9.5367"
+        statWords(3.0e-7, "sum", missing) --> "3e-7" *)
+  if value.IsInt(x) or stat == "min" or stat == "max" or x - x != 0
+    return "$x"
+  end
+  if value.IsSome(decimals)
+    return str.Decimals(list.Min(20, decimals + (if stat == "mean" 2 else 0 end)), x)
+  end
+  if x == 0 or math.Abs(x) < 0.000001 or math.Abs(x) >= 1e15
+    return value.Text(x, 40)
+  end
+  digits = math.Div(math.Floor(math.Log(math.Abs(x)) / math.Log(10.0)), 1) + 1
+  "$(str.Number(str.Decimals(list.Max(0, list.Min(20, 12 - digits)), x)))"
+end
+
+defn asksTotals(k, state)
+  (** The state with the totals of the first table of buffer k that wants them asked of its session, over the rows its filter keeps, unless a cell runs
+      or another question waits. *)
+  r = runOf(state.Buffers[k])
+  if value.IsMissing(r) or value.IsMissing(r.Session) or value.IsSome(r.Task) or asking(r)
+    return state
+  end
+  x = list.FindFirst(b -> value.IsSome(dict.GetOr("Table", missing, b)) and wantsTotals(b.Table), text.BlocksOf(state.Buffers[k]))
+  if value.IsMissing(x)
+    return state
+  end
+  one = r.Session
+  key = x.Table.Key
+  filter = if x.Table.Filter == "" missing else x.Table.Filter end
+  r.Totaling = {Task: fiber.Spawn(() -> nb.Totals(one, key, filter = filter)), Buffer: k, Key: key, Filter: x.Table.Filter}
+  sys.Sleep(0)
+  withRun(k, r, state)
+end
+
+defn totalsLanded(k, state)
+  (** The state at a tick for buffer k: the totals a table asked, once they came, put in its totals row if it still filters as it asked; totals that
+      aren't sane, or a session that can't give them, leave the row saying why, asked no more for that filter. *)
+  r = runOf(state.Buffers[k])
+  q = if value.IsMissing(r) missing else dict.GetOr("Totaling", missing, r) end
+  if value.IsMissing(q)
+    return state
+  end
+  got = fiber.Wait(q.Task, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  r.Totaling = missing
+  s = withRun(k, r, state)
+  answer = if result.IsOk(got) got.Value else got end
+  x = tableBlock(q.Buffer, q.Key, s)
+  if value.IsMissing(x) or value.IsMissing(dict.GetOr("Totals", missing, x.Table)) or x.Table.Filter != q.Filter
+    return s
+  end
+  t = x.Table
+  tt = t.Totals
+  fault = if result.IsErr(answer) answer.Error.Message else TotalsFault(answer.Value, t) end
+  tt.For = q.Filter
+  tt.Fault = fault
+  tt.Values = if value.IsSome(fault) missing else answer.Value end
+  t.Totals = tt
+  withTable(q.Buffer, footed(t), s)
+end
+
 (* -- The mouse and the wheel. *)
 
 defn tableMouse(key, action, point, state)
-  (** A press of the mouse on a table: it gives the table the keys, and on a row puts the cursor in the cell under the point and chooses the row; on the
-      header it sorts by the column under the point, as s does. Moves and releases do nothing. *)
+  (** A press of the mouse on a table: it gives the table the keys, and on a row puts the cursor in the cell under the point and chooses the row, and a
+      second press of a double click edits its value, as Enter does; on the header it sorts by the column under the point, as s does, except within 3
+      pixels of the border between two columns, or after the last, where a drag moves that border, the column's width given by hand, and a double click
+      makes the column as wide as its values, as = does. A press ends the edit of a value. Moves and releases do nothing else. *)
   k = state.Current
   x = tableBlock(k, key, state)
-  if action != "down" or value.IsMissing(x)
+  if value.IsMissing(x)
     return state
   end
   t = x.Table
   top = dict.GetOr("Under", 0, x)
   width = point.Width
-  cols = if value.IsSome(dict.GetOr("Look", missing, state)) TableLayout(t, width, state.Cell, state.Look) else [] end
-  hit = list.FindFirst(c -> point.X >= c.X and point.X < c.X + c.Width, cols)
+  look = dict.GetOr("Look", missing, state)
+  cols = if value.IsSome(look) TableLayout(t, width, state.Cell, look) else [] end
+  drag = dict.GetOr("Drag", missing, t)
+  if action == "move" and value.IsSome(drag)
+    c = list.FindFirst(y -> y.Column == drag.Column, cols)
+    return if value.IsMissing(c) state else withTable(k, handed(drag.Column, math.Div(point.X - c.X + math.Div(state.Cell.Width, 2), state.Cell.Width) - 2, t), state) end
+  end
+  if action == "up" and value.IsSome(drag)
+    t.Drag = missing
+    return withTable(k, t, state)
+  end
+  if action != "down"
+    return state
+  end
   row = math.Div(point.Y - top, state.Cell.Height)
+  border = if row == 0 list.FindFirst(c -> math.Abs(point.X - (c.X + c.Width)) <= 3, cols) else missing end
   s = if tableFocused(k, t, state) state else tableFocusedOn(k, t, state) end
+  t = tableBlock(k, key, s).Table
+  if value.IsSome(dict.GetOr("Edit", missing, t))
+    t.Edit = missing
+    s = tableFocusedOn(k, t, s)
+  end
+  if value.IsSome(border)
+    if dict.GetOr("Clicks", 1, point) >= 2
+      return withTable(k, fitColumn(border.Column, t, s), s)
+    end
+    t.Drag = {Column: border.Column}
+    return withTable(k, t, s)
+  end
+  hit = list.FindFirst(c -> point.X >= c.X and point.X < c.X + c.Width, cols)
   if value.IsMissing(hit) or row < 0 or row > shownRows(t)
     return s
   end
-  t = tableBlock(k, key, s).Table
   t.Column = hit.Column
   if row == 0
     return tableChosen(k, sortedBy(t), s)
   end
-  tableChosen(k, movedCell(t.Top + row - 1 - t.Row, 0, t), s)
+  chosen = tableChosen(k, movedCell(t.Top + row - 1 - t.Row, 0, t), s)
+  if dict.GetOr("Clicks", 1, point) >= 2
+    return onTable((tt, ss) -> editStarted(tt, ss))(chosen)
+  end
+  chosen
 end
 
 defn tableWheel(key, amount, state)
@@ -4807,7 +5382,7 @@ defn tick(state)
   s = state
   for k in 1..value.Len(s.Buffers)
     if value.IsSome(runOf(s.Buffers[k]))
-      s = svgSaved(k, copying(k, marked(k, paged(k, turnLanded(k, played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, varied(k, s)))))))))))))
+      s = svgSaved(k, copying(k, marked(k, asksTotals(k, paged(k, totalsLanded(k, turnLanded(k, played(k, exported(k, stopped(k, next(k, pendingSet(k, setAnswered(k, taken(k, varied(k, s)))))))))))))))
     end
     if value.IsSome(replOf(s.Buffers[k]))
       s = answered(k, s)
@@ -4859,7 +5434,7 @@ defn tableWaits(b)
   if value.IsMissing(r) or value.IsMissing(r.Session)
     return false
   end
-  value.IsSome(dict.GetOr("Copying", missing, r)) or list.Any([(value.IsSome(dict.GetOr("Table", missing, x)) and wantsRows(x.Table)) or
+  value.IsSome(dict.GetOr("Copying", missing, r)) or list.Any([(value.IsSome(dict.GetOr("Table", missing, x)) and (wantsRows(x.Table) or wantsTotals(x.Table))) or
     (dict.GetOr("Cell", 0, x) > 0 and isFlat(dict.GetOr("Graph", missing, x)) and wantsView(x.Graph)) for x in text.BlocksOf(b)]) or value.IsSome(dict.GetOr("Saving", missing, r))
 end
 

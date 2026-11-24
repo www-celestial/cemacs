@@ -8,6 +8,7 @@ use core/commands
 use core/text
 use core/view
 use src/notebook
+use src/rope
 use src/ui
 use std/bug
 use std/cells as nb
@@ -153,6 +154,67 @@ s = settled(press("s", press("right", s)))
 t = tableIn(3, s).Table
 check(t.Sort.Column == "x" and t.Positions[t.Selected - t.First + 1] == 1000000, "the million rows sorted, the last row kept chosen")
 io.Print("a screen of a million rows: $(str.Decimals(2, moved * 1000.0)) ms to move")
+
+(* The totals row of the million rows: t shows the sums, computed in the session over every row; the key takes less than a frame. *)
+started = sys.Now()
+s = typed("t", s)
+keyed = sys.Now() - started
+s = settled(s)
+summed = sys.Now() - started
+t = tableIn(3, s).Table
+check(t.Totals.Values.Count == 1000000 and t.Totals.Values.Columns[1].Sum == 500000500000 and t.Totals.Texts[1].Text == "500000500000", "the sum of i: $(t.Totals.Texts)")
+check(list.Any([c.Text == "500000500000" for c in tableIn(3, s).Draw(1400, look) if c.Kind == "text"]) and str.Contains("Σ of 1000000 rows", list.Last([c.Text for c in tableIn(3, s).Draw(1400, look) if c.Kind == "text"])), "the totals row and its note are drawn")
+started = sys.Now()
+s = typed("t", s)
+cycled = sys.Now() - started
+check(tableIn(3, s).Table.Totals.Stat == "mean" and tableIn(3, s).Table.Totals.Texts[1].Text == "500000.50", "t again: the means, $(tableIn(3, s).Table.Totals.Texts)")
+started = sys.Now()
+s = typed(">", s)
+widened = sys.Now() - started
+check(tableIn(3, s).Table.Hand[2] > 0, "> widens the column of the cursor")
+io.Print("totals of a million rows: $(str.Decimals(2, keyed * 1000.0)) ms for t, $(str.Decimals(1, summed * 1000.0)) ms until drawn; t again $(str.Decimals(2, cycled * 1000.0)) ms, > $(str.Decimals(2, widened * 1000.0)) ms")
+(* The million rows come from code: Enter says so, and writes nothing. *)
+v = s.Buffers[1].Version
+s = press("enter", s)
+check(str.StartsWith("Only a table written in the file as values is edited here", s.Message) and s.Buffers[1].Version == v, "a table from code isn't edited: $(s.Message)")
+s = press("escape", s)
+
+(* An edit of the frame that the file writes: sorted by elevation, the row of 9.99 chosen, Enter, 10.5, Enter: the file writes 10.5 in its place, the
+   cell runs again, and its table keeps its sort, its row chosen and the keys, showing 10.5. A text in a column of numbers is refused. One undo gives
+   9.99 back. *)
+s = settled(focusedIn(8, s))
+s = press("right", press("left", press("left", press("home", s))))
+for k in 1..3
+  if not value.Equal(tableIn(2, s).Table.Sort, {Column: "elevation", Descending: false})
+    s = settled(press("s", s))
+  end
+end
+t = tableIn(2, s).Table
+for k in 1..12
+  if t.Rows[t.Row - t.First + 1][2] != "9.99"
+    s = press("down", s)
+    t = tableIn(2, s).Table
+  end
+end
+check(t.Rows[t.Row - t.First + 1][2] == "9.99" and value.Equal(t.Sort, {Column: "elevation", Descending: false}), "the row of 9.99 is chosen, sorted by elevation")
+s = press("enter", s)
+check(tableIn(2, s).Table.Edit.Draft == "9.99", "Enter edits 9.99")
+s = press("enter", typed("x", s))
+check(s.Message == "elevation takes a number: 9.99x is none." and value.IsSome(tableIn(2, s).Table.Edit), "a text is refused: $(s.Message)")
+s = press("backspace", s)
+for k in 1..4
+  s = press("backspace", s)
+end
+s = typed("10.5", s)
+before = str.Lines(rope.Text(s.Buffers[1].Rope))
+s = settled(press("enter", s))
+after = str.Lines(rope.Text(s.Buffers[1].Rope))
+check(str.Contains("elevation: [-0.833, 0.48, 10.5, 18.14", after[8]) and value.Len(after) == value.Len(before) and after[7] == before[7] and after[9] == before[9], "the file writes 10.5: $(after[8])")
+t = tableIn(2, s).Table
+check(value.Equal(t.Sort, {Column: "elevation", Descending: false}) and t.Positions[t.Row - t.First + 1] == 3 and t.Rows[t.Row - t.First + 1][2] == "10.5" and t.Selected == t.Row, "the table keeps its sort and its row, now 10.5: $(t.Rows[t.Row - t.First + 1])")
+check(value.Equal(commands.FocusOf(s).Table, t.Key) and t.Key != day.Table.Key, "the new table has the keys")
+s = commands.Undo(press("escape", s))
+check(str.Lines(rope.Text(s.Buffers[1].Rope))[8] == before[8], "one undo gives 9.99 back")
 
 _ = sys.Run("rm", ["-rf", folder])
 io.Print("ok")
