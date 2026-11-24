@@ -188,6 +188,16 @@ end
     the start of a line moves the line to its place, see text.Electric. *)
 keyed(words, state) = replacing(b -> text.Electric(words, text.InsertWords(words, b)), state)
 
+defn Comment(state)
+  (** M-;: in a file of Cesia, the line of the cursor, or the lines of the selection, made a comment of (* and *), or taken back from one, as one step of
+      undo, the selection kept: see text.Commented. In another buffer, a message. *)
+  b = current(state)
+  if lists.IsList(b) or not indent.IsCesia(b)
+    return say("M-; comments lines of Cesia, and this buffer holds none.", state)
+  end
+  put(text.Commented(b), state)
+end
+
 (** The undone step back, and the mark ended: left where it was, it would select a text the person never chose. *)
 Undo(state) = put(unmarked(text.Undo(current(state))), state)
 Redo(state) = put(unmarked(text.Redo(current(state))), state)   (** The undone step done again, and the mark ended. *)
@@ -689,11 +699,12 @@ defn folder(path)
 end
 
 defn indexOfFile(path, state)
-  (** The index of the buffer for this file, or 0. *)
+  (** The index of the buffer for this file, or 0: the buffer whose text is kept there counts, as *scratch* for the file it is kept in, so that one file
+      has one buffer. *)
   wanted = files.Normal(path)
   for k in 1..value.Len(state.Buffers)
-    b = state.Buffers[k]
-    if not value.IsMissing(b.Path) and files.Normal(b.Path) == wanted
+    f = text.FileOf(state.Buffers[k])
+    if not value.IsMissing(f) and files.Normal(f) == wanted
       return k
     end
   end
@@ -753,8 +764,10 @@ defn NextBuffer(state)
 end
 
 defn close(k, state)
-  (** The state with buffer k closed. *)
-  dropped(k, k, state)
+  (** The state with buffer k closed, after the Closing of the config, if it has one, heard it: Closing(k, state) gives the state with buffer k still
+      there, as src/scratch keeps the text of *scratch* and the cells end the session of their buffer. *)
+  closing = dict.GetOr("Closing", missing, config(state))
+  dropped(k, k, if value.IsMissing(closing) state else closing(k, state) end)
 end
 
 (** The answer to the question about closing buffer k. *)
@@ -1130,7 +1143,8 @@ end
 defn Complete(state)
   (** The words that complete the word before the cursor: those of the buffer, the nearest first, then those of the other buffers, then the names of
       Cesia, see complete.Words. None says so; one is put in place at once; more open a list under the cursor, where the CompleteKeys of the config
-      choose one and put it in place. A letter typed with the list open makes the list again for the longer word; any other key closes it and does
+      choose one and put it in place. A name of a module of std/ after its module and a dot brings the use it needs at the top, in the same step of undo:
+      see complete.WithUse. A letter typed with the list open makes the list again for the longer word; any other key closes it and does
       what it does. *)
   prefix = complete.Prefix(current(state))
   if prefix == ""
@@ -1141,7 +1155,7 @@ defn Complete(state)
   if value.Len(words) == 0
     say("No completion for $prefix.", s)
   else if value.Len(words) == 1
-    put(text.Completed(words[1], value.Len(prefix), current(s)), s)
+    put(complete.WithUse(text.Completed(words[1], value.Len(prefix), current(s))), s)
   else
     listed(prefix, words, s)
   end
@@ -1163,11 +1177,12 @@ CompleteNext(state) = picked(1, state)   (** The next word of the list of comple
 CompletePrevious(state) = picked(-1, state)   (** The word before in the list of completions, or the last before the first. *)
 
 defn CompleteAccept(state)
-  (** The word chosen in the list of completions in place of the word before the cursor, as one step of undo, and the list closed. *)
+  (** The word chosen in the list of completions in place of the word before the cursor, with the use it needs (see complete.WithUse), as one step of
+      undo, and the list closed. *)
   c = complete.Of(state)
   s = state
   s.Completion = missing
-  if value.IsMissing(c) s else put(text.Completed(c.Words[c.Picked], value.Len(c.Prefix), current(s)), s) end
+  if value.IsMissing(c) s else put(complete.WithUse(text.Completed(c.Words[c.Picked], value.Len(c.Prefix), current(s))), s) end
 end
 
 defn completeKeys(state)
@@ -1824,5 +1839,13 @@ defn Update(event, state)
   if event.Kind == "key" or event.Kind == "text" or event.Kind == "mouse"
     next.Still = 0.0
   end
-  if next.Ending missing else Settled(next) end
+  if next.Ending ending(next) else Settled(next) end
+end
+
+defn ending(state)
+  (** The end of the editor, missing for the window, once the End of the config, if it has one, ran on the last state: src/scratch keeps the text of
+      *scratch* there. What it gives is not read. *)
+  last = dict.GetOr("End", missing, config(state))
+  _ = if value.IsMissing(last) state else last(state) end
+  missing
 end

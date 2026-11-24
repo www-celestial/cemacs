@@ -1,8 +1,10 @@
 (** Tests of the buffer in text.ce: run with cesia test . *)
 use core/text
 use core/color
+use core/indent
 use src/rope
 use std/text as str
+use std/dict
 use std/gen
 use std/list
 use std/math
@@ -247,3 +249,47 @@ isCompletedOneStep() = allText(text.Undo(text.Completed("Hello", 3, text.InsertW
 isCompletedElseMoves() = allText(text.Completed("else", 3, cesiaAt(3, 5, "if a\n  b\n  els"))) == "if a\n  b\nelse" and
   allText(text.Undo(text.Completed("else", 3, cesiaAt(3, 5, "if a\n  b\n  els")))) == "if a\n  b\n  els"
 isCompletedEndsTyping() = not text.Completed("Hello", 3, text.InsertWords("l", text.InsertWords("Hel", text.Of("", missing)))).Typing
+
+(* A buffer with no file whose text an app keeps, as *scratch*: never modified, a file of Cesia by its kept file, and a file once saved as one. *)
+kept(words) = (b -> dict.Put("Kept", "/data/cemacs/scratch.ce", b))(text.Of(words, missing))
+isKeptNeverModified() = not text.IsModified(text.InsertWords("x", kept(""))) and text.IsModified(text.InsertWords("x", text.Of("", missing)))
+isKeptFile() = text.FileOf(kept("")) == "/data/cemacs/scratch.ce" and value.IsMissing(text.FileOf(text.Of("", missing))) and text.FileOf(text.Of("", "a.ce")) == "a.ce"
+isKeptCesia() = indent.IsCesia(kept("")) and not indent.IsCesia(text.Of("", missing)) and not indent.IsCesia((b -> dict.Put("Kept", "/d/notes.md", b))(text.Of("", missing)))
+defn isKeptSavedAsFile()
+  (** Once saved as a file of its own, the buffer is that file: its changes count again, and its file is its own. *)
+  b = text.InsertWords("x", kept(""))
+  b.Path = "/p/mine.ce"
+  saved = text.MarkSaved(missing, b)
+  not text.IsModified(saved) and text.IsModified(text.InsertWords("y", saved)) and text.FileOf(saved) == "/p/mine.ce"
+end
+
+(* M-;: comments of Cesia, both ways. *)
+inCe(line, column, words) = text.Place(line, column, text.Of(words, "a.ce"))
+commented(b) = allText(text.Commented(b))
+isCommentLine() = commented(inCe(1, 0, "  x = 1")) == "  (* x = 1 *)" and commented(inCe(1, 0, "  (* x = 1 *)")) == "  x = 1"
+isCommentBothWays() = allText(text.Commented(text.Commented(inCe(1, 3, "x = 1\ny")))) == "x = 1\ny"
+isCommentCursorKept() = same(at(text.Commented(inCe(1, 4, "  x = 1"))), [1, 7]) and same(at(text.Commented(inCe(1, 7, "  (* x = 1 *)"))), [1, 4]) and
+  same(at(text.Commented(inCe(1, 1, "  x"))), [1, 1])
+isCommentEmptyLine() = commented(inCe(1, 0, "")) == "(*  *)" and same(at(text.Commented(inCe(1, 0, ""))), [1, 3]) and commented(inCe(1, 0, "(*  *)")) == ""
+isCommentDocumentation() = commented(inCe(1, 0, "(** The total. *)")) == "(* (** The total. *) *)"
+isCommentHoldingComment() = commented(inCe(1, 0, "x = 1 (* one *)")) == "(* x = 1 (* one *) *)" and commented(inCe(1, 0, "(* x = 1 (* one *) *)")) == "x = 1 (* one *)"
+isCommentTwoComments() = commented(inCe(1, 0, "(* a *) b (* c *)")) == "(* (* a *) b (* c *) *)"
+isCommentOneUndo() = allText(text.Undo(text.Commented(inCe(2, 0, "a\nb")))) == "a\nb"
+isCommentOnlyCesia() = allText(text.Commented(text.Place(1, 0, text.Of("x = 1", "a.md")))) == "x = 1"
+selected(first, last, words) = text.Place(last[1], last[2], text.SetMark(text.Place(first[1], first[2], text.Of(words, "a.ce"))))
+isCommentSelection() = commented(selected([1, 0], [3, 1], "a = 1\n\n  b = 2\nc")) == "(* a = 1 *)\n\n  (* b = 2 *)\nc"
+isUncommentSelection() = commented(selected([1, 0], [3, 2], "(* a *)\n\n(* b *)")) == "a\n\nb"
+isCommentSelectionMixed() = commented(selected([1, 0], [2, 1], "(* a *)\nb")) == "(* (* a *) *)\n(* b *)"
+isCommentSelectionEndsAtLineStart() = commented(selected([1, 0], [2, 0], "a\nb")) == "(* a *)\nb"
+isCommentSelectionKept() = text.Region(text.Commented(selected([1, 0], [1, 5], "a = 1"))) == "a = 1" and text.Region(text.Commented(text.Commented(selected([1, 0], [1, 5], "a = 1")))) == "a = 1"
+
+(* %%: the second % at the start of an empty line of Cesia writes the marker of a cell, and undo gives %% back. *)
+typedCe(words, b) = list.Reduce((acc, c) -> text.Electric(c, text.InsertWords(c, acc)), b, str.Chars(words))
+isPercentMarker() = allText(typedCe("%%", inCe(2, 0, "x\n\ny"))) == "x\n(* %%  *)\ny" and same(at(typedCe("%%", inCe(2, 0, "x\n\ny"))), [2, 6])
+isPercentIndentedLine() = allText(typedCe("%%", inCe(1, 2, "  "))) == "(* %%  *)"
+isPercentUndo() = allText(text.Undo(typedCe("%%", inCe(1, 0, "")))) == "%%"
+isPercentOnlyAlone() = allText(typedCe("%%", inCe(1, 1, "x"))) == "x%%" and allText(typedCe("%%", inCe(1, 0, "x"))) == "%%x"
+isPercentNotInComment() = allText(typedCe("%%", inCe(2, 0, "(* a\n\n*)"))) == "(* a\n%%\n*)"
+isPercentNotInText() = allText(typedCe("%%", inCe(2, 0, "x = \"a\n\nb\""))) == "x = \"a\n%%\nb\""
+isPercentOnlyCesia() = allText(typedCe("%%", text.Place(1, 0, text.Of("", "a.md")))) == "%%"
+isPercentMarkerParses() = text.CellMarker() == "(* %%  *)"

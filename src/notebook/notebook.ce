@@ -823,7 +823,7 @@ defn InsertCell(state)
   b = state.Buffers[state.Current]
   line = b.Cursor.Line
   s = state
-  s.Buffers[state.Current] = text.Place(line, 6, text.InsertWords("(* %%  *)\n", text.Place(line, 0, b)))
+  s.Buffers[state.Current] = text.Place(line, 6, text.InsertWords("$(text.CellMarker())\n", text.Place(line, 0, b)))
   s
 end
 

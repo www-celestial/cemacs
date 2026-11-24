@@ -7,16 +7,19 @@
     in code. A file whose lines at the left margin are more than LookBack() lines apart is read from the indent of the line LookBack() lines up. *)
 use core/color
 use src/rope
+use std/dict
 use std/list
 use std/math
 use std/text as str
 use std/value
 
-(** Is a buffer a file of Cesia? Its path ends with .ce.
+(** Is a buffer a file of Cesia? Its path ends with .ce, or, for a buffer with no file, the path of the file its text is kept in, as *scratch*'s: see
+    text.FileOf, which text.ce gives from the same fields, since it uses this file.
 
       IsCesia({Path: "a.ce"}) --> true
-      IsCesia({Path: missing}) --> false *)
-IsCesia(b) = not value.IsMissing(b.Path) and str.EndsWith(".ce", b.Path)
+      IsCesia({Path: missing}) --> false
+      IsCesia({Path: missing, Kept: "/d/scratch.ce"}) --> true *)
+IsCesia(b) = (p -> value.IsSome(p) and str.EndsWith(".ce", p))(if value.IsMissing(b.Path) dict.GetOr("Kept", missing, b) else b.Path end)
 
 (** How many lines up the reading of a line looks for its anchor, at most. A function: a variable added under --watch is read before it has a
     value. *)

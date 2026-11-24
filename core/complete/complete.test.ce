@@ -1,6 +1,7 @@
 (** Tests of complete.ce: run with cesia test . What Tab and the keys of the list do with it is in core/commands/commands.test.ce. *)
 use core/complete
 use core/text
+use src/rope
 use std/list
 use std/text as str
 use std/value
@@ -30,3 +31,21 @@ isUnderReach() = value.Equal(wordsAt("zz", 1, 2, "zz $(str.Repeat(1000, " "))zzf
 
 isNames() = "Concat" in complete.Names() and "defn" in complete.Names() and not (".." in complete.Names())
 isNamesOnce() = value.Len(complete.Names()) == value.Len(list.Unique(complete.Names()))
+
+(* The use that a name of std/ needs, written at the top. *)
+ce(line, column, words) = text.Place(line, column, text.Of(words, "a.ce"))
+used(b) = rope.Text(complete.WithUse(b).Rope)
+isUseFor() = complete.UseFor(ce(1, 8, "io.Print")) == "std/io" and complete.UseFor(ce(1, 12, "x = list.Map")) == "std/list"
+isUseKnown() = value.IsMissing(complete.UseFor(ce(2, 8, "use std/io\nio.Print"))) and value.IsMissing(complete.UseFor(ce(2, 9, "use std/text as str\nstr.Trim")))
+isUseNotModule() = value.IsMissing(complete.UseFor(ce(1, 9, "shop.Total"))) and value.IsMissing(complete.UseFor(ce(1, 5, "Print"))) and
+  value.IsMissing(complete.UseFor(ce(1, 10, "io.Nothing")))
+isUseNotField() = value.IsMissing(complete.UseFor(ce(1, 10, "a.io.Print")))
+isUseNotInComment() = value.IsMissing(complete.UseFor(ce(1, 11, "(* io.Print"))) and value.IsMissing(complete.UseFor(ce(1, 9, "\"io.Print")))
+isUseOnlyCesia() = value.IsMissing(complete.UseFor(text.Place(1, 8, text.Of("io.Print", "a.md"))))
+isUseWritten() = used(ce(1, 8, "io.Print")) == "use std/io\n\nio.Print" and complete.WithUse(ce(1, 8, "io.Print")).Cursor == {Line: 3, Column: 8}
+isUseAmongUses() = used(ce(4, 12, "use std/dict\nuse std/math\n\nx = list.Map")) == "use std/dict\nuse std/list\nuse std/math\n\nx = list.Map"
+isUseAfterUses() = used(ce(3, 8, "use src/shop\n\nio.Print")) == "use src/shop\nuse std/io\n\nio.Print"
+isUseAfterHeader() = used(ce(4, 8, "(* A header\n   on two lines *)\n\nio.Print")) == "(* A header\n   on two lines *)\n\nuse std/io\n\nio.Print"
+isUseOneUndo() = rope.Text(text.Undo(complete.WithUse(text.Completed("Print", 2, ce(1, 5, "io.Pr")))).Rope) == "io.Pr"
+isUseNoneUnchanged() = complete.WithUse(ce(2, 8, "use std/io\nio.Print")).Version == 0
+isTopOf() = value.Equal([u.Name for u in complete.TopOf(ce(1, 0, "use std/text as str\nuse std/io\nx = 1\nuse std/list")).Uses], ["str", "io"])

@@ -14,7 +14,9 @@ use src/ui
 use std/text as str
 use std/cesia
 use std/dict
+use std/fiber
 use std/list
+use std/result
 use std/value
 
 cell = {Width: 8, Height: 19}
@@ -623,7 +625,7 @@ defn isEveryCommandVisible()
     "SetMark", "Cancel", "CancelPair", "DeleteBefore", "DeleteAfter", "NewLine", "Tab", "Undo", "Redo", "Cut", "Copy", "Paste", "CutLine",
     "Save", "FindFile", "NextBuffer", "CloseBuffer", "Quit", "Run", "Stop", "ToggleOutput", "DebugRun", "ToggleBreak", "Eval", "Continue", "StepOver", "StepInto", "StepOut",
     "PromptAccept", "PromptDeleteBefore", "PromptPaste", "PromptCancel", "Press", "Drag", "Release", "Wheel", "Complete", "CompleteNext", "CompletePrevious",
-    "CompleteAccept"]
+    "CompleteAccept", "Comment"]
   value.Len(list.Filter(name -> not ("commands.$name" in shown), names)) == 0
 end
 
@@ -972,3 +974,44 @@ isFocusPairRuns() = dict.GetOr("Saved", false, press.Press(["C-c", "e", "s"], fo
 isFocusPairWaits() = press.Press(["C-c"], focusedPair()).Pending == "C-c" and value.IsSome(commands.FocusOf(press.Press(["C-c"], focusedPair())))
 isFocusOtherPairLeaves() = not dict.GetOr("Saved", false, press.Press(["C-x", "C-g"], focusedPair())) and value.IsMissing(commands.FocusOf(press.Press(["C-x"], focusedPair())))
 isFocusPairHinted() = list.Any([h.Key == "s" and not h.Group for h in commands.Update({Kind: "tick", Seconds: 1.0}, press.Press(["C-c", "e"], focusedPair())).Hints])
+
+(* M-;, the hooks Closing and End of an app, and the buffer whose text an app keeps. *)
+isCommentKey() = wordsOf(press.Press(["M-;"], inFile("x = 1"))) == "(* x = 1 *)" and wordsOf(press.Press(["M-;", "M-;"], inFile("x = 1"))) == "x = 1"
+isCommentOtherBuffer() = wordsOf(press.Press(["M-;"], stateOf("x = 1"))) == "x = 1" and str.StartsWith("M-; comments", press.Press(["M-;"], stateOf("x = 1")).Message)
+isCompletionWritesUse() = wordsOf(press.Press(["M->", "list.Ord", "tab"], inFile(""))) == "use std/list\n\nlist.Order" and
+  wordsOf(press.Press(["M->", "list.Ord", "tab", "C-/"], inFile(""))) == "list.Ord"
+isCompletionListWritesUse() = wordsOf(press.Press(["M->", "io.Prin", "tab", "tab"], inFile("use std/dict\n"))) == "use std/dict\nuse std/io\nio.Print"
+defn hooked(name, f, words)
+  (** A state on a buffer of a file, with a config that has the hook name. *)
+  s = inFile(words)
+  s.Config = () -> dict.Put(name, f, testConfig())
+  s
+end
+isClosingHeard() = press.Press(["C-x", "k"], hooked("Closing", (k, st) -> say("closing $k: $(rope.Text(st.Buffers[k].Rope))", st), "mine")).Message == "closing 1: mine"
+isClosingThenGone() = wordsOf(press.Press(["C-x", "k"], hooked("Closing", (k, st) -> st, "mine"))) == ""
+defn isEndRuns()
+  (** End hears the last state, once, as the editor ends. *)
+  heard = fiber.Channel(size = 2)
+  ended = press.Press(["x", "C-x", "C-c", "y"], hooked("End", st -> fiber.Send(wordsOf(st), heard), "z"))
+  got = fiber.Receive(heard, timeout = 0)
+  ended.Ending and result.IsOk(got) and got.Value == "xz" and result.IsErr(fiber.Receive(heard, timeout = 0))
+end
+defn kept(words)
+  (** A state on a buffer with no file whose text an app keeps, as *scratch*. *)
+  b = text.Of(words, missing)
+  b.Kept = "/data/cemacs/scratch.ce"
+  b.Name = "*scratch*"
+  begun([b], look, cell, 800, 600)
+end
+isKeptQuitsAtOnce() = press.Press(["x", "C-x", "C-c"], kept("")).Ending and value.IsMissing(press.Press(["x", "C-x", "C-c"], kept("")).Prompt)
+isKeptClosesAtOnce() = value.IsMissing(press.Press(["x", "C-x", "k"], kept("")).Prompt) and wordsOf(press.Press(["x", "C-x", "k"], kept(""))) == ""
+isKeptSavesAs() = press.Press(["x", "C-x", "C-s"], kept("")).Prompt.Label == "Save as: "
+isKeptNamed() = view.BufferName(here(kept(""))) == "*scratch*"
+defn isKeptFileGoesToIt()
+  (** Opening the file a buffer is kept in goes to that buffer: one file, one buffer. *)
+  s = kept("mine")
+  s.Buffers = list.Append(text.Of("", "b.ce"), s.Buffers)
+  s.Current = 2
+  commands.OpenFile("/data/cemacs/scratch.ce", s).Current == 1
+end
+isKeptIndents() = wordsOf(press.Press(["if a", "enter", "x"], kept(""))) == "if a\n  x"

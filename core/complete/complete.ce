@@ -1,12 +1,15 @@
 (** The completion of a word: the words that start with the part of a word before the cursor, read from the text around the cursor first, the nearest
     first, then from the other buffers, then from the names of Cesia. Tab in a file of Cesia completes so once the line is at its place: see
     commands.Complete. *)
+use core/color
+use core/indent
 use core/text
 use src/rope
 use std/cesia
 use std/dict
 use std/list
 use std/math
+use std/result
 use std/text as str
 use std/value
 
@@ -115,6 +118,104 @@ defn Words(prefix, fold, b, others, names)
     end
   end
   out
+end
+
+(* ---- The use that a name needs: completing io.Print writes use std/io at the top of a file of Cesia that has none for io. *)
+
+(** How many lines from the top are read for the use lines, at most: they come before any other line. A function: a variable added under --watch is read
+    before it has a value. *)
+TopLines() = 500
+
+defn namesBefore(words)
+  (** The name that ends words and the name before it with a dot between, [module, name], as ["io", "Print"] for "x = io.Print", or missing: a name that
+      a dot follows, as in a.io.Print, is a field and not a module. *)
+  n = str.ByteLength(words)
+  k = n
+  while k >= 1 and nameByte(str.Byte(k, words))
+    k -= 1
+  end
+  if k == n or k < 2 or str.Byte(k, words) != 46
+    return missing
+  end
+  j = k - 1
+  while j >= 1 and nameByte(str.Byte(j, words))
+    j -= 1
+  end
+  if j == k - 1 or (j >= 1 and str.Byte(j, words) == 46) or (str.Byte(j + 1, words) >= 48 and str.Byte(j + 1, words) <= 57)
+    return missing
+  end
+  [str.ByteSlice(j + 1, k - 1, words), str.ByteSlice(k + 1, n, words)]
+end
+
+defn TopOf(b)
+  (** The top of a buffer, where its use lines are: {Uses, Code}, Uses each {Line, Name, Path} as the parser reads them, the name the code gives the
+      package and its path; Code the first line that is none of them, nor blank, nor a comment, which a use without others goes above. At most
+      TopLines() lines are read.
+
+        TopOf(text.Of("(* a *)\nuse std/io\n\nx = 1", "a.ce")).Code --> 4 *)
+  uses = []
+  st = color.FirstState
+  last = list.Min(rope.LineCount(b.Rope), TopLines())
+  for k in 1..last
+    words = rope.Line(k, b.Rope)
+    t = str.Trim(words)
+    inCode = color.IsCode(st)
+    if inCode and str.StartsWith("use ", t)
+      read = cesia.Definitions(t)
+      if result.IsOk(read)
+        uses = list.Concat(uses, [{Line: k, Name: d.Name, Path: d.Signature} for d in read.Value if d.Kind == "use"])
+      end
+    else if inCode and t != "" and not str.StartsWith("(*", t)
+      return {Uses: uses, Code: k}
+    end
+    st = color.StateAfter(words, st)
+  end
+  {Uses: uses, Code: last + 1}
+end
+
+defn UseFor(b)
+  (** The use that the name before the cursor of a file of Cesia needs, as "std/io" after io.Print, or missing: when it is a public name of a module of
+      std/ written in code after the name of that module and a dot, and no use at the top of the buffer gives that name. Only then are the names of
+      Cesia read.
+
+        UseFor(text.Place(1, 8, text.Of("io.Print", "a.ce"))) --> "std/io"
+        UseFor(text.Place(2, 8, text.Of("use std/io\nio.Print", "a.ce"))) --> missing *)
+  if not indent.IsCesia(b)
+    return missing
+  end
+  line = rope.Line(b.Cursor.Line, b.Rope)
+  before = str.Slice(1, list.Min(b.Cursor.Column, value.Len(line)), line)
+  names = namesBefore(before)
+  (* A name in a comment or a text needs nothing: the state at the cursor says where it is, from the one known at the start of its line. *)
+  if value.IsMissing(names) or not color.IsCode(color.StateAfter(before, color.StateAt(b.Cursor.Line, b.Colors, color.GuessOf(b))))
+    return missing
+  end
+  path = "std/$(names[1])"
+  if not (path in cesia.DocNames()) or not ("$(names[1]).$(names[2])" in cesia.DocNames(path))
+    return missing
+  end
+  if list.Any([u.Name == names[1] for u in TopOf(b).Uses]) missing else path end
+end
+
+defn WithUse(b)
+  (** The buffer after a completion, with the use that its name needs (see UseFor) among the use lines at its top, in the order of their paths among
+      those of std/, or above its first line of code with a blank line after it when it has none, and both as one step of undo: undo takes back the
+      completion and the use at once. The cursor stays on its word. A buffer whose name needs none is as it was.
+
+        rope.Text(WithUse(text.Place(1, 8, text.Of("io.Print", "a.ce"))).Rope) --> "use std/io\n\nio.Print" *)
+  path = UseFor(b)
+  if value.IsMissing(path)
+    return b
+  end
+  top = TopOf(b)
+  later = [u.Line for u in top.Uses if str.StartsWith("std/", u.Path) and u.Path > path]
+  at = if value.Len(later) > 0 later[1] else if value.Len(top.Uses) > 0 list.Last(top.Uses).Line + 1 else top.Code end
+  blank = value.Len(top.Uses) == 0 and at <= rope.LineCount(b.Rope) and str.Trim(rope.Line(at, b.Rope)) != ""
+  words = if at > rope.LineCount(b.Rope) "\nuse $path" else "use $path\n$(if blank "\n" else "" end)" end
+  c = b.Cursor
+  added = if at > rope.LineCount(b.Rope) 0 else if blank 2 else 1 end
+  done = if at > rope.LineCount(b.Rope) text.InsertWords(words, text.ToFileEnd(b)) else text.InsertWords(words, text.Place(at, 0, b)) end
+  text.JoinSteps(text.Place(c.Line + added, c.Column, done))
 end
 
 defn Names()

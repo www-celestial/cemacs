@@ -520,6 +520,12 @@ defn Electric(typed, b)
   if not indent.IsCesia(b) or n == 0 or at.Column < n
     return b
   end
+  if typed == "%"
+    marked = cellMarked(b)
+    if value.IsSome(marked)
+      return marked
+    end
+  end
   words = line(at.Line, b)
   (* The first token that changes a place is at most four characters, else and its arrow seven: from further in, nothing to do. *)
   k = str.ByteFindAny(" \t", 1, words, not = true)
@@ -552,6 +558,118 @@ defn Electric(typed, b)
   else
     reindented([{Line: at.Line, Indent: want, Old: value.Len(head)}], true, b.Typing, b)
   end
+end
+
+(** The marker of a cell that %% makes and C-c e i writes, with no title yet: the title goes at column 6, between its two spaces. A function: a variable
+    added under --watch is read before it has a value. *)
+CellMarker() = "(* %%  *)"
+
+defn startState(n, b)
+  (** The state of the colors at the start of line n, out of any comment and text or in one: the one known, else read from the last one known, line by
+      line, as a buffer that no screen showed yet has them. *)
+  c = b.Colors
+  k = list.Max(1, list.Min(n, c.Known))
+  st = color.StartOf(k, c)
+  while k < n
+    st = color.StateAfter(line(k, b), st)
+    k += 1
+  end
+  st
+end
+
+defn cellMarked(b)
+  (** After a second % typed at the end of a line that holds only spaces and %%, out of any comment and text: the line replaced by CellMarker, the cursor
+      where its title goes, in a step of undo of its own, so that undo gives back %%. Missing for any other line. *)
+  at = b.Cursor
+  words = line(at.Line, b)
+  if str.Trim(words) != "%%" or at.Column != value.Len(words) or not color.IsCode(startState(at.Line, b))
+    return missing
+  end
+  from = rope.LineStart(at.Line, b.Rope)
+  r = rope.Insert(from, CellMarker(), rope.Delete(from, from + str.ByteLength(words), b.Rope))
+  out = edit(r, {Line: at.Line, Column: 6}, at.Line, false, false, b)
+  out.Typing = false
+  out
+end
+
+(* ---- Comments of Cesia: M-; puts (* and *) around lines, or takes them away. *)
+
+defn commentInside(words, start)
+  (** The words inside the comment that a line is, after its spaces, or missing: a line that starts out of any comment and text, in the state start, and is
+      one comment from its (* and a space to a space and its *), as (* x = 1 *) and (* x (* one *) *) are, and (* a *) b (* c *) is not. A comment of
+      documentation, whose opening has two stars, is no such comment: M-; puts one inside a comment, as any other line. *)
+  t = str.Trim(words)
+  if not color.IsCode(start) or not str.StartsWith("(* ", t) or not str.EndsWith(" *)", t) or str.StartsWith("(**", t) or value.Len(t) < 5
+    return missing
+  end
+  read = color.Tokens(t, color.FirstState)
+  if value.Len(read.Tokens) != 1 or read.Tokens[1][1] != color.Comment or not color.IsCode(read.State)
+    return missing
+  end
+  str.Slice(4, value.Len(t) - 3, t)
+end
+
+defn commentTouched(b)
+  (** The lines that M-; changes: the line of the cursor, or the lines of the selection, without the last one when the selection ends at its start. *)
+  e = ends(b)
+  if value.IsMissing(e) or not before(e.First, e.Last)
+    return [b.Cursor.Line]
+  end
+  last = if e.Last.Column == 0 and e.Last.Line > e.First.Line e.Last.Line - 1 else e.Last.Line end
+  [k for k in e.First.Line..last]
+end
+
+defn columnAfter(pos, changes)
+  (** A place of the text once the lines of changes, each {Line, Lead, By}, are commented or not: on such a line, a place in its words moves by By, and one
+      in its indent stays, as one in a comment taken away goes no further left than the indent. *)
+  for c in changes
+    if c.Line == pos.Line and pos.Column >= c.Lead
+      return {Line: pos.Line, Column: list.Max(c.Lead, pos.Column + c.By)}
+    end
+  end
+  pos
+end
+
+defn Commented(b)
+  (** M-; in a file of Cesia: the line of the cursor, or each line of the selection, as a comment of (* and *), or back as it was. A line that is a comment
+      (see commentInside) loses its (* and *); any other line gets them around its words, after its indent, so x = 1 becomes (* x = 1 *), and a line that
+      holds a comment already is one comment still, since comments nest. With a selection, its lines are taken back when each of them that isn't blank is
+      a comment, else each of them that isn't blank becomes one. One step of undo; the cursor and the mark keep their places in the words. In another file,
+      nothing changes.
+
+        rope.Text(Commented(Of("  x = 1", "a.ce")).Rope) --> "  (* x = 1 *)"
+        rope.Text(Commented(Of("(* x = 1 *)", "a.ce")).Rope) --> "x = 1" *)
+  if not indent.IsCesia(b)
+    return b
+  end
+  touched = commentTouched(b)
+  alone = value.Len(touched) == 1
+  rows = []
+  for k in touched
+    words = line(k, b)
+    lead = leadingOf(k, width(k, b), b)
+    rows = list.Append({Line: k, Words: words, Lead: lead, Inside: commentInside(words, startState(k, b))}, rows)
+  end
+  full = [x for x in rows if alone or str.Trim(x.Words) != ""]
+  if value.Len(full) == 0
+    return b
+  end
+  undo = list.All([value.IsSome(x.Inside) for x in full])
+  changes = []
+  for x in full
+    rest = str.Slice(value.Len(x.Lead) + 1, value.Len(x.Words), x.Words)
+    fresh = if undo "$(x.Lead)$(x.Inside)" else "$(x.Lead)(* $rest *)" end
+    changes = list.Append({Line: x.Line, Lead: value.Len(x.Lead), By: if undo (-3) else 3 end, Text: fresh}, changes)
+  end
+  r = b.Rope
+  for c in list.Reverse(changes)
+    start = rope.LineStart(c.Line, r)
+    r = rope.Insert(start, c.Text, rope.Delete(start, start + str.ByteLength(line(c.Line, b)), r))
+  end
+  mark = if value.IsMissing(b.Mark) missing else columnAfter(clamp(b.Mark, b), changes) end
+  out = edit(r, columnAfter(b.Cursor, changes), changes[1].Line, false, false, b)
+  out.Mark = if value.IsMissing(mark) missing else clamp(mark, out) end
+  out
 end
 
 defn Completed(word, n, b)
@@ -767,10 +885,29 @@ defn Redo(b)
   end
 end
 
-(** Is the text different from the last one saved? Undoing back to the saved text makes it false again.
+(** Is the text different from the last one saved? Undoing back to the saved text makes it false again. A buffer with no file whose text an app keeps,
+    as *scratch*, never is: nothing asks to save it, see KeptOf.
 
       IsModified(Of("", missing)) --> false *)
-IsModified(b) = b.Version != b.Saved
+IsModified(b) = b.Version != b.Saved and not (value.IsMissing(b.Path) and value.IsSome(KeptOf(b)))
+
+defn KeptOf(b)
+  (** The file where an app keeps the text of a buffer with no file of its own, as *scratch* is kept in the folder of the person's data, or missing: its
+      Kept field, which a buffer from before it lacks. Such a buffer never asks to be saved, and takes its kind from that file, Cesia for one that ends in
+      .ce; once saved as a file of its own, with C-x C-s, it is that file and Kept no longer counts.
+
+        KeptOf(Of("", missing)) --> missing *)
+  match b
+    {Kept: path} -> path
+    else -> missing
+  end
+end
+
+(** The file of a buffer: its path, or, for a buffer with no file, the file an app keeps its text in, or missing. What reads a buffer as a file of
+    Cesia, its check, its cells and its session, reads it there.
+
+      FileOf(Of("", "a.ce")) --> "a.ce" *)
+FileOf(b) = if value.IsMissing(b.Path) KeptOf(b) else b.Path end
 
 defn MarkSaved(disk, b)
   (** The buffer after a save: the current version counts as saved, and disk is the time of the file that was written. *)

@@ -60,6 +60,7 @@ Keys() = {
   "backspace": commands.DeleteBefore, "S-backspace": commands.DeleteBefore,
   "C-d": commands.DeleteAfter, "delete": commands.DeleteAfter, "S-delete": commands.DeleteAfter,
   "C-k": commands.CutLine,
+  "M-;": commands.Comment,
   "C-space": commands.SetMark,
   "S-right": commands.SelectForwardChar,
   "S-left": commands.SelectBackwardChar,
