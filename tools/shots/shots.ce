@@ -32,6 +32,7 @@ use src/ide
 use src/notebook
 use src/output
 use src/project
+use src/scratch
 use src/sdl
 use src/ui
 use std/bug
@@ -51,7 +52,7 @@ keysOfApps() = dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge
 
 defn configOf(theme, size)
   (** The config of Cemacs as it comes, with the theme and the size of the window of a shot. *)
-  made = ide.Hooked(notebook.Hooked(folders.Hooked(check.Hooked(emacs.Config(keysOfApps)))))
+  made = scratch.Hooked(ide.Hooked(notebook.Hooked(folders.Hooked(check.Hooked(emacs.Config(keysOfApps))))))
   keys = made.Keys
   made.Keys = () -> help.WithHelp(keys())
   made.Theme = () -> theme
@@ -328,13 +329,14 @@ defn Take(shot, home, out)
   temp = str.Trim(sys.Run("mktemp", ["-d"])?.Out)
   folder = "$temp/$(dict.GetOr("Folder", "shop", shot))"
   sys.Mkdir(folder)?
-  taken = shotIn(shot, home, out, folder, config, made, theme)
+  taken = shotIn(shot, home, out, folder, "$temp/data/cemacs/scratch.ce", config, made, theme)
   _ = sys.Run("rm", ["-rf", temp])
   taken
 end
 
-defn shotIn(shot, home, out, folder, config, made, theme)
-  (** Takes a shot in its folder, made: see Take. *)
+defn shotIn(shot, home, out, folder, kept, config, made, theme)
+  (** Takes a shot in its folder, made: see Take. Its *scratch* is a new one, of the day, kept at kept, beside the folder of the shot: never the person's
+      own, which the Start of the config would read. *)
   written(folder, dict.GetOr("Files", [], shot))?
   setUp(folder, dict.GetOr("Setup", [], shot))?
   window = opened(home, shot.Size, made.FontSize())?
@@ -346,7 +348,7 @@ defn shotIn(shot, home, out, folder, config, made, theme)
   empty.Config = config
   empty.Home = home
   paths = [openPath(folder, p) for p in dict.GetOr("Open", [], shot)]
-  s = settled(commands.Settled(made.Start(commands.OpenAll(paths, empty))))
+  s = settled(commands.Settled(scratch.WithScratch(scratch.Buffer(kept, "", sys.Now()), commands.OpenAll(paths, empty))))
   for step in dict.GetOr("Steps", [], shot)
     s = stepped(step, s)
   end

@@ -11,6 +11,7 @@ use src/ide
 use src/notebook
 use src/output
 use src/project
+use src/scratch
 use user/config as user
 use std/dict
 use std/io
@@ -21,11 +22,11 @@ Keys() = dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.
 
 defn Config()
   (** What the editor runs on: these keys, the other keys and the settings of src/emacs and the hooks of the check, of the commands of & of the folders,
-      the cells and the questions of src/ide, each over the one before, the check's first since it takes the place of any, as the Changed of user/config
-      changes them,
+      the cells, the questions of src/ide and *scratch*, each over the one before, the check's first since it takes the place of any, as the Changed of
+      user/config changes them,
       then ? after the first keys of every pair or group, those of the person too, which lists what follows them. It runs at each key, so a change of
       user/config under cesia do dev works at the next one. *)
-  c = user.Changed(ide.Hooked(notebook.Hooked(folders.Hooked(check.Hooked(emacs.Config(Keys))))))
+  c = user.Changed(scratch.Hooked(ide.Hooked(notebook.Hooked(folders.Hooked(check.Hooked(emacs.Config(Keys)))))))
   keys = c.Keys
   c.Keys = () -> help.WithHelp(keys())
   c

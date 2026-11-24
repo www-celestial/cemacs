@@ -1,0 +1,45 @@
+(** Tests of *scratch* that need no file: run with cesia test src. What keeps its text, and the session that runs its lines, are in tests/scratch-check.ce. *)
+use core/indent
+use core/text
+use core/view
+use src/rope
+use src/scratch
+use src/ui
+use std/date
+use std/list
+use std/text as str
+use std/value
+
+look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
+day = date.Date(2026, 11, 24)
+fresh = scratch.Buffer("/d/cemacs/scratch.ce", "", date.ToUnix(day) + 43200)
+words(b) = rope.Text(b.Rope)
+
+isFolder() = scratch.Folder("/x", "/h") == "/x/cemacs" and scratch.Folder("rel", "/h") == "/h/.local/share/cemacs" and value.IsMissing(scratch.Folder("", ""))
+isHeader() = str.EndsWith(" Cemacs · Tuesday 24 November · Cesia 1.3.0", str.Lines(scratch.Header(day, "1.3.0"))[1])
+isHeaderComment() = str.EndsWith("*)", scratch.Header(day, "1.3.0")) and value.Len(str.Lines(scratch.Header(day, "1.3.0"))) == 3
+isRefreshed() = scratch.Refreshed("$(scratch.Header(date.Date(2026, 6, 1), "1.2.0"))\nx = 1", scratch.Header(day, "1.3.0")) == "$(scratch.Header(day, "1.3.0"))\nx = 1"
+isRefreshedOnlyOurs() = scratch.Refreshed("x = 1\ny", "H") == "x = 1\ny" and scratch.Refreshed("$(str.Lines(scratch.Header(day, "1"))[1])\nmine *)\nx", "H") ==
+  "$(str.Lines(scratch.Header(day, "1"))[1])\nmine *)\nx"
+(** One line a day, by the day of the year: the same date of each year shows the same one, and the list comes round again after its length. *)
+isLineOfTheDay() = value.Equal(scratch.LineOf(date.Date(2026, 2, 1)), scratch.LineOf(date.AddDays(value.Len(scratch.Lines()), date.Date(2026, 2, 1)))) and
+  not value.Equal(scratch.LineOf(day), scratch.LineOf(date.AddDays(1, day))) and value.Equal(scratch.LineOf(day), scratch.LineOf(date.Date(2027, 11, 24)))
+isLinesShort() = list.All([value.Len("(* Line of the day: $(l.About) *)") <= 72 and value.Len(l.Code) <= 72 and value.Len(str.Lines(l.Code)) == 1 for l in scratch.Lines()])
+isLinesMany() = value.Len(scratch.Lines()) >= 60
+defn isTemplate()
+  (** A new *scratch*: the header, the use lines with std/io, the line of the day under its comment, then an empty line for the cursor. *)
+  t = scratch.Template(day, "1.3.0")
+  l = scratch.LineOf(day)
+  str.StartsWith(scratch.Header(day, "1.3.0"), t) and str.Contains("\nuse std/io\n", t) and list.All([str.Contains("\nuse $u\n", t) for u in l.Uses]) and
+    str.EndsWith("(* Line of the day: $(l.About) *)\n$(l.Code)\n\n", t)
+end
+isBuffer() = view.BufferName(fresh) == "*scratch*" and value.IsMissing(fresh.Path) and text.KeptOf(fresh) == "/d/cemacs/scratch.ce" and indent.IsCesia(fresh)
+isBufferCursorAtEnd() = fresh.Cursor.Line == rope.LineCount(fresh.Rope) and fresh.Cursor.Column == 0
+isBufferNeverModified() = not text.IsModified(text.InsertWords("x", fresh))
+isBufferKeptText() = words(scratch.Buffer("/d/s.ce", "x = 1\n", 0.0)) == "x = 1\n"
+isBufferNowhere() = value.IsMissing(text.KeptOf(scratch.Buffer(missing, "", 0.0)))
+isAloneReplacesUntitled() = (s -> value.Len(s.Buffers) == 1 and view.BufferName(s.Buffers[1]) == "*scratch*" and s.Current == 1)(scratch.WithScratch(fresh,
+  view.Start([text.Of("", missing)], look, {Width: 8, Height: 19}, 800, 600)))
+isAfterFiles() = (s -> value.Len(s.Buffers) == 3 and view.BufferName(s.Buffers[3]) == "*scratch*" and s.Current == 1)(scratch.WithScratch(fresh,
+  view.Start([text.Of("a", "a.ce"), text.Of("b", "b.ce")], look, {Width: 8, Height: 19}, 800, 600)))
+isAfterTypedUntitled() = value.Len(scratch.WithScratch(fresh, view.Start([text.Of("mine", missing)], look, {Width: 8, Height: 19}, 800, 600)).Buffers) == 2

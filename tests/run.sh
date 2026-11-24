@@ -3,6 +3,12 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 
+# Cemacs keeps the text of *scratch* in the folder of the person's data: the suite, which starts Cemacs, keeps it in a new folder of its own, never
+# in the person's.
+XDG_DATA_HOME="$(mktemp -d)"
+export XDG_DATA_HOME
+trap 'rm -rf "$XDG_DATA_HOME"' EXIT
+
 # cesia.toml names user/ among the folders of the code, and Cesia stops when one is missing: a clone where Cemacs never started gets it first, from the
 # template. The suite tests Cemacs only, core/ and src/; user/ is the person's, which cesia test user tests.
 tools/user.sh

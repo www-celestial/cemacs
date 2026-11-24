@@ -1,0 +1,267 @@
+(** *scratch*: a buffer where Cesia runs at once, with no file to make, the first one when Cemacs starts with no file, and in the list of buffers
+    otherwise. C-c e r runs its lines in a session of its own, their results below in *repl*, as in any file of Cesia: see src/notebook. Its text is
+    kept by itself, in the folder of the person's data, $XDG_DATA_HOME/cemacs/scratch.ce or ~/.local/share/cemacs/scratch.ce, once it has rested a
+    second, when the buffer closes and when the editor ends, and comes back at the next start: nothing ever asks to save it, and C-x C-s saves it as a
+    file of its own, which it then is. A new one shows a header, with the date and the version of Cesia, then the line of the day, an example of std/
+    that C-c e r runs. At the start, the kept text is the only file read: no process starts and nothing is written. src/cemacs.ce adds the hooks of
+    Hooked to the config. *)
+use core/commands
+use core/files
+use core/lists
+use core/text
+use src/rope
+use std/cesia
+use std/date
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(** The name of the buffer. *)
+Name() = "*scratch*"
+
+(** The seconds of rest after which a change of the text is kept: it is kept too when the buffer closes and when the editor ends. *)
+KeepDelay() = 1.0
+
+defn Folder(xdg, home)
+  (** The folder of the person's data for Cemacs: cemacs in XDG_DATA_HOME when it is a path from the root, as freedesktop says, else in ~/.local/share,
+      or missing with neither.
+
+        Folder("/x", "/home/a") --> "/x/cemacs"
+        Folder("", "/home/a") --> "/home/a/.local/share/cemacs"
+        Folder(missing, missing) --> missing *)
+  if value.IsText(xdg) and str.StartsWith("/", xdg)
+    return "$xdg/cemacs"
+  end
+  if value.IsText(home) and home != "" "$home/.local/share/cemacs" else missing end
+end
+
+(** The file where the text of *scratch* is kept, or missing when the person has no folder of data.
+
+      KeptPath(missing, "/home/a") --> "/home/a/.local/share/cemacs/scratch.ce" *)
+KeptPath(xdg, home) = (f -> if value.IsMissing(f) missing else "$f/scratch.ce" end)(Folder(xdg, home))
+
+(* ---- The text of a new *scratch*: its header and the line of the day. *)
+
+(** The names of the days of the week, from Monday, as date.Weekday counts them. A function: a variable added under --watch is read before it has a value. *)
+weekdays() = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+(** The names of the months. *)
+months() = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
+(** The start of the first line of the header that Cemacs writes: a kept text that starts with it gets the header of the day. *)
+headStart() = "(* Cemacs · "
+
+(** The lines of the header after its first one. *)
+headRest() = ["   C-c e r runs a line, and its result shows below in *repl*.", "   Kept by itself across restarts; C-x C-s saves it as a file. *)"]
+
+defn Header(day, version)
+  (** The header of *scratch*, a comment of three lines: the day, a Date, and the version of Cesia, then what runs its lines and that it is kept.
+
+        str.EndsWith("Cemacs · Tuesday 24 November · Cesia 1.3.0", str.Lines(Header(date.Date(2026, 11, 24), "1.3.0"))[1]) --> true *)
+  first = "$(headStart())$(weekdays()[date.Weekday(day)]) $(day.Day) $(months()[day.Month]) · Cesia $version"
+  str.Join("\n", list.Prepend(first, headRest()))
+end
+
+defn Refreshed(words, header)
+  (** A kept text with the header of today in place of the one it starts with, when that one is still the header Cemacs wrote, whatever its day and
+      version; any other text as it is.
+
+        Refreshed("$(Header(date.Date(2026, 6, 1), "1.2.0"))\nx = 1", "H") --> "H\nx = 1" *)
+  lines = str.Split("\n", words)
+  n = value.Len(headRest())
+  if value.Len(lines) <= n or not str.StartsWith(headStart(), lines[1]) or not value.Equal(list.Take(n, list.Skip(1, lines)), headRest())
+    return words
+  end
+  str.Join("\n", list.Prepend(header, list.Skip(n + 1, lines)))
+end
+
+defn Lines()
+  (** The lines of the day: each an example of std/ on one line, with the packages it uses and what it shows, short enough for a comment that fits in a
+      narrow window. One a day, by the day of the year; tests/scratch-check.ce runs each in a session, so that none gives an error. *)
+  [{Uses: ["std/list"], Code: "list.Order([30, 10, 20])", About: "list.Order gives the places that sort a list."},
+    {Uses: ["std/list"], Code: "list.Frequencies([\"a\", \"b\", \"a\"])", About: "list.Frequencies counts each value."},
+    {Uses: ["std/list"], Code: "list.Scan((a, x) -> a + x, 0, [1, 2, 3, 4])", About: "list.Scan keeps each step: running sums."},
+    {Uses: ["std/list"], Code: "list.Top(2, [5, 1, 9, 3])", About: "list.Top gives the largest values first."},
+    {Uses: ["std/list"], Code: "list.Zip([1, 2, 3], [\"a\", \"b\", \"c\"])", About: "list.Zip pairs the values of two lists."},
+    {Uses: ["std/list"], Code: "list.Range(1, 10, step = 3)", About: "list.Range counts with a step."},
+    {Uses: ["std/list", "std/math"], Code: "list.SortBy(math.Abs, [-3, 1, 2])", About: "list.SortBy sorts by what a function gives."},
+    {Uses: ["std/list"], Code: "list.Interleave([1, 2], [\"a\", \"b\"])", About: "list.Interleave takes from each list in turn."},
+    {Uses: ["std/list"], Code: "list.Keep(x -> if x > 1 x * 2 else missing end, [1, 2, 3])", About: "list.Keep maps and drops each missing."},
+    {Uses: ["std/list"], Code: "list.Mean([1 2; 3 4], dim = 1)", About: "a matrix, ; between rows; each column's mean."},
+    {Uses: [], Code: "[x * x for x in 1..6 if x != 3]", About: "a list built from a range, with a test."},
+    {Uses: ["std/list", "std/math"], Code: "list.Count(math.IsOdd, [1, 2, 3, 5])", About: "list.Count counts what a test holds for."},
+    {Uses: ["std/algo"], Code: "algo.Levenshtein(\"kitten\", \"sitting\")", About: "algo.Levenshtein counts the edits between words."},
+    {Uses: ["std/algo"], Code: "algo.Primes(50)", About: "algo.Primes gives the primes up to n."},
+    {Uses: ["std/algo"], Code: "algo.Combinations(2, [1, 2, 3, 4])", About: "algo.Combinations: each way to pick k values."},
+    {Uses: ["std/algo"], Code: "algo.Permutations([1, 2, 3])", About: "algo.Permutations: every order of a list."},
+    {Uses: ["std/algo"], Code: "algo.Gcd(84, 36)", About: "algo.Gcd gives the greatest common divisor."},
+    {Uses: ["std/algo"], Code: "algo.Chunk(2, [1, 2, 3, 4, 5])", About: "algo.Chunk cuts a list into pieces of n."},
+    {Uses: ["std/algo"], Code: "algo.Windows(3, [1, 2, 3, 4, 5])", About: "algo.Windows slides a window of n over a list."},
+    {Uses: ["std/algo"], Code: "algo.BinarySearch(7, [1, 3, 5, 7, 9])", About: "algo.BinarySearch finds a value in log n steps."},
+    {Uses: ["std/text"], Code: "text.Decimals(2, 3.14159)", About: "text.Decimals writes n decimals."},
+    {Uses: ["std/text"], Code: "text.Fold(\"ÉLODIE\") == text.Fold(\"Élodie\")", About: "text.Fold sets the case aside, in any alphabet."},
+    {Uses: ["std/text"], Code: "text.Chars(\"héllo\")", About: "text.Chars cuts a text into characters."},
+    {Uses: ["std/text"], Code: "text.Split(\",\", \"a,b,c\")", About: "text.Split cuts a text at each separator."},
+    {Uses: ["std/text"], Code: "text.Join(\" + \", [\"1\", \"2\", \"3\"])", About: "text.Join puts a separator between texts."},
+    {Uses: ["std/text"], Code: "text.Replace(\"cat\", \"dog\", \"a cat, a cat\")", About: "text.Replace replaces each occurrence."},
+    {Uses: [], Code: "\"$$(6 * 7) is the answer\"", About: "$$( ) puts the value of code in a text."},
+    {Uses: ["std/math"], Code: "math.Near(0.1 + 0.2, 0.3)", About: "0.1 + 0.2 isn't 0.3 in floats: compare near."},
+    {Uses: ["std/math"], Code: "[math.Div(-7, 2), math.Mod(-7, 2)]", About: "math.Div rounds down, math.Mod follows it."},
+    {Uses: ["std/math"], Code: "math.Round(2.5)", About: "math.Round takes a half away from zero."},
+    {Uses: ["std/num"], Code: "num.Linspace(0, 1, 5)", About: "num.Linspace gives n numbers evenly spaced."},
+    {Uses: ["std/num"], Code: "num.Cumsum([1.0, 2.0, 3.0, 4.0])", About: "num.Cumsum gives the running sums."},
+    {Uses: ["std/num"], Code: "num.Dot([1, 2, 3], [4, 5, 6])", About: "num.Dot multiplies two vectors."},
+    {Uses: ["std/num"], Code: "num.Median([3.0, 1.0, 2.0, 10.0])", About: "num.Median: the middle value, sorted."},
+    {Uses: ["std/num"], Code: "num.Percentile(90, [1.0, 2.0, 3.0, 4.0, 5.0])", About: "num.Percentile: the value under p percent."},
+    {Uses: ["std/num"], Code: "num.Polyval([1, 2], 3)", About: "num.Polyval: 1 + 2x at x = 3."},
+    {Uses: ["std/num"], Code: "num.Trapezoid([0, 1, 2], [0, 1, 4])", About: "num.Trapezoid integrates points."},
+    {Uses: ["std/num"], Code: "num.Solve([2.0 1.0; 1.0 3.0], [3.0, 5.0])", About: "num.Solve finds x where m * x = b."},
+    {Uses: ["std/num"], Code: "num.Norm([3.0, 4.0])", About: "num.Norm: the length of a vector."},
+    {Uses: ["std/num"], Code: "num.Inverse([4.0 7.0; 2.0 6.0])", About: "num.Inverse inverts a matrix."},
+    {Uses: ["std/stats"], Code: "stats.Normal(0, 1).Cdf(1.96)", About: "a distribution: its Cdf at 1.96."},
+    {Uses: ["std/stats"], Code: "stats.Normal(100, 15).Quantile(0.95)", About: "a Quantile: 95% of the values are below it."},
+    {Uses: ["std/stats"], Code: "stats.Binomial(10, 0.5).Pdf(5)", About: "the chance of 5 heads in 10 tosses."},
+    {Uses: ["std/stats"], Code: "stats.Poisson(3).Cdf(2)", About: "at most 2 events when 3 come on average."},
+    {Uses: ["std/stats"], Code: "stats.StudentT(10).Quantile(0.975)", About: "the t of a 95% interval, at 10 degrees."},
+    {Uses: ["std/special"], Code: "special.Gamma(5)", About: "special.Gamma(n) is (n - 1)!: 24 for 5."},
+    {Uses: ["std/special"], Code: "special.Erf(0.5)", About: "special.Erf, the error function."},
+    {Uses: ["std/date"], Code: "date.Weekday(date.Date(1970, 1, 1))", About: "1970 began on day 4: a Thursday."},
+    {Uses: ["std/date"], Code: "date.DaysBetween(date.Date(2026, 1, 1), date.Date(2026, 12, 25))", About: "date.DaysBetween counts the days."},
+    {Uses: ["std/date"], Code: "date.IsLeap(2024)", About: "date.IsLeap: a year of 366 days?"},
+    {Uses: ["std/date"], Code: "date.FormatDate(date.AddDays(100, date.Date(2026, 1, 1)))", About: "the day 100 days after New Year."},
+    {Uses: ["std/dict"], Code: "dict.Merge({\"a\": 1}, {\"a\": 2, \"b\": 3})", About: "dict.Merge: the second value of a key wins."},
+    {Uses: ["std/dict"], Code: "dict.Zipmap([\"a\", \"b\"], [1, 2])", About: "dict.Zipmap makes a dictionary of two lists."},
+    {Uses: ["std/set"], Code: "set.Items(set.Intersection(set.Of([1, 2, 3]), set.Of([2, 3, 4])))", About: "the values two sets share."},
+    {Uses: ["std/encode"], Code: "encode.Base64(\"hello\")", About: "encode.Base64 writes bytes in 64 letters."},
+    {Uses: ["std/json"], Code: "json.Parse(\"{\\\"a\\\": [1, 2]}\")", About: "json.Parse reads JSON, in an Ok."},
+    {Uses: ["std/regex"], Code: "regex.Find(\"[0-9]+\", \"ab12c\").Text", About: "regex.Find: the first match of a pattern."},
+    {Uses: ["std/fn", "std/math"], Code: "fn.Compose(math.Inc, it * 2)(3)", About: "it * 2 is a function: it doubles."},
+    {Uses: ["std/result"], Code: "result.Ok(2) then result.MapOk(it + 1)", About: "then gives a value to a function."},
+    {Uses: ["std/frame"], Code: "frame.Of({\"x\": [1, 2, 3], \"y\": [1, 4, 9]})", About: "frame.Of makes a table of columns."},
+    {Uses: ["std/value"], Code: "value.Size([1 2 3; 4 5 6])", About: "value.Size: the rows and columns of a matrix."},
+    {Uses: ["std/queue"], Code: "queue.Items(queue.PushFront(0, queue.Of([1, 2])))", About: "a queue takes values at both ends."}]
+end
+
+defn LineOf(day)
+  (** The line of the day of a Date: one of Lines(), the next one each day of the year. *)
+  all = Lines()
+  n = date.DaysBetween(date.Date(day.Year, 1, 1), day)
+  all[math.Mod(n, value.Len(all)) + 1]
+end
+
+defn Template(day, version)
+  (** The text of a new *scratch* on a day, a Date: the header, the use lines that the line of the day needs and std/io, the line of the day under
+      a comment that says what it shows, and an empty line where the cursor goes. *)
+  line = LineOf(day)
+  uses = list.Sort(list.Unique(list.Append("std/io", line.Uses)))
+  "$(Header(day, version))\n\n$(str.Join("\n", ["use $u" for u in uses]))\n\n(* Line of the day: $(line.About) *)\n$(line.Code)\n\n"
+end
+
+(* ---- The buffer, at the start and kept. *)
+
+defn Buffer(path, words, now)
+  (** *scratch* with the kept text, its header of today, or a new one on the day of now, seconds since 1970 as sys.Now gives them, the cursor at its
+      end; kept at path, or kept nowhere for a path that is missing. *)
+  day = date.Local(now)
+  header = Header(day, cesia.Version())
+  b = text.Of(if str.Trim(words) == "" Template(day, cesia.Version()) else Refreshed(words, header) end, missing)
+  b.Name = Name()
+  b.Kept = path
+  b.KeptAt = b.Version
+  text.ToFileEnd(b)
+end
+
+defn read(path)
+  (** The kept text at path, or "" for none: a file that isn't there, can't be read or isn't text. *)
+  if value.IsMissing(path)
+    return ""
+  end
+  got = files.ReadFile(path)
+  if result.IsOk(got) got.Value.Words else "" end
+end
+
+(** Is a buffer a *scratch*, kept by this app and not saved as a file? *)
+isScratch(b) = not lists.IsList(b) and value.IsMissing(b.Path) and value.IsSome(text.KeptOf(b)) and dict.Has("KeptAt", b)
+
+defn Started(state)
+  (** The state at the start with *scratch*, its kept text read, or a new one: see WithScratch. *)
+  path = KeptPath(sys.Env("XDG_DATA_HOME"), sys.Env("HOME"))
+  WithScratch(Buffer(path, read(path), sys.Now()), state)
+end
+
+defn WithScratch(b, state)
+  (** The state with the buffer b, a *scratch*: in place of the empty buffer that nothing touched when no file opened, else after the files, the first
+      of them still the current one. *)
+  first = state.Buffers[1]
+  s = state
+  if value.Len(state.Buffers) == 1 and not lists.IsList(first) and value.IsMissing(first.Path) and first.Version == 0 and rope.Size(first.Rope) == 0
+    s.Buffers = [b]
+  else
+    s.Buffers = list.Append(b, state.Buffers)
+  end
+  s
+end
+
+defn kept(k, state)
+  (** The state with the text of buffer k, a *scratch*, written to its file, as a save writes one, through a new file renamed over the old, in a folder
+      of the person's alone; a failure is said once, until the text changes again. *)
+  b = state.Buffers[k]
+  s = state
+  s.Buffers[k].KeptAt = b.Version
+  folder = files.FolderOf(b.Kept)
+  made = sys.Mkdir(folder, private = true)
+  wrote = if result.IsErr(made) made else files.Replace(b.Kept, rope.Text(b.Rope)) end
+  if result.IsErr(wrote) and wrote.Error.Kind != "saved"
+    return commands.Say("*scratch* can't be kept: $(wrote.Error.Message)", s)
+  end
+  s
+end
+
+(** Has the text of a *scratch* changed since it was last kept? *)
+due(b) = isScratch(b) and b.Version != b.KeptAt
+
+defn Idle(state)
+  (** The state at a tick: the text of each *scratch* that changed kept, once no key came for KeepDelay() seconds; and the file of one saved as a file
+      of its own removed, so that the next start shows a new one. *)
+  s = state
+  for k in 1..value.Len(s.Buffers)
+    b = s.Buffers[k]
+    if not lists.IsList(b) and value.IsSome(b.Path) and value.IsSome(text.KeptOf(b)) and dict.Has("KeptAt", b)
+      _ = sys.Remove(b.Kept)
+      s.Buffers[k].Kept = missing
+    else if due(b) and commands.Still(s) >= KeepDelay()
+      s = kept(k, s)
+    end
+  end
+  s
+end
+
+(** Does a *scratch* wait to be kept? It takes ticks until then, as the check does. *)
+Moving(state) = list.Any([due(b) for b in state.Buffers])
+
+(** The state before buffer k closes: a *scratch* is kept, whatever its rest. *)
+Closing(k, state) = if due(state.Buffers[k]) kept(k, state) else state end
+
+(** The state as the editor ends: each *scratch* kept. *)
+End(state) = list.Reduce((s, k) -> if due(s.Buffers[k]) kept(k, s) else s end, state, 1..value.Len(state.Buffers))
+
+defn Hooked(config)
+  (** A config with *scratch* over what it has: its Start makes it, then runs the Start before; its Idle, its Closing and its End keep it, after or before
+      those of the config; it moves while either needs. *)
+  c = config
+  start = dict.GetOr("Start", s -> s, config)
+  idle = dict.GetOr("Idle", s -> s, config)
+  moving = dict.GetOr("Moving", s -> false, config)
+  closing = dict.GetOr("Closing", (k, s) -> s, config)
+  ending = dict.GetOr("End", s -> s, config)
+  c.Start = s -> start(Started(s))
+  c.Idle = s -> Idle(idle(s))
+  c.Moving = s -> moving(s) or Moving(s)
+  c.Closing = (k, s) -> closing(k, Closing(k, s))
+  c.End = s -> ending(End(s))
+  c
+end
