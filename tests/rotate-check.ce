@@ -1,6 +1,7 @@
 (** Checks of the 3D graphs of the cells against a real session of std/cells, on a file in a new folder under /tmp: a surface after a run, at the view
     of its code, with the line of its view; the arrows after C-c e f and a drag on it turn it, each view drawn by the session, and Home goes back; a
-    rerun of its cell shows the view of the code again; *repl* turns its 3D graphs too. It is a script, not a test file: it needs permissions. Run it
+    rerun of its cell shows the view of the code again; *repl* turns its 3D graphs too; a part of std/mesh turns, its places and its shades drawn again
+    by the session. It is a script, not a test file: it needs permissions. Run it
     from the root of cemacs with cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/rotate-check.ce, CESIA the real path
     of the cesia that runs it. It prints ok at the end and stops at the first failure. *)
 use core/commands
@@ -126,6 +127,19 @@ r = commands.Release({Kind: "mouse", Action: "up", X: at.X + 100, Y: at.Y + 120,
 r = settled(r)
 turned = list.FindFirst(line3, text.BlocksOf(r.Buffers[k]))
 check(value.Equal(turned.Graph.View, [-37.5, 40.0]), "a drag turns the graph of *repl*: $(turned.Graph.View)")
+
+(* A part of std/mesh turns as a surface does: the session draws its triangles at each view, lit by the light that follows the view, so that its
+   places and its colors change. *)
+partPath = "$folder/part.ce"
+_ = result.Unwrap(sys.Write(partPath, "use std/plot\nuse std/mesh\n\n(* %% Part *)\nplot.Of([plot.Mesh(mesh.Box([0, 0, 0], [4, 2, 1]), edges = true), plot.Mesh(mesh.Cylinder([2, 1, 1], 0.5, 3))])\n"))
+p = settled(notebook.RunAll(notebook.Hooked({}).Idle(commands.OpenFile(partPath, view.Start([], look, {Width: 8, Height: 19}, 1280, 720)))))
+part = st -> list.FindFirst(x -> dict.GetOr("Cell", 0, x) == 2, text.BlocksOf(st.Buffers[1]))
+item = st -> list.FindFirst(x -> x.Kind == "triangles", part(st).Graph.Scene.Items)
+check(value.IsSome(item(p)) and value.Len(item(p).After) > 0 and value.Equal(part(p).Graph.View, [-37.5, 30.0]), "a run draws the part, its triangles and its edges")
+was = item(p)
+p.Buffers[1] = text.Place(4, 0, p.Buffers[1])
+p = settled(press("right", notebook.FocusControl(p)))
+check(value.Equal(part(p).Graph.View, [-27.5, 30.0]) and not value.Equal(item(p).Xs, was.Xs) and not value.Equal(item(p).Colors, was.Colors), "right turns the part, its places and its shades")
 
 _ = result.Unwrap(sys.Run("rm", ["-r", folder]))
 io.Print("ok")

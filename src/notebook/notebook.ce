@@ -256,8 +256,9 @@ end
 (* ---- A scene comes from the session, another process: it is input, checked before anything is made of it. *)
 
 (** The most vertices that the shapes of one scene may make, and the most items, cells and marks, frames of an animation and quads of a surface
-    each way: past them a scene is refused, not drawn. *)
-SceneLimits() = {Vertices: 4000000, Items: 20000, Cells: 4194304, Edges: 8193, Marks: 250000, Points: 1000000, Text: 1000, Frames: 300, Quads: 200}
+    each way, triangles and edges of meshes: past them a scene is refused, not drawn. std/plot draws at most 200,000 triangles of meshes, and a lit
+    surface of 200 by 200 quads makes 80,000. *)
+SceneLimits() = {Vertices: 4000000, Items: 20000, Cells: 4194304, Edges: 8193, Marks: 250000, Points: 1000000, Text: 1000, Frames: 300, Quads: 200, Triangles: 400000, Lines: 600000}
 
 (** Is every element of an array a number, or missing where a gap is allowed? *)
 numbers(xs, gaps) = value.IsArray(xs) and list.All([value.IsNumber(x) or (gaps and value.IsMissing(x)) for x in xs])
@@ -306,6 +307,40 @@ defn meshFault(item, lim)
     return {Fault: "a mesh has no order of 1 or -1 for its rows and its columns"}
   end
   {Vertices: rows * cols * 4}
+end
+
+(** Is a value a list of whole numbers from low to high, n of them? Checked by whole arrays: integers alone, their least and their greatest. *)
+wholes(xs, n, low, high) = value.IsArray(xs) and value.Len(xs) == n and (n == 0 or col.Kind(xs) == "int" and list.Min(xs) >= low and list.Max(xs) <= high)
+
+defn trianglesFault(item, lim)
+  (** What is wrong with the triangles of meshes, or missing: the places of their points, three of them for each triangle, a color 0xRRGGBB each; two
+      points for each edge, the count of triangles before it, in order, and a color each; the width of the edges; with the vertices they make when they
+      are right. *)
+  xs = dict.GetOr("Xs", missing, item)
+  n = if value.IsArray(xs) value.Len(xs) else 0 end
+  if n > 3 * lim.Triangles or not (n == 0 and value.IsArray(xs) or places(xs, n)) or not (value.IsArray(dict.GetOr("Ys", missing, item)) and value.Len(item.Ys) == n and (n == 0 or places(item.Ys, n)))
+    return {Fault: "triangles have not the places of their points, from -1000000 to 1000000, at most $(3 * lim.Triangles)"}
+  end
+  t = dict.GetOr("Triangles", missing, item)
+  count = if value.IsArray(t) math.Div(value.Len(t), 3) else -1 end
+  if count < 0 or count > lim.Triangles or not wholes(t, 3 * count, 1, n)
+    return {Fault: "triangles have not three of their points for each, at most $(lim.Triangles) of them"}
+  end
+  if not wholes(dict.GetOr("Colors", missing, item), count, 0, 16777215)
+    return {Fault: "triangles have not a color 0xRRGGBB each"}
+  end
+  after = dict.GetOr("After", missing, item)
+  e = if value.IsArray(after) value.Len(after) else -1 end
+  if e < 0 or e > lim.Lines or not wholes(after, e, 1, list.Max(count, 1)) or not wholes(dict.GetOr("Lines", missing, item), 2 * e, 1, list.Max(n, 1)) or not wholes(dict.GetOr("LineColors", missing, item), e, 0, 16777215)
+    return {Fault: "the edges of triangles have not two of their points, a triangle to follow and a color each, at most $(lim.Lines) of them"}
+  end
+  if e > 1 and list.Min(after[2..e] - after[1..e - 1]) < 0
+    return {Fault: "the edges of triangles are not in the order of the triangles they follow"}
+  end
+  if not within(dict.GetOr("Width", missing, item), 0, 50)
+    return {Fault: "the edges of triangles have no width from 0 to 50"}
+  end
+  {Vertices: 3 * count + 4 * e}
 end
 
 defn itemFault(item, lim)
@@ -371,6 +406,9 @@ defn itemFault(item, lim)
   end
   if k == "mesh"
     return meshFault(item, lim)
+  end
+  if k == "triangles"
+    return trianglesFault(item, lim)
   end
   {Fault: "an item of kind $(k) is unknown"}
 end

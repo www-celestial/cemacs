@@ -629,6 +629,37 @@ meshes = gen.Of({Rows: gen.Int(-1, 4), Columns: gen.Int(-1, 4), Xs: gen.List(gen
   Order: gen.List(gen.Pick([1, -1, 0, 2]), min = 1, max = 3)})
 isFaultFuzz() = test.ForAll(faultHolds, meshes, cases = 400)
 
+(* The triangles of meshes, which come from the session: each part checked at its edges; drawn three vertices a triangle and four an edge, each edge
+   after the triangle it follows. *)
+tri = {Kind: "triangles", Xs: [0.0, 10.0, 0.0, 10.0], Ys: [0.0, 0.0, 10.0, 10.0], Triangles: [1, 2, 3, 2, 4, 3], Colors: [0xFF0000, 0x00FF00], Lines: [1, 2, 2, 4],
+  After: [1, 2], LineColors: [0, 0x101010], Width: 1.0, Clip: missing, Role: "data"}
+triFault(f) = notebook.SceneFault(scene([f(tri)]))   (** What SceneFault says of the triangles changed by f. *)
+isTrianglesAccepted() = value.IsMissing(triFault(t -> t)) and value.IsMissing(triFault(t -> dict.Merge(t, {Triangles: [], Colors: [], Lines: [], After: [], LineColors: []})))
+isTrianglesPlacesRefused() = value.IsSome(triFault(t -> dict.Put("Ys", [0.0, 0.0, 10.0], t))) and value.IsSome(triFault(t -> dict.Put("Xs", [0.0, 1e7, 0.0, 1.0], t))) and value.IsSome(triFault(t -> dict.Put("Xs", [0.0, 1.0 / 0.0, 0.0, 1.0], t)))
+isTrianglesCornersRefused() = value.IsSome(triFault(t -> dict.Put("Triangles", [1, 2, 5, 2, 4, 3], t))) and value.IsSome(triFault(t -> dict.Put("Triangles", [0, 2, 3, 2, 4, 3], t))) and value.IsSome(triFault(t -> dict.Put("Triangles", [1, 2, 3, 2, 4], t))) and value.IsSome(triFault(t -> dict.Put("Triangles", [1.0, 2, 3, 2, 4, 3], t)))
+isTrianglesColorsRefused() = value.IsSome(triFault(t -> dict.Put("Colors", [0xFF0000], t))) and value.IsSome(triFault(t -> dict.Put("Colors", [-1, 0], t))) and value.IsSome(triFault(t -> dict.Put("Colors", [0x1000000, 0], t))) and value.IsSome(triFault(t -> dict.Put("Colors", ["#ff0000", 0], t)))
+isTrianglesEdgesRefused() = value.IsSome(triFault(t -> dict.Put("After", [2, 1], t))) and value.IsSome(triFault(t -> dict.Put("After", [1, 3], t))) and value.IsSome(triFault(t -> dict.Put("Lines", [1, 2, 2, 9], t))) and value.IsSome(triFault(t -> dict.Put("LineColors", [0], t))) and value.IsSome(triFault(t -> dict.Put("Width", 99, t)))
+isTooManyTrianglesRefused() = str.StartsWith("triangles have not three", triFault(t -> dict.Merge(t, {Triangles: list.Fill(1, 3 * 400001), Colors: list.Fill(0, 400001)})))
+triParts = sdl.TriangleParts(tri)
+(* Two triangles of three vertices and two edges of four; triangle 1, then edge 1, then triangle 2, then edge 2, six indices each. *)
+isTrianglePartsOrder() = triParts.NV == 14 and triParts.NI == 24 and value.Equal(triParts.Index[1..6], [0, 1, 2, 2, 2, 2]) and value.Equal(triParts.Index[7..12], [6, 7, 8, 6, 8, 9]) and value.Equal(triParts.Index[13..18], [3, 4, 5, 5, 5, 5]) and value.Equal(triParts.Index[19..24], [10, 11, 12, 10, 12, 13])
+isTrianglePartsColors() = triParts.Colors[1] == 1.0 and triParts.Colors[2] == 0.0 and triParts.Colors[14] == 1.0 and triParts.Colors[4 * 12 + 1] == 16.0 / 255.0
+(* An edge from (0, 0) to (10, 0), 1 pixel wide: a strip from -0.5 to 10.5 along it and from -0.5 to 0.5 across. *)
+isTrianglePartsStrip() = value.Equal(triParts.XY[13..20], [-0.5, 0.5, 10.5, 0.5, 10.5, -0.5, -0.5, -0.5])
+defn trianglesHold(c)
+  (** SceneFault answers any triangles, and those it accepts make three vertices a triangle and four an edge, each index among them. *)
+  item = {Kind: "triangles", Xs: c.Xs, Ys: c.Xs, Triangles: c.T, Colors: c.Colors, Lines: c.Lines, After: c.After, LineColors: c.Colors, Width: 1.0}
+  fault = notebook.SceneFault(scene([item]))
+  if value.IsSome(fault)
+    return value.IsText(fault)
+  end
+  p = sdl.TriangleParts(item)
+  p.NV == value.Len(c.T) + 2 * value.Len(c.Lines) and (p.NI == 0 or list.Max(p.Index) < p.NV)
+end
+triangleCases = gen.Of({Xs: gen.List(gen.Float(-10, 10), min = 0, max = 6), T: gen.List(gen.Int(0, 7), min = 0, max = 9), Colors: gen.List(gen.Int(-1, 3), min = 0, max = 4),
+  Lines: gen.List(gen.Int(0, 7), min = 0, max = 4), After: gen.List(gen.Int(0, 4), min = 0, max = 2)})
+isTrianglesFuzz() = test.ForAll(trianglesHold, triangleCases, cases = 400)
+
 (* Tables: a table that a run showed is drawn from its first rows, without a session; its keys move, sort, filter and copy, its rows and the points of
    a marked graph that a session sends are checked before use, and the wheel over it scrolls it. A session's answers are faked as fibers that answer at
    once, as the anim tests do. *)

@@ -1,6 +1,6 @@
 (* The command that draws a graph of std/plot from its scene: {Kind: "graph", X, Y, Width, Height, Visible, Hidden, Items, Font, Fallback}. Its items are those of
    plot.Scene in pixels from the top left of the graph, with their colors as 0xRRGGBB: lines, areas, rectangles, marks, cells and the quads of a
-   surface become triangles, which the Nth shape of a frame keeps in its memory and writes again only when it changes, so that a graph on the screen
+   surface and the triangles of meshes become triangles of SDL, which the Nth shape of a frame keeps in its memory and writes again only when it changes, so that a graph on the screen
    costs a call a shape; a surface turned writes again only the places of its points.
    A shape is made as arrays of numbers, its positions, its colors and its indices, and each goes to C in one c.Write;
    texts are drawn with the font Font at their size, without kerning and without hinting, as std/plot measured them, a character it lacks with the
@@ -14,6 +14,7 @@ use std/dict
 use std/list
 use std/math
 use std/matrix
+use std/text
 use std/value
 
 defn irect(x, y, width, height, window)
@@ -415,6 +416,89 @@ defn meshShaped(item, window)
   next
 end
 
+defn TriangleParts(item)
+  (** What draws the triangles of meshes, as plot.Scene's item "triangles" gives them: three vertices of SDL for each triangle, in its color, and four
+      for each edge, a strip as wide as Width along it, in the color of the edge; and the indices that draw them in the order of the item, each edge
+      after the triangle its After names, so that the nearer faces painted later cover it too. Each shape takes six indices, a triangle its three and
+      then its last one three times, which draw nothing: made by whole arrays, rows of six read one after the other.
+
+        TriangleParts({Xs: [0.0, 10.0, 0.0], Ys: [0.0, 0.0, 10.0], Triangles: [1, 2, 3], Colors: [0xFF0000], Lines: [1, 2], After: [1], LineColors: [0], Width: 1.0}).NI --> 12 *)
+  t = item.Triangles
+  nt = math.Div(value.Len(t), 3)
+  ne = value.Len(item.After)
+  if nt + ne == 0
+    return {XY: [0.0], Colors: [0.0], Index: [0], NV: 0, NI: 0}
+  end
+  xs = item.Xs * 1.0
+  ys = item.Ys * 1.0
+  px = if nt > 0 col.Pick(t, xs) else [] end
+  py = if nt > 0 col.Pick(t, ys) else [] end
+  colors = if nt > 0 matrix.Reshape([1, 3 * nt], matrix.Matmul(matrix.Ones(3, 1), matrix.Reshape([1, nt], item.Colors * 1.0))) else [] end
+  if ne > 0
+    k = 0..ne - 1
+    a = col.Pick(2 * k + 1, item.Lines)
+    b = col.Pick(2 * k + 2, item.Lines)
+    ax = col.Pick(a, xs)
+    ay = col.Pick(a, ys)
+    dx = col.Pick(b, xs) - ax
+    dy = col.Pick(b, ys) - ay
+    size = math.Sqrt(dx * dx + dy * dy)
+    size = size + (size == 0.0) * 1.0
+    (* Half the width across the edge, and as far past each end, so that edges meet without a notch. *)
+    w = item.Width / 2.0
+    ux = dx / size * w
+    uy = dy / size * w
+    corners = (cx, cy) -> matrix.Reshape([1, 4 * ne], matrix.Transpose(matrix.Matmul(matrix.Reshape([ne, 1], cx), matrix.Reshape([1, 4], [1.0, 1.0, 1.0, 1.0])) + matrix.Matmul(matrix.Reshape([ne, 1], cy), matrix.Reshape([1, 4], [1.0, 1.0, -1.0, -1.0]))))
+    (* a - u + n, b + u + n, b + u - n, a - u - n, n = (-uy, ux) across: x as sums of rows, along and across. *)
+    qx = corners(ax - ux, 0.0 - uy) + matrix.Reshape([1, 4 * ne], matrix.Transpose(matrix.Matmul(matrix.Reshape([ne, 1], dx + 2.0 * ux), matrix.Reshape([1, 4], [0.0, 1.0, 1.0, 0.0]))))
+    qy = corners(ay - uy, ux) + matrix.Reshape([1, 4 * ne], matrix.Transpose(matrix.Matmul(matrix.Reshape([ne, 1], dy + 2.0 * uy), matrix.Reshape([1, 4], [0.0, 1.0, 1.0, 0.0]))))
+    px = list.Concat(px, qx)
+    py = list.Concat(py, qy)
+    colors = list.Concat(colors, matrix.Reshape([1, 4 * ne], matrix.Matmul(matrix.Ones(4, 1), matrix.Reshape([1, ne], item.LineColors * 1.0))))
+  end
+  nv = value.Len(px)
+  xy = matrix.Reshape([1, 2 * nv], matrix.Matmul(matrix.Reshape([2, 1], [1.0, 0.0]), matrix.Reshape([1, nv], px)) + matrix.Matmul(matrix.Reshape([2, 1], [0.0, 1.0]), matrix.Reshape([1, nv], py)))
+  red = math.Floor(colors / 65536.0)
+  green = math.Floor((colors - red * 65536.0) / 256.0)
+  blue = colors - red * 65536.0 - green * 256.0
+  rgba = matrix.Reshape([1, 4 * nv], matrix.Matmul(matrix.Reshape([4, 1], [1.0 / 255.0, 0.0, 0.0, 0.0]), matrix.Reshape([1, nv], red)) + matrix.Matmul(matrix.Reshape([4, 1], [0.0, 1.0 / 255.0, 0.0, 0.0]), matrix.Reshape([1, nv], green)) +
+    matrix.Matmul(matrix.Reshape([4, 1], [0.0, 0.0, 1.0 / 255.0, 0.0]), matrix.Reshape([1, nv], blue)) + matrix.Matmul(matrix.Reshape([4, 1], [0.0, 0.0, 0.0, 1.0]), matrix.Ones(1, nv)))
+  (* The shapes in the order they are drawn: triangle k at k, an edge just after the triangle it follows; six indices each, from 0. *)
+  keys = list.Concat((1..nt) * 1.0, item.After * 1.0 + 0.5)
+  shapes = list.Order(keys)
+  firsts = list.Concat(3.0 * (0..nt - 1), 3.0 * nt + 4.0 * (0..ne - 1))
+  steps = list.Concat(list.Fill(0.0, nt), list.Fill(1.0, ne))
+  at = col.Pick(shapes, firsts)
+  kind = col.Pick(shapes, steps)
+  six = matrix.Matmul(matrix.Reshape([value.Len(at), 1], at), matrix.Ones(1, 6)) + matrix.Matmul(matrix.Reshape([value.Len(at), 1], 1.0 - kind), matrix.Reshape([1, 6], [0.0, 1.0, 2.0, 2.0, 2.0, 2.0])) +
+    matrix.Matmul(matrix.Reshape([value.Len(at), 1], kind), matrix.Reshape([1, 6], [0.0, 1.0, 2.0, 0.0, 2.0, 3.0]))
+  (* Indices as integers, through their bytes, as C takes them. *)
+  {XY: xy, Colors: rgba, Index: text.Numbers("i32", text.FromNumbers("i32", matrix.Reshape([1, 6 * value.Len(at)], matrix.Transpose(six)))), NV: nv, NI: 6 * value.Len(at)}
+end
+
+defn trianglesShaped(item, window)
+  (** Draws the triangles of meshes from the memory of the Nth shape of the frame, made again only when the item changed, as each view of a part that
+      turns does: its places, its colors and its order all change with the view. *)
+  next = window
+  next.GeoUsed = dict.GetOr("GeoUsed", 0, window) + 1
+  at = next.GeoUsed
+  blocks = dict.GetOr("GeoBlocks", [], window)
+  if at > value.Len(blocks)
+    blocks = list.Append(missing, blocks)
+  end
+  block = blocks[at]
+  if value.IsMissing(block) or not same(item, block.Item)
+    block = memoryFor(TriangleParts(item), block)
+    block.Item = stampOf(item)
+    blocks[at] = block
+  end
+  next.GeoBlocks = blocks
+  if block.NI > 0
+    checked(next.Sdl.GeometryRaw(next.Renderer, missing, block.XY, 8, block.Colors, block.Stride, block.XY, 8, block.NV, block.Index, block.NI, 4), next)
+  end
+  next
+end
+
 (** What tells that a shape changed: the Id that the scene's owner gives each item, with its color, or else the whole item. *)
 stampOf(item) = if dict.Has("Id", item) "$(item.Id)#$(item.Color)" else item end
 
@@ -532,6 +616,9 @@ defn shaped(item, window)
   end
   if item.Kind == "mesh"
     return meshShaped(item, window)
+  end
+  if item.Kind == "triangles"
+    return trianglesShaped(item, window)
   end
   next = window
   next.GeoUsed = dict.GetOr("GeoUsed", 0, window) + 1
