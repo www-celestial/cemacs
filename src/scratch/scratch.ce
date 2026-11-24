@@ -68,15 +68,24 @@ end
 
 defn Refreshed(words, header)
   (** A kept text with the header of today in place of the one it starts with, when that one is still the header Cemacs wrote, whatever its day and
-      version; any other text as it is.
+      version; any other text as it is. Only the lines of a header are read: a long kept text costs no more.
 
         Refreshed("$(Header(date.Date(2026, 6, 1), "1.2.0"))\nx = 1", "H") --> "H\nx = 1" *)
-  lines = str.Split("\n", words)
-  n = value.Len(headRest())
-  if value.Len(lines) <= n or not str.StartsWith(headStart(), lines[1]) or not value.Equal(list.Take(n, list.Skip(1, lines)), headRest())
+  if not str.StartsWith(headStart(), words)
     return words
   end
-  str.Join("\n", list.Prepend(header, list.Skip(n + 1, lines)))
+  n = value.Len(headRest())
+  at = 0
+  for k in 1..n + 1
+    at = str.ByteFind("\n", at + 1, words)
+    if value.IsMissing(at)
+      return words
+    end
+  end
+  if not value.Equal(list.Skip(1, str.Split("\n", str.ByteSlice(1, at - 1, words))), headRest())
+    return words
+  end
+  "$header$(str.ByteSlice(at, str.ByteLength(words), words))"
 end
 
 defn Lines()
@@ -166,9 +175,11 @@ end
 defn Buffer(path, words, now)
   (** *scratch* with the kept text, its header of today, or a new one on the day of now, seconds since 1970 as sys.Now gives them, the cursor at its
       end; kept at path, or kept nowhere for a path that is missing. *)
-  day = date.Local(now)
-  header = Header(day, cesia.Version())
-  b = text.Of(if str.Trim(words) == "" Template(day, cesia.Version()) else Refreshed(words, header) end, missing)
+  (* The day is read only for a header to write: the clock of the machine takes a while the first time. *)
+  fresh = str.Trim(words) == ""
+  ours = not fresh and str.StartsWith(headStart(), words)
+  day = if fresh or ours date.Local(now) else missing end
+  b = text.Of(if fresh Template(day, cesia.Version()) else if ours Refreshed(words, Header(day, cesia.Version())) else words end, missing)
   b.Name = Name()
   b.Kept = path
   b.KeptAt = b.Version
