@@ -10,6 +10,7 @@ mainCode = "use src/shop\nuse std/io\n\nprices = [250, 1000, 99]\nio.Print(\"Tot
 sunCells = "use std/cells\nuse std/plot\n\n(* %% Sun *)\naz = [116.59, 117.87, 128.27, 140.08, 153.62, 168.74, 184.7, 200.29, 214.52, 227.01, 237.93, 243.29]\nel = [-0.833, 0.48, 9.99, 18.14, 24.35, 28.02, 28.66, 26.19, 20.94, 13.51, 4.49, -0.833]\nplot.Of([plot.Line(az, el), plot.Points(az, el, size = 4)], x = \"azimuth\", y = \"elevation\", title = \"Sun path\", size = [540, 300])\n"
 replCells = "use std/io\nuse std/list\n\n(* %% Sun *)\nel = [-0.833, 0.48, 9.99, 18.14, 24.35, 28.02, 28.66, 26.19, 20.94, 13.51, 4.49, -0.833]\n\n(* %% Noon *)\nhighest = list.Max(el)\nio.Print(\"the sun at noon\")\nlist.Max(el)\n"
 dayCells = "use std/cells\nuse std/frame\nuse std/plot\n\n(* %% Day *)\nhours = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, 18.14, 24.35, 28.02, 28.66]})\ncells.Show(hours)\nplot.Points(frame.Column(\"hour\", hours), frame.Column(\"elevation\", hours))\n"
+stationCells = "use std/cells\n\n(* %% Stations *)\nstations = [\n  {name: \"Mont Aigoual, observatoire\", altitude: 1567, temperature: 4.5},\n  {name: \"Brest-Guipavas\", altitude: 94, temperature: 11.25},\n  {name: \"Lyon-Bron\", altitude: 197, temperature: missing},\n  {name: \"Marseille-Marignane\", altitude: 9, temperature: 15.75},\n  {name: \"Strasbourg-Entzheim\", altitude: 150, temperature: 10.5}\n]\nstations\n"
 lorenzCells = "use std/cells\nuse std/ode\nuse std/result\n\n(* %% Parameters *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\n\n(* %% Lorenz *)\nlorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]\ns = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))\n"
 inputCells = "use std/cells\n\n(* %% Place and day *)\nyear  = cells.Choice(2026, [2025, 2026, 2027])\nzone  = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])\nday   = cells.Date(\"2026-11-23\")\nplace = cells.Field(\"40.76, -73.984\")\nhigh  = cells.Field(50)\nrho   = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nbold  = cells.Check(false, label = \"Bold line\")\n"
 waveCells = "use std/math\nuse std/num\nuse std/plot\n\n(* %% Wave *)\nx = num.Linspace(0.0, 2.0 * math.Pi, 200)\nts = num.Linspace(0.0, 2.0 * math.Pi, 120)\nplot.Frames([plot.Line(x, math.Sin(x - t)) for t in ts], fps = 30)\n"
@@ -44,6 +45,10 @@ defn Book()
       Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Mouse: "wheel", At: {Graph: 2, X: 150.0, Y: 15.0}, Amount: 2}, {Keys: "right right"}]},
     {Name: "cells-table", Size: [660, 880], Files: [{Path: "day.ce", Text: dayCells}], Open: ["day.ce"],
       Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Keys: "right s s down"}]},
+    {Name: "cells-table-edit", Size: [660, 520], Files: [{Path: "day.ce", Text: dayCells}], Open: ["day.ce"],
+      Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Keys: "down right enter backspace backspace backspace backspace"}, {Type: "10.5"}]},
+    {Name: "cells-table-totals", Size: [660, 600], Files: [{Path: "stations.ce", Text: stationCells}], Open: ["stations.ce"],
+      Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Keys: "t"}, {Type: "<<<<<<<<"}]},
     {Name: "cells-sliders", Size: [660, 420], Files: [{Path: "lorenz.ce", Text: lorenzCells}], Open: ["lorenz.ce"],
       Steps: [{Keys: "C-c e a"}, {Keys: "C-s"}, {Type: "Slider"}, {Keys: "enter C-c e f"}, {Keys: "right right right right"}]},
     {Name: "cells-repl", Size: [660, 480], Files: [{Path: "sun.ce", Text: replCells}], Open: ["sun.ce"],

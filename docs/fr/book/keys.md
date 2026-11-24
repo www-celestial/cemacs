@@ -145,6 +145,29 @@ ce qu'elle fait. [Édition](editing.md#la-completion) dit comment.
 table(emacs.CompleteKeys())
 ```
 
+## Une table des cells
+
+Pendant qu'une table sous une cell a les touches, après `C-c e f`, Tab ou un clic, ces touches passent devant les touches
+globales, comme la bande d'aide les montre ; toute autre touche quitte la table et fait ce qu'elle fait.
+[Cells](cells.md#tables) dit ce que fait chacune.
+
+```cesia output=md fold=code
+defn hints(rows)
+  io.Print("| Keys | What they do |")
+  io.Print("|---|---|")
+  for h in rows
+    io.Print("| $(str.Join(" ", ["`$k`" for k in str.Split(" ", h.Key)])) | $(h.Name) |")
+  end
+end
+hints(notebook.TableHints())
+```
+
+Pendant qu'une valeur de la table est modifiée, après `Enter` ou `e`, ce qui est tapé y entre, et ces touches marchent :
+
+```cesia output=md fold=code
+hints(notebook.EditHints())
+```
+
 ## La souris
 
 La souris a aussi ses keymaps, selon l'action de son événement : `down` (appui), `move` (déplacement), `up` (relâchement) et

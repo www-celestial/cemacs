@@ -140,6 +140,29 @@ a letter typed makes the list again for the longer word, and any other key close
 table(emacs.CompleteKeys())
 ```
 
+## A table of the cells
+
+While a table under a cell has the keys, after `C-c e f`, Tab or a click, these keys come over the global ones, as the
+band of hints shows them; any other key leaves the table and does what it does. [Cells](cells.md#tables) tells what each
+one does.
+
+```cesia output=md fold=code
+defn hints(rows)
+  io.Print("| Keys | What they do |")
+  io.Print("|---|---|")
+  for h in rows
+    io.Print("| $(str.Join(" ", ["`$k`" for k in str.Split(" ", h.Key)])) | $(h.Name) |")
+  end
+end
+hints(notebook.TableHints())
+```
+
+While a value of the table is edited, after `Enter` or `e`, what is typed goes in it, and these keys work:
+
+```cesia output=md fold=code
+hints(notebook.EditHints())
+```
+
 ## The mouse
 
 The mouse has its keymaps too, by the action of its event: `down`, `move`, `up` and `wheel`. Their commands take the event

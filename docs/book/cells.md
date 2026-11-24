@@ -186,6 +186,10 @@ reverse, ink and paper swapped.
 | `Home` `End` | the first row, the last |
 | `s` | sorts by the column of the cursor, increasing; again, decreasing; again, as given. A click on a header does the same |
 | `/` | a filter: the words typed keep the rows that hold each of them, in any column, in any order, its ASCII letters in either case; it applies as you type, Enter keeps it, Escape takes it back |
+| `Enter` `e` | edits the value of the cell of the cursor, in the file, when the table is written there: see [A value edited in the file](#a-value-edited-in-the-file). A double click on a cell does the same |
+| `<` `>` | makes the column of the cursor a character narrower, wider: see [The width of a column](#the-width-of-a-column) |
+| `=` | makes the column of the cursor as wide as the values it shows |
+| `t` | shows the totals row, the sums; again, the means, the least values, the greatest, the counts, then none: see [The totals row](#the-totals-row) |
 | `M-w` | copies the text of the cell of the cursor |
 | `C-u M-w` | copies the row of the cursor, its cells apart by tabs |
 | `C-c e c` | copies the whole table as CSV, as std/csv writes it: its header, then its rows as it shows them, sorted and filtered, at most 100,000 |
@@ -195,7 +199,71 @@ reverse, ink and paper swapped.
 The sort and the filter happen in the session, which keeps the order for the next screen: numbers sort as numbers, NaN
 and missing last both ways, and rows of equal values keep their order. A row chosen stays chosen when the table is
 sorted again or filtered, at its new place, as long as the filter keeps it. While no table has the keys, every key does
-what it did: `s` and `/` are typed in the buffer, `M-w` copies the region.
+what it did: `s`, `/`, `e`, `<`, `>`, `=` and `t` are typed in the buffer, Enter starts a new line, `M-w` copies the region.
+
+### A value edited in the file
+
+The rule of the inputs holds for tables: the file is the truth. A value of a table is edited where the file writes it,
+never in the session alone, so that the next run, `cesia run` and the page show it too. A table is edited when the file
+writes it as values, as [cells.Tables](https://www-celestial.github.io/cesia-lang/cells.html#tables-written-in-the-file)
+reads them: a list of maps, `[{name: "Ana", age: 31}, {name: "Bo", age: 20}]`, or `frame.Of` of lists, each value a
+number, a text, `true`, `false` or `missing` written there, in the cell of the table or as the value of a name that its
+cell reads, and the table shows those values, row for row:
+
+```cesia norun
+use std/cells
+use std/frame
+
+(* %% Day *)
+hours = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, 18.14, 24.35, 28.02, 28.66]})
+cells.Show(hours)
+```
+
+`Enter` or `e` on the cell of `9.99`, or a double click on it, opens it: its value as the file writes it, in a box of the
+accent color over the cell, with a cursor; the band of hints shows `Enter` and `Escape`. Typing goes in at the cursor,
+`←` `→` `Home` `End` move it, `Backspace` and `Delete` erase. `Escape` or `C-g` takes it back, and the file stays as it
+was. `Enter` writes it: `10.5` takes the place of `9.99` in the file, and only those characters move, one step of undo,
+`C-/` giving `9.99` back; then the cell runs again, with the cells that read `hours`, as after `C-c e e`, its last result in
+sight until the new one comes. The new table keeps the sort, the filter, the cursor, the widths and the totals row of the
+one edited, and the keys. A sorted or filtered table is edited at its row as it shows it: a row keeps its place in the
+value, and that place is the place of its value in the file.
+
+The kind of the column says what it takes, as [cells.Edit](https://www-celestial.github.io/cesia-lang/cells.html) checks:
+a column of whole numbers a whole number, a column of numbers any finite number, written as a Float, `12` as `12.0`, so
+that the column stays one of Floats, a column of texts any text, written in quotes with its `"`, `\` and `$` escaped, a
+column of `true` and `false` one of those. Words of another kind are refused, with what the column takes, as
+`elevation takes a number: ten is none.`, and the box stays open to change them. A value that didn't change writes
+nothing.
+
+A table that comes from code, as `frame.Of({hour: 7..16})`, a frame read from a CSV file or `frame.SortBy("x", hours)`
+when its order differs, has no value written to edit: `Enter` says so, and changes nothing; its values change where
+they come from. While its cell runs, a table is edited once it shows what the file writes.
+
+![The cell Day: in its table, the value of elevation at 9 being edited, 10.5 typed in a box of the accent colour with its cursor, and under the table the line edit: Enter writes it in the file, Escape takes it back; the band of hints shows Enter and Escape.](images/cells-table-edit.png)
+
+### The width of a column
+
+A column is as wide as its widest value, at most 40 characters, or its header. Its width can be given by hand, from 1 to
+40 characters: `<` and `>` make the column of the cursor a character narrower or wider, and `=` makes it as wide as the
+values it shows on the screen, its header and its total. With the mouse, a press within 3 pixels of the border on the
+right of a header, and a drag, moves that border; a double click there makes the column as wide as its values, as `=`.
+A column narrower than its values cuts each of them, and its header, the last character `…`; a number that fits stays on
+the right, its decimal point under the others' when there is room for them. The width is the editor's, a view of the
+table: it is never written in the file, and stays while the table shows, after an edit too.
+
+### The totals row
+
+`t` shows a row under the rows, after a rule in ink: the sum of each column of numbers. Again, `t` shows their means,
+then their least values, their greatest, their counts, then no row; a column of texts, or of `true` and `false`, shows
+how many values it holds, as `5 values`. The totals count every row that the filter keeps, not only those on the
+screen: [cells.Totals](https://www-celestial.github.io/cesia-lang/cells.html#totals) computes them in the session, over
+the whole columns of the value, so a frame of a million rows never crosses, and the line under the table says what they
+count, `Σ of 1000000 rows`. Missing values, `missing` and NaN, are skipped, and counted: the line says so, `Σ of 5 rows,
+1 missing in temperature skipped`. A sum is written with the decimals of its column, a mean with two more, the least and
+the greatest as the column writes them. The row is asked again when the filter changes, and while it is asked it shows
+`…`.
+
+![A list of maps of five weather stations: its column name narrowed by hand, each name cut with …, and the totals row under the rows: 5 values, the sums of altitude and temperature; under the table, Σ of 5 rows, 1 missing in temperature skipped.](images/cells-table-totals.png)
 
 ### A row and its point
 
@@ -524,7 +592,13 @@ values, and asks them no more. The crosses and the boxes are drawn only inside t
 written by Cemacs, never a text of the session. The name of a graph's SVG comes from the file and the title of its cell,
 never from the session, and holds no `/`: it stays beside the file. The SVG is written only when it is a text that starts
 with `<svg`, of at most 64,000,000 bytes. The words of a filter go to the session as a text, which finds
-them as they are and never reads them as a pattern or as code. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
+them as they are and never reads them as a pattern or as code. The totals of a table are input too: a count of rows of
+at most the rows of the value, and for each of its columns two counts and totals that are numbers or missing; totals that
+are not are refused, and the line under the table says why. An edit of a value writes only the text that
+[cells.Edit](https://www-celestial.github.io/cesia-lang/cells.html) makes, over the columns where the file writes the old
+value, read again from the text of the buffer at that moment, never from the session: a text in quotes, its `"`, `\`,
+`$` and ends of line escaped, so that nothing typed can end the text, start another line or run as code; a number as
+Cesia writes it. The check reads each number once: 16 ms for 100,000 marks, 25 ms for a heatmap of
 a million cells. The memory the shapes take is written by `c.Write`, which checks its whole length against the block
 before it writes.
 
@@ -536,6 +610,14 @@ most, under the 16.7 ms of one refresh at 60 Hz (three runs, the median of their
 1,000 rows appears in 2.62 ms, from `C-c e e` to its table drawn, against 2.74 when it showed the frame as text, the
 medians of 21 runs taking turns: its table is drawn at the tick its result lands, and the names of `*variables*` come at
 a later tick. Cemacs reaches its first frame in 30.84 ms, as before tables (30.86).
+
+On a frame of a million rows and three columns, integers, floats and texts, `t` takes 0.26 ms from the key to the block
+of the table drawn again, and its totals row is drawn 66 ms after the key, the session counting and summing its columns
+over every row; `t` again, the means, 0.53 ms; `>` 0.33 ms; `Enter`, which
+reads the cell for a table written in the file and says it holds none, 0.27 ms (medians of 21). An edit of the table of
+12 rows of the day, from `Enter` that writes it to its new table drawn, its cell run again, takes 4.4 ms. `Enter` reads
+the text of the cells for the table written there, by bytes: 0.15 ms for 12 rows of three values, 12 ms for 1,000. Cemacs reaches
+its first frame in 31.34 ms, as before (31.31).
 
 The values under the mouse: on a graph of 10,000 points, a move of the mouse to another point takes 0.18 ms through the
 editor, the median of 21 moves, 0.12 ms of it in the graph's own handler, with no question to the session; the view of the

@@ -94,6 +94,17 @@ what a key can lead to, so no key has to be learnt before the start.
 - A row chosen in a table rings its point on each line, points or texts of the graphs of its cell that have as many
   points, with a box of its values, and a click on a point of such a graph chooses its row.
 - The wheel over a table moves its rows first, and the screen once the table is at its first or its last row.
+- A value of a table that the file writes, a list of maps or `frame.Of` of lists, is edited in the file: `Enter`, `e` or a
+  double click opens it at the cursor, `Enter` writes what is typed in place of the old value, one step of undo, checked
+  for the kind of its column by `cells.Edit` of Cesia 1.3, and its cell runs again, the table keeping its sort, its filter,
+  its cursor and its widths; `Escape` takes it back. A table that comes from code says so and changes nothing.
+- A column's width is given by hand: `<` and `>` a character narrower or wider, `=` as wide as the values shown, a drag of
+  the border of its header, a double click there to fit; a column narrower than its values cuts them with `…`. The width
+  is the editor's, never written in the file.
+- `t` shows a totals row under a table: the sums of its columns of numbers, then their means, least values, greatest and
+  counts, a column of texts the count of its values; computed in the session by `cells.Totals` of Cesia 1.3 over every
+  row the filter keeps, a million rows too, the missing values skipped and counted, as the line under the table says.
+- A press of the mouse tells a block its clicks, 2 for the second of a double click, as the system counts them.
 - A 2D graph under a cell shows the values of the point nearest the mouse in a small box beside a thin cross, as std/plot
   writes the box of a mark, its points asked once of the session of Cesia 1.3 and kept in buckets of 32 by 32 pixels; a
   click pins them, several at once, and gives the graph the keys: the arrows go from point to point and from layer to

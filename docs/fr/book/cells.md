@@ -196,6 +196,10 @@ choisie est en inverse, l'encre et le papier échangés.
 | `Home` `End` | la première rangée, la dernière |
 | `s` | trie par la colonne du curseur, en croissant ; de nouveau, en décroissant ; de nouveau, comme elle est donnée. Un clic sur un en-tête fait de même |
 | `/` | un filtre : les mots tapés gardent les rangées qui contiennent chacun d'eux, dans n'importe quelle colonne, dans n'importe quel ordre, ses lettres ASCII en majuscule comme en minuscule ; il s'applique pendant la frappe, Enter le garde, Escape le retire |
+| `Enter` `e` | modifie la valeur de la case du curseur, dans le fichier, quand la table y est écrite : voir [Une valeur modifiée dans le fichier](#une-valeur-modifiée-dans-le-fichier). Un double clic sur une case fait de même |
+| `<` `>` | rend la colonne du curseur plus étroite, plus large, d'un caractère : voir [La largeur d'une colonne](#la-largeur-dune-colonne) |
+| `=` | rend la colonne du curseur aussi large que les valeurs qu'elle montre |
+| `t` | montre la rangée des totaux, les sommes ; de nouveau, les moyennes, les plus petites valeurs, les plus grandes, les comptes, puis rien : voir [La rangée des totaux](#la-rangée-des-totaux) |
 | `M-w` | copie le texte de la case du curseur |
 | `C-u M-w` | copie la rangée du curseur, ses cases séparées par des tabulations |
 | `C-c e c` | copie toute la table en CSV (des valeurs séparées par des virgules), comme std/csv l'écrit : son en-tête, puis ses rangées comme elle les montre, triées et filtrées, 100 000 au plus |
@@ -206,7 +210,78 @@ Le tri et le filtre se font dans la session, qui garde l'ordre pour l'écran sui
 nombres, NaN (*not a number*, la valeur d'un calcul qui n'a pas de résultat) et les valeurs manquantes à la fin dans les
 deux sens, et les rangées de valeurs égales gardent leur ordre. Une rangée choisie reste choisie quand la table est triée
 de nouveau ou filtrée, à sa nouvelle place, tant que le filtre la garde. Tant qu'aucune table n'a les touches, chaque
-touche fait ce qu'elle faisait : `s` et `/` s'écrivent dans le buffer, `M-w` copie la région.
+touche fait ce qu'elle faisait : `s`, `/`, `e`, `<`, `>`, `=` et `t` s'écrivent dans le buffer, Enter commence une
+nouvelle ligne, `M-w` copie la région.
+
+### Une valeur modifiée dans le fichier
+
+La règle des inputs (des champs du formulaire) vaut pour les tables : le fichier dit la vérité. Une valeur d'une table se
+modifie là où le fichier l'écrit, jamais dans la session seule, pour que la prochaine exécution, `cesia run` et la page la
+montrent aussi. Une table se modifie quand le fichier l'écrit en valeurs, comme
+[cells.Tables](https://www-celestial.github.io/cesia-lang/cells.html#tables-written-in-the-file) les lit : une
+liste de maps (de dictionnaires), `[{name: "Ana", age: 31}, {name: "Bo", age: 20}]`, ou `frame.Of` de listes, chaque
+valeur un nombre, un texte, `true`, `false` ou `missing` écrit là, dans la cell de la table ou comme valeur d'un nom que sa
+cell lit, et que la table montre ces valeurs, rangée pour rangée :
+
+```cesia norun
+use std/cells
+use std/frame
+
+(* %% Day *)
+hours = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, 18.14, 24.35, 28.02, 28.66]})
+cells.Show(hours)
+```
+
+`Enter` ou `e` sur la case de `9.99`, ou un double clic dessus, l'ouvre : sa valeur telle que le fichier l'écrit, dans un
+cadre de la couleur d'accent par-dessus la case, avec un curseur ; la bande d'aide montre `Enter` et `Escape`. La frappe
+entre au curseur, `←` `→` `Home` `End` le déplacent, `Backspace` et `Delete` effacent. `Escape` ou `C-g` la retire, et le
+fichier reste comme il était. `Enter` l'écrit : `10.5` prend la place de `9.99` dans le fichier, et seuls ces caractères
+bougent, une seule étape d'annulation, `C-/` redonnant `9.99` ; puis la cell s'exécute de nouveau, avec les cells qui
+lisent `hours`, comme après `C-c e e`, son dernier résultat en vue jusqu'à ce que le nouveau arrive. La nouvelle table
+garde le tri, le filtre, le curseur, les largeurs et la rangée des totaux de celle qui a été modifiée, et les touches. Une
+table triée ou filtrée se modifie à sa rangée telle qu'elle la montre : une rangée garde sa place dans la valeur, et cette
+place est celle de sa valeur dans le fichier.
+
+Le genre de la colonne dit ce qu'elle prend, comme le vérifie
+[cells.Edit](https://www-celestial.github.io/cesia-lang/cells.html) : une colonne de nombres entiers un nombre entier,
+une colonne de nombres n'importe quel nombre fini, écrit en Float (un nombre à virgule), `12` comme `12.0`, pour que la
+colonne reste une colonne de Floats, une colonne de textes n'importe quel texte, écrit entre guillemets avec ses `"`, `\`
+et `$` échappés, une colonne de `true` et `false` l'un des deux. Des mots d'un autre genre sont refusés, avec ce que la
+colonne prend, comme `elevation takes a number: ten is none.`, et le cadre reste ouvert pour les changer. Une valeur qui
+n'a pas changé n'écrit rien.
+
+Une table qui vient du code, comme `frame.Of({hour: 7..16})`, une frame lue dans un fichier CSV ou
+`frame.SortBy("x", hours)` quand son ordre diffère, n'a pas de valeur écrite à modifier : `Enter` le dit, et ne change
+rien ; ses valeurs changent là d'où elles viennent. Pendant que sa cell s'exécute, une table se modifie une fois qu'elle
+montre ce que le fichier écrit.
+
+![La cell Day : dans sa table, la valeur d'elevation à 9 en train d'être modifiée, 10.5 tapé dans un cadre de la couleur d'accent avec son curseur, et sous la table la ligne edit: Enter writes it in the file, Escape takes it back ; la bande d'aide montre Enter et Escape.](../../book/images/cells-table-edit.png)
+
+### La largeur d'une colonne
+
+Une colonne est aussi large que sa plus large valeur, 40 caractères au plus, ou que son en-tête. Sa largeur peut se donner
+à la main, de 1 à 40 caractères : `<` et `>` rendent la colonne du curseur plus étroite ou plus large d'un caractère, et
+`=` la rend aussi large que les valeurs qu'elle montre à l'écran, son en-tête et son total. À la souris, un appui à 3
+pixels près de la bordure à droite d'un en-tête, puis un glissé, déplace cette bordure ; un double clic là rend la colonne
+aussi large que ses valeurs, comme `=`. Une colonne plus étroite que ses valeurs coupe chacune d'elles, et son en-tête, le
+dernier caractère `…` ; un nombre qui tient reste à droite, son point décimal sous ceux des autres quand il y a la place
+pour tous. La largeur est celle de l'éditeur, une vue de la table : elle ne s'écrit jamais dans le fichier, et reste tant
+que la table se voit, après une modification aussi.
+
+### La rangée des totaux
+
+`t` montre une rangée sous les rangées, après un trait à l'encre : la somme de chaque colonne de nombres. De nouveau, `t`
+montre leurs moyennes, puis leurs plus petites valeurs, leurs plus grandes, leurs comptes, puis plus de rangée ; une
+colonne de textes, ou de `true` et `false`, montre combien de valeurs elle a, comme `5 values`. Les totaux comptent
+chaque rangée que le filtre garde, pas seulement celles de l'écran :
+[cells.Totals](https://www-celestial.github.io/cesia-lang/cells.html#totals) les calcule dans la session, sur les
+colonnes entières de la valeur, si bien qu'une frame d'un million de rangées ne traverse jamais, et la ligne sous la table
+dit ce qu'ils comptent, `Σ of 1000000 rows`. Les valeurs manquantes, `missing` et NaN, sont sautées, et comptées : la
+ligne le dit, `Σ of 5 rows, 1 missing in temperature skipped`. Une somme s'écrit avec les décimales de sa colonne, une
+moyenne avec deux de plus, la plus petite et la plus grande valeur comme la colonne les écrit. La rangée est redemandée
+quand le filtre change, et pendant qu'elle est demandée elle montre `…`.
+
+![Une liste de maps de cinq stations météo : sa colonne name rétrécie à la main, chaque nom coupé avec …, et la rangée des totaux sous les rangées : 5 values, les sommes d'altitude et de temperature ; sous la table, Σ of 5 rows, 1 missing in temperature skipped.](../../book/images/cells-table-totals.png)
 
 ### Une rangée et son point
 
@@ -567,7 +642,13 @@ redemande pas. Les croix et les cases ne sont dessinées que dans le tracé. `M-
 Cemacs, jamais un texte de la session. Le nom du SVG d'un graphe vient du fichier et du titre de sa cell, jamais de la
 session, et ne contient pas de `/` : il reste à côté du fichier. Le SVG n'est écrit que si c'est un texte qui commence par
 `<svg`, de 64 000 000 d'octets au plus. Les mots d'un filtre vont à la session comme un texte, qu'elle
-cherche tel quel et ne lit jamais comme un motif ni comme du code. La
+cherche tel quel et ne lit jamais comme un motif ni comme du code. Les totaux d'une table sont une entrée aussi : un
+compte de rangées d'au plus les rangées de la valeur, et pour chacune de ses colonnes deux comptes et des totaux qui sont
+des nombres ou manquent ; des totaux qui ne le sont pas sont refusés, et la ligne sous la table dit pourquoi. La
+modification d'une valeur n'écrit que le texte que fait [cells.Edit](https://www-celestial.github.io/cesia-lang/cells.html),
+sur les colonnes où le fichier écrit l'ancienne valeur, relues dans le texte du buffer à ce moment-là, jamais dans la
+session : un texte entre guillemets, ses `"`, `\`, `$` et fins de ligne échappés, pour que rien de tapé ne puisse finir le
+texte, commencer une autre ligne ou s'exécuter comme du code ; un nombre comme Cesia l'écrit. La
 vérification lit chaque nombre une fois : 16 ms pour 100 000 marques, 25 ms pour une heatmap (une carte de chaleur, une grille de cases
 colorées selon leur valeur) d'un million de cases. La mémoire que prennent les formes est écrite par `c.Write`, qui vérifie
 sa longueur entière contre le bloc avant d'écrire.
@@ -581,6 +662,15 @@ médianes). Une cell qui montre une frame de 1 000 rangées apparaît en 2,62 ms
 2,74 quand elle montrait la frame comme un texte, les médianes de 21 lancements à tour de rôle : sa table est dessinée au
 tick (le pas de la boucle de l'éditeur) où son résultat arrive, et les noms de `*variables*` viennent à un tick suivant.
 Cemacs atteint sa première frame en 30,84 ms, comme avant les tables (30,86).
+
+Sur une frame d'un million de rangées et trois colonnes, d'entiers, de floats et de textes, `t` prend 0,26 ms de la
+touche au bloc de la table dessiné de nouveau, et sa rangée des totaux est dessinée 66 ms après la touche, la session
+comptant et sommant ses colonnes sur toutes les rangées ; `t` de nouveau, les moyennes,
+0,53 ms ; `>` 0,33 ms ; `Enter`, qui lit la cell pour y chercher une table écrite dans le fichier et dit qu'elle n'en a
+pas, 0,27 ms (médianes de 21). Une modification de la table de 12 rangées du jour, de l'`Enter` qui l'écrit à sa nouvelle
+table dessinée, sa cell exécutée de nouveau, prend 4,4 ms. `Enter` lit le texte des cells pour y trouver la table
+écrite, par octets : 0,15 ms pour 12 rangées de trois valeurs, 12 ms pour 1 000. Cemacs atteint sa première frame en 31,34 ms, comme avant
+(31,31).
 
 Les valeurs sous la souris : sur un graphe de 10 000 points, un mouvement de la souris vers un autre point prend 0,18 ms à
 travers l'éditeur, la médiane de 21 mouvements, dont 0,12 ms dans le handler (la fonction qui le traite) du graphe lui-même,
