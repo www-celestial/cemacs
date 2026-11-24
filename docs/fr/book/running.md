@@ -145,10 +145,9 @@ sur la prompt line, et le `C-c e r` suivant en démarre une nouvelle, ce que dit
 Dans un fichier de cells, `C-c e r` suit la règle de `*repl*` : il lui faut la session que démarre `C-c e e`, et il refuse
 une définition d'un nom que définit une cell, avec le titre de cette cell, comme le dit [Cells](cells.md#repl).
 
-Une ligne qui donne à un nom une nouvelle valeur tirée de l'ancienne, comme `x = x + 1` ou `xs[1] = 5`, ne trouve pas
-d'ancienne valeur : avant que du code tourne, la session oublie les noms qu'il définit, comme elle le doit pour une cell,
-pour qu'une cell relancée ne lise jamais ce qu'elle a laissé. Exécutez avec elle la ligne qui a donné la première valeur,
-les deux sélectionnées, ou gardez une telle boucle dans une fonction.
+Une ligne qui donne à un nom une nouvelle valeur tirée de l'ancienne, comme `x = x + 1` ou `xs[1] = 5`, lit l'ancienne,
+comme dans un terminal de Python, de R ou de Julia, et une ligne qui échoue laisse au nom la valeur qu'il avait quand
+l'erreur est venue.
 
 ## Les tests
 

@@ -44,7 +44,8 @@ what a key can lead to, so no key has to be learnt before the start.
   with no cell gets its session at its first `C-c e r`, its `use` lines run first, with the permissions of its task of
   `cesia.toml`, `*scratch*` with none; code and cells wait in one queue a session; `C-c e s` stops them from `*repl*` too, and
   a buffer that closes ends its session. On a blank line, `C-c e r` opens `*repl*` as before, in the pane that shows it
-  already if one does.
+  already if one does. A line that gives a name a new value from its old one, as `x = x + 1` or `xs[1] = 5`, reads the old
+  one, as in a terminal of Python, R or Julia, in `*repl*` too.
 - `M-;` makes the line, or the selected lines, a comment of Cesia, `(* … *)`, or takes it away, in one step of undo.
 - Completing a name of std/ after its module, as `io.Print`, writes the `use` it needs at the top, `use std/io`, in the same
   step of undo.

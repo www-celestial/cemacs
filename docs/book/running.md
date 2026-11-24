@@ -131,9 +131,8 @@ session that ends, as when its process is killed, says so on the prompt line, an
 In a file of cells, `C-c e r` follows the rule of `*repl*`: it needs the session that `C-c e e` starts, and refuses a
 definition of a name that a cell defines, with the title of that cell, as [Cells](cells.md#repl) tells.
 
-A line that gives a name a new value from its old one, as `x = x + 1` or `xs[1] = 5`, finds no old value: before code runs,
-the session forgets the names it defines, as it must for a cell, so that a cell run again never reads what it left. Run the
-line that gave the first value with it, the two selected, or keep such a loop inside a function.
+A line that gives a name a new value from its old one, as `x = x + 1` or `xs[1] = 5`, reads the old one, as in a terminal of
+Python, R or Julia, and a line that fails leaves the name with the value it had when the error came.
 
 ## Tests
 

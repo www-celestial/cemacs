@@ -1,7 +1,7 @@
 (** Checks of C-c e r, which runs code of a buffer of Cesia in *repl*, against real sessions of std/cells, on files in a new folder under /tmp and on a
     *scratch* kept there: a line, a block, a selection, an empty line, the cursor after each, the names kept from one run to the next, the use lines at
-    the top run first, the queue, a stop from *repl*, a session that ends and the next that starts, no permission in *scratch*, a file not saved, a file
-    of cells and its rule, and the session that ends with its buffer. It is a script, not a test file: it needs permissions. Run it from the root of
+    the top run first, the queue, a stop from *repl*, a session that ends and the next that starts, no permission in *scratch*, x = x + 1 reading the x
+    before, a file not saved, a file of cells and its rule, and the session that ends with its buffer. It is a script, not a test file: it needs permissions. Run it from the root of
     cemacs with cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/repl-check.ce, CESIA the real path of the cesia that
     runs it. It prints ok at the end and stops at the first failure. *)
 use core/commands
@@ -169,6 +169,11 @@ typedIn = settled(notebook.RunInRepl(typedIn))
 typedIn.Buffers[1] = text.InsertWords("\nx * 14", text.ToFileEnd(typedIn.Buffers[1]))
 typedIn = settled(notebook.RunInRepl(typedIn))
 check(str.EndsWith("> x = 3\n> x * 14\n42\n> ", replAt(kept, typedIn)), "x = 3 then x * 14 gives 42: $(replAt(kept, typedIn))")
+typedIn.Buffers[1] = text.InsertWords("\nx = x + 1", text.ToFileEnd(typedIn.Buffers[1]))
+typedIn = settled(notebook.RunInRepl(typedIn))
+typedIn.Buffers[1] = text.InsertWords("\nx * 10", text.ToFileEnd(typedIn.Buffers[1]))
+typedIn = settled(notebook.RunInRepl(typedIn))
+check(str.EndsWith("> x = x + 1\n> x * 10\n40\n> ", replAt(kept, typedIn)), "x = x + 1 reads the x before: $(replAt(kept, typedIn))")
 denied = typedIn
 denied.Buffers[1] = text.InsertWords("\nuse std/sys\nsys.Read(\"$path\")", text.ToFileEnd(typedIn.Buffers[1]))
 denied = settled(notebook.RunInRepl(at(rope.LineCount(denied.Buffers[1].Rope) - 1, 1, denied)))
