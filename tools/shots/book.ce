@@ -1,0 +1,65 @@
+(** The shots of the book of Cemacs, in the order of its chapters: see tools/shots.ce. Each is at most 660 pixels wide, the width of a page of the site,
+    so that the site shows it at its own size. *)
+
+(* A small project that several shots open: a shop with its prices and their test. *)
+toml = "[project]\nname = \"shop\"\ncesia = \"1.3\"\nsrc = [\"src\"]\n"
+shopCode = "(** The prices of a shop. *)\nuse std/list\nuse std/math\n\n(** The total of prices, in cents. *)\nTotal(prices) = list.Reduce((a, b) -> a + b, 0, prices)\n\n(** A price with 20% of tax, rounded to the cent. *)\nWithTax(price) = math.Round(price * 1.2)\n"
+shopTest = "use src/shop\n\nisTotal() = shop.Total([250, 1000]) == 1250\nisTax() = shop.WithTax(1000) == 1200\n"
+mainCode = "use src/shop\nuse std/io\n\nprices = [250, 1000, 99]\nio.Print(\"Total: $$(shop.Total(prices)) cents\")\nfor p in prices\n  io.Print(\"$$p with tax: $$(shop.WithTax(p))\")\nend\n"
+sunCells = "use std/cells\nuse std/plot\n\n(* %% Sun *)\naz = [116.59, 117.87, 128.27, 140.08, 153.62, 168.74, 184.7, 200.29, 214.52, 227.01, 237.93, 243.29]\nel = [-0.833, 0.48, 9.99, 18.14, 24.35, 28.02, 28.66, 26.19, 20.94, 13.51, 4.49, -0.833]\nplot.Of([plot.Line(az, el), plot.Points(az, el, size = 4)], x = \"azimuth\", y = \"elevation\", title = \"Sun path\", size = [540, 300])\n"
+dayCells = "use std/cells\nuse std/frame\nuse std/plot\n\n(* %% Day *)\nhours = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, 18.14, 24.35, 28.02, 28.66]})\ncells.Show(hours)\nplot.Points(frame.Column(\"hour\", hours), frame.Column(\"elevation\", hours))\n"
+lorenzCells = "use std/cells\nuse std/ode\nuse std/result\n\n(* %% Parameters *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\n\n(* %% Lorenz *)\nlorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]\ns = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))\n"
+inputCells = "use std/cells\n\n(* %% Place and day *)\nyear  = cells.Choice(2026, [2025, 2026, 2027])\nzone  = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])\nday   = cells.Date(\"2026-11-23\")\nplace = cells.Field(\"40.76, -73.984\")\nhigh  = cells.Field(50)\nrho   = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nbold  = cells.Check(false, label = \"Bold line\")\n"
+waveCells = "use std/math\nuse std/num\nuse std/plot\n\n(* %% Wave *)\nx = num.Linspace(0.0, 2.0 * math.Pi, 200)\nts = num.Linspace(0.0, 2.0 * math.Pi, 120)\nplot.Frames([plot.Line(x, math.Sin(x - t)) for t in ts], fps = 30)\n"
+main1 = "use src/shop\nuse std/io\n\nprices = [250, 1000, 99]\nio.Print(\"Total: $$(shop.Total(prices)) cents\")\n"
+main3 = "use src/shop\nuse std/io\n\nprices = [250, 1000, 99, 1500]\nio.Print(\"Total: $$(shop.Total(prices)) cents\")\nfor p in prices\n  io.Print(\"$$p with tax: $$(shop.WithTax(p))\")\nend\n"
+shopCode2 = "$shopCode\n(** A price less 10%. *)\nDiscount(price) = math.Round(price * 0.9)\n"
+taxCode = "use src/shop\nuse std/io\n\nprices = [250, 1000, 99]\nfor p in prices\n  tax = shop.WithTax(p) - p\n  io.Print(\"$$p pays $$tax of tax\")\nend\n"
+failingTest = "use src/shop\n\nisTotal() = shop.Total([250, 1000]) == 1250\nisTax() = shop.WithTax(1000) == 1100\n"
+(** A commit of the files staged, by someone, with a message. *)
+commit(who, mail, words) = ["git", "-c", "user.name=$who", "-c", "user.email=$mail", "-c", "commit.gpgsign=false", "commit", "-q", "-m", words]
+(** The history of the shop: Ada writes the total, Grace the prices with their tax; then main.ce changes, shop.ce changes and is staged, notes.md is new. *)
+history = [["git", "init", "-q", "-b", "main"], {Path: "main.ce", Text: main1}, ["git", "add", "."], commit("Ada Lovelace", "ada@example.com", "A shop and its total"),
+  {Path: "main.ce", Text: mainCode}, ["git", "add", "."], commit("Grace Hopper", "grace@example.com", "Prices with their tax"), {Path: "main.ce", Text: main3},
+  {Path: "src/shop/shop.ce", Text: shopCode2}, ["git", "add", "src/shop/shop.ce"], {Path: "notes.md", Text: "# Notes\n\nA discount for the shop.\n"}]
+project = [{Path: "cesia.toml", Text: toml}, {Path: "src/shop/shop.ce", Text: shopCode}, {Path: "src/shop/shop.test.ce", Text: shopTest}, {Path: "main.ce", Text: mainCode}]
+
+defn Book()
+  (** Every shot of the book. *)
+  [{Name: "first-steps-window", Size: [660, 360], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c c r", Until: "ended, code 0"}]},
+    {Name: "first-steps-hints", Size: [660, 360], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c"}]},
+    {Name: "windows-split", Size: [660, 300], Files: project, Open: ["src/shop/shop.ce", "main.ce"], Steps: [{Keys: "C-x 3"}, {Keys: "C-x b"}]},
+    {Name: "check-inline", Size: [660, 300], Files: project, Open: ["main.ce"], Steps: [{Keys: "M-> C-p C-e"}, {Type: "\nio.Print(shop.Totl(prices))"}]},
+    {Name: "keys-help", Size: [660, 420], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c ?"}]},
+    {Name: "cells-graph", Size: [660, 520], Files: [{Path: "sun.ce", Text: sunCells}], Open: ["sun.ce"], Steps: [{Keys: "C-c e a"}]},
+    {Name: "cells-graph-mouse", Size: [660, 520], Files: [{Path: "sun.ce", Text: sunCells}], Open: ["sun.ce"],
+      Steps: [{Keys: "C-c e a"}, {Mouse: "click", At: {Graph: 2, X: 184.7, Y: 28.66}}, {Keys: "C-g"}, {Mouse: "move", At: {Graph: 2, X: 128.27, Y: 9.99}}]},
+    {Name: "cells-graph-zoom", Size: [660, 700], Files: [{Path: "sun.ce", Text: sunCells}], Open: ["sun.ce"],
+      Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Mouse: "wheel", At: {Graph: 2, X: 150.0, Y: 15.0}, Amount: 2}, {Keys: "right right"}]},
+    {Name: "cells-table", Size: [660, 880], Files: [{Path: "day.ce", Text: dayCells}], Open: ["day.ce"],
+      Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Keys: "right s s down"}]},
+    {Name: "cells-sliders", Size: [660, 420], Files: [{Path: "lorenz.ce", Text: lorenzCells}], Open: ["lorenz.ce"],
+      Steps: [{Keys: "C-c e a"}, {Keys: "C-s"}, {Type: "Slider"}, {Keys: "enter C-c e f"}, {Keys: "right right right right"}]},
+    {Name: "cells-inputs", Size: [660, 600], Files: [{Path: "place.ce", Text: inputCells}], Open: ["place.ce"], Steps: [{Keys: "M-> C-c e f"}, {Keys: "enter"}]},
+    {Name: "cells-animation", Size: [660, 760], Files: [{Path: "wave.ce", Text: waveCells}], Open: ["wave.ce"],
+      Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Keys: "right right right right right right right right right right right"}]},
+    {Name: "editing-completion", Size: [660, 260], Files: [{Path: "words.ce", Text: "Hello = 1\nHelp = 2\n"}], Open: ["words.ce"], Steps: [{Keys: "M->"}, {Keys: "H e l tab", Settle: false}]},
+    {Name: "editing-selection", Size: [660, 260], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-n C-n C-n C-n C-space C-n C-n C-e"}]},
+    {Name: "search-project", Size: [660, 300], Files: project, Setup: history, Open: ["main.ce"], Steps: [{Keys: "C-s"}, {Type: "WithTax"}, {Keys: "enter"}, {Keys: "C-c s p"}, {Keys: "enter"}]},
+    {Name: "files-folder", Size: [660, 300], Files: project, Setup: history, Open: ["main.ce"], Steps: [{Keys: "C-x d"}, {Type: "nnnm"}]},
+    {Name: "files-buffers", Size: [660, 260], Files: project, Open: ["src/shop/shop.ce", "src/shop/shop.test.ce", "main.ce"], Steps: [{Keys: "C-x C-b"}]},
+    {Name: "git-status", Size: [660, 260], Files: project, Setup: history, Open: ["main.ce"], Steps: [{Keys: "C-x g"}]},
+    {Name: "git-diff", Size: [660, 340], Files: project, Setup: history, Open: ["main.ce"], Steps: [{Keys: "C-c g d"}]},
+    {Name: "git-blame", Size: [660, 300], Files: project, Setup: history, Open: ["main.ce"], Steps: [{Keys: "C-c g b"}]},
+    {Name: "shell", Size: [660, 300], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c o t"}, {Type: "ls\n", Until: "src"}, {Type: "cesia run main.ce\n", Until: "1349"}]},
+    {Name: "running-debug", Size: [660, 420], Files: [{Path: "tax.ce", Text: taxCode}, {Path: "cesia.toml", Text: toml}, {Path: "src/shop/shop.ce", Text: shopCode}], Open: ["tax.ce"],
+      Steps: [{Keys: "M-< C-n C-n C-n C-n C-n C-n C-c d b"}, {Keys: "C-c d r", Until: "stopped at"}, {Keys: "C-p C-a"}, {Keys: "C-s"}, {Type: "shop"}, {Keys: "enter M-b C-space right right right right right right right right right right right right right right right"}, {Keys: "C-c d e", Until: "= 300.0"}]},
+    {Name: "running-tests", Size: [660, 300], Files: [{Path: "cesia.toml", Text: toml}, {Path: "src/shop/shop.ce", Text: shopCode}, {Path: "src/shop/shop.test.ce", Text: failingTest}],
+      Setup: [["git", "init", "-q", "-b", "main"]], Open: ["src/shop/shop.test.ce"], Steps: [{Keys: "C-c t t", Until: "1 passed, 1 failed"}]},
+    {Name: "troubleshooting-saved", Size: [660, 360], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-n C-n C-n C-e C-b"}, {Type: ", 1500"}, {Keys: "C-c c r", Until: "ended, code 0"}]},
+    {Name: "names-references", Size: [660, 300], Files: project, Setup: history, Open: ["main.ce"], Steps: [{Keys: "C-s"}, {Type: "WithTax"}, {Keys: "enter M-b M-?"}]},
+    {Name: "names-documentation", Size: [660, 360], Files: project, Setup: history, Open: ["main.ce"], Steps: [{Keys: "C-s"}, {Type: "Total("}, {Keys: "enter M-b C-c c i"}]},
+    {Name: "customising-light", Size: [660, 360], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c c r", Until: "ended, code 0"}]},
+    {Name: "customising-dark", Size: [660, 360], Theme: "dark", Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c c r", Until: "ended, code 0"}]},
+    {Name: "search-isearch", Size: [660, 300], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-s"}, {Type: "price"}]}]
+end

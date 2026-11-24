@@ -1,0 +1,31 @@
+(** Makes the pictures of Cemacs that its book shows, docs/book/images/NAME.png, each from a shot of tools/shots/book.ce: Cemacs opens in a window under SDL's
+    dummy driver, as it comes, whatever user/ changed, plays the keys and the mouse of the shot, and saves its pixels; see tools/shots/shots.ce. After a
+    change of how Cemacs looks, run them all again from the root of cemacs, or only those named:
+
+    SDL_VIDEODRIVER=dummy cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,exec=mktemp,exec=rm,env=HOME,env=PWD,env=SHELL,env=XDG_DATA_HOME \
+      --allow "exec=$(readlink -f "$(command -v cesia)")" tools/shots.ce [NAME...]
+
+    It needs SDL 3.4 or later, for SDL_SavePNG. It prints each picture it wrote with its size, and stops at the first shot that fails. *)
+use tools/shots
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/value
+
+defn main()
+  wanted = sys.Args
+  chosen = [one for one in shots.Book() if value.Len(wanted) == 0 or one.Name in wanted]
+  unknown = [name for name in wanted if not (name in [one.Name for one in shots.Book()])]
+  if value.Len(unknown) > 0
+    return result.Err("No shot is named $(unknown[1]).")
+  end
+  for one in chosen
+    started = sys.Now()
+    path = shots.Take(one, ".", "docs/book/images")?
+    io.Print("$path  $(one.Size[1])x$(one.Size[2])  $(sys.Now() - started) s")
+  end
+  result.Ok(value.Len(chosen))
+end
+
+io.Print(main())
