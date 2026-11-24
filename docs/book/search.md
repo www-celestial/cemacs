@@ -13,6 +13,8 @@ replace in one buffer that asks at each place, are not there yet.
 | `C-s`, `C-c s s` | [commands.SearchForward] | searches forward from the cursor as you type; in a search, goes to the next place |
 | `C-r`, `C-c s r` | [commands.SearchBackward] | the same, backward |
 
+![C-s then price typed: the first place found, prices on line 4, is drawn in colour with the cursor after it, and the prompt line says I-search: price.](images/search-isearch.png)
+
 An incremental search is one that looks as you type, instead of waiting for the whole words: after `C-s` and `t`, the
 cursor is after the first `t` past it; after `tw`, after the first `tw`, which may be the same place or a later one. The
 place found shows selected, from its start to its end, and the screen follows it. Going forward, the cursor ends after the
@@ -170,6 +172,8 @@ the first place of the words in it. The words are fixed text, `-F`, never a patt
 case of letters is set aside, `-i`, as `C-s` does. The files are those git knows: the tracked ones, without the binary
 ones, `-I`. Typing filters the list, and Enter goes to the line, keeping the place left for `M-,`, as a list of
 [references](names.md#the-references) does.
+
+![The list of C-c s p for WithTax in the shop project: three lines, each as path:line:column then the line, in main.ce, src/shop/shop.ce and src/shop/shop.test.ce; the prompt line says 3 lines and that C-c r replaces in those shown.](images/search-project.png)
 
 `C-c r` in the list asks `Replace WORDS with: `, then `Replace 3 places of WORDS in 1 files with NEW? (y or n)`: the places
 are those of the words in the lines the list shows now, so a filter typed first keeps the replace to the lines it keeps.

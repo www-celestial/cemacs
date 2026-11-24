@@ -109,6 +109,8 @@ groupe de `C-c`, `t` pour test, de [src/ide], qui demande à [src/testing] quoi 
 | `C-c t a` | [ide.TestAll] | lance tous les tests du projet |
 | `C-c t r` | [ide.TestAgain] | relance les derniers tests, depuis n'importe quel buffer |
 
+![C-c t t dans shop.test.ce, dont isTax échoue : la ligne de isTax est soulignée en rouge avec isTax failed après elle, la mode line compte 1 error, et la sortie finit par 1 passed, 1 failed, redit sur la prompt line.](../../book/images/running-tests.png)
+
 Chacune lance `cesia test` comme `C-c c r` lance un programme, dans le dossier où Cemacs a démarré : `C-c t t` dans
 `isTotal` de `src/shop/shop.test.ce` lance `cesia test src/shop/shop.test.ce:isTotal`, qui lance ce test seul ; dans
 `src/shop/shop.ce`, `cesia test src/shop`, le package avec les exemples de sa documentation et ses tests ; `C-c t a` lance
@@ -179,6 +181,8 @@ erreur, un bug qui le terminerait, avec chaque variable encore là. Alors :
 - la sortie a pour titre `Variables` et liste chaque variable de la fonction où le programme s'est arrêté, la frame la plus
   intérieure de ses appels (l'appel en cours le plus profond), sous la forme `name = value`, après le message de l'erreur
   pour un arrêt sur une erreur.
+
+![Un arrêt au breakpoint de la ligne 7 de tax.ce : un point avant le numéro 7, la ligne dans une bande de couleur, la sortie titrée Variables, stopped at, le chemin et la ligne 7, avec prices, p = 250 et tax = 50.0 ; shop.WithTax(p) est sélectionné à la ligne 6 et C-c d e montre = 300.0 après lui.](../../book/images/running-debug.png)
 
 `C-c d c`, `C-c d n`, `C-c d s` et `C-c d u` repartent d'un arrêt ; quand le programme tourne, ils disent
 `The program isn't stopped.` (le programme n'est pas arrêté). Après une erreur, `C-c d c` laisse l'erreur continuer, comme

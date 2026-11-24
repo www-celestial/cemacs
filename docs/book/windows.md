@@ -52,6 +52,8 @@ the keys in the band and the output itself.
 A pane shows one buffer, with a column of line numbers on its left and its mode line at its bottom. At the start there is
 one pane, which fills the place of the panes.
 
+![Two panes side by side after C-x 3: main.ce on the left, the pane being edited, with its current line drawn, and shop.ce on the right, each with its own mode line.](images/windows-split.png)
+
 | Keys | Command | What it does |
 |---|---|---|
 | `C-x 2`, `C-c w s` | [commands.SplitBelow] | splits the pane you edit in two, one above the other |

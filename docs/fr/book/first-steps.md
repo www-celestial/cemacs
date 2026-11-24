@@ -47,6 +47,8 @@ La fenêtre a quatre parties, de haut en bas :
 
 Le chapitre [Fenêtre et panes](windows.md) raconte chaque partie en entier.
 
+![Cemacs sur main.ce après une exécution : le code et ses numéros de ligne, la mode line avec main.ce, 1:0 et Cesia, la sortie terminée avec le code 0 et les trois lignes que le programme a écrites, et la prompt line qui dit Running et le chemin du fichier.](../../book/images/first-steps-window.png)
+
 ## Les touches
 
 Les touches sont celles d'Emacs. `C-` désigne la touche Control et `M-` la touche Alt : `C-x C-s`, c'est Control et `x`,
@@ -79,6 +81,8 @@ ce qui vient des autres. [Édition](editing.md) donne chaque touche qui déplace
 Vous n'avez pas besoin d'apprendre les touches ci-dessus. Sous `C-c`, chaque touche est dans un groupe, comme dans Doom
 Emacs. Appuyez sur `C-c` et attendez une demi-seconde : une bande au-dessus de la prompt line montre chaque groupe. Appuyez
 sur la lettre d'un groupe et attendez encore : la bande montre ses touches.
+
+![La bande des hints une demi-seconde après C-c : les touches ?, C-c, C-g, C-k et C-o avec le nom de leur commande, et les groupes +buffers, +code, +debug, +execute, +files, +git, +insert, +open, +quit, +search, +test et +windows, chacun après sa lettre ; la prompt line montre C-c -.](../../book/images/first-steps-hints.png)
 
 | Groupe | Ses touches |
 |---|---|

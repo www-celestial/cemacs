@@ -49,7 +49,7 @@ defn named(do, answer, state)
   ch = fiber.Channel()
   fiber.Send("$(json.Text(answer))\n", ch)
   b = here(s)
-  s.Names = {Process: missing, Inbox: ch, Raw: "", Ended: false, Sent: {}, Waiting: [{Request: {Program: "names", Do: do}, Path: b.Path, Version: b.Version,
+  s.NameSession = {Process: missing, Inbox: ch, Raw: "", Ended: false, Sent: {}, Waiting: [{Request: {Program: "names", Do: do}, Path: b.Path, Version: b.Version,
     Line: b.Cursor.Line, Column: b.Cursor.Column}]}
   ide.Idle(9.0, s)
 end
@@ -62,7 +62,7 @@ defn isSignatureOfAnotherPlaceDropped()
   s = stateOf("x = Total(", "/p/a.ce")
   ch = fiber.Channel()
   fiber.Send("$(json.Text({Signature: "f()"}))\n", ch)
-  s.Names = {Process: missing, Inbox: ch, Raw: "", Ended: false, Sent: {}, Waiting: [{Request: {Program: "names", Do: "signature"}, Path: "/p/a.ce", Version: here(s).Version,
+  s.NameSession = {Process: missing, Inbox: ch, Raw: "", Ended: false, Sent: {}, Waiting: [{Request: {Program: "names", Do: "signature"}, Path: "/p/a.ce", Version: here(s).Version,
     Line: 1, Column: 3}]}
   ide.Idle(9.0, s).Message == ""
 end
@@ -70,7 +70,15 @@ end
 isSignatureOfAProgramRefused() = answered(lookup, "{\"Signature\": \"f()\"}", stateOf("x", "/p/a.ce")).Message == ""
 isDocShown() = value.Equal(rows(named("doc", hover, stateOf("x", "/p/a.ce"))), ["Total(prices)", "The total."])
 isNamesAnswerEndsTheWait() = not ide.Moving(named("doc", hover, stateOf("x", "/p/a.ce")))
-isAnswerInTwoPieces() = value.Len(dict.Merge(named("doc", {}, stateOf("x", "/p/a.ce")), {}).Names.Waiting) == 0
+defn isCompletionBesideTheNames()
+  (* The names of Cesia that completion reads and the session that answers the names are two fields: Tab after a signature completes. *)
+  s = stateOf("Hello = 1\nHelp = 2\nHel", "/p/a.ce")
+  s.Buffers[1] = text.Place(3, 3, s.Buffers[1])
+  done = commands.Complete(named("signature", {Signature: "f()"}, s))
+  value.Equal(done.Completion.Words, ["Help", "Hello"])
+end
+
+isAnswerInTwoPieces() = value.Len(dict.Merge(named("doc", {}, stateOf("x", "/p/a.ce")), {}).NameSession.Waiting) == 0
 
 isBadPlaceRefused() = list.All([answered(lookup, "{\"Open\": $p}", stateOf("x", "/p/a.ce")).Message == "The program gave no place." for p in ["{\"Path\": \"a.ce\", \"Line\": 1, \"Column\": 0}",
   "{\"Path\": \"/a.ce\", \"Line\": 0, \"Column\": 0}", "{\"Path\": \"/a.ce\", \"Line\": 1, \"Column\": -1}", "3"]])

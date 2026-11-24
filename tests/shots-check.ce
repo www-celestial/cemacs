@@ -1,0 +1,49 @@
+(** Checks tools/shots: a tiny shot of the editor, a file opened and a few keys, is written as a PNG of the size of its window, and one with a crop as a PNG
+    of the size of its crop, read back with SDL_LoadPNG. The pixels differ between machines and their fonts, so they are not compared. It is a script, not a
+    test file: it needs a window and permissions. Run it from the root of cemacs with SDL_VIDEODRIVER=dummy cesia run --allow
+    ffi=SDL3,ffi=SDL3_ttf,read,write,exec=mktemp,exec=rm tests/shots-check.ce. It prints ok at the end and stops at the first failure; with an SDL older
+    than 3.4, which has no SDL_SavePNG, it says so and checks nothing. *)
+use tools/shots
+use std/bug
+use std/c
+use std/io
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+defn sizeOf(path)
+  (** The width and the height of a PNG, as SDL reads it back: the w and the h of its SDL_Surface. *)
+  lib = result.Unwrap(c.Open("SDL3", version = 0))
+  load = result.Unwrap(c.Fn("SDL_LoadPNG", ["text"], "ptr", lib))
+  destroy = result.Unwrap(c.Fn("SDL_DestroySurface", ["ptr"], "void", lib))
+  surface = load(path)
+  check(value.IsSome(surface), "$path reads back as a PNG")
+  size = [c.Get("i32", 8, surface), c.Get("i32", 12, surface)]
+  destroy(surface)
+  size
+end
+
+lib = result.Unwrap(c.Open("SDL3", version = 0))
+if result.IsErr(c.Fn("SDL_SavePNG", ["ptr", "text"], "bool", lib))
+  io.Print("skipped: SDL_SavePNG needs SDL 3.4 or later")
+else
+  out = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+  tiny = {Name: "tiny", Size: [240, 130], Files: [{Path: "notes.txt", Text: "one\ntwo\n"}], Open: ["notes.txt"], Steps: [{Keys: "C-n C-e"}, {Type: " and three"}]}
+  got = shots.Take(tiny, ".", out)
+  check(value.Equal(got, result.Ok("$out/tiny.png")), "the shot is written: $got")
+  check(value.Equal(sizeOf("$out/tiny.png"), [240, 130]), "the PNG has the size of the window: $(sizeOf("$out/tiny.png"))")
+  cut = tiny
+  cut.Name = "cut"
+  cut.Crop = [10, 20, 100, 50]
+  check(result.IsOk(shots.Take(cut, ".", out)) and value.Equal(sizeOf("$out/cut.png"), [100, 50]), "a crop gives a PNG of its size")
+  _ = sys.Run("rm", ["-rf", out])
+  io.Print("ok")
+end

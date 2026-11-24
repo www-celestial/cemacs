@@ -97,6 +97,8 @@ largeur, la session dessine à nouveau la scene à la nouvelle ; le graphe garde
 L'écran glisse sur un graphe une rangée à la fois, sa partie basse visible quand l'écran commence dedans : voir
 [L'écran d'un pane](windows.md#lécran-dun-pane).
 
+![La cell Sun de sun.ce après C-c e a : sous son code, Out[2]: et le graphe Sun path dessiné dans la page, une ligne par 12 points d'azimut et d'élévation, noir sur blanc comme dans le thème clair.](../../book/images/cells-graph.png)
+
 ### La souris et les touches sur un graphe
 
 Un graphe à deux dimensions, ni une animation ni un graphe 3D, montre les valeurs de ses points, comme la page de
@@ -111,6 +113,8 @@ SunEarthTools les montre sous la souris.
   `Escape`, l'enlève. Le clic donne aussi les touches au graphe, comme un clic sur une table, et choisit sa rangée dans une
   table de la cell qui a autant de rangées, comme le dit [Une rangée et son point](#une-rangée-et-son-point). Un appui sur
   les lignes au-dessus du graphe va au texte, comme avant.
+
+![Le graphe Sun path avec une case épinglée à son point le plus haut, x = 184.7  y = 28.66, et la souris au-dessus du point de 8 heures, une fine croix et la case x = 128.27  y = 9.99 à côté.](../../book/images/cells-graph-mouse.png)
 
 La première fois que la souris passe sur un graphe, ou que le graphe prend les touches, sa scene est demandée de nouveau,
 une fois, [cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html) avec `points = true`, qui donne les places et
@@ -146,6 +150,8 @@ si bien qu'une molette rapide ne demande pas une file de vues anciennes. Un axe 
 étendue, et un graphe polaire ne zoome que la distance à son centre, son `ylim`, `[center, rim]` (le centre, le bord).
 Un zoom reste entre un millionième et un million de fois l'étendue du graphe lui-même. Le code ne change jamais : `0`,
 un lancement de la cell et la page montrent le graphe comme son code le dessine.
+
+![Le graphe Sun path avec les touches, un anneau de la couleur d'accent autour, après deux crans de la molette vers le matin, qui rapprochent la vue, et deux appuis sur la flèche droite : le point x = 140.08  y = 18.14 dans sa case de la couleur d'accent, et la bande des hints liste les touches d'un graphe.](../../book/images/cells-graph-zoom.png)
 
 **Sans les touches, rien ne change.** Tant qu'aucun graphe n'a les touches, la molette au-dessus d'un graphe déplace
 l'écran, comme elle l'a toujours fait, un glissement dessus ne zoome rien, et chaque touche fait ce qu'elle faisait : `0`
@@ -224,6 +230,8 @@ graphe, à 12 pixels près, choisit sa rangée : la table défile jusqu'à elle,
 montre en inverse ; le graphe prend les touches, et ses flèches choisissent les rangées des points où elles vont. Une table
 et un graphe de longueurs différentes ne sont pas liés, et rien n'est lié d'une cell à l'autre.
 
+![La cell Day : sa table triée par élévation, décroissante, la rangée de 11 choisie en inverse, et sous elle la ligne 6 rows · by elevation, decreasing ; sur le graphe de la cell, un anneau au point de 11 et sa case x = 11  y = 28.02 ; la bande des hints liste les touches d'une table.](../../book/images/cells-table.png)
+
 ## Sliders
 
 Un *slider* (un curseur) est une barre avec un bouton que l'on fait glisser pour changer un nombre. Une cell de sliders
@@ -259,6 +267,8 @@ step, `0.3` et jamais `0.30000000000000004`.
   ou toute autre touche le quittent, et cette touche fait ce qu'elle fait toujours.
 - **Undo.** Un glissé, du clic au relâchement, est une seule étape d'undo (l'annulation), et les touches pressées à la
   suite sur un même slider aussi, comme la frappe.
+
+![Le slider de rho sous sa ligne après C-c e f et quatre appuis sur la flèche droite : la ligne dit maintenant cells.Slider(30.0, 0.0, 50.0, step = 0.5), le slider a un anneau et son bouton à 30.0, rerun 15 ms après lui, et la bande des hints liste ses touches.](../../book/images/cells-sliders.png)
 
 Un mouvement ne relance que les cells qui lisent le nom du slider, directement ou par d'autres cells : la session du
 fichier reçoit le nouveau nombre par [cells.Set](https://www-celestial.github.io/cesia-lang/cells.html), *en place* (le
@@ -320,6 +330,8 @@ rho    ----------o--------  28.0
 `C-c e f` donne les touches au premier input de la cell du curseur, et un clic à l'input sous lui : sa case prend la
 couleur d'accent, et la bande d'aide liste ses touches.
 
+![Les inputs de la cell Place and day, chacun sous sa ligne : la liste de year ouverte après C-c e f et Enter, 2025, 2026 choisi et 2027, puis zone, day, place, high et le slider de rho ; la bande des hints liste les touches d'un choix.](../../book/images/cells-inputs.png)
+
 | Input | Touches | Souris |
 |---|---|---|
 | un choix | `enter` ouvre la liste, `up` et `down` s'y déplacent, `home` et `end` vont à la première option et à la dernière, `pageup` et `pagedown` de 8, `enter` choisit, `C-g` la ferme | un clic ouvre la liste, un clic sur une option la choisit |
@@ -362,6 +374,8 @@ pages accessibles) le demande de ce qui bouge plus de 5 secondes.
   touches la met d'abord en pause. `C-g`, un clic dans le texte ou toute autre touche la quittent.
 - **La souris.** Un clic sur `▶` la joue ou la met en pause ; un clic sur la piste va à l'image sous le pointeur, et un
   glissé le suit. Un clic sur le graphe ne fait rien.
+
+![L'animation de la cell Wave, une sinusoïde, en pause à son image 12 après C-c e f et onze appuis sur la flèche droite : sa barre avec un anneau dit ▶ 12 / 120 avec le bouton sur sa piste et 30/s, et la bande des hints liste ses touches.](../../book/images/cells-animation.png)
 
 **Une image à la fois.** Les images restent dans la session : Cemacs demande chacune par
 [cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html), `frame = k`, à la largeur du pane, pendant que

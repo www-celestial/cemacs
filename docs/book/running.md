@@ -99,6 +99,8 @@ on [tests](https://www-celestial.github.io/cesia-lang/tests.html). The keys are 
 | `C-c t a` | [ide.TestAll] | runs every test of the project |
 | `C-c t r` | [ide.TestAgain] | runs the last tests again, from any buffer |
 
+![C-c t t in shop.test.ce, whose isTax fails: the line of isTax is underlined in red with isTax failed after it, the mode line counts 1 error, and the output ends with 1 passed, 1 failed, said again on the prompt line.](images/running-tests.png)
+
 Each runs `cesia test` as `C-c c r` runs a program, in the folder where Cemacs started: `C-c t t` inside `isTotal` of
 `src/shop/shop.test.ce` runs `cesia test src/shop/shop.test.ce:isTotal`, which runs that test alone; in `src/shop/shop.ce`,
 `cesia test src/shop`, the package with the examples of its documentation and its tests; `C-c t a` runs `cesia test`. A test
@@ -160,6 +162,8 @@ Then:
 - the line of the stop has a band of colour, in a buffer of that file if one is open: Cemacs doesn't open the file for you;
 - the output is titled `Variables` and lists each variable of the function where the program stopped, the innermost frame of
   its calls, as `name = value`, after the message of the error for a stop on an error.
+
+![A stop at the breakpoint of line 7 of tax.ce: a dot before the number 7, the line in a band of colour, the output titled Variables, stopped at the path and line 7, with prices, p = 250 and tax = 50.0; shop.WithTax(p) is selected on line 6 and C-c d e shows = 300.0 after it.](images/running-debug.png)
 
 `C-c d c`, `C-c d n`, `C-c d s` and `C-c d u` go on from a stop; with the program running, they say
 `The program isn't stopped.` After an error, `C-c d c` lets the error go on, as it would without the debugger.

@@ -9,6 +9,8 @@ dossier `core/`) n'en sait rien.
 
 Chaque erreur ou warning est une marque sur un span d'une ligne (une plage de caractères), les caractères dont elle parle :
 
+![Une faute tapée à la ligne 9, shop.Totl(prices) : Totl souligné en rouge, le numéro 9 en rouge, les mots Module "shop" has no name "Totl". après la ligne, 1 error dans la mode line, et les mêmes mots sur la prompt line.](../../book/images/check-inline.png)
+
 - un trait de deux pixels sous le span, rouge pour une erreur, ambre pour un warning ; un span prend au moins un caractère ;
 - le numéro de la ligne dans la même couleur ;
 - les mots de la première marque de la ligne, les erreurs d'abord, deux caractères après le bout de la ligne, dans un ton

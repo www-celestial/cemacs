@@ -95,6 +95,8 @@ draws a graph under its answer in the same way, and the page of `C-c e h` holds 
 graph a row at a time, its lower part showing when the screen starts inside it: see
 [The screen of a pane](windows.md#the-screen-of-a-pane).
 
+![The cell Sun of sun.ce after C-c e a: under its code, Out[2]: and the graph Sun path drawn in the page, a line through 12 points of azimuth and elevation, black on white as in the light theme.](images/cells-graph.png)
+
 ### The mouse and the keys on a graph
 
 A graph of two dimensions, neither an animation nor a 3D graph, shows the values of its points, as the page of
@@ -108,6 +110,8 @@ SunEarthTools shows them under the mouse.
   click gives the graph the keys too, as a click on a table does, and chooses its row in a table of the cell of as many
   rows, as [A row and its point](#a-row-and-its-point) tells. A press on the lines above the graph goes to the text, as
   before.
+
+![The graph Sun path with a box pinned at its highest point, x = 184.7  y = 28.66, and the mouse over the point of 8 o'clock, a thin cross and the box x = 128.27  y = 9.99 beside it.](images/cells-graph-mouse.png)
 
 The first time the mouse comes over a graph, or the graph gets the keys, its scene is asked again once,
 [cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html) with `points = true`, which gives the places and the
@@ -140,6 +144,8 @@ ranges wanted, and the latest are asked once the answer came, so a fast wheel as
 names of bars keeps its own range, and a polar graph zooms the distance from its center alone, its `ylim`, `[center,
 rim]`. A zoom stays within a millionth and a million times the graph's own range. The code is never changed: `0`, a run of
 the cell and the page show the graph as its code draws it.
+
+![The graph Sun path with the keys, a ring of the accent colour around it, after two notches of the wheel about the morning, which bring the view nearer, and two presses of the right arrow: the point x = 140.08  y = 18.14 in its box of the accent colour, and the band of hints lists the keys of a graph.](images/cells-graph-zoom.png)
 
 **Without the keys, nothing changes.** While no graph has the keys, the wheel over a graph moves the screen, as it always
 did, a drag on it zooms nothing, and every key does what it did: `0` is typed, `M-w` copies the region, `C-c e s` stops the
@@ -213,6 +219,8 @@ pixels, chooses its row: the table scrolls to it, sorted and filtered as it is, 
 keys, and its arrows choose the rows of the points they go to. A table and a graph of other lengths are not linked, and
 nothing is linked across cells.
 
+![The cell Day: its table sorted by elevation, decreasing, the row of 11 chosen in reverse, and under it the line 6 rows · by elevation, decreasing; on the graph of the cell, a ring at the point of 11 and its box x = 11  y = 28.02; the band of hints lists the keys of a table.](images/cells-table.png)
+
 ## Sliders
 
 A *slider* is a bar with a knob that you drag to change a number. A cell of sliders holds only lines
@@ -247,6 +255,8 @@ steps, from the min to the max, and is written with the decimals of the min and 
   does what it always does.
 - **Undo.** A drag, from the press to the release, is one step of undo, and so are the keys pressed in a row on one slider,
   as typing is.
+
+![The slider of rho under its line after C-c e f and four presses of the right arrow: the line now says cells.Slider(30.0, 0.0, 50.0, step = 0.5), the slider has a ring and its thumb at 30.0, rerun 15 ms after it, and the band of hints lists its keys.](images/cells-sliders.png)
 
 A move runs again only the cells that read the slider's name, directly or through other cells: the session of the file
 gets the new number with [cells.Set](https://www-celestial.github.io/cesia-lang/cells.html), *in place*, so that a function
@@ -302,6 +312,8 @@ rho    ----------o--------  28.0
 `C-c e f` gives the keys to the first input of the cell of the cursor, and a click to the input under it: its box takes
 the accent color, and the band of hints lists its keys.
 
+![The inputs of the cell Place and day, each under its line: the list of year open after C-c e f and Enter, 2025, 2026 chosen and 2027, then zone, day, place, high and the slider of rho; the band of hints lists the keys of a choice.](images/cells-inputs.png)
+
 | Input | Keys | Mouse |
 |---|---|---|
 | a choice | `enter` opens the list, `up` and `down` move in it, `home` and `end` to the first option and the last, `pageup` and `pagedown` 8, `enter` chooses, `C-g` shuts it | a click opens the list, a click on an option chooses it |
@@ -339,6 +351,8 @@ rate. It starts paused, at each run of its cell too, as WCAG 2.2 asks of what mo
   to the first frame and the last; each of these pauses it first. `C-g`, a click in the text or any other key leaves it.
 - **The mouse.** A press on `▶` plays it or pauses it; a press on the track goes to the frame under the pointer, and a drag
   follows it. A press on the graph does nothing.
+
+![The animation of the cell Wave, a sine wave, paused at its frame 12 after C-c e f and eleven presses of the right arrow: its bar with a ring says ▶ 12 / 120 with the thumb on its track and 30/s, and the band of hints lists its keys.](images/cells-animation.png)
 
 **One frame at a time.** The frames stay in the session: Cemacs asks for each with
 [cells.Scene](https://www-celestial.github.io/cesia-lang/cells.html), `frame = k`, at the width of the pane, while the frame

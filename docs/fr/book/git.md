@@ -27,6 +27,8 @@ dépôt. Un fichier stagé et modifié depuis a une rangée de chaque sorte. Dan
 une commande, là où taper filtre les autres listes de Cemacs : l'état a peu de rangées, et une lettre est le chemin le plus
 rapide vers chaque chose.
 
+![L'état du dépôt shop après C-x g : On main et les lettres, puis src/shop/shop.ce staged, main.ce changed et notes.md new.](../../book/images/git-status.png)
+
 | Lettre | Ce qu'elle fait |
 |---|---|
 | `s` | stage le fichier de la rangée : `git add -- PATH` |
@@ -51,6 +53,10 @@ une ligne du nouveau côté, ajoutée ou gardée, ouvre le fichier à cette lign
 le texte du buffer, même non enregistré, par `git blame --contents -`, si bien que chaque ligne montre le commit et
 l'auteur qui l'ont modifiée en dernier, `00000000` pour une ligne pas encore commitée ; c'est le blame (« à qui la faute »,
 le nom que Git donne à cette vue). La liste s'ouvre sur la ligne du curseur, et Enter montre le commit de la ligne.
+
+![Le diff de main.ce après C-c g d : l'en-tête de git diff, la partie @@ -1,7 +1,7 @@, la ligne enlevée prices = [250, 1000, 99] et la ligne ajoutée prices = [250, 1000, 99, 1500], avec les lignes gardées autour.](../../book/images/git-diff.png)
+
+![Le blame de main.ce après C-c g b : chaque ligne après le commit et l'auteur qui l'a changée en dernier, Ada Lovelace pour les use et le total, Grace Hopper pour la boucle des prix avec la taxe, et 00000000 External file pour la ligne 4, changée et pas encore commitée.](../../book/images/git-blame.png)
 
 ## Sécurité
 

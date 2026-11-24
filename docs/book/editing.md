@@ -207,6 +207,8 @@ words from the buffers.
 
 With one word found, Tab puts it in place at once. With several, a list opens under the word, the first one chosen:
 
+![Hel typed on the third line of a file that holds Hello and Help, then Tab: a list opens under the word with Help, the nearest, chosen, and Hello under it.](images/editing-completion.png)
+
 | Keys | Command | What it does |
 |---|---|---|
 | `C-n`, `down` | [commands.CompleteNext] | chooses the next word, and the first one after the last |
@@ -263,6 +265,8 @@ With a selection, both delete the selection instead. At the start of the file `b
 The mark is a second place in the buffer, which you set; the text between the mark and the cursor, in whichever order, is
 the selection. Emacs calls it the region. It is drawn with a background of colour, and a line end that it holds shows as one
 more character of colour past the end of the line.
+
+![A selection made with C-space on line 5 and moves down to the end of line 7: its lines have a background of colour, and the line ends it holds show as one more character of colour.](images/editing-selection.png)
 
 | Keys | Command | What it does |
 |---|---|---|

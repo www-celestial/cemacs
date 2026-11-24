@@ -506,9 +506,10 @@ end
 
 defn namesOf(state)
   (** The session of the names, {Process, Inbox, Raw, Ended, Waiting, Sent}: the questions not answered yet, in their order, and the version of each text
-      it has; missing before the first question. *)
+      it has; missing before the first question. It is the field NameSession of the state: Names holds the names of Cesia that completion reads, see
+      commands.Complete. *)
   match state
-    {Names: n} -> n
+    {NameSession: n} -> n
     else -> missing
   end
 end
@@ -546,7 +547,7 @@ defn askName(what, state)
   _ = sys.WriteInput(n.Process, "$(str.ByteLength(words))\n$words")
   n.Waiting = list.Append({Request: {Program: "names", Do: what}, Path: b.Path, Version: b.Version, Line: b.Cursor.Line, Column: b.Cursor.Column}, n.Waiting)
   s = state
-  s.Names = n
+  s.NameSession = n
   s
 end
 
@@ -565,7 +566,7 @@ defn namesHeard(state)
     if value.Len(n.Waiting) > 0
       q = n.Waiting[1]
       n.Waiting = list.Skip(1, n.Waiting)
-      s.Names = n
+      s.NameSession = n
       s = if result.IsOk(a) and value.IsDict(a.Value) Heard(q, a.Value, s) else commands.Say("The names answered what isn't JSON.", s) end
     end
   end
@@ -573,7 +574,7 @@ defn namesHeard(state)
     n.Waiting = []
     s = commands.Say("The names ended, code $(got.Code): the next question starts them again.", s)
   end
-  s.Names = n
+  s.NameSession = n
   s
 end
 

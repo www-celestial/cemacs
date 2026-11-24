@@ -13,6 +13,8 @@ de textes), le remplacement (le `M-%` d'Emacs) et la recherche à travers les fi
 | `C-s`, `C-c s s` | [commands.SearchForward] | cherche en avant depuis le curseur pendant que vous tapez ; dans une recherche, va à l'endroit suivant |
 | `C-r`, `C-c s r` | [commands.SearchBackward] | la même chose, en arrière |
 
+![C-s puis price tapé : le premier endroit trouvé, prices à la ligne 4, est dessiné en couleur avec le curseur après lui, et la prompt line dit I-search: price.](../../book/images/search-isearch.png)
+
 Une incremental search (une recherche incrémentale) est une recherche qui cherche pendant que vous tapez, au lieu d'attendre
 les mots entiers : après `C-s` et `t`, le curseur est après le premier `t` qui le suit ; après `tw`, après le premier `tw`,
 qui peut être au même endroit ou plus loin. L'endroit trouvé s'affiche sélectionné, de son début à sa fin, et l'écran le
@@ -183,6 +185,8 @@ fixe, `-F`, jamais un motif (pattern), et quand ils n'ont pas de capitale, la ca
 comme le fait `C-s`. Les fichiers sont ceux que git connaît : les fichiers suivis, sans les fichiers binaires, `-I`. Taper
 filtre la liste, et Entrée va à la ligne, en gardant l'endroit quitté pour `M-,`, comme le fait une liste de
 [références](names.md#les-références).
+
+![La liste de C-c s p pour WithTax dans le projet shop : trois lignes, chacune sous la forme chemin:ligne:colonne puis la ligne, dans main.ce, src/shop/shop.ce et src/shop/shop.test.ce ; la prompt line dit 3 lines et que C-c r remplace dans celles qui sont montrées.](../../book/images/search-project.png)
 
 `C-c r` dans la liste demande `Replace WORDS with: `, puis `Replace 3 places of WORDS in 1 files with NEW? (y or n)` : les
 places sont celles des mots dans les lignes que la liste montre à ce moment, si bien qu'un filtre tapé d'abord limite le

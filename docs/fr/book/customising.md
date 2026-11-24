@@ -151,6 +151,10 @@ use std/value
 | [emacs.Window] | des pixels, `{Width, Height}` | la taille de la fenêtre quand elle s'ouvre, que vous pouvez changer ensuite | une fois, quand la fenêtre s'ouvre |
 | [emacs.Start] | une fonction d'un état vers un état | ce que fait l'éditeur à son démarrage, après avoir ouvert les fichiers qu'on lui a donnés : rien | une fois, après l'ouverture des fichiers |
 
+![Cemacs sur main.ce dans le thème clair, ui.Light : le code noir sur blanc, les mots-clés en bleu, les textes en vert, les nombres en bleu, avec la sortie d'une exécution.](../../book/images/customising-light.png)
+
+![Le même fichier et la même sortie dans le thème sombre, ui.Dark, celui avec lequel Cemacs démarre : le code clair sur un gris sombre, les mots-clés en orange, les textes en vert, les nombres en bleu.](../../book/images/customising-dark.png)
+
 Pour en changer un, posez son champ dans votre `Changed`, sous forme de fonction : le template a un exemple de chacun, et
 une fonction d'une config vers une config peut rassembler les vôtres, comme le fait chaque recette de [Recettes](recipes.md) :
 

@@ -43,6 +43,13 @@ chacun à son tour, $n = 62$, en deux séries de 31 ; les autres dans une série
 | Neovim 0.12.6, `nvim --clean -n` | 13,8 ms [13,6 ; 13,9] |
 | Vim 9.2, `vim --clean -n` | 9,3 ms [9,2 ; 9,4] |
 
+```cesia allow=read,write
+use std/plot
+starts = plot.Bars(["Cemacs", "Cemacs, 1.1.0", "Emacs", "Neovim", "Vim"], [51.3, 57.4, 89.1, 13.8, 9.3])
+started = plot.Of([starts], title = "Start to the first frame: milliseconds, median", y = "milliseconds", size = [640, 320])
+plot.Save(started, "performance-startup.svg") -->
+```
+
 Chaque éditeur a démarré sans configuration de l'utilisateur, et on lui a dit de dessiner son écran et de quitter :
 `--eval '(progn (redisplay t) (kill-emacs))'` pour Emacs, `'+redraw!' '+qa!'` pour Neovim et Vim. Chaque exécution est le
 temps du processus, de son démarrage à sa fin, tel qu'un programme Python à l'intérieur du terminal l'a chronométré. La
@@ -192,6 +199,15 @@ bout, et la dernière ligne contient un mot qu'on ne trouve nulle part ailleurs,
 | 15,9 MB, 449 762 lignes | 97,8 ms [97,1 ; 139] | 123 ms [122 ; 125] | 145 ms [142 ; 149] | 53,2 ms [52,8 ; 61,9] | 51,5 ms [50,4 ; 52,0] |
 | 99,9 MB, 2 833 490 lignes | 266 ms [262 ; 281] | 416 ms [413 ; 500] | 393 ms [392 ; 460] | 235 ms [231 ; 317] | 247 ms [241 ; 294] |
 
+```cesia allow=read,write
+opens = plot.Bars(["0.79 MB", "15.9 MB", "99.9 MB"], [[66.9, 97.8, 266], [68.5, 123, 416], [98.4, 145, 393],
+  [20.5, 53.2, 235], [18.0, 51.5, 247]], label = ["Cemacs", "Cemacs before", "Emacs", "Neovim", "Vim"],
+  color = ["#3a5ad9", "#9aaae8", "#000000", "#666666", "#b3b3b3"])
+opened = plot.Of([opens], title = "Start and open a file: milliseconds, median of 7 runs", y = "milliseconds",
+  size = [640, 360])
+plot.Save(opened, "performance-open.svg") -->
+```
+
 Les autres éditeurs ne connaissent pas Cesia : ils montrent donc ces fichiers comme du texte simple, là où Cemacs colore les
 lignes de l'écran. On a dit à Emacs de ne pas demander avant un grand fichier, `(setq large-file-warning-threshold nil)` ;
 Neovim et Vim ont été lancés avec `-n`, qui ne fait pas de swap file (le fichier où ils copient le texte modifié).
@@ -287,6 +303,17 @@ une série à eux, le même après-midi :
 | Neovim 0.12.6, `redraw` | 0,045 ms [0,042 ; 0,063] | 0,020 ms [0,018 ; 0,030] |
 | Vim 9.2, `redraw` | 0,059 ms [0,056 ; 0,068] | 0,052 ms [0,051 ; 0,083] |
 
+La même chose sur une échelle logarithmique, où chaque puissance de dix prend la même longueur ; GL est Cemacs avec
+OpenGL, CPU avec le software renderer de SDL :
+
+```cesia allow=read,write
+keyed = plot.Of([plot.Points([x - 0.1 for x in 1..5], [2.6, 9.2, 1.06, 0.045, 0.059], label = "character"),
+  plot.Points([x + 0.1 for x in 1..5], [2.6, 9.1, 1.51, 0.020, 0.052], label = "line", shape = "square")],
+  title = "A key or a scrolled line, with its redraw: ms", y = "milliseconds (log scale)", yscale = "log",
+  xticks = 1..5, xlabels = ["Cemacs, GL", "Cemacs, CPU", "Emacs", "Neovim", "Vim"], size = [640, 360])
+plot.Save(keyed, "performance-keys.svg") -->
+```
+
 Les autres gagnent encore, et de loin pour Vim et Neovim : ils écrivent les quelques cases d'un terminal qui ont changé, en
 C, et le terminal, un autre programme, dessine les pixels, ce que leur temps ne compte pas ; l'interface de terminal de
 Neovim est même un processus à part. Emacs, dans un terminal lui aussi, compare les rangées qu'il veut avec celles de
@@ -311,6 +338,17 @@ eux :
 | GNU Emacs 31.1 | 1,05 ms [1,04 ; 1,10] | 23,3 ms [22,9 ; 23,3] |
 | Neovim 0.12.6 | 0,042 ms [0,042 ; 0,053] | 0,25 ms [0,23 ; 0,33] |
 | Vim 9.2 | 0,057 ms [0,052 ; 0,060] | 0,12 ms [0,09 ; 0,14] |
+
+La même chose sur une échelle logarithmique ; chunks est Cemacs avec seulement les couleurs en chunks, before est
+b2ab23f :
+
+```cesia allow=read,write
+large = plot.Of([plot.Points([x - 0.1 for x in 1..6], [1.57, 1.37, 43.7, 1.05, 0.042, 0.057], label = "median"),
+  plot.Points([x + 0.1 for x in 1..6], [2.45, 2.28, 92.5, 23.3, 0.25, 0.12], label = "worst", shape = "square")],
+  title = "A key at line 1,416,745 of 99.9 MB: ms", y = "milliseconds (log scale)", yscale = "log",
+  xticks = 1..6, xlabels = ["Cemacs", "chunks", "before", "Emacs", "Neovim", "Vim"], size = [640, 360])
+plot.Save(large, "performance-large.svg") -->
+```
 
 Les couleurs gardaient l'état au début de chaque ligne dans une seule liste plate, coupée et prolongée par des copies à
 chaque modification : à la ligne 1,4 million, deux copies de 1,4 million d'états, 22 MB de garbage (de mémoire que plus rien
@@ -603,6 +641,14 @@ comme un seul texte à travers [commands.Update], jusqu'à l'état qui montre l'
 | Cemacs, la même chose tapée une lettre à la fois | 293 ms [288 ; 306] | 341 ms [338 ; 348] |
 | Cemacs d'avant, la même chose | 767 ms [758 ; 831] | 5 591 ms [5 419 ; 5 864] |
 
+```cesia allow=read,write
+searches = plot.Bars(["Emacs", "Neovim", "Vim", "Cemacs, Find", "Cemacs, C-s"], [[7.6, 28.3, 33.6, 7.6, 45.9],
+  [48.4, 181, 300, 48.8, 87.6]], label = ["15.9 MB", "99.9 MB"])
+searched = plot.Of([searches], title = "A word on the last line: milliseconds, median of 7 runs", y = "milliseconds",
+  size = [640, 340])
+plot.Save(searched, "performance-search.svg") -->
+```
+
 Le mot n'a pas de majuscule : chaque recherche ici fait donc le case folding. Trouver l'endroit coûte à Cemacs ce que coûte
 un seul appel au [text.ByteFind] de Cesia sur le texte du fichier, en place, huit octets à la fois, avec la casse traitée
 dans la même passe : [Recherche](search.md#comment-elle-trouve). Il joignait chaque fenêtre de la rope en un seul texte, le mettait
@@ -653,6 +699,23 @@ redessin ; $n = 7$, tous chacun à son tour :
 | collage de 1 MB, 99,9 MB | 44,7 ms [44,5 ; 46,7] | 93,6 ms [89,3 ; 125] | 238 ms [234 ; 250] | 2,82 ms [2,77 ; 2,96] | 2,84 ms [2,80 ; 3,04] |
 | son annulation, 99,9 MB | 1,47 ms [1,45 ; 1,52] | 49,1 ms [47,9 ; 57,1] | 230 ms [228 ; 244] | 61,0 ms [60,6 ; 61,5] | 3,11 ms [3,07 ; 3,18] |
 | enregistrement, 99,9 MB | 274 ms [250 ; 636] | 599 ms [380 ; 887] | 584 ms [578 ; 589] | 764 ms [449 ; 1 424] | 851 ms [580 ; 901] |
+
+```cesia allow=read,write
+use std/list
+steps = ["paste", "undo", "save", "paste", "undo", "save"]
+edits = [
+  {Name: "Cemacs", Ms: [52.4, 1.60, 64.0, 44.7, 1.47, 274], Shape: "circle", Color: "#3a5ad9"},
+  {Name: "Cemacs before", Ms: [67.2, 14.5, 30.8, 93.6, 49.1, 599], Shape: "circle", Color: "#9aaae8"},
+  {Name: "Emacs", Ms: [42.9, 46.5, 131, 238, 230, 584], Shape: "square", Color: "#000000"},
+  {Name: "Neovim", Ms: [2.71, 13.4, 85.6, 2.82, 61.0, 764], Shape: "triangle", Color: "#000000"},
+  {Name: "Vim", Ms: [2.57, 2.92, 83.4, 2.84, 3.11, 851], Shape: "cross", Color: "#000000"}]
+editDots = [plot.Points([p + (k - 3) * 0.1 for p in 1..6], edits[k].Ms, label = edits[k].Name, shape = edits[k].Shape,
+  color = edits[k].Color, size = 7) for k in 1..5]
+pasted = plot.Of(list.Append(plot.Rule(x = 3.5, label = "99.9 MB", dash = "dotted"), editDots),
+  title = "Paste 1 MB, undo, save in 15.9 MB, then 99.9 MB: ms", y = "milliseconds (log scale)", yscale = "log",
+  xticks = 1..6, xlabels = steps, size = [660, 380])
+plot.Save(pasted, "performance-paste.svg") -->
+```
 
 Cette version appelle `fsync` avant de dire `Saved`, comme le font Neovim et Vim et non Emacs, là où la version d'avant ne le
 faisait pas : [Fichiers et buffers](files.md#ne-jamais-perdre-le-texte). La même version sans lui enregistrait les 15,9 MB en
@@ -764,6 +827,13 @@ $n = 5$ :
 | GNU Emacs 31.1, `emacs -Q -nw` | 55,8 MB [55,7 ; 56,0] | 49,0 MB [48,0 ; 49,1] |
 | Neovim 0.12.6, `nvim --clean -n` | 20,3 MB [20,3 ; 20,4] | 10,1 MB [9,8 ; 10,2] |
 | Vim 9.2, `vim --clean -n` | 10,6 MB [10,5 ; 10,8] | 7,8 MB [7,7 ; 8,0] |
+
+```cesia allow=read,write
+resting = plot.Bars(["Cemacs", "Emacs", "Neovim", "Vim"], [[46.5, 55.8, 20.3, 10.6], [41.8, 49.0, 10.1, 7.8]],
+  label = ["RSS", "PSS"])
+rest = plot.Of([resting], title = "Memory at rest, empty: MB, median", y = "MB", size = [640, 320])
+plot.Save(rest, "performance-rest.svg") -->
+```
 
 La RSS, la resident set size, est la mémoire d'un processus qui est en RAM, les bibliothèques qu'il partage avec d'autres
 programmes comptées en entier ; la PSS, la proportional set size, compte une page partagée divisée par le nombre de

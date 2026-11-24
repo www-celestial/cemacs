@@ -28,6 +28,8 @@ fusionne avec elles, avec `?` après chaque prefix key : le code ci-dessous fait
 Vos propres touches, que le `Changed` de `user/config/config.ce` fusionne par-dessus celles-ci, n'y sont pas : la table vient
 du code de Cemacs, et `user/` est à vous.
 
+![La liste qu'ouvre C-c ? : chaque touche après C-c, comme C-c C-c, C-c b b et C-c c d, avec le nom de sa commande et le début de sa documentation, et la prompt line où ce que vous tapez la filtre.](../../book/images/keys-help.png)
+
 ```cesia output=md fold=code
 use src/buffers
 use src/check

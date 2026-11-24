@@ -1,0 +1,358 @@
+(** Pictures of Cemacs for its book, made by Cemacs itself, for tools/shots.ce. A shot opens the editor in a window of its size under SDL's dummy driver, with
+    the config of Cemacs before the person's changes, writes its files into a new folder and opens them, plays its steps as the keyboard and the mouse send
+    them, through the update of the editor, ticks as the editor ticks while something moves, and saves the pixels of the window, cut to its crop, as a PNG
+    with SDL_SavePNG, in the RGB of 3 bytes a pixel.
+
+    A shot is {Name, Size, Files, Open, Steps}: Size the window, [width, height] in pixels; Files a list of {Path, Text}, paths in the folder of the shot;
+    Open the paths that open, in order, the last one shown, "." the folder itself. It may have a Theme, "light" or "dark", "light" when left out; a Crop,
+    [x, y, width, height] in pixels, the whole window when left out; a Setup, what is done in the folder before anything opens, in order, each a list of a
+    program and its words, as ["git", "init"], or a file to write, {Path, Text}; and a Folder, the name of its folder, "shop" when left out.
+
+    A step is {Keys: "C-c e a"}, chords with a space between them as the keyboard sends them: a key with Ctrl (C-) or Alt (M-), Shift (S-) as "S-tab", a
+    named key (enter, tab, space, escape, backspace, delete, home, end, pageup, pagedown, up, down, left, right, f1 to f12), or a key that types, with its
+    text. {Type: "words"} is a text typed, a key and its text for each character, enter for a new line. {Mouse: "move", At}, {Mouse: "click", At}, {Mouse:
+    "wheel", At, Amount} and {Mouse: "drag", From, To} use the mouse: At, From and To are a point of the window, [x, y], or the values of a point on the 2D
+    graph of a cell, {Graph: CELL, X, Y}, which the mouse visits first so that the graph asks its points. {Wait: seconds} ticks for that long, moving or not,
+    as an animation plays.
+
+    After each step, the editor ticks until nothing moves, a cell that runs, a check, a program, the hints after a first key, for 30 seconds at most. A step
+    with Until, as {Keys: "C-c d r", Until: "stopped at"}, ticks first until one text of the screen holds those words, for a program that stops and runs
+    on: a line of the prompt or of the output is one text, the code is drawn a token at a time, so "src", not "src/shop"; {Until: words} alone only waits.
+    A step of keys or text with Settle false, as {Keys: "tab", Settle: false}, doesn't tick at all: the shot shows the screen at once after it, as the hand
+    that types on sees it, before a check that waits for a pause. *)
+use core/commands
+use core/text
+use core/view
+use src/buffers
+use src/check
+use src/emacs
+use src/folders
+use src/help
+use src/ide
+use src/notebook
+use src/output
+use src/project
+use src/sdl
+use src/ui
+use std/bug
+use std/c
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+(* The keys and the config as src/cemacs.ce makes them, without the Changed of user/config: that file opens the window when it loads, so this makes the same
+   merge, and a shot shows Cemacs as it comes, whatever the person changed. *)
+keysOfApps() = dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(dict.Merge(emacs.Keys(), buffers.Keys()), folders.Keys()), project.Keys()),
+  check.Keys()), output.Keys()), notebook.Keys()), ide.Keys())
+
+defn configOf(theme, size)
+  (** The config of Cemacs as it comes, with the theme and the size of the window of a shot. *)
+  made = ide.Hooked(notebook.Hooked(folders.Hooked(check.Hooked(emacs.Config(keysOfApps)))))
+  keys = made.Keys
+  made.Keys = () -> help.WithHelp(keys())
+  made.Theme = () -> theme
+  made.Window = () -> {Width: size[1], Height: size[2]}
+  made
+end
+
+(** The SDL_PixelFormat of 3 bytes a pixel, red, green, blue: the PNG has no alpha, as the window has none. *)
+rgb24 = 0x17101803
+
+defn savers()
+  (** The functions of SDL that read the pixels of a renderer and write them as a PNG: SDL_SavePNG came with SDL 3.4. *)
+  lib = c.Open("SDL3", version = 0)?
+  read = c.Fn("SDL_RenderReadPixels", ["ptr", "ptr"], "ptr", lib)?
+  convert = c.Fn("SDL_ConvertSurface", ["ptr", "u32"], "ptr", lib)?
+  destroy = c.Fn("SDL_DestroySurface", ["ptr"], "void", lib)?
+  error = c.Fn("SDL_GetError", [], "text", lib)?
+  found = c.Fn("SDL_SavePNG", ["ptr", "text"], "bool", lib)
+  if result.IsErr(found)
+    return result.Err("SDL_SavePNG needs SDL 3.4 or later.")
+  end
+  result.Ok({Read: read, Convert: convert, Destroy: destroy, Save: found.Value, Error: error})
+end
+
+defn Saved(window, crop, path)
+  (** Writes the pixels that the renderer of the window drew, since its last sdl.Draw and before any present, as a PNG at path, cut to crop, [x, y, width,
+      height] in pixels, or the whole window for missing. Gives Ok(path), or an Err that says why. *)
+  api = savers()?
+  rect = c.Alloc(16)
+  if value.IsSome(crop)
+    for k in 1..4
+      c.Set("i32", (k - 1) * 4, crop[k], rect)
+    end
+  end
+  surface = api.Read(window.Renderer, if value.IsSome(crop) rect else missing end)
+  c.Free(rect)
+  if value.IsMissing(surface)
+    return result.Err("The pixels can't be read: $(api.Error())")
+  end
+  plain = api.Convert(surface, rgb24)
+  api.Destroy(surface)
+  if value.IsMissing(plain)
+    return result.Err("The pixels can't be converted: $(api.Error())")
+  end
+  ok = api.Save(plain, path)
+  api.Destroy(plain)
+  if ok result.Ok(path) else result.Err("$path can't be written: $(api.Error())") end
+end
+
+defn opened(home, size, fontSize)
+  (** The window of a shot with the three fonts of Cemacs, as core/editor opens it. *)
+  first = sdl.Open("Cemacs", size[1], size[2], "$home/fonts/AdwaitaSans-Regular.ttf", size = fontSize, light = true)?
+  second = sdl.AddFont("strong", "$home/fonts/NotoSans-Medium.ttf", fontSize, first, light = true)?
+  sdl.AddFont("code", "$home/fonts/JetBrainsMono-Regular.ttf", fontSize, second)
+end
+
+(* ---- Events, as src/sdl decodes them from the keyboard and the mouse *)
+
+namedKeys = ["enter", "tab", "space", "escape", "backspace", "delete", "home", "end", "pageup", "pagedown", "up", "down", "left", "right", "f1", "f2", "f3",
+  "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"]
+
+(** A key event as sdl.decoded gives one. *)
+keyEvent(name, ctrl, alt, shift) = {Kind: "key", Key: name, Ctrl: ctrl, Alt: alt, Shift: shift, Super: false}
+
+defn chordEvents(chord)
+  (** The events of one chord as SDL sends them: a key with Ctrl or Alt alone, a key that types then its text, a named key alone, Space with its text. *)
+  rest = chord
+  mods = {C: false, M: false, S: false}
+  while value.Len(rest) > 2 and str.Slice(2, 2, rest) == "-" and str.Slice(1, 1, rest) in ["C", "M", "S"]
+    mods[str.Slice(1, 1, rest)] = true
+    rest = str.Slice(3, value.Len(rest), rest)
+  end
+  if rest in namedKeys
+    key = keyEvent(rest, mods.C, mods.M, mods.S)
+    return if rest == "space" and not mods.C and not mods.M [key, {Kind: "text", Text: " "}] else [key] end
+  end
+  if value.Len(rest) != 1
+    bug.Panic("A shot has no key \"$chord\".")
+  end
+  upper = str.Upper(rest) == rest and str.Lower(rest) != rest
+  key = keyEvent(str.Lower(rest), mods.C, mods.M, mods.S or upper)
+  if mods.C or mods.M [key] else [key, {Kind: "text", Text: rest}] end
+end
+
+(** The events of a text typed: enter for a new line, else a key and its text for each character. *)
+typedEvents(words) = list.Flatten([if ch == "\n" [keyEvent("enter", false, false, false)] else chordEvents(ch) end for ch in str.Chars(words)])
+
+(** A mouse event as sdl.decoded gives one. *)
+mouseEvent(action, at, button, amount) = {Kind: "mouse", Action: action, X: math.Div(math.Floor(at[1]), 1), Y: math.Div(math.Floor(at[2]), 1), Button: button, Amount: amount}
+
+defn played(events, state)
+  (** The state after the events, each through the update of the editor. One that ends the editor is a mistake of the shot. *)
+  s = state
+  for e in events
+    next = commands.Update(e, s)
+    if value.IsMissing(next)
+      bug.Panic("A step of the shot ended the editor.")
+    end
+    s = next
+  end
+  s
+end
+
+defn moving(state)
+  (** Does the editor need ticks for something but a program that runs? A program that stops at a breakpoint runs on, and is waited for with Until. *)
+  s = state
+  s.Run = if value.IsSome(state.Run) and not state.Run.Ended missing else state.Run end
+  commands.Moving(s)
+end
+
+defn ticked(state, seconds, still)
+  (** The state after ticks of the time that passes, at most 0.05 s each as the loop of src/sdl gives them, for seconds, or once still is true and nothing
+      moves but a program. The other fibers run between them: the session of the cells, a program, a check. *)
+  s = state
+  last = sys.Now()
+  begun = last
+  while sys.Now() - begun < seconds and not (still and not moving(s))
+    sys.Sleep(0.004)
+    now = sys.Now()
+    s = played([{Kind: "tick", Seconds: list.Min(now - last, 0.05)}], s)
+    last = now
+  end
+  s
+end
+
+(** The state once nothing moves, for 30 seconds at most. *)
+settled(state) = ticked(state, 30.0, true)
+
+(** Does the frame of a state show a text that holds these words? *)
+shows(words, state) = list.Any([one.Kind == "text" and str.Contains(words, one.Text) for one in view.View(state)])
+
+defn waitedFor(words, state)
+  (** The state once its frame shows the words, ticked as the editor ticks it, as a program that stops at a breakpoint and goes on running; a mistake of
+      the shot after 30 seconds. *)
+  s = state
+  last = sys.Now()
+  begun = last
+  while not shows(words, s)
+    if sys.Now() - begun > 30.0
+      bug.Panic("The screen never showed \"$words\".")
+    end
+    sys.Sleep(0.004)
+    now = sys.Now()
+    s = played([{Kind: "tick", Seconds: list.Min(now - last, 0.05)}], s)
+    last = now
+  end
+  s
+end
+
+(* ---- Points of the graphs of the cells *)
+
+(** The place of a value along an axis of a scene, in its pixels, on a linear or a log scale, as the cells place it. *)
+along(a, v) = a.From + (scaledOn(a, v) - scaledOn(a, a.Low)) / (scaledOn(a, a.High) - scaledOn(a, a.Low)) * (a.To - a.From)
+scaledOn(a, v) = if a.Scale == "log" math.Log(v) / math.Log(10.0) else v * 1.0 end   (** A value on the scale of an axis. *)
+
+defn graphOnScreen(cell, state)
+  (** The block of the 2D graph of a cell on the screen, {Block, Left, Top, Width}, or missing when no row of it is shown. *)
+  code = view.LayoutOf(state).Code
+  x = code.X + math.Div(code.Width, 2)
+  for y in code.Y..code.Y + code.Height - 1
+    hit = view.BlockAt(x, y, state)
+    if value.IsSome(hit) and dict.GetOr("Cell", 0, hit.Block) == cell and value.IsSome(dict.GetOr("Graph", missing, hit.Block))
+      return hit
+    end
+  end
+  missing
+end
+
+(** A point of a scene of a graph, in pixels from its top left, as a point of the window. *)
+inWindow(hit, px, py, state) = [hit.Left + 2 * state.Cell.Width + px, hit.Top + dict.GetOr("Under", 0, hit.Block) + py]
+
+defn pointOf(at, state)
+  (** A point of the window, [x, y], for a point of a step, and the state: the mouse visits a graph first, so that it asks its points and its axes. *)
+  if value.IsArray(at)
+    return {At: at, State: state}
+  end
+  hit = graphOnScreen(at.Graph, state)
+  if value.IsMissing(hit)
+    bug.Panic("The graph of cell $(at.Graph) isn't on the screen.")
+  end
+  s = state
+  if value.IsMissing(dict.GetOr("Axes", missing, hit.Block.Graph))
+    s = settled(played([mouseEvent("move", inWindow(hit, 4, 4, s), 0, 0.0)], s))
+    hit = graphOnScreen(at.Graph, s)
+  end
+  axes = hit.Block.Graph.Axes
+  {At: inWindow(hit, along(axes.X, at.X), along(axes.Y, at.Y), s), State: s}
+end
+
+defn stepped(step, state)
+  (** The state after one step of a shot, then ticked until nothing moves; for a step with Until, until the screen shows those words instead; for a step
+      with Settle false, not at all, as a hand that types on at once. *)
+  if dict.Has("Until", step)
+    return settled(waitedFor(step.Until, played(eventsOf(step, state), state)))
+  end
+  if not dict.GetOr("Settle", true, step)
+    return played(eventsOf(step, state), state)
+  end
+  if dict.Has("Keys", step) or dict.Has("Type", step)
+    return settled(played(eventsOf(step, state), state))
+  else if dict.Has("Wait", step)
+    return ticked(state, step.Wait, false)
+  else if not dict.Has("Mouse", step)
+    bug.Panic("A step of a shot is Keys, Type, Mouse or Wait: $step")
+  end
+  if step.Mouse == "drag"
+    from = pointOf(step.From, state)
+    to = pointOf(step.To, from.State)
+    s = played([mouseEvent("move", from.At, 0, 0.0), mouseEvent("down", from.At, 1, 0.0)], to.State)
+    middle = [(from.At[1] + to.At[1]) / 2, (from.At[2] + to.At[2]) / 2]
+    return settled(played([mouseEvent("move", middle, 0, 0.0), mouseEvent("move", to.At, 0, 0.0), mouseEvent("up", to.At, 1, 0.0)], s))
+  end
+  p = pointOf(step.At, state)
+  events = match step.Mouse
+    "move" -> [mouseEvent("move", p.At, 0, 0.0)]
+    "click" -> [mouseEvent("move", p.At, 0, 0.0), mouseEvent("down", p.At, 1, 0.0), mouseEvent("up", p.At, 1, 0.0)]
+    "wheel" -> [mouseEvent("move", p.At, 0, 0.0), mouseEvent("wheel", p.At, 0, step.Amount * 1.0)]
+    else -> bug.Panic("A mouse step is move, click, wheel or drag: $(step.Mouse)")
+  end
+  settled(played(events, p.State))
+end
+
+defn eventsOf(step, state)
+  (** The events of a step of keys or of text, none for any other. *)
+  if dict.Has("Keys", step)
+    list.Flatten([chordEvents(k) for k in str.Split(" ", step.Keys)])
+  else if dict.Has("Type", step)
+    typedEvents(step.Type)
+  else
+    []
+  end
+end
+
+(* ---- A shot *)
+
+defn written(folder, files)
+  (** Writes the files of a shot in its folder, making the folders they need. *)
+  for f in files
+    parts = str.Split("/", f.Path)
+    for k in 1..value.Len(parts) - 1
+      _ = sys.Mkdir("$folder/$(str.Join("/", list.Take(k, parts)))")
+    end
+    sys.Write("$folder/$(f.Path)", f.Text)?
+  end
+  result.Ok(folder)
+end
+
+defn setUp(folder, steps)
+  (** Runs the Setup of a shot in its folder, in order: a list is a program and its words, as git init, a {Path, Text} a file written, as the next state of
+      a file between two commits. The first that fails stops the shot. *)
+  for one in steps
+    if value.IsDict(one)
+      written(folder, [one])?
+    else
+      got = sys.Run(one[1], list.Skip(1, one), dir = folder)?
+      if got.Code != 0
+        return result.Err("$(str.Join(" ", one)) failed: $(got.Err)")
+      end
+    end
+  end
+  result.Ok(folder)
+end
+
+(** The path of a file of a shot to open, in its folder: "." is the folder itself. *)
+openPath(folder, path) = if path == "." folder else "$folder/$path" end
+
+defn Take(shot, home, out)
+  (** Takes one shot, with Cemacs at home, its fonts in home/fonts, and writes out/NAME.png. Gives Ok(the path of the PNG) or an Err that says why. The
+      folder of its files is made by mktemp and taken away after, with all that the shot wrote in it; a step that fails stops the program and leaves it,
+      for a look. *)
+  theme = if dict.GetOr("Theme", "light", shot) == "dark" ui.Dark else ui.Light end
+  config = () -> configOf(theme, shot.Size)
+  made = config()
+  temp = str.Trim(sys.Run("mktemp", ["-d"])?.Out)
+  folder = "$temp/$(dict.GetOr("Folder", "shop", shot))"
+  sys.Mkdir(folder)?
+  taken = shotIn(shot, home, out, folder, config, made, theme)
+  _ = sys.Run("rm", ["-rf", temp])
+  taken
+end
+
+defn shotIn(shot, home, out, folder, config, made, theme)
+  (** Takes a shot in its folder, made: see Take. *)
+  written(folder, dict.GetOr("Files", [], shot))?
+  setUp(folder, dict.GetOr("Setup", [], shot))?
+  window = opened(home, shot.Size, made.FontSize())?
+  measured = sdl.Measure(window)
+  look = ui.Look(theme, measured.Width, measured.Height)
+  cell = {Width: look.Width("M", "code"), Height: sdl.TextSize("Ag", window, font = "code").Height + view.LineGap}
+  empty = view.Start([text.Of("", missing)], look, cell, shot.Size[1], shot.Size[2])
+  empty.Window = window
+  empty.Config = config
+  empty.Home = home
+  paths = [openPath(folder, p) for p in dict.GetOr("Open", [], shot)]
+  s = settled(commands.Settled(made.Start(commands.OpenAll(paths, empty))))
+  for step in dict.GetOr("Steps", [], shot)
+    s = stepped(step, s)
+  end
+  drawn = sdl.Draw(view.View(s), s.Window)
+  saved = Saved(drawn, dict.GetOr("Crop", missing, shot), "$out/$(shot.Name).png")
+  sdl.Frame([{Kind: "clear", Color: 0xFFFFFF}], drawn)
+  sdl.Close(drawn)
+  saved
+end

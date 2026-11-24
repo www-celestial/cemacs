@@ -209,6 +209,8 @@ These are the messages of the commands, in the order of the chapters. A message 
 | `No test ran yet: C-c t t runs those of the file.` | `C-c t r` before any test ran |
 | `cesia test doesn't run: REASON` | `cesia` couldn't start: is it on the `PATH`? |
 
+![C-c c r on main.ce with 1500 added to the prices and not saved: the mode line shows main.ce *, the output shows the three prices of the file as saved, and the prompt line says Running the path as saved, without the changes here.](images/troubleshooting-saved.png)
+
 ### Questions
 
 | Question | What it asks |

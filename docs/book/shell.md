@@ -7,6 +7,8 @@ that draws a whole screen, as `vim` or `top`, or that waits for a password typed
 colours a program writes for a terminal are taken away. The shell is the key `t` of the group `o`, open, of `C-c`, as
 `SPC o t` in Doom Emacs. A second `C-c o t` goes back to the buffer.
 
+![The *shell* buffer after two commands: ls lists cesia.toml, main.ce and src, then cesia run main.ce prints the total of 1349 cents and the three prices with tax; the prompt $ waits on the last line.](images/shell.png)
+
 | Keys | Command | What it does |
 |---|---|---|
 | `C-c o t` | [ide.Terminal] | opens the shell buffer, the shell started in the folder of the current file, or goes to it |

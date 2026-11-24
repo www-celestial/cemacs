@@ -92,6 +92,19 @@ what a key can lead to, so no key has to be learnt before the start.
 - `user/`, the person's folder, which git ignores: the config gives the theme, the size of the window and a function run
   after the files opened; keys, commands and apps of one's own, in Cesia, reloaded while Cemacs runs.
 
+### The book
+
+- Every chapter that shows something on the screen shows it in a picture of Cemacs itself, in English and in French, each
+  with words for those who can't see it: the window and the band of hints, completion and a selection, two panes, a search
+  of a buffer and of a project, the folders and the buffers, Git's state, diff and blame, the shell, the tests and a stop
+  of the debugger, the marks of the check, the list of `C-c ?`, both themes, the graphs, tables, sliders, inputs and
+  animations of the cells, the documentation and the references of a name. `tools/shots.ce` makes them all again after a
+  change of how Cemacs looks: it runs Cemacs as it comes under SDL's dummy driver, plays the keys and the mouse of each
+  shot through its update, and saves its pixels with `SDL_SavePNG`, which needs SDL 3.4. `tools/shots.ce --cesia FOLDER`
+  makes so the pictures of Cemacs that the book of Cesia shows: cells, a table and its graph, sliders, inputs, a stop of
+  the debugger and the documentation from `cesia lsp`.
+- The chapters on speed and on other editors draw their tables as charts, with `std/plot` in blocks the site runs.
+
 ### Speed
 
 Measured on the same machine as the rest, in the book's chapter on performance:
@@ -119,6 +132,9 @@ Measured on the same machine as the rest, in the book's chapter on performance:
 - The ▶ of an animation takes the press of the mouse where it is drawn, and a 3D graph the drag that turns it, when the
   label of the result, as `Out[2]:`, has a row of its own above the graph: they took it a row higher. A 3D graph keeps
   that label when it turns, where its graph moved a row up.
+- Tab completes in a file of Cesia after the signature of a name was shown at a pause, where it ended the editor with
+  `Can't loop over a dictionary`: the session that answers the names took the field of the state that holds the names
+  completion reads.
 - The left and the right side of a graph's frame are drawn whole, as in its SVG, where the left one stopped short and the
   right one faded: a line keeps its width up to each joint, its strip on the miter of its two segments, and a joint
   sharper than 120 degrees is cut flat.

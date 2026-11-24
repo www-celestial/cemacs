@@ -220,6 +220,8 @@ Enregistrez souvent.
 | `C-x k`, `C-c b k` | [commands.CloseBuffer] | ferme le buffer courant, en demandant d'abord si son texte n'est pas enregistré |
 | `C-x C-c`, `C-c q q` | [commands.Quit] | termine Cemacs, en demandant d'abord si un texte n'est pas enregistré |
 
+![La liste des buffers qu'ouvre C-x C-b avec trois fichiers ouverts : une rangée par buffer, et la prompt line où ce que vous tapez la filtre.](../../book/images/files-buffers.png)
+
 Le nom d'un buffer est la dernière partie de son chemin, comme la mode line et le titre de la fenêtre le montrent,
 `untitled` (sans titre) pour un buffer sans fichier, ou le nom d'une liste. Deux fichiers du même nom dans deux dossiers
 montrent le même nom : la liste des buffers donne leurs chemins.
@@ -250,6 +252,8 @@ chemin, terminé par `/`, puis ce que la liste contient de plus : le nombre de r
 n'est pas par nom, `hidden shown` (les noms cachés montrés), ou, sans rien de cela, `backspace: folder above, q: close, ?: keys`
 (`backspace` remonte au dossier du dessus, `q` ferme la liste, `?` donne les touches). L'état d'une liste, son dossier, ses marques et sa façon de les montrer, est un record, la vue, que
 [folders.NewView] commence et que [folders.ViewOf] lit.
+
+![Le gestionnaire de dossiers sur le dossier shop après n n n et m : src/ d'abord, puis cesia.toml, main.ce et notes.md, chacun avec son mode, sa taille et son âge, notes.md marqué d'une étoile ; la prompt line montre le chemin et 1 marked.](../../book/images/files-folder.png)
 
 ### Les rangées
 

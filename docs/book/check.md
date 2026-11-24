@@ -8,6 +8,8 @@ The check is an app of Cemacs, [src/check]: the core knows nothing of it.
 
 Each error or warning is a mark on a span of a line, the characters it is about:
 
+![A mistake typed on line 9, shop.Totl(prices): Totl underlined in red, the number 9 in red, the words Module "shop" has no name "Totl". after the line, 1 error in the mode line, and the same words on the prompt line.](images/check-inline.png)
+
 - a line of two pixels under the span, red for an error, amber for a warning; a span takes at least one character;
 - the number of the line in the same colour;
 - the words of the first mark of the line, errors first, two characters after the end of the line, in a quieter tone of the
