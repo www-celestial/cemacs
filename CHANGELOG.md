@@ -100,7 +100,9 @@ what a key can lead to, so no key has to be learnt before the start.
   of the debugger, the marks of the check, the list of `C-c ?`, both themes, the graphs, tables, sliders, inputs and
   animations of the cells, the documentation and the references of a name. `tools/shots.ce` makes them all again after a
   change of how Cemacs looks: it runs Cemacs as it comes under SDL's dummy driver, plays the keys and the mouse of each
-  shot through its update, and saves its pixels with `SDL_SavePNG`, which needs SDL 3.4.
+  shot through its update, and saves its pixels with `SDL_SavePNG`, which needs SDL 3.4. `tools/shots.ce --cesia FOLDER`
+  makes so the pictures of Cemacs that the book of Cesia shows: cells, a table and its graph, sliders, inputs, a stop of
+  the debugger and the documentation from `cesia lsp`.
 - The chapters on speed and on other editors draw their tables as charts, with `std/plot` in blocks the site runs.
 
 ### Speed

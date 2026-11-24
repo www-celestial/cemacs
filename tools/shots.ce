@@ -5,6 +5,10 @@
     SDL_VIDEODRIVER=dummy cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=git,exec=mktemp,exec=rm,env=HOME,env=PWD,env=SHELL,env=XDG_DATA_HOME \
       --allow "exec=$(readlink -f "$(command -v cesia)")" tools/shots.ce [NAME...]
 
+    With --cesia FOLDER first, it makes instead the pictures of Cemacs that the book of Cesia shows, into FOLDER, the docs/book/images of a clone of Cesia:
+
+    SDL_VIDEODRIVER=dummy cesia run --allow ... tools/shots.ce --cesia ../cesia/docs/book/images [NAME...]
+
     It needs SDL 3.4 or later, for SDL_SavePNG. It prints each picture it wrote with its size, and stops at the first shot that fails. *)
 use tools/shots
 use std/io
@@ -14,15 +18,21 @@ use std/sys
 use std/value
 
 defn main()
-  wanted = sys.Args
-  chosen = [one for one in shots.Book() if value.Len(wanted) == 0 or one.Name in wanted]
-  unknown = [name for name in wanted if not (name in [one.Name for one in shots.Book()])]
+  forCesia = value.Len(sys.Args) > 0 and sys.Args[1] == "--cesia"
+  if forCesia and value.Len(sys.Args) < 2
+    return result.Err("--cesia takes the folder of the images of Cesia's book, as ../cesia/docs/book/images.")
+  end
+  folder = if forCesia sys.Args[2] else "docs/book/images" end
+  wanted = if forCesia list.Skip(2, sys.Args) else sys.Args end
+  book = if forCesia shots.CesiaBook() else shots.Book() end
+  chosen = [one for one in book if value.Len(wanted) == 0 or one.Name in wanted]
+  unknown = [name for name in wanted if not (name in [one.Name for one in book])]
   if value.Len(unknown) > 0
     return result.Err("No shot is named $(unknown[1]).")
   end
   for one in chosen
     started = sys.Now()
-    path = shots.Take(one, ".", "docs/book/images")?
+    path = shots.Take(one, ".", folder)?
     io.Print("$path  $(one.Size[1])x$(one.Size[2])  $(sys.Now() - started) s")
   end
   result.Ok(value.Len(chosen))

@@ -1,5 +1,6 @@
-(** The shots of the book of Cemacs, in the order of its chapters: see tools/shots.ce. Each is at most 660 pixels wide, the width of a page of the site,
-    so that the site shows it at its own size. *)
+(** The shots of the book of Cemacs, in the order of its chapters, and those of Cemacs that the book of Cesia shows: see tools/shots.ce. Each is at most 660
+    pixels wide, the width of a page of the site, so that the site shows it at its own size. *)
+use std/list
 
 (* A small project that several shots open: a shop with its prices and their test. *)
 toml = "[project]\nname = \"shop\"\ncesia = \"1.3\"\nsrc = [\"src\"]\n"
@@ -62,4 +63,24 @@ defn Book()
     {Name: "customising-light", Size: [660, 360], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c c r", Until: "ended, code 0"}]},
     {Name: "customising-dark", Size: [660, 360], Theme: "dark", Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c c r", Until: "ended, code 0"}]},
     {Name: "search-isearch", Size: [660, 300], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-s"}, {Type: "price"}]}]
+end
+
+(* The files of the book of Cesia that its shots open, each as the chapter shows it. *)
+meanCells = "use std/io\nuse std/list\n\n(* %% Data *)\nn = 1000\nxs = [i * i for i in 1..n]\n\n(* %% Mean *)\nmean = list.Mean(xs)\nio.Print(\"mean of $$n squares\")\nmean\n"
+lorenzTwo = "use std/cells\nuse std/ode\nuse std/result\n\n(* %% Parameters *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nn = cells.Slider(3, 1, 10)\n\n(* %% Lorenz *)\nlorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]\ns = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))\n"
+totalCode = "use std/io\n\ndefn Total(n)\n  sum = 0\n  for i in 1..n\n    sum = sum + Half(i)\n  end\n  sum\nend\n\ndefn Half(i)\n  i / 2\nend\n\nio.Print(Total(4))\n"
+squaresCode = "use std/io\nuse std/list\n\nsquares = list.Map(x -> x * x, [1, 2, 3])\nio.Print(squares)\n"
+squaresToml = "[project]\nname = \"squares\"\ncesia = \"1.3\"\n"
+
+defn CesiaBook()
+  (** The shots of Cemacs that the book of Cesia shows, for tools/shots.ce --cesia: the cells, the debugger and the language server at work in an editor.
+      The table and the inputs are the shots of this book, whose files are the chapter's own. *)
+  mine = [one for one in Book() if one.Name in ["cells-table", "cells-inputs"]]
+  list.Concat([{Name: "cells-run", Size: [660, 340], Files: [{Path: "squares.ce", Text: meanCells}], Open: ["squares.ce"], Steps: [{Keys: "C-c e a"}]}],
+    list.Concat(mine, [{Name: "cells-sliders", Size: [660, 440], Files: [{Path: "lorenz.ce", Text: lorenzTwo}], Open: ["lorenz.ce"],
+        Steps: [{Keys: "C-c e a"}, {Keys: "C-s"}, {Type: "Slider"}, {Keys: "enter C-c e f"}, {Keys: "right right right right"}]},
+      {Name: "debug-cemacs", Size: [660, 480], Files: [{Path: "total.ce", Text: totalCode}], Open: ["total.ce"],
+        Steps: [{Keys: "M-< C-n C-n C-n C-n C-n C-n C-n C-n C-n C-n C-n C-c d b"}, {Keys: "C-c d r", Until: "stopped at"}]},
+      {Name: "editors-cemacs", Size: [660, 180], Files: [{Path: "cesia.toml", Text: squaresToml}, {Path: "main.ce", Text: squaresCode}], Open: ["main.ce"],
+        Steps: [{Keys: "C-s"}, {Type: "Map("}, {Keys: "enter M-b C-c c i"}]}]))
 end
