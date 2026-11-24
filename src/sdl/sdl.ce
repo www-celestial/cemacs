@@ -836,8 +836,10 @@ end
 Whole(x) = math.Div(math.Floor(x), 1)   (** A coordinate rounded down to an integer. *)
 (** A mouse event as {Kind: "mouse", Action, X, Y, Button, Amount}. *)
 mouse(action, x, y, button, amount) = {Kind: "mouse", Action: action, X: Whole(x), Y: Whole(y), Button: button, Amount: amount}
-(** A mouse button event (action is "down" or "up") read from the event block. *)
-buttonEvent(action, event) = mouse(action, c.Get("f32", 28, event), c.Get("f32", 32, event), c.Get("u8", 24, event), 0.0)
+(** A mouse button event (action is "down" or "up") read from the event block, with Clicks, 2 for the second press of a double click, as the system counts
+    them. *)
+buttonEvent(action, event) = {Kind: "mouse", Action: action, X: Whole(c.Get("f32", 28, event)), Y: Whole(c.Get("f32", 32, event)), Button: c.Get("u8", 24, event), Amount: 0.0,
+  Clicks: c.Get("u8", 26, event)}
 (** A mouse move event read from the event block. *)
 moveEvent(event) = mouse("move", c.Get("f32", 28, event), c.Get("f32", 32, event), 0, 0.0)
 (** A mouse wheel event read from the event block; amount is the scroll. *)

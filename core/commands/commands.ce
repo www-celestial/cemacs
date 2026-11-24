@@ -1656,11 +1656,12 @@ defn down(event, state)
   s = if j > 0 focused(j, state) else state end
   hit = view.BlockAt(event.X, event.Y, s)
   if value.IsSome(hit) and dict.Has("Mouse", hit.Block)
-    (* A block that takes the mouse, as a slider of the cells: it has the press, the moves and the release, and the cursor stays. Its Mouse gives
-       missing for a press it doesn't take, as one on the lines above a graph: the press goes to the text, and the control that has the keys leaves them. *)
+    (* A block that takes the mouse, as a slider of the cells: it has the press, the moves and the release, and the cursor stays; the press tells its
+       Clicks, 2 for the second of a double click. Its Mouse gives missing for a press it doesn't take, as one on the lines above a graph: the press goes
+       to the text, and the control that has the keys leaves them. *)
     held = s
     held.Holding = {Mouse: hit.Block.Mouse, Left: hit.Left, Top: hit.Top, Width: hit.Width}
-    took = hit.Block.Mouse("down", {X: event.X - hit.Left, Y: event.Y - hit.Top, Width: hit.Width}, held)
+    took = hit.Block.Mouse("down", {X: event.X - hit.Left, Y: event.Y - hit.Top, Width: hit.Width, Clicks: dict.GetOr("Clicks", 1, event)}, held)
     if value.IsSome(took)
       return took
     end
