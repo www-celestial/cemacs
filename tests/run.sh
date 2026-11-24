@@ -55,7 +55,8 @@ trash=$(mktemp -d)
 XDG_DATA_HOME="$trash" timeout -s KILL 60 cesia run --allow read,write,exec=cesia,exec=mkfifo,env=HOME,env=PWD,env=SHELL,env=XDG_DATA_HOME tests/folders-check.ce
 rm -rf "$trash"
 SDL_VIDEODRIVER=dummy timeout -s KILL 60 cesia run --allow read,write,exec=cesia,ffi=SDL3,ffi=SDL3_ttf tests/window-check.ce
-# tools/shots.ce, which makes the pictures of the book: one tiny shot comes out as a PNG of its size.
-SDL_VIDEODRIVER=dummy timeout -s KILL 60 cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=mktemp,exec=rm tests/shots-check.ce
+# tools/shots.ce, which makes the pictures of the book: one tiny shot comes out as a PNG of its size. Its *scratch*, a buffer of Cesia, is checked by
+# cesia check, as in every start of Cemacs.
+SDL_VIDEODRIVER=dummy timeout -s KILL 60 cesia run --allow ffi=SDL3,ffi=SDL3_ttf,read,write,exec=cesia,exec=mktemp,exec=rm tests/shots-check.ce
 tests/start-check.sh
 tests/reload-check.sh
