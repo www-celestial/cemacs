@@ -391,8 +391,8 @@ passe avant l'image suivante, qui attend.
 
 ## Graphes 3D
 
-Une cell dont la dernière expression est un graphe 3D, une surface de `plot.Surface` ou des courbes de `plot.Line3` de
-[std/plot](https://www-celestial.github.io/cesia-lang/graphs.html#3d), le montre à la vue que donne son code,
+Une cell dont la dernière expression est un graphe 3D, une surface de `plot.Surface`, des courbes de `plot.Line3` ou des
+pièces de `plot.Mesh` de [std/plot](https://www-celestial.github.io/cesia-lang/graphs.html#3d), le montre à la vue que donne son code,
 `view = [az, el]` ou le `[-37.5, 30]` de MATLAB, avec une ligne en dessous qui dit la vue (*view*) :
 
 ```
@@ -417,6 +417,42 @@ fois : pendant qu'une est posée, un glissé ou une touche ne change que la vue 
 et une fois la réponse venue, c'est la dernière vue voulue qui est demandée, si bien que le graphe suit la souris sans file
 de vieilles vues. Rien n'est écrit dans le fichier : le code garde sa vue, la page la montre, et un lancement de la cell
 la remontre. Pour garder la vue trouvée, écrivez les deux nombres de la ligne comme `view` de la cell.
+
+### Tourner une pièce avec la souris
+
+Un graphe de pièces solides, des boîtes, des cylindres et une pièce STL placés par std/mesh et dessinés par `plot.Mesh`,
+comme les construit le chapitre [Objets 3D](https://www-celestial.github.io/cesia-lang/3d.html) du livre de Cesia, tourne
+comme une surface :
+
+```cesia norun
+use std/cells
+use std/mesh
+use std/plot
+
+(* %% A shaft through a block *)
+block = mesh.Box([0, 0, 0], [40, 20, 10])
+shaft = mesh.Move(mesh.Turn(mesh.Cylinder([0, 0, 0], 3, 60), [0, 1, 0], 90), [-10, 10, 5])
+plot.Of([plot.Mesh(block, color = "#3cb043", edges = true), plot.Mesh(shaft, edges = true)], axes = false)
+```
+
+Glissez sur le graphe, ou faites `C-c e f` puis les flèches, et le bloc et l'arbre tournent ; `home` revient à la vue du
+code. Quand le code ne donne pas de `light`, la lumière est une lampe au-dessus de votre œil : elle tourne avec vous, et
+les faces tournées vers vous restent éclairées, comme dans un logiciel de CAO ; avec `light = [x, y, z]`, elle reste là où
+le code la met, comme le soleil, et les pièces tournent dessous. L'arbre se voit là où il sort du bloc à chaque vue :
+std/plot l'a coupé une fois, quand la cell a tourné.
+
+Les pièces viennent comme un seul item de la scène, `triangles` : les places de leurs points, une couleur pour chaque
+triangle, ombrée par la lumière, et les arêtes du dessin, chacune après le triangle qu'elle suit. Cemacs les dessine avec
+`SDL_RenderGeometry`, une couleur à chaque sommet, dans l'ordre de la scène, les lointains d'abord. Une vue change les
+places, les couleurs et l'ordre, donc l'item entier revient de la session à chaque vue. Avant qu'aucune mémoire ne soit
+prise, il est vérifié : au plus 400 000 triangles et 600 000 arêtes, chaque coin un point de l'item, chaque couleur
+`0xRRGGBB`, les arêtes dans l'ordre des triangles qu'elles suivent, leur largeur de 0 à 50 ; tout le reste est refusé, et
+la cell dit pourquoi.
+
+Un pas d'un glissé, de la souris à l'image, sous le driver dummy de SDL, qui dessine en logiciel : 28 ms pour la machine
+du livre de Cesia, 516 triangles en six pièces ; 80 ms pour une boule de 16 128 triangles ; 0,30 s pour une de 99 224, la
+plus grande part étant la vue de la session, 100 ms, et les triangles qui reviennent. Une pièce de quelques milliers de
+triangles suit la souris ; une de 100 000 tourne à environ trois vues par seconde.
 
 Un graphe 3D de `*repl*` tourne de la même façon, avec la session de son fichier. Un graphe 3D dans une grille ou dans une
 animation ne tourne pas.
@@ -501,7 +537,9 @@ animation dit son nombre d'images, de 1 à 300, et son rythme, de 1 à 60 par se
 son nombre diffère de celui de l'animation : l'animation se met en pause et dit pourquoi. Les quads d'une surface viennent
 avec leurs nombres, de 1 à 200 par côté, les places d'exactement leurs points, chacune un nombre de -1 000 000 à
 1 000 000, une palette de 1 à 256 couleurs `#rrggbb`, une couleur de celle-ci ou -1 pour chaque quad, et un ordre de 1 ou
--1 pour leurs lignes et leurs colonnes ; la vue d'un graphe 3D est faite de deux nombres, l'élévation de -90 à 90 : tout
+-1 pour leurs lignes et leurs colonnes ; les triangles des pièces, au plus 400 000, et leurs arêtes, au plus 600 000,
+viennent avec les places de leurs points, une couleur `0xRRGGBB` chacun, et chaque coin et chaque arête nommant un point
+de l'item, les arêtes dans l'ordre des triangles qu'elles suivent ; la vue d'un graphe 3D est faite de deux nombres, l'élévation de -90 à 90 : tout
 le reste est refusé, et une vue refusée laisse le graphe à celle qu'il montre, et dit pourquoi. Cemacs pose à la session
 une question à la fois, une image, le nombre d'un slider, une vue, une scene, les rangées d'une table ou une marque, pour
 qu'aucune réponse n'aille à une autre question. Les rangées d'une table sont une entrée aussi : 1 000 rangées et 256

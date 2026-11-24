@@ -366,8 +366,8 @@ being set, comes before the next frame, which waits.
 
 ## 3D graphs
 
-A cell whose last expression is a 3D graph, a surface of `plot.Surface` or lines of `plot.Line3` of
-[std/plot](https://www-celestial.github.io/cesia-lang/graphs.html#3d), shows it at the view its code gives, `view = [az,
+A cell whose last expression is a 3D graph, a surface of `plot.Surface`, lines of `plot.Line3` or parts of `plot.Mesh`
+of [std/plot](https://www-celestial.github.io/cesia-lang/graphs.html#3d), shows it at the view its code gives, `view = [az,
 el]` or MATLAB's `[-37.5, 30]`, with a line under it that says the view:
 
 ```
@@ -391,6 +391,39 @@ a drag or a key only changes the view wanted, which the line shows at once, and 
 wanted is asked, so the graph follows the mouse without a queue of old views. Nothing is written in the file: the code
 keeps its view, the page shows it, and a run of the cell shows it again. To keep the view you found, write the two numbers
 of the line as the cell's `view`.
+
+### Turning a part with the mouse
+
+A graph of solid parts, boxes, cylinders and an STL part placed by std/mesh and drawn by `plot.Mesh`, as the chapter
+[3D objects](https://www-celestial.github.io/cesia-lang/3d.html) of Cesia's book builds them, turns as a surface does:
+
+```cesia norun
+use std/cells
+use std/mesh
+use std/plot
+
+(* %% A shaft through a block *)
+block = mesh.Box([0, 0, 0], [40, 20, 10])
+shaft = mesh.Move(mesh.Turn(mesh.Cylinder([0, 0, 0], 3, 60), [0, 1, 0], 90), [-10, 10, 5])
+plot.Of([plot.Mesh(block, color = "#3cb043", edges = true), plot.Mesh(shaft, edges = true)], axes = false)
+```
+
+Drag the graph, or press `C-c e f` and the arrows, and the block and the shaft turn; `home` comes back to the view of the
+code. When the code gives no `light`, the light is a lamp over your eye: it turns with you, and the faces turned to you
+stay lit, as in a CAD program; with `light = [x, y, z]` it stays where the code puts it, as the sun, and the parts turn
+under it. The shaft shows where it comes out of the block at every view: std/plot cut it once, when the cell ran.
+
+The parts come as one item of the scene, `triangles`: the places of their points, a color for each triangle, shaded by
+the light, and the edges of the drawing, each after the triangle it follows. Cemacs draws them with
+`SDL_RenderGeometry`, a color at each vertex, in the order of the scene, far first. A view changes the places, the
+colors and the order, so the whole item crosses back from the session at each view. Before any memory is taken it is
+checked: at most 400,000 triangles and 600,000 edges, each corner a point of the item, each color `0xRRGGBB`, the edges
+in the order of the triangles they follow, their width from 0 to 50; anything else is refused, and the cell says why.
+
+A step of a drag, from the mouse to the picture, under SDL's dummy driver, which draws in software: 28 ms for the
+machine of Cesia's book, 516 triangles of six parts; 80 ms for a ball of 16,128 triangles; 0.30 s for one of 99,224,
+most of it the session's view, 100 ms, and the triangles crossing back. A part of a few thousand triangles follows the
+mouse; one of 100,000 turns at about three views a second.
 
 A 3D graph in `*repl*` turns the same way, with the session of its file. A 3D graph in a grid or in an animation doesn't
 turn.
@@ -465,7 +498,9 @@ refused, and the cell says why in red. A frame of an animation says its number o
 from 1 to 60 a second, and is refused otherwise or when its count differs from the animation's: the animation pauses and
 says why. The quads of a surface come as counts, from 1 to 200 a side, the places of exactly their points, each a number
 from -1,000,000 to 1,000,000, a palette of 1 to 256 colors `#rrggbb`, a color of it or -1 for each quad, and an order of
-1 or -1 for its rows and its columns; a 3D graph's view is two numbers, the elevation from -90 to 90: anything else is
+1 or -1 for its rows and its columns; the triangles of parts, at most 400,000, and their edges, at most 600,000, come
+with the places of their points, a color `0xRRGGBB` each, and each corner and each edge naming a point of the item, the
+edges in the order of the triangles they follow; a 3D graph's view is two numbers, the elevation from -90 to 90: anything else is
 refused, and a view refused leaves the graph at the one it shows, and says why. Cemacs asks the session one question at
 a time, a frame, a slider's number, a view, a scene, the rows of a table or a mark, so that no answer goes to another
 question. The rows of a table are input too: at most 1,000 rows and 256 columns, a text of at most 200 characters for

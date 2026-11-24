@@ -86,6 +86,13 @@ what a key can lead to, so no key has to be learnt before the start.
   every key does what it did. Tab goes between the tables and the graphs of a cell.
 - A click on a point of a graph linked to a table chooses its row and gives the graph the keys, where it gave them to the
   table; a press on the lines above a graph goes to the text.
+- A cell draws the solid parts of `plot.Mesh`, the item `triangles` of a scene, with `SDL_RenderGeometry`: a color for
+  each triangle, lit and shaded by std/plot, and the edges of the drawing each after the triangle it follows, far first;
+  a drag or the arrows after `C-c e f` turn the parts as they turn a surface, the light that follows the view turning
+  with the eye. The item is checked before any memory is taken for it: at most 400,000 triangles and 600,000 edges, each
+  corner and each edge a point of the item, a color `0xRRGGBB` each, the edges in order. A step of a drag takes 28 ms for
+  a machine of 516 triangles and 0.30 s for a ball of 99,224, under SDL's dummy driver. The chapter on cells shows it,
+  in English and in French.
 
 ### Changing Cemacs
 
