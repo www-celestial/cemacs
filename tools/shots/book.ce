@@ -8,6 +8,7 @@ shopCode = "(** The prices of a shop. *)\nuse std/list\nuse std/math\n\n(** The 
 shopTest = "use src/shop\n\nisTotal() = shop.Total([250, 1000]) == 1250\nisTax() = shop.WithTax(1000) == 1200\n"
 mainCode = "use src/shop\nuse std/io\n\nprices = [250, 1000, 99]\nio.Print(\"Total: $$(shop.Total(prices)) cents\")\nfor p in prices\n  io.Print(\"$$p with tax: $$(shop.WithTax(p))\")\nend\n"
 sunCells = "use std/cells\nuse std/plot\n\n(* %% Sun *)\naz = [116.59, 117.87, 128.27, 140.08, 153.62, 168.74, 184.7, 200.29, 214.52, 227.01, 237.93, 243.29]\nel = [-0.833, 0.48, 9.99, 18.14, 24.35, 28.02, 28.66, 26.19, 20.94, 13.51, 4.49, -0.833]\nplot.Of([plot.Line(az, el), plot.Points(az, el, size = 4)], x = \"azimuth\", y = \"elevation\", title = \"Sun path\", size = [540, 300])\n"
+replCells = "use std/io\nuse std/list\n\n(* %% Sun *)\nel = [-0.833, 0.48, 9.99, 18.14, 24.35, 28.02, 28.66, 26.19, 20.94, 13.51, 4.49, -0.833]\n\n(* %% Noon *)\nhighest = list.Max(el)\nio.Print(\"the sun at noon\")\nlist.Max(el)\n"
 dayCells = "use std/cells\nuse std/frame\nuse std/plot\n\n(* %% Day *)\nhours = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, 18.14, 24.35, 28.02, 28.66]})\ncells.Show(hours)\nplot.Points(frame.Column(\"hour\", hours), frame.Column(\"elevation\", hours))\n"
 lorenzCells = "use std/cells\nuse std/ode\nuse std/result\n\n(* %% Parameters *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\n\n(* %% Lorenz *)\nlorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]\ns = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))\n"
 inputCells = "use std/cells\n\n(* %% Place and day *)\nyear  = cells.Choice(2026, [2025, 2026, 2027])\nzone  = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])\nday   = cells.Date(\"2026-11-23\")\nplace = cells.Field(\"40.76, -73.984\")\nhigh  = cells.Field(50)\nrho   = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nbold  = cells.Check(false, label = \"Bold line\")\n"
@@ -29,6 +30,10 @@ defn Book()
   (** Every shot of the book. *)
   [{Name: "first-steps-window", Size: [660, 360], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c c r", Until: "ended, code 0"}]},
     {Name: "first-steps-hints", Size: [660, 360], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c"}]},
+    {Name: "first-steps-scratch", Size: [660, 720], Files: [], Open: [], Steps: [{Type: "x = 3"}, {Keys: "C-c e r"}, {Keys: "enter"}, {Type: "x * 14"},
+      {Keys: "C-c e r", Until: "42"}]},
+    {Name: "running-repl", Size: [660, 480], Files: project, Open: ["main.ce"], Steps: [{Keys: "M-< C-n C-n C-n C-c e r"}, {Keys: "C-c e r", Until: "1349"},
+      {Keys: "C-c e r", Until: "1200"}]},
     {Name: "windows-split", Size: [660, 300], Files: project, Open: ["src/shop/shop.ce", "main.ce"], Steps: [{Keys: "C-x 3"}, {Keys: "C-x b"}]},
     {Name: "check-inline", Size: [660, 300], Files: project, Open: ["main.ce"], Steps: [{Keys: "M-> C-p C-e"}, {Type: "\nio.Print(shop.Totl(prices))"}]},
     {Name: "keys-help", Size: [660, 420], Files: project, Open: ["main.ce"], Steps: [{Keys: "C-c ?"}]},
@@ -41,6 +46,8 @@ defn Book()
       Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Keys: "right s s down"}]},
     {Name: "cells-sliders", Size: [660, 420], Files: [{Path: "lorenz.ce", Text: lorenzCells}], Open: ["lorenz.ce"],
       Steps: [{Keys: "C-c e a"}, {Keys: "C-s"}, {Type: "Slider"}, {Keys: "enter C-c e f"}, {Keys: "right right right right"}]},
+    {Name: "cells-repl", Size: [660, 480], Files: [{Path: "sun.ce", Text: replCells}], Open: ["sun.ce"],
+      Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e r", Until: "28.66"}]},
     {Name: "cells-inputs", Size: [660, 600], Files: [{Path: "place.ce", Text: inputCells}], Open: ["place.ce"], Steps: [{Keys: "M-> C-c e f"}, {Keys: "enter"}]},
     {Name: "cells-animation", Size: [660, 760], Files: [{Path: "wave.ce", Text: waveCells}], Open: ["wave.ce"],
       Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Keys: "right right right right right right right right right right right"}]},

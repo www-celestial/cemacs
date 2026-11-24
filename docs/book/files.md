@@ -198,7 +198,7 @@ memory: quitting asks first, but a crash of the editor loses it. Save often.
 | `C-x k`, `C-c b k` | [commands.CloseBuffer] | closes the current buffer, asking first if its text isn't saved |
 | `C-x C-c`, `C-c q q` | [commands.Quit] | ends Cemacs, asking first if any text isn't saved |
 
-![The list of buffers that C-x C-b opens with three files open: a row for each buffer, and the prompt line where typing filters it.](images/files-buffers.png)
+![The list of buffers that C-x C-b opens with three files open: a row for each buffer, its name and its path, then *scratch*, which has no file, and the prompt line where typing filters it.](images/files-buffers.png)
 
 A buffer's name is the last part of its path, as the mode line and the title of the window show it, `untitled` for a buffer
 with no file, or the name of a list. Two files of the same name in two folders show the same name: the list of buffers

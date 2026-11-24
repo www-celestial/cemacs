@@ -449,7 +449,8 @@ ne garantit pas.
    [view.LineGap], un pixel ;
 5. fait le premier état, avec un buffer vide et le thème, puis ouvre les fichiers donnés après le dossier, dans l'ordre :
    un buffer vide auquel rien n'a touché cède sa place au premier ; puis fait tourner une fois le `Start` de la config sur
-   cet état, ou rien pour une config qui n'en a pas, et le met en place comme après une touche : le pane modifié sur le
+   cet état, ou rien pour une config qui n'en a pas, ce qui crée `*scratch*` (voir [src/scratch]) avant le `Start` de la
+   personne, et le met en place comme après une touche : le pane modifié sur le
    buffer courant, chaque écran sur son curseur, le titre de la fenêtre ;
 6. fait tourner la boucle jusqu'à ce que la mise à jour donne `missing`, puis ferme la fenêtre et donne `Ok(missing)`, que
    `src/cemacs.ce` affiche.

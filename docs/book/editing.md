@@ -229,6 +229,16 @@ textOf(press.Press(["C-n", "tab"], listed)) --> "Hello = 1\nHelp = 2\nHello"
 textOf(press.Press(["M->", "Hell", "tab"], editor(words, "a.ce"))) --> "Hello = 1\nHelp = 2\nHello"
 ```
 
+A name of a module of Cesia's standard library, completed after the name of its module and a dot, brings its `use`: in a
+file with no `use std/io`, completing `io.Pri` to `io.Print` writes `use std/io` at the top, among the other `use` lines in
+the order of their paths, or above the first line of code with a blank line under it, and one undo takes back the name and
+the `use` at once. A module the file uses under another name, as `use std/text as str`, counts as there; a name in a comment
+or a text brings nothing.
+
+```cesia
+textOf(press.Press(["M->", "list.Ord", "tab"], editor("", "a.ce"))) --> "use std/list\n\nlist.Order"
+```
+
 The list shows eight words at a time, and moves with the word chosen. In a file of another language, Tab types its text as
 before, and doesn't complete. [Speed](performance.md#completion) gives what a completion costs.
 
@@ -249,6 +259,20 @@ cursor where its name or its first word goes: on the line of the cursor when it 
 The forms come from [src/snippets], through `tools/snippets.ce`, a program that needs no permission, as the other
 questions of [src/ide](names.md#how-the-ide-asks) do; Cemacs writes the text and gives each line the indent that Tab
 gives it.
+
+## Comments
+
+`M-;`, [commands.Comment], makes the line of the cursor a comment of Cesia, `(* x = 1 *)`, its indent kept, or takes the
+comment away from a line that is one, as Emacs's `comment-dwim` does. With a selection, it takes the comments away when each
+line of it that isn't blank is a comment, and else makes each of them one. Comments of Cesia nest, so a line that holds one
+already, as `x = 1 (* one *)`, becomes one comment still, and a comment of documentation, `(**` with two stars, is commented
+as any other line. The cursor and the selection keep their places in the words, and one undo takes it all back. In a
+file of another language, `M-;` says so and changes nothing.
+
+```cesia
+textOf(press.Press(["M-;"], editor("  x = 1", "a.ce"))) --> "  (* x = 1 *)"
+textOf(press.Press(["M-;", "M-;"], editor("  x = 1", "a.ce"))) --> "  x = 1"
+```
 
 ## Deleting
 

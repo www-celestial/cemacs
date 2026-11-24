@@ -2,8 +2,9 @@
 
 A file of Cesia cut into *cells* runs as a notebook: each cell runs on its own, and its result shows under it, in the
 buffer. A cell starts at a line that holds only a comment starting with `%%`, as `(* %% Data *)`; the lines before the first
-one are the first cell, usually the uses. The file stays a program: `cesia run` runs it from the top and computes what the
-cells show. The engine is Cesia's [std/cells](https://www-celestial.github.io/cesia-lang/cells.html), whose chapter tells
+one are the first cell, usually the uses. Typing `%%` at the start of an empty line writes that marker, `(* %%  *)`, the cursor
+where its title goes, and undo gives `%%` back; it does nothing inside a text or a comment. `*scratch*` takes cells as a file
+does. The file stays a program: `cesia run` runs it from the top and computes what the cells show. The engine is Cesia's [std/cells](https://www-celestial.github.io/cesia-lang/cells.html), whose chapter tells
 its rules; this chapter tells what Cemacs does with it. The cells are an app of Cemacs, [src/notebook].
 
 ```cesia norun
@@ -29,8 +30,8 @@ The keys of the cells are a group of `C-c`, `e` for *execute*, which the band of
 | `C-c e a` | [notebook.RunAll] | runs every cell, from the top |
 | `C-c e i` | [notebook.InsertCell] | writes a marker, `(* %%  *)`, above the line of the cursor, the cursor where its title goes |
 | `C-c e v` | [notebook.ShowVariables] | opens `*variables*` beside: the names the cells defined |
-| `C-c e r` | [notebook.OpenRepl] | opens `*repl*` below: a prompt in the same session as the cells |
-| `C-c e s` | [notebook.StopCell] | stops the cell that runs; the cells waiting after it don't run. While a graph has the keys, it saves the graph as SVG instead, see [The mouse and the keys on a graph](#the-mouse-and-the-keys-on-a-graph) |
+| `C-c e r` | [notebook.RunInRepl] | runs the line of the cursor, its block or the selection in `*repl*` below, in the session of the cells; on a blank line or a comment, opens `*repl*` |
+| `C-c e s` | [notebook.StopCell] | stops the cell or the code that runs, from the buffer or from `*repl*`; the cells waiting after it don't run. While a graph has the keys, it saves the graph as SVG instead, see [The mouse and the keys on a graph](#the-mouse-and-the-keys-on-a-graph) |
 | `C-c e h` | [notebook.WriteHtml] | writes the page of the file beside it, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | clears the results drawn; the names of the session stay |
 | `C-c e f` | [notebook.FocusControl] | gives the keys to the first input of the cursor's cell, a slider or another, to the bar of its animation, to its 3D graph, to its table or to its graph: see Sliders, Inputs, Animations, 3D graphs, Tables and Graphs |
@@ -456,10 +457,19 @@ in full, each row under its number: the rows come from the session 200 at a time
 
 ## \*repl\*
 
-`C-c e r` splits the pane and opens `*repl*` under it: a prompt, `> `, in the session of the file. Enter runs the code after
-the last prompt, and its output and its value show under it, then a new prompt. A line that doesn't end the code, as `if
+`C-c e r` on a line of a cell runs that line, or the block it opens, or the selection, in `*repl*`, in a pane under the file:
+a prompt, `> `, in the session of the file, where the code shows as if typed, its answer under it. The cursor stays in the
+file, on the next line. On a blank line or a comment, `C-c e r` opens `*repl*` and goes there. The cells and the code of
+`*repl*` wait in one queue: code that comes while a cell runs runs after it. [Running a line](running.md#running-a-line)
+tells the same key in a file with no cell.
+
+![sun.ce with its two cells and the result of Noon under it, the sun at noon and 28.66; *repl* below, where > list.Max(el) shows as typed by C-c e r on the last line, and 28.66 under it.](images/cells-repl.png)
+
+In `*repl*`, Enter runs the code after the last prompt, and its output and its value show under it, then a new prompt. A line that doesn't end the code, as `if
 x`, goes on with `. ` on the next one. `*repl*` reads every name the cells defined, but a definition of a name a cell
-defines is refused, with the title of that cell: the file would no longer say what the session holds. Try a new value of
+defines is refused, with the title of that cell, from Enter and from `C-c e r` alike: the file would no longer say what the
+session holds. `*repl*` needs the session that the first cell run starts: before it, it says `No session: C-c e e in FILE
+runs a cell first.` Try a new value of
 such a name in its cell, or under another name. An animation shows its first frame, without a bar, and says that a cell
 plays it. A 3D graph turns there as under a cell.
 

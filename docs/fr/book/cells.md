@@ -3,7 +3,9 @@
 Un fichier de Cesia coupé en *cells* (des cellules : des morceaux de code qui tournent chacun à part) tourne comme un
 notebook (un carnet où le code alterne avec ses résultats) : chaque cell tourne seule, et son résultat s'affiche sous elle,
 dans le buffer. Une cell commence à une ligne qui ne contient qu'un commentaire commençant par `%%`, comme
-`(* %% Data *)` ; les lignes avant la première sont la première cell, en général les uses. Le fichier reste un programme :
+`(* %% Data *)` ; les lignes avant la première sont la première cell, en général les uses. Taper `%%` au début d'une
+ligne vide écrit ce marqueur, `(* %%  *)`, le curseur là où va son titre, et undo (annuler) redonne `%%` ; dans un texte ou
+un commentaire, rien ne se passe. `*scratch*` prend des cells comme un fichier. Le fichier reste un programme :
 `cesia run` le lance depuis le haut et calcule ce que les cells montrent. Le moteur est
 [std/cells](https://www-celestial.github.io/cesia-lang/cells.html) de Cesia, dont le chapitre dit les règles ; ce chapitre
 dit ce que Cemacs en fait. Les cells sont une app de Cemacs, [src/notebook].
@@ -32,8 +34,8 @@ Les touches des cells sont un groupe de `C-c`, `e` pour *execute* (exécuter), q
 | `C-c e a` | [notebook.RunAll] | lance toutes les cells, depuis le haut |
 | `C-c e i` | [notebook.InsertCell] | écrit un marqueur, `(* %%  *)`, au-dessus de la ligne du curseur, le curseur là où va son titre |
 | `C-c e v` | [notebook.ShowVariables] | ouvre `*variables*` à côté : les noms que les cells ont définis |
-| `C-c e r` | [notebook.OpenRepl] | ouvre `*repl*` en dessous : un prompt dans la même session que les cells |
-| `C-c e s` | [notebook.StopCell] | arrête la cell qui tourne ; les cells qui attendent après elle ne tournent pas. Quand un graphe a les touches, enregistre plutôt le graphe en SVG, voir [La souris et les touches sur un graphe](#la-souris-et-les-touches-sur-un-graphe) |
+| `C-c e r` | [notebook.RunInRepl] | exécute la ligne du curseur, son bloc ou la sélection dans `*repl*` en dessous, dans la session des cells ; sur une ligne vide ou un commentaire, ouvre `*repl*` |
+| `C-c e s` | [notebook.StopCell] | arrête la cell ou le code qui tourne, depuis le buffer ou depuis `*repl*` ; les cells qui attendent après elle ne tournent pas. Quand un graphe a les touches, enregistre plutôt le graphe en SVG, voir [La souris et les touches sur un graphe](#la-souris-et-les-touches-sur-un-graphe) |
 | `C-c e h` | [notebook.WriteHtml] | écrit la page du fichier à côté de lui, `name.html` |
 | `C-c e k` | [notebook.ClearResults] | efface les résultats dessinés ; les noms de la session restent |
 | `C-c e f` | [notebook.FocusControl] | donne les touches au premier input de la cell du curseur, un slider ou un autre, à la barre de son animation, à son graphe 3D, à sa table ou à son graphe : voir Sliders, Inputs, Animations, Graphes 3D, Tables et Les graphes |
@@ -489,11 +491,21 @@ rangées viennent de la session 200 à la fois, à mesure que le curseur approch
 
 ## \*repl\*
 
-`C-c e r` coupe le pane en deux et ouvre `*repl*` sous lui : un prompt, `> `, dans la session du fichier ; un REPL (une
-boucle qui lit du code, le lance et affiche son résultat). Enter lance le code après le dernier prompt, et sa sortie et sa
+`C-c e r` sur une ligne d'une cell exécute cette ligne, ou le bloc qu'elle ouvre, ou la sélection, dans `*repl*`, dans un
+pane sous le fichier : un prompt, `> `, dans la session du fichier ; un REPL (une boucle qui lit du code, le lance et affiche
+son résultat), où le code s'affiche comme tapé, sa réponse dessous. Le curseur reste dans le fichier, sur la ligne suivante.
+Sur une ligne vide ou un commentaire, `C-c e r` ouvre `*repl*` et y va. Les cells et le code de `*repl*` attendent dans une
+seule file : du code qui arrive pendant qu'une cell tourne tourne après elle. [Exécuter une
+ligne](running.md#exécuter-une-ligne) décrit la même touche dans un fichier sans cell.
+
+![sun.ce avec ses deux cells et le résultat de Noon dessous, the sun at noon et 28.66 ; *repl* en bas, où > list.Max(el) s'affiche comme tapé par C-c e r sur la dernière ligne, et 28.66 dessous.](../../book/images/cells-repl.png)
+
+Dans `*repl*`, Enter lance le code après le dernier prompt, et sa sortie et sa
 valeur s'affichent dessous, puis un nouveau prompt. Une ligne qui ne finit pas le code, comme `if x`, continue avec `. `
 sur la suivante. `*repl*` lit chaque nom que les cells ont défini, mais une définition d'un nom que définit une cell est
-refusée, avec le titre de cette cell : le fichier ne dirait plus ce que la session contient. Essayez une nouvelle valeur
+refusée, avec le titre de cette cell, depuis Enter comme depuis `C-c e r` : le fichier ne dirait plus ce que la session
+contient. `*repl*` a besoin de la session que démarre la première cell lancée : avant elle, il dit
+`No session: C-c e e in FILE runs a cell first.` Essayez une nouvelle valeur
 d'un tel nom dans sa cell, ou sous un autre nom. Une animation montre sa première image, sans barre, et dit qu'une cell la
 joue. Un graphe 3D y tourne comme sous une cell.
 

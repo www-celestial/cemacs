@@ -122,8 +122,8 @@ code, et Cesia s'arrête quand l'un d'eux manque : jusqu'au premier démarrage, 
 
 ## Le lancer
 
-`bin/cemacs` ouvre les fichiers qu'on lui donne, ou un seul buffer vide (un buffer est le texte qu'un pane montre et que
-l'on modifie, souvent celui d'un fichier) :
+`bin/cemacs` ouvre les fichiers qu'on lui donne, ou `*scratch*` (le brouillon), un buffer où Cesia tourne tout de suite,
+sans fichier (un buffer est le texte qu'un pane montre et que l'on modifie, souvent celui d'un fichier) :
 
 ```bash
 bin/cemacs notes.ce
@@ -169,8 +169,8 @@ Un chemin relatif que vous lui donnez se lit à partir du dossier où vous êtes
 
 `cesia do dev`, depuis le dossier de Cemacs, lance la tâche `dev` de son `cesia.toml` : le même programme et les mêmes
 permissions, sous `--watch`, pour qu'un changement du code de Cemacs, ou de `user/`, se recharge dans la fenêtre qui
-tourne. Elle ouvre un
-seul buffer vide, et lit ses polices dans `./fonts` : elle doit donc partir de ce dossier. Voir
+tourne. Elle ouvre
+`*scratch*`, et lit ses polices dans `./fonts` : elle doit donc partir de ce dossier. Voir
 [Modifier Cemacs](customising.md#recharger-cemacs-pendant-quil-tourne).
 
 ```toml

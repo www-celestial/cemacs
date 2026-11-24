@@ -34,6 +34,20 @@ what a key can lead to, so no key has to be learnt before the start.
 
 ### Cesia in the editor
 
+- `*scratch*`, a buffer where Cesia runs at once with no file: the first one when Cemacs starts with no file, in the list of
+  buffers otherwise. A header with the day and the version of Cesia, then the line of the day, one of 62 examples of the
+  standard library, a new one each day, with its `use` lines. Its text is kept by itself in the folder of the person's
+  data, `~/.local/share/cemacs/scratch.ce`, through a new file renamed over the old, and comes back at the next start;
+  nothing asks to save it, and `C-x C-s` saves it as a file of its own. The start reads that one file and starts nothing.
+- `C-c e r` runs the line of the cursor, the block it opens or the selection of any buffer of Cesia, a file of cells or not
+  or `*scratch*`, in the session of that buffer, as if typed in `*repl*`, below; the cursor goes to the next line. A file
+  with no cell gets its session at its first `C-c e r`, its `use` lines run first, with the permissions of its task of
+  `cesia.toml`, `*scratch*` with none; code and cells wait in one queue a session; `C-c e s` stops them from `*repl*` too, and
+  a buffer that closes ends its session. On a blank line, `C-c e r` opens `*repl*` as before, in the pane that shows it
+  already if one does.
+- `M-;` makes the line, or the selected lines, a comment of Cesia, `(* … *)`, or takes it away, in one step of undo.
+- Completing a name of std/ after its module, as `io.Print`, writes the `use` it needs at the top, `use std/io`, in the same
+  step of undo.
 - Errors in the lines: `cesia check` runs in the background after a pause or a save, its marks move with their lines, and
   `M-g n` and `M-g p` go from one to the next. A buffer over 1 MB is not checked, and its mode line says so.
 - Names, from `cesia lsp`: `M-.` goes to a definition and `M-,` back, `M-?` lists every place that reads a name, `C-c c m`
@@ -49,6 +63,8 @@ what a key can lead to, so no key has to be learnt before the start.
 
 - A file of Cesia cut by `(* %% Title *)` runs as a notebook, `C-c e`, in a session of std/cells: results under their
   cells, the cells that read what one defines run again, `*variables*`, `*repl*`, and the page of a file.
+- `%%` typed at the start of an empty line of Cesia writes the marker of a cell, `(* %%  *)`, the cursor where its title
+  goes; undo gives `%%` back.
 - Each result of a cell starts with its label, `Out[3]:` as in Jupyter, numbered by the runs of the session.
 - `cells.Show` of Cesia 1.3 gives a cell more than one result: each graph, table or text it shows under the cell at its
   place among what the cell printed, each graph drawn and redrawn on its own, in `*repl*` and the page too.

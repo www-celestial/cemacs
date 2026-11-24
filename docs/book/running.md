@@ -1,7 +1,8 @@
 # Running and debugging
 
-Cemacs runs the Cesia file you edit, shows what it prints as it comes, and stops it. It also runs it under a debugger, a
-program that runs yours and can stop it at a line to show its variables. This chapter tells both. The commands are in
+Cemacs runs the Cesia file you edit, shows what it prints as it comes, and stops it. It runs a line of it too, or a block, in
+a session that keeps its names, with the result below. It also runs it under a debugger, a program that runs yours and can
+stop it at a line to show its variables. This chapter tells all three. The commands are in
 [core/commands], and what they ask of the program is in [core/run].
 
 ## Running a file
@@ -85,6 +86,54 @@ goes there: see [Search](search.md#places-in-the-output). The output stays below
 `C-c c k` says `Stopping the program.` and sends TERM, which ends a Cesia program; one that takes that signal for itself may
 need a second `C-c c k`. With no program running it says `No program is running.`, and `C-c c h` with no run yet says
 `There is no output yet: C-c c r runs the file.`
+
+## Running a line
+
+| Keys | Command | What it does |
+|---|---|---|
+| `C-c e r` | [notebook.RunInRepl] | runs the line of the cursor, the block it opens or the selection in `*repl*`, below |
+| `C-c e s` | [notebook.StopCell] | stops the code that runs, from the buffer or from `*repl*` |
+
+`C-c e r` runs code of the current buffer without running the file: in any file of Cesia, a file of [cells](cells.md) or
+not, and in `*scratch*`, the buffer that [First steps](first-steps.md#trying-cesia-in-scratch) shows. What runs:
+
+- the selection, when there is one;
+- else the line of the cursor, and the lines after it up to the first one that makes the code whole, as the parser reads it:
+  so on a line that opens a block, `defn`, `struct`, `for`, `while`, `if`, `match` or a call that goes on, the whole block,
+  to its `end`;
+- a line that is blank, or holds only a comment, runs nothing: `C-c e r` then opens `*repl*` and goes there, as it did before
+  it ran lines.
+
+The code shows in `*repl*`, in a pane below, after its prompt `> `, as if you had typed it there, each line after the first
+after `. `; then what it prints, its value or its error, and a new prompt. It joins the history of `*repl*`, which `M-p`
+and `M-n` bring back, and what you had typed after the prompt waits under the answer. The cursor stays in the buffer: on the
+line after the code, so that `C-c e r` again runs the next one, as Ctrl+Enter does in RStudio, or where it was after a
+selection. The buffer doesn't change, isn't saved, and nothing is read from its file on disk.
+
+![main.ce of the shop above, its cursor on the line after the loop, where three C-c e r left it; *repl* below, at its end: > io.Print with Total: 1349 cents under it, then the loop of three lines after > and . as typed, and the three prices with their tax under it, 300.0, 1200.0 and 119.0.](images/running-repl.png)
+
+### The session of a buffer
+
+Each buffer of Cesia has its own *session*, a Cesia process that keeps the names its code defined: `x = 3` on one line, and
+`x * 14` on another reads it. A file with no cell gets its session at its first `C-c e r`, never at the start of Cemacs: the
+`use` lines at the top of the file run first, quietly, so that `io.Print` works at once; a `use` added later runs with the
+next session, or as a line of its own. The session runs beside the file, with the permissions of the task of `cesia.toml`
+that runs it, as `C-c c r` gives them, and none without one; `*scratch*`, which belongs to no project, runs with none, as
+`cesia run` runs a file without `--allow`. A file never saved has no session yet: `C-c e r` says to save it first.
+
+Code that comes while other code runs waits for it: a session has one queue, which the cells of its file share, and runs it
+in order; the prompt line says `It runs once the code before it has run.` `C-c e s`, from the buffer or from `*repl*`, stops
+the code that runs, which ends with `Stopped.`, and the session keeps the names defined before it. Code that doesn't stop
+within 2 seconds ends the session: a new one starts, `*repl*` says that the names are gone, and the `use` lines run again. A
+session that ends, as when its process is killed, says so on the prompt line, and the next `C-c e r` starts a new one, which
+`*repl*` tells: `A new session: the names defined before are gone.` Closing the buffer ends its session.
+
+In a file of cells, `C-c e r` follows the rule of `*repl*`: it needs the session that `C-c e e` starts, and refuses a
+definition of a name that a cell defines, with the title of that cell, as [Cells](cells.md#repl) tells.
+
+A line that gives a name a new value from its old one, as `x = x + 1` or `xs[1] = 5`, finds no old value: before code runs,
+the session forgets the names it defines, as it must for a cell, so that a cell run again never reads what it left. Run the
+line that gave the first value with it, the two selected, or keep such a loop inside a function.
 
 ## Tests
 

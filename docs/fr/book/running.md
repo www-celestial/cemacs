@@ -1,8 +1,9 @@
 # Exécuter et déboguer
 
-Cemacs exécute le fichier Cesia que vous modifiez, montre ce qu'il affiche au fur et à mesure, et l'arrête. Il l'exécute
-aussi sous un debugger, un programme qui exécute le vôtre et peut l'arrêter à une ligne pour montrer ses variables. Ce
-chapitre décrit les deux. Les commandes sont dans [core/commands], et ce qu'elles demandent au programme est dans
+Cemacs exécute le fichier Cesia que vous modifiez, montre ce qu'il affiche au fur et à mesure, et l'arrête. Il en exécute
+aussi une ligne, ou un bloc, dans une session qui garde ses noms, le résultat en dessous. Il l'exécute enfin sous un
+debugger, un programme qui exécute le vôtre et peut l'arrêter à une ligne pour montrer ses variables. Ce chapitre décrit les
+trois. Les commandes sont dans [core/commands], et ce qu'elles demandent au programme est dans
 [core/run].
 
 ## Exécuter un fichier
@@ -95,6 +96,59 @@ pendant que la liste est ouverte.
 qui prend ce signal pour lui-même peut demander un second `C-c c k`. Sans programme qui tourne, il dit
 `No program is running.` (aucun programme ne tourne), et `C-c c h` sans exécution encore dit
 `There is no output yet: C-c c r runs the file.` (il n'y a pas encore de sortie : C-c c r exécute le fichier)
+
+## Exécuter une ligne
+
+| Touches | Commande | Ce qu'elle fait |
+|---|---|---|
+| `C-c e r` | [notebook.RunInRepl] | exécute la ligne du curseur, le bloc qu'elle ouvre ou la sélection dans `*repl*`, en dessous |
+| `C-c e s` | [notebook.StopCell] | arrête le code qui tourne, depuis le buffer ou depuis `*repl*` |
+
+`C-c e r` exécute du code du buffer courant sans exécuter le fichier : dans n'importe quel fichier de Cesia, un fichier de
+[cells](cells.md) ou non, et dans `*scratch*`, le buffer que montre [Premiers pas](first-steps.md#essayer-cesia-dans-scratch).
+Ce qui tourne :
+
+- la sélection, quand il y en a une ;
+- sinon la ligne du curseur, et les lignes après elle jusqu'à la première qui rend le code complet, comme le lit le parser
+  (l'analyseur de la syntaxe) : donc sur une ligne qui ouvre un bloc, `defn`, `struct`, `for`, `while`, `if`, `match` ou un
+  appel qui continue, le bloc entier, jusqu'à son `end` ;
+- une ligne vide, ou qui ne contient qu'un commentaire, n'exécute rien : `C-c e r` ouvre alors `*repl*` et y va, comme il le
+  faisait avant d'exécuter des lignes.
+
+Le code s'affiche dans `*repl*` (un REPL : une boucle qui lit du code, le lance et affiche son résultat), dans un pane en
+dessous, après son prompt `> `, comme si vous l'aviez tapé là, chaque ligne après la première derrière `. ` ; puis ce qu'il
+affiche, sa valeur ou son erreur, et un nouveau prompt. Il rejoint l'historique de `*repl*`, que `M-p` et `M-n` font
+revenir, et ce que vous aviez tapé après le prompt attend sous la réponse. Le curseur reste dans le buffer : sur la ligne
+après le code, pour qu'un nouveau `C-c e r` exécute la suivante, comme Ctrl+Enter dans RStudio, ou là où il était après une
+sélection. Le buffer ne change pas, n'est pas enregistré, et rien n'est lu de son fichier sur le disque.
+
+![main.ce de la boutique en haut, son curseur sur la ligne après la boucle, où trois C-c e r l'ont laissé ; *repl* en bas, à sa fin : > io.Print avec Total: 1349 cents dessous, puis la boucle de trois lignes après > et . comme tapée, et les trois prix avec leur taxe dessous, 300.0, 1200.0 et 119.0.](../../book/images/running-repl.png)
+
+### La session d'un buffer
+
+Chaque buffer de Cesia a sa propre *session*, un processus Cesia qui garde les noms que son code a définis : `x = 3` sur une
+ligne, et `x * 14` sur une autre le lit. Un fichier sans cell reçoit sa session à son premier `C-c e r`, jamais au
+lancement de Cemacs : les lignes `use` du haut du fichier tournent d'abord, sans rien afficher, pour que `io.Print` marche
+tout de suite ; un `use` ajouté plus tard tourne avec la session suivante, ou comme une ligne à lui. La session tourne à
+côté du fichier, avec les permissions de la task (la tâche) de `cesia.toml` qui l'exécute, comme `C-c c r` les donne, et
+aucune sans elle ; `*scratch*`, qui n'appartient à aucun projet, tourne sans aucune, comme `cesia run` lance un fichier
+sans `--allow`. Un fichier jamais enregistré n'a pas encore de session : `C-c e r` dit de l'enregistrer d'abord.
+
+Du code qui arrive pendant qu'un autre tourne l'attend : une session a une seule file d'attente, que partagent les cells de
+son fichier, et la déroule dans l'ordre ; la prompt line dit `It runs once the code before it has run.` `C-c e s`, depuis
+le buffer ou depuis `*repl*`, arrête le code qui tourne, qui finit par `Stopped.`, et la session garde les noms définis
+avant lui. Du code qui ne s'arrête pas en 2 secondes met fin à la session : une nouvelle démarre, `*repl*` dit que les noms
+sont partis, et les lignes `use` tournent à nouveau. Une session qui se termine, comme quand son processus est tué, le dit
+sur la prompt line, et le `C-c e r` suivant en démarre une nouvelle, ce que dit `*repl*` :
+`A new session: the names defined before are gone.` Fermer le buffer met fin à sa session.
+
+Dans un fichier de cells, `C-c e r` suit la règle de `*repl*` : il lui faut la session que démarre `C-c e e`, et il refuse
+une définition d'un nom que définit une cell, avec le titre de cette cell, comme le dit [Cells](cells.md#repl).
+
+Une ligne qui donne à un nom une nouvelle valeur tirée de l'ancienne, comme `x = x + 1` ou `xs[1] = 5`, ne trouve pas
+d'ancienne valeur : avant que du code tourne, la session oublie les noms qu'il définit, comme elle le doit pour une cell,
+pour qu'une cell relancée ne lise jamais ce qu'elle a laissé. Exécutez avec elle la ligne qui a donné la première valeur,
+les deux sélectionnées, ou gardez une telle boucle dans une fonction.
 
 ## Les tests
 

@@ -116,7 +116,7 @@ test`, `cesia check` and `cesia doc` in the folder of Cemacs say `cesia.toml:4:1
 
 ## Starting it
 
-`bin/cemacs` opens the files it is given, or one empty buffer:
+`bin/cemacs` opens the files it is given, or `*scratch*`, a buffer where Cesia runs at once, with no file:
 
 ```bash
 bin/cemacs notes.ce
@@ -160,7 +160,7 @@ A relative path you give it is read from the folder you are in, not from the fol
 ### From its folder, with reload
 
 `cesia do dev`, from the folder of Cemacs, runs the task `dev` of its `cesia.toml`: the same program and permissions, under
-`--watch`, so that a change of Cemacs's code, or of `user/`, reloads in the window that runs. It opens one empty buffer, and
+`--watch`, so that a change of Cemacs's code, or of `user/`, reloads in the window that runs. It opens `*scratch*`, and
 reads its fonts from `./fonts`, so it must start from that folder. See
 [Changing Cemacs](customising.md#reloading-cemacs-while-it-runs).
 

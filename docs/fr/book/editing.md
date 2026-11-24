@@ -248,6 +248,16 @@ textOf(press.Press(["C-n", "tab"], listed)) --> "Hello = 1\nHelp = 2\nHello"
 textOf(press.Press(["M->", "Hell", "tab"], editor(words, "a.ce"))) --> "Hello = 1\nHelp = 2\nHello"
 ```
 
+Un nom d'un module de la bibliothèque standard de Cesia, complété après le nom de son module et un point, amène son `use`
+(la ligne qui fait venir le module) : dans un fichier sans `use std/io`, compléter `io.Pri` en `io.Print` écrit
+`use std/io` en haut, parmi les autres lignes `use` dans l'ordre de leurs chemins, ou au-dessus de la première ligne de code
+avec une ligne vide dessous, et un seul undo (annuler) reprend le nom et le `use` ensemble. Un module que le fichier utilise
+sous un autre nom, comme `use std/text as str`, compte comme présent ; un nom dans un commentaire ou un texte n'amène rien.
+
+```cesia
+textOf(press.Press(["M->", "list.Ord", "tab"], editor("", "a.ce"))) --> "use std/list\n\nlist.Order"
+```
+
 La liste montre huit mots à la fois, et défile avec le mot choisi. Dans un fichier d'un autre langage, Tab tape son texte
 comme avant, et ne complète pas. [Vitesse](performance.md#la-completion) donne ce que coûte une completion.
 
@@ -269,6 +279,21 @@ nouvelle ligne après elle.
 Les formes viennent de [src/snippets], par `tools/snippets.ce`, un programme qui n'a besoin d'aucune permission, comme les
 autres questions de [src/ide](names.md#comment-lide-demande) ; Cemacs écrit le texte et donne à chaque ligne l'indentation
 que lui donne Tab.
+
+## Les commentaires
+
+`M-;`, [commands.Comment], met la ligne du curseur en commentaire de Cesia, `(* x = 1 *)`, son indentation gardée, ou
+enlève le commentaire d'une ligne qui en est un, comme le fait `comment-dwim` dans Emacs. Avec une sélection, il enlève les
+commentaires quand chaque ligne non vide de la sélection en est un, et sinon met chacune d'elles en commentaire. Les
+commentaires de Cesia s'imbriquent, donc une ligne qui en contient déjà un, comme `x = 1 (* one *)`, devient encore un seul
+commentaire, et un commentaire de documentation, `(**` avec deux étoiles, est mis en commentaire comme toute autre ligne. Le
+curseur et la sélection gardent leur place dans les mots, et un seul undo reprend le tout. Dans un fichier d'un autre
+langage, `M-;` le dit et ne change rien.
+
+```cesia
+textOf(press.Press(["M-;"], editor("  x = 1", "a.ce"))) --> "  (* x = 1 *)"
+textOf(press.Press(["M-;", "M-;"], editor("  x = 1", "a.ce"))) --> "  x = 1"
+```
 
 ## Effacer
 

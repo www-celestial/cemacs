@@ -1,7 +1,8 @@
 # First steps
 
-In this chapter you open a file, learn the few keys that get you going, and write Cesia: the errors show in the lines, a key
-runs the file with the permissions of its project, and another runs it under the debugger. Last, you change Cemacs itself.
+In this chapter you open a file, learn the few keys that get you going, try a line of Cesia in `*scratch*`, and write Cesia:
+the errors show in the lines, a key runs a line or the file with the permissions of its project, and another runs it under
+the debugger. Last, you change Cemacs itself.
 Each part leads to the chapter that tells all of it.
 
 You need Cemacs installed, as [Install](install.md) says: Cesia, SDL3 and SDL3_ttf, and the code.
@@ -13,7 +14,7 @@ bin/cemacs notes.ce
 ```
 
 The window opens on `notes.ce`. A file that doesn't exist yet opens empty, and is made at the first save. With no file,
-Cemacs opens one empty buffer.
+Cemacs opens `*scratch*`, a buffer where Cesia runs at once: see [Trying Cesia in \*scratch\*](#trying-cesia-in-scratch).
 
 A buffer is a text that Cemacs holds in memory, most often the text of a file: you edit the buffer, and saving writes it to
 the file. Until then the file on disk doesn't change. Several buffers can be open at once, one for each file.
@@ -63,6 +64,7 @@ A few keys to start with:
 | `C-space`, then a move, or Shift and a move | select from there |
 | `C-w`, `M-w`, `C-y` | cut, copy, paste |
 | `C-k` | cut the rest of the line |
+| `M-;` | make the line, or the selected lines, a comment of Cesia, or take the comment away |
 | `C-/`, `C-?` | undo, redo |
 | `C-g` | stop what the keys started: a selection, a question, a prefix key |
 | `C-x C-f`, `C-x C-s` | open a file, save |
@@ -86,11 +88,46 @@ a second: a band above the prompt line shows each group. Press a group's letter 
 | `C-c s`, search | `s` search forward as you type, `r` backward: see [Search](search.md) |
 | `C-c c`, code | `r` run the file, `k` stop it, `o` its output, `h` hide or show the output, `n` and `p` the next and the previous error |
 | `C-c d`, debug | `r` run under the debugger, `b` a breakpoint, `e` evaluate, `c` continue, `n` next, `s` step, `u` out |
+| `C-c e`, execute | `r` run the line in `*repl*`, `s` stop it; `e` and `a` run the [cells](cells.md), `i` writes a cell's marker |
 | `C-c q`, quit | `q` quit |
 
 So `C-c f f` opens a file, as `C-x C-f` does. `?` after a prefix key lists everything that can follow it, each with the name
 of its command and what it does: `C-x ?`, `C-c ?` or `C-c d ?`. Typing filters that list, and Enter runs the key under the
 cursor. You can always find a key from its group, without knowing it: `C-c`, then look. [Keys](keys.md) lists every key.
+
+## Trying Cesia in \*scratch\*
+
+Started with no file, Cemacs opens `*scratch*`: a buffer of Cesia that needs no file, where a line runs at once, as in the
+`*scratch*` of Emacs. It starts with a comment that gives the day and the version of Cesia, then the *line of the day*: an
+example of Cesia's standard library, another one each day, under the `use` lines it needs.
+
+```text
+(* Cemacs · Tuesday 24 November · Cesia 1.3.0
+   C-c e r runs a line, and its result shows below in *repl*.
+   Kept by itself across restarts; C-x C-s saves it as a file. *)
+
+use std/io
+use std/list
+
+(* Line of the day: list.Order gives the places that sort a list. *)
+list.Order([30, 10, 20])
+
+```
+
+Put the cursor on the line of the day and press `C-c e r`: a pane opens below, `*repl*`, where the line shows after the
+prompt `> `, as if you had typed it there, and its value under it. Then type `x = 3` on the last line, `C-c e r`, Enter,
+`x * 14`, `C-c e r`: `42` shows. The cursor stays in `*scratch*`, on the line after the one that ran, so that the next
+`C-c e r` goes on; a name defined by one line, as `x`, is known to the next ones.
+
+![*scratch* above, with its header of three lines, the day and Cesia 1.3.0, its use lines, the line of the day of that day, algo.Chunk, then x = 3 and x * 14 typed under it; *repl* below, where > x = 3 and > x * 14 show as typed, and 42 under the second.](images/first-steps-scratch.png)
+
+`*scratch*` keeps itself: a second after your last key, and when it closes or Cemacs quits, its text is written in the
+folder of your data, `~/.local/share/cemacs/scratch.ce`, or `$XDG_DATA_HOME/cemacs/` when that is set, and it comes back as
+you left it at the next start, with the header of the day. Quitting never asks to save it. `C-x C-s` saves it as a file of
+your own, which it then is, and the next start shows a new `*scratch*`. Started with files, Cemacs opens them, and
+`*scratch*` waits in the list of buffers, `C-x C-b`.
+
+`C-c e r` runs a line of any file of Cesia, not only here: [Running a line](running.md#running-a-line) tells all of it.
 
 ## Files, buffers and panes
 
@@ -144,7 +181,10 @@ The prompt line shows the signature of the call you type, `Total(prices): The to
 [Names](names.md), [Search](search.md#searching-a-project), [Running and debugging](running.md#tests) and [Git](git.md) tell
 them in full.
 
-### Running a file
+### Running a line, running a file
+
+`C-c e r` runs the line of the cursor, the block it opens, or the selection, in the buffer's own session, as `*scratch*`
+does: its result shows in `*repl*` below. [Running a line](running.md#running-a-line) tells how.
 
 `C-c c r` runs the file of the current buffer, as saved, as `cesia run` would, and as fast. What it prints shows in the
 output below the panes, as it comes, its errors too; its first line is the command that runs it. `C-c c k` stops a program

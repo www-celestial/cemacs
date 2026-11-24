@@ -220,7 +220,7 @@ Enregistrez souvent.
 | `C-x k`, `C-c b k` | [commands.CloseBuffer] | ferme le buffer courant, en demandant d'abord si son texte n'est pas enregistré |
 | `C-x C-c`, `C-c q q` | [commands.Quit] | termine Cemacs, en demandant d'abord si un texte n'est pas enregistré |
 
-![La liste des buffers qu'ouvre C-x C-b avec trois fichiers ouverts : une rangée par buffer, et la prompt line où ce que vous tapez la filtre.](../../book/images/files-buffers.png)
+![La liste des buffers qu'ouvre C-x C-b avec trois fichiers ouverts : une rangée par buffer, son nom et son chemin, puis *scratch*, qui n'a pas de fichier, et la prompt line où ce que vous tapez la filtre.](../../book/images/files-buffers.png)
 
 Le nom d'un buffer est la dernière partie de son chemin, comme la mode line et le titre de la fenêtre le montrent,
 `untitled` (sans titre) pour un buffer sans fichier, ou le nom d'une liste. Deux fichiers du même nom dans deux dossiers

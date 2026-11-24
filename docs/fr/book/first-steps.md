@@ -1,8 +1,8 @@
 # Premiers pas
 
-Dans ce chapitre, vous ouvrez un fichier, vous apprenez les quelques touches qui permettent d'avancer, et vous écrivez du
-Cesia : les erreurs s'affichent dans les lignes, une touche exécute le fichier avec les permissions de son projet, et une
-autre l'exécute sous le debugger. Pour finir, vous modifiez Cemacs lui-même. Chaque partie mène au chapitre qui la raconte
+Dans ce chapitre, vous ouvrez un fichier, vous apprenez les quelques touches qui permettent d'avancer, vous essayez une
+ligne de Cesia dans `*scratch*`, et vous écrivez du Cesia : les erreurs s'affichent dans les lignes, une touche exécute une
+ligne ou le fichier avec les permissions de son projet, et une autre l'exécute sous le debugger. Pour finir, vous modifiez Cemacs lui-même. Chaque partie mène au chapitre qui la raconte
 en entier.
 
 Il vous faut Cemacs installé, comme le dit [Installation](install.md) : Cesia, SDL3 et SDL3_ttf, et le code.
@@ -14,7 +14,8 @@ bin/cemacs notes.ce
 ```
 
 La fenêtre s'ouvre sur `notes.ce`. Un fichier qui n'existe pas encore s'ouvre vide, et il est créé au premier
-enregistrement. Sans fichier, Cemacs ouvre un seul buffer vide.
+enregistrement. Sans fichier, Cemacs ouvre `*scratch*`, un buffer où Cesia tourne tout de suite : voir
+[Essayer Cesia dans \*scratch\*](#essayer-cesia-dans-scratch).
 
 Un buffer est un texte que Cemacs garde en mémoire, le plus souvent le texte d'un fichier : vous modifiez le buffer, et
 l'enregistrer l'écrit dans le fichier. Jusque-là, le fichier sur le disque ne change pas. Plusieurs buffers peuvent être
@@ -68,6 +69,7 @@ Quelques touches pour commencer :
 | `C-space`, puis un déplacement, ou Shift et un déplacement | sélectionner à partir de là |
 | `C-w`, `M-w`, `C-y` | couper, copier, coller |
 | `C-k` | couper le reste de la ligne |
+| `M-;` | mettre la ligne, ou les lignes sélectionnées, en commentaire de Cesia, ou enlever le commentaire |
 | `C-/`, `C-?` | annuler, rétablir |
 | `C-g` | arrêter ce que les touches ont commencé : une sélection, une question, une prefix key |
 | `C-x C-f`, `C-x C-s` | ouvrir un fichier, enregistrer |
@@ -92,12 +94,51 @@ sur la lettre d'un groupe et attendez encore : la bande montre ses touches.
 | `C-c s`, recherche | `s` chercher en avant pendant que vous tapez, `r` en arrière : voir [Recherche](search.md) |
 | `C-c c`, code | `r` exécuter le fichier, `k` l'arrêter, `o` sa sortie, `h` cacher ou montrer la sortie, `n` et `p` l'erreur suivante et la précédente |
 | `C-c d`, débogage | `r` exécuter sous le debugger, `b` un breakpoint, `e` évaluer, `c` continuer, `n` suivant, `s` entrer, `u` sortir |
+| `C-c e`, exécution | `r` exécuter la ligne dans `*repl*`, `s` l'arrêter ; `e` et `a` exécutent les [cells](cells.md), `i` écrit le marqueur d'une cell |
 | `C-c q`, quitter | `q` quitter |
 
 Ainsi `C-c f f` ouvre un fichier, comme le fait `C-x C-f`. `?` après une prefix key liste tout ce qui peut la suivre,
 chaque touche avec le nom de sa commande et ce qu'elle fait : `C-x ?`, `C-c ?` ou `C-c d ?`. Taper du texte filtre cette
 liste, et Enter lance la touche sous le curseur. Vous pouvez toujours trouver une touche à partir de son groupe, sans la
 connaître : `C-c`, puis regardez. [Touches](keys.md) liste chaque touche.
+
+## Essayer Cesia dans \*scratch\*
+
+Lancé sans fichier, Cemacs ouvre `*scratch*` (le brouillon) : un buffer de Cesia qui n'a besoin d'aucun fichier, où une
+ligne tourne tout de suite, comme le `*scratch*` d'Emacs. Il commence par un commentaire qui donne le jour et la version de
+Cesia, puis la *ligne du jour* : un exemple de la bibliothèque standard de Cesia, un autre chaque jour, sous les lignes `use`
+dont il a besoin.
+
+```text
+(* Cemacs · Tuesday 24 November · Cesia 1.3.0
+   C-c e r runs a line, and its result shows below in *repl*.
+   Kept by itself across restarts; C-x C-s saves it as a file. *)
+
+use std/io
+use std/list
+
+(* Line of the day: list.Order gives the places that sort a list. *)
+list.Order([30, 10, 20])
+
+```
+
+Mettez le curseur sur la ligne du jour et tapez `C-c e r` : un pane s'ouvre en dessous, `*repl*` (un REPL, une boucle qui
+lit du code, le lance et affiche son résultat), où la ligne s'affiche après le prompt `> `, comme si vous l'aviez tapée là,
+et sa valeur dessous. Tapez ensuite `x = 3` sur la dernière ligne, `C-c e r`, Enter, `x * 14`, `C-c e r` : `42`
+s'affiche. Le curseur reste dans `*scratch*`, sur la ligne après celle qui a tourné, pour que le `C-c e r` suivant
+continue ; un nom défini par une ligne, comme `x`, est connu des suivantes.
+
+![*scratch* en haut, avec son en-tête de trois lignes, le jour et Cesia 1.3.0, ses lignes use, la ligne du jour de ce jour-là, algo.Chunk, puis x = 3 et x * 14 tapés dessous ; *repl* en bas, où > x = 3 et > x * 14 s'affichent comme tapés, et 42 sous le second.](../../book/images/first-steps-scratch.png)
+
+`*scratch*` se garde tout seul : une seconde après votre dernière touche, et quand il se ferme ou que Cemacs quitte, son
+texte est écrit dans le dossier de vos données, `~/.local/share/cemacs/scratch.ce`, ou `$XDG_DATA_HOME/cemacs/` quand cette
+variable est définie, et il revient tel que vous l'avez laissé au lancement suivant, avec l'en-tête du jour. Quitter ne
+demande jamais de l'enregistrer. `C-x C-s` l'enregistre comme un fichier à vous, qu'il devient, et le lancement suivant
+montre un nouveau `*scratch*`. Lancé avec des fichiers, Cemacs les ouvre, et `*scratch*` attend dans la liste des buffers,
+`C-x C-b`.
+
+`C-c e r` exécute une ligne de n'importe quel fichier de Cesia, pas seulement ici : [Exécuter une
+ligne](running.md#exécuter-une-ligne) le raconte en entier.
 
 ## Fichiers, buffers et panes
 
@@ -153,7 +194,11 @@ vérification tourne et ce qu'elle montre.
 La prompt line montre la signature de l'appel que vous tapez. [Noms](names.md), [Recherche](search.md#chercher-dans-un-projet),
 [Exécuter et déboguer](running.md#les-tests) et [Git](git.md) les décrivent en entier.
 
-### Exécuter un fichier
+### Exécuter une ligne, exécuter un fichier
+
+`C-c e r` exécute la ligne du curseur, le bloc qu'elle ouvre, ou la sélection, dans la session propre au buffer, comme le
+fait `*scratch*` : son résultat s'affiche dans `*repl*` en dessous. [Exécuter une ligne](running.md#exécuter-une-ligne)
+dit comment.
 
 `C-c c r` exécute le fichier du buffer courant, tel qu'il est enregistré, comme le ferait `cesia run`, et aussi vite. Ce
 qu'il affiche apparaît dans la sortie sous les panes, au fur et à mesure, ses erreurs aussi ; sa première ligne est la
