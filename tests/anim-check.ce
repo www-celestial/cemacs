@@ -117,14 +117,7 @@ r = notebook.OpenRepl(again)
 k = r.Current
 b = r.Buffers[k]
 r.Buffers[k] = text.ToFileEnd(text.InsertWords("plot.Frames([plot.Line([1, 2], [1, k]) for k in 1..4])", b))
-r = notebook.Enter(r)
-waited = 0.0
-while value.IsSome(r.Buffers[k].Repl.Task)
-  check(waited < 10.0, "*repl* never answered")
-  sys.Sleep(0.005)
-  waited = waited + 0.005
-  r = ticked(r)
-end
+r = settled(notebook.Enter(r))
 words = rope.Text(r.Buffers[k].Rope)
 check(str.Contains("an animation of 4 frames at 30 a second: its first; a cell plays it", words), "*repl* says a cell plays it: $words")
 check(list.Any([dict.Has("Graph", x) and value.IsSome(x.Graph) and not dict.Has("Frames", x.Graph) for x in text.BlocksOf(r.Buffers[k])]), "*repl* draws the first frame, without a bar")

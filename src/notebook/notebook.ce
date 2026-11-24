@@ -1579,7 +1579,7 @@ end
 defn RunInRepl(state)
   (** C-c e r in a buffer of Cesia, a file of cells or not, or *scratch*: runs the selection, or the block that the line of the cursor opens, to its end,
       or the line, in the session of the buffer, as if typed in `*repl*`, which opens below when no pane shows it. The cursor stays in the buffer, on the
-      line after the code, or where it was after a selection. A line that is blank or only a comment runs nothing and opens `*repl*`, as in `*repl*` and
+      line after the code, a mark with nothing selected ended, or where it was after a selection. A line that is blank or only a comment runs nothing and opens `*repl*`, as in `*repl*` and
       in any other buffer: see OpenRepl. In a file of cells, the code follows the rule of `*repl*`: it needs the session that C-c e e starts, and may not
       define a name that a cell defines. Code that comes while other code or a cell runs waits for it, in the one queue of the session. *)
   k = state.Current
@@ -1589,7 +1589,9 @@ defn RunInRepl(state)
     return OpenRepl(state)
   end
   s = replShown(k, state)
-  s.Buffers[k] = if value.IsMissing(got.Line) s.Buffers[k] else if got.Line <= rope.LineCount(b.Rope) text.Place(got.Line, 0, s.Buffers[k]) else text.ToFileEnd(s.Buffers[k]) end
+  (* After a line or a block, a mark left with nothing selected ends: the move would make a selection of what ran. *)
+  moved = if value.IsMissing(got.Line) s.Buffers[k] else text.ClearMark(s.Buffers[k]) end
+  s.Buffers[k] = if value.IsMissing(got.Line) moved else if got.Line <= rope.LineCount(b.Rope) text.Place(got.Line, 0, moved) else text.ToFileEnd(moved) end
   path = text.FileOf(b)
   if IsCells(b)
     r = runOf(b)

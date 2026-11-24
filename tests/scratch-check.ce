@@ -68,7 +68,7 @@ check(result.UnwrapOr("", sys.Read(kept)) == rope.Text(typed.Buffers[1].Rope), "
 check(not config().Moving(rested), "then nothing waits")
 mode = result.Unwrap(sys.Stat(data))
 check(math.BitAnd(mode["Mode"], 63) == 0, "the folder of the kept text is the person's alone: $(mode["Mode"])")
-check(value.Equal(result.Unwrap(sys.List(data)), ["scratch.ce"]), "no new file is left beside it: $(sys.List(data))")
+check(value.Equal(result.Unwrap(sys.List(data)), ["scratch.ce"]), "no new file is left beside it: $(result.Unwrap(sys.List(data)))")
 
 (* Kept when it closes, and when the editor ends, whatever its rest: and nothing asks. *)
 more = press.Press(["enter", "y = 2"], rested)

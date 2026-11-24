@@ -102,6 +102,18 @@ typed.Buffers[typed.Current] = text.InsertWords("x * 10", empty.Buffers[empty.Cu
 typed = settled(notebook.Enter(typed))
 check(str.EndsWith("> x * 10\n40\n> ", replAt(path, typed)), "Enter in *repl* runs in the same session: $(replAt(path, typed))")
 
+(* A mark with nothing selected, as C-space leaves it, ends once a line runs: the next C-c e r runs the next line, not a selection. *)
+marked = picked
+marked.Buffers[1] = text.SetMark(text.Place(12, 0, text.ClearMark(picked.Buffers[1])))
+marked = settled(notebook.RunInRepl(commands.ToBuffer(1, marked)))
+check(value.IsMissing(marked.Buffers[1].Mark) and marked.Buffers[1].Cursor.Line == 13, "the mark ends after a line: $(marked.Buffers[1].Mark)")
+
+(* A huge output is cut, as the cells cut it: its first lines, and how many more. *)
+loud = "$folder/loud.ce"
+_ = result.Unwrap(sys.Write(loud, "use std/io\nfor i in 1..1000\n  io.Print(i)\nend\n"))
+lots = ran(2, commands.OpenFile(loud, picked).Current, commands.OpenFile(loud, picked))
+check(str.Contains("… 961 more lines", replAt(loud, lots)) and not str.Contains("\n1000\n", replAt(loud, lots)), "a huge output is cut: $(replAt(loud, lots))")
+
 (* The queue: code that comes while other code runs waits for it, and the answers come in order. *)
 slow = "$folder/slow.ce"
 _ = result.Unwrap(sys.Write(slow, "defn count(n)\n  k = 0\n  while k < n\n    k = k + 1\n  end\n  k\nend\ncount(200000)\ncount(3) + 1\ndefn spin()\n  while true\n  end\nend\nspin()\n"))

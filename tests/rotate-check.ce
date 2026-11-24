@@ -110,14 +110,7 @@ r = notebook.OpenRepl(again)
 k = r.Current
 b = r.Buffers[k]
 r.Buffers[k] = text.ToFileEnd(text.InsertWords("plot.Line3([1, 2, 3], [1, 4, 9], [0, 1, 0])", b))
-r = notebook.Enter(r)
-waited = 0.0
-while value.IsSome(r.Buffers[k].Repl.Task)
-  check(waited < 10.0, "*repl* never answered")
-  sys.Sleep(0.005)
-  waited = waited + 0.005
-  r = ticked(r)
-end
+r = settled(notebook.Enter(r))
 line3 = x -> value.IsSome(dict.GetOr("Graph", missing, x)) and dict.Has("Code", x.Graph)
 check(list.Any([line3(x) for x in text.BlocksOf(r.Buffers[k])]), "*repl* draws a 3D graph that turns")
 at = graphAt(r, k, line3)
