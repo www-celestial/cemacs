@@ -8,11 +8,16 @@
     turns when dragged, or with the arrows after C-c e f: the session draws each view, and the code keeps its own. A frame, a matrix or a list of maps
     or structs draws as a table, with thin borders, its header and its numbers aligned, 20 rows at a time, scrolled by the wheel or by its keys after
     C-c e f or a click: its rows come from the session a screen at a time, sorted by s and filtered by / there; the row chosen marks its point on the
-    graphs of its cell that have as many points, and a click on such a point chooses its row. The work is std/cells': runs wait
-    in fibers, and each tick takes their results, so that typing never waits.
+    graphs of its cell that have as many points, and a click on such a point chooses its row. C-c e r runs a line, the selection or a
+    block of any buffer of Cesia, a file of cells or not, or *scratch*, in the session of that buffer, as if typed in *repl*: a file with no cell
+    gets its session at its first C-c e r, its use lines at the top run first. The work is std/cells': runs wait in fibers, one at a time in one
+    queue a session, cells and code alike, and each tick takes their results, so that typing never waits.
     src/cemacs.ce adds the hooks of Hooked to the config and these Keys. *)
+use core/color as syntax
 use core/commands
+use core/complete
 use core/files
+use core/indent
 use core/lists
 use core/panes
 use core/run
@@ -34,15 +39,18 @@ use std/sys
 use std/text as str
 use std/value
 
-(** The keys of the cells, in their group of C-c: e for execute. M-p and M-n go through the history in `*repl*`, and Enter there runs what was typed. *)
-Keys() = {"C-c e": "execute", "C-c e e": RunCell, "C-c e a": RunAll, "C-c e i": InsertCell, "C-c e v": ShowVariables, "C-c e r": OpenRepl,
+(** The keys of the cells, in their group of C-c: e for execute. C-c e r runs code of any buffer of Cesia in `*repl*`; M-p and M-n go through the history
+    there, and Enter there runs what was typed. *)
+Keys() = {"C-c e": "execute", "C-c e e": RunCell, "C-c e a": RunAll, "C-c e i": InsertCell, "C-c e v": ShowVariables, "C-c e r": RunInRepl,
   "C-c e s": StopCell, "C-c e h": WriteHtml, "C-c e k": ClearResults, "C-c e f": FocusControl, "C-c e c": CopyTable, "enter": Enter, "S-enter": Enter,
   "M-p": HistoryBack, "M-n": HistoryOn}
 
 (** The most lines of a result drawn under a cell: its output, then its value, each cut there with a line that says how many more. *)
 MaxLines() = 40
 
-(* ---- The run of a buffer: {Session, Cells, Analysis, Queue, Task, Index, Started, Stopping, Html, Vars, Version}. *)
+(* ---- The run of a buffer: {Session, Cells, Analysis, Queue, Task, Index, Started, Stopping, Html, Vars, Version}, and Line, the code of C-c e r or of
+   *repl* that runs, Ended, true once a session ended, until the next starts, and Plain, true for a run that C-c e r made for a buffer with no cell.
+   Queue holds the numbers of cells and the lines of code, in order. *)
 
 defn runOf(b)
   (** The cells run of a buffer, or missing: a buffer from before this field has none. *)
@@ -52,8 +60,11 @@ defn runOf(b)
   end
 end
 
-(** Does the text of a buffer have a cell marker? A file of cells is a file of Cesia with one. *)
-IsCells(b) = not lists.IsList(b) and not value.IsMissing(b.Path) and str.EndsWith(".ce", b.Path) and value.Len(nb.Parse(rope.Text(b.Rope))) > 1
+(** Does the text of a buffer have a cell marker? A file of cells is a file of Cesia with one, or *scratch* with one. *)
+IsCells(b) = runsCesia(b) and value.Len(nb.Parse(rope.Text(b.Rope))) > 1
+
+(** Can a buffer have a session: is it of Cesia, a file or a text kept as *scratch* is? *)
+runsCesia(b) = not lists.IsList(b) and indent.IsCesia(b)
 
 defn withRun(k, r, state)
   (** The state with the cells run of buffer k. *)
@@ -92,7 +103,9 @@ defn session(k, state)
   if not value.IsMissing(r) and not value.IsMissing(r.Session)
     return result.Ok(r)
   end
-  s = nb.Session(b.Path, allow = allowOf(b.Path))?
+  (* *scratch*, which no project holds, gets no permission: trying a line never needs one, and a grant is a file's, through cesia.toml. *)
+  path = text.FileOf(b)
+  s = nb.Session(path, allow = if value.IsMissing(b.Path) [] else allowOf(path) end)?
   (* A run without a session, as the sliders and a page make one, keeps its cells and its analysis. *)
   out = if value.IsMissing(r) newRun() else r end
   out.Session = s
@@ -638,16 +651,18 @@ running(seconds) = [{Role: "note", Words: "running… $(str.Decimals(1, seconds)
 (* ---- Running cells, one at a time, from a queue. *)
 
 defn next(k, state)
-  (** The state with the next cell of the queue of buffer k started, if none runs: a cell with errors of the analysis shows them and the queue goes on. *)
+  (** The state with the next cell or line of code of the queue of buffer k started, if none runs: a cell with errors of the analysis shows them and the
+      queue goes on; a line writes its code in *repl*, see lineStarted. *)
   r = runOf(state.Buffers[k])
   s = state
   (* While a slider's Set runs, no cell starts: those after it run with its number. *)
   while value.IsMissing(r.Task) and value.Len(r.Queue) > 0 and value.IsMissing(dict.GetOr("Setting", missing, r))
     i = r.Queue[1]
     r.Queue = list.Skip(1, r.Queue)
-    errors = r.Analysis[i].Errors
-    if value.Len(errors) > 0
-      s = answeredCell(k, i, withBlock(k, i, resultLines({Errors: errors}), withRun(k, r, s)))
+    if isLine(i)
+      s = lineStarted(k, i, withRun(k, r, s))
+    else if value.Len(r.Analysis[i].Errors) > 0
+      s = answeredCell(k, i, withBlock(k, i, resultLines({Errors: r.Analysis[i].Errors}), withRun(k, r, s)))
     else if str.Trim(r.Cells[i].Source) != ""
       cell = r.Cells[i]
       one = r.Session
@@ -677,7 +692,9 @@ defn queued(k, order, state, again = false)
   end
   s = withRun(k, r, state)
   for i in r.Queue
-    s = if keeps(i, r) withStatus(k, i, {Role: "note", Words: "waiting"}, s) else withBlock(k, i, [{Role: "note", Words: "waiting"}], s) end
+    if not isLine(i)
+      s = if keeps(i, r) withStatus(k, i, {Role: "note", Words: "waiting"}, s) else withBlock(k, i, [{Role: "note", Words: "waiting"}], s) end
+    end
   end
   next(k, s)
 end
@@ -712,10 +729,13 @@ defn taken(k, state)
   got = fiber.Wait(r.Task, timeout = 0)
   if result.IsErr(got) and got.Error.Kind == "timeout"
     seconds = sys.Now() - r.Started
-    if value.Len(text.BlocksOf(state.Buffers[k])) == 0
+    if value.Len(text.BlocksOf(state.Buffers[k])) == 0 or value.IsSome(dict.GetOr("Line", missing, r))
       return state
     end
     return if keeps(r.Index, r) withStatus(k, r.Index, running(seconds)[1], state) else withBlock(k, r.Index, running(seconds), state) end
+  end
+  if value.IsSome(dict.GetOr("Line", missing, r))
+    return lineEnded(k, if result.IsOk(got) got.Value else got end, state)
   end
   i = r.Index
   r.Task = missing
@@ -733,16 +753,20 @@ defn taken(k, state)
     r.Values = {}
     return commands.Say("The session of $(state.Buffers[k].Path) has ended: C-c e a starts a new one.", withRun(k, r, s))
   end
-  s = next(k, answeredCell(k, i, s, started = r.Started))
-  r = runOf(s.Buffers[k])
-  if value.IsMissing(r.Task) and not asking(r)
-    (* The names for *variables* are asked in a fiber, so that the result shows at once; the next tick takes them. *)
-    one = r.Session
-    r.Varying = fiber.Spawn(() -> nb.Variables(one))
-    sys.Sleep(0)
-    s = withRun(k, r, s)
+  varying(k, next(k, answeredCell(k, i, s, started = r.Started)))
+end
+
+defn varying(k, state)
+  (** The state once a run of buffer k ended and nothing else runs: the names for *variables* asked in a fiber, so that the result shows at once; the
+      next tick takes them. *)
+  r = runOf(state.Buffers[k])
+  if value.IsSome(r.Task) or asking(r) or value.IsMissing(r.Session)
+    return state
   end
-  s
+  one = r.Session
+  r.Varying = fiber.Spawn(() -> nb.Variables(one))
+  sys.Sleep(0)
+  withRun(k, r, state)
 end
 
 defn varied(k, state)
@@ -785,18 +809,27 @@ defn stopped(k, state)
     r.Runs = 0
     r.Task = missing
     r.Queue = []
+    line = dict.GetOr("Line", missing, r)
+    r.Line = missing
     s = withRun(k, r, state)
+    gone = "The code didn't stop within 2 s: a new session runs, without the names defined before."
+    s = if value.IsSome(line) and not line.Quiet lineClosed(k, gone, s) else s end
+    if not IsCells(s.Buffers[k])
+      (* With no cell to run again, the names are gone: the use lines at the top run again, so that the packages are there. *)
+      return commands.Say(gone, next(k, withUses(k, s)))
+    end
     return commands.Say("The cell didn't stop within 2 s: a new session runs the cells from the top.", queued(k, [i for i in 1..value.Len(r.Cells)], s))
   end
   commands.Say("Stopped.", withRun(k, r, state))
 end
 
 defn StopCell(state)
-  (** C-c e s: stops the cell that runs; the cells after it in the queue don't run. *)
-  k = state.Current
-  r = runOf(state.Buffers[k])
+  (** C-c e s: stops the cell or the code that runs, from its buffer or from its *repl*; the cells and the code after it in the queue don't run. The
+      session keeps the names defined before. *)
+  k = if runsCesia(state.Buffers[state.Current]) state.Current else ownerOf(state) end
+  r = if k == 0 missing else runOf(state.Buffers[k]) end
   if value.IsMissing(r) or value.IsMissing(r.Task)
-    return commands.Say("No cell is running.", state)
+    return commands.Say(if k > 0 and IsCells(state.Buffers[k]) "No cell is running." else "No code is running." end, state)
   end
   one = r.Session
   waited = [i for i in r.Queue if keeps(i, r)]
@@ -808,7 +841,7 @@ defn StopCell(state)
   for i in waited
     s = withStatus(k, i, missing, s)
   end
-  commands.Say("Stopping the cell.", s)
+  commands.Say(if value.IsSome(dict.GetOr("Line", missing, r)) "Stopping the code." else "Stopping the cell." end, s)
 end
 
 defn ClearResults(state)
@@ -931,6 +964,9 @@ defn WriteHtml(state)
   if not IsCells(b)
     return commands.Say("This buffer has no cell to export.", state)
   end
+  if value.IsMissing(b.Path)
+    return commands.Say("*scratch* has no file for its page: C-x C-s saves it as one first.", state)
+  end
   page = HtmlPath(b.Path)
   if sys.Exists(page) or result.IsOk(sys.ReadLink(page))
     return commands.Confirm("$(list.Last(str.Split("/", page))) exists. Replace it? (y or n) ", (yes, s) -> if yes == "y" exporting(k, s) else commands.Say("Nothing done.", s) end, state)
@@ -984,12 +1020,13 @@ defn ownerOf(state)
   p = replOf(b)
   path = if lists.IsList(b) dict.GetOr("Owner", missing, lists.Of(b)) else if value.IsSome(p) p.Owner else missing end
   if value.IsMissing(path)
-    return if IsCells(b) state.Current else 0 end
+    return if runsCesia(b) state.Current else 0 end
   end
   indexOf(path, state)
 end
 
-indexOf(path, state) = list.Reduce((found, k) -> if found == 0 and state.Buffers[k].Path == path k else found end, 0, 1..value.Len(state.Buffers))   (** The buffer of a path, or 0. *)
+(** The buffer of a path, or 0: the file of a buffer, or the file its text is kept in, see text.FileOf. *)
+indexOf(path, state) = list.Reduce((found, k) -> if found == 0 and text.FileOf(state.Buffers[k]) == path k else found end, 0, 1..value.Len(state.Buffers))
 
 defn varRows(path, state)
   (** One row for each name of the session of the file at path, standing for its name. *)
@@ -1077,40 +1114,73 @@ defn viewing(state)
   fetched(state.Current, b.Top + 2 * Chunk(), state)
 end
 
-(* ---- `*repl*`: a prompt in the session of a file of cells. *)
+(* ---- `*repl*`: a prompt in the session of a buffer of Cesia, below it, where C-c e r runs its lines. *)
 
 Prompt = "> "   (** The prompt of `*repl*`, before the code typed. *)
 More = ". "   (** The start of a line of `*repl*` that goes on with the code above it. *)
 
 defn replOf(b)
-  (** The prompt of a buffer, {Owner, History, At, Task}, or missing: only `*repl*` has one. *)
+  (** The prompt of a buffer, {Owner, History, At, Task, Draft}, or missing: only `*repl*` has one. Owner is the file of its buffer of Cesia, see
+      text.FileOf; Draft what was typed after the prompt when C-c e r wrote code there, put back after the next prompt. *)
   match b
     {Repl: p} -> p
     else -> missing
   end
 end
 
+(** The `*repl*` of the buffer of a file, or 0. *)
+replFor(path, state) = list.Reduce((found, j) -> if found == 0 and value.IsSome(replOf(state.Buffers[j])) and replOf(state.Buffers[j]).Owner == path j else found end, 0,
+  1..value.Len(state.Buffers))
+
+defn newRepl(path)
+  (** A new `*repl*` for the buffer of a file, its prompt alone. *)
+  b = text.Place(1, 2, text.Of(Prompt, missing))
+  b.Repl = {Owner: path, History: [], At: 0, Task: missing, Draft: ""}
+  b.Name = "*repl*"
+  b
+end
+
 defn OpenRepl(state)
-  (** C-c e r: opens `*repl*` below the file of cells, a prompt in its session: an expression shows its value. *)
+  (** C-c e r on a line that runs nothing, and in `*repl*`: opens `*repl*` below the buffer of Cesia, a file of cells or not, or *scratch*, a prompt in
+      its session, and goes there: an expression shows its value. *)
   k = ownerOf(state)
   if k == 0
-    return commands.Say("*repl* runs in the session of a file of cells: open one first.", state)
+    return commands.Say("*repl* runs in the session of a buffer of Cesia: open a file of Cesia, or *scratch*.", state)
   end
-  path = state.Buffers[k].Path
+  path = text.FileOf(state.Buffers[k])
+  j = replFor(path, state)
+  (* A pane that shows *repl* already gets the keys: no new one. *)
+  at = if j == 0 0 else paneOf(j, state) end
+  if at > 0
+    return commands.FocusPane(at, state)
+  end
   s = commands.ToBuffer(k, state)
-  for j in 1..value.Len(s.Buffers)
-    p = replOf(s.Buffers[j])
-    if value.IsSome(p) and p.Owner == path
-      return commands.NextPane(commands.SplitBelow(commands.ToBuffer(j, s)))
-    end
+  if j > 0
+    return commands.NextPane(commands.SplitBelow(commands.ToBuffer(j, s)))
   end
-  b = text.Of(Prompt, missing)
-  b = text.Place(1, 2, b)
-  b.Repl = {Owner: path, History: [], At: 0, Task: missing}
-  b.Name = "*repl*"
-  s.Buffers = list.Append(b, s.Buffers)
+  s.Buffers = list.Append(newRepl(path), s.Buffers)
   s = commands.NextPane(commands.SplitBelow(s))
   commands.ToBuffer(value.Len(s.Buffers), s)
+end
+
+defn paneOf(j, state)
+  (** A pane other than the one being edited that shows buffer j, or 0. *)
+  tree = panes.Tree(state)
+  for i in 1..panes.Count(tree)
+    if i != panes.Active(state) and panes.At(i, tree).Buffer == j
+      return i
+    end
+  end
+  0
+end
+
+defn promptLine(b)
+  (** The last line of `*repl*` that starts with its prompt, or 0. *)
+  n = rope.LineCount(b.Rope)
+  while n >= 1 and not str.StartsWith(Prompt, rope.Line(n, b.Rope))
+    n = n - 1
+  end
+  n
 end
 
 defn typedCode(b)
@@ -1127,11 +1197,15 @@ end
 appended(words, b) = text.ToFileEnd(text.InsertWords(words, text.ToFileEnd(b)))
 
 defn refused(code, path, state)
-  (** Why the code typed can't run, or missing: a definition of a name that a cell defines, as the file then would lie (D9). *)
+  (** Why the code typed can't run, or missing: a definition of a name that a cell defines, as the file then would lie (D9). Only a file of cells has
+      such names: in a file with none, and in *scratch*, a line may define any name again. *)
   k = indexOf(path, state)
   r = if k == 0 missing else runOf(state.Buffers[k]) end
+  if value.IsMissing(r) or not IsCells(state.Buffers[k])
+    return missing
+  end
   defs = cesia.Definitions(code)
-  if value.IsMissing(r) or result.IsErr(defs)
+  if result.IsErr(defs)
     return missing
   end
   for d in defs.Value
@@ -1146,7 +1220,9 @@ defn refused(code, path, state)
 end
 
 defn replEnter(state)
-  (** Enter in `*repl*`: what was typed runs in the session when it is whole, and the next line goes on with ". " when it isn't. *)
+  (** Enter in `*repl*`: what was typed runs in the session when it is whole, and the next line goes on with ". " when it isn't. A buffer of Cesia with
+      no cell gets its session here as at its first C-c e r; a file of cells needs the one that C-c e e starts. It waits behind the use lines that a
+      new session runs first; other code or a cell that runs, which writes in *repl*, comes first: it says so, and Enter again runs it after. *)
   b = state.Buffers[state.Current]
   p = replOf(b)
   if value.IsSome(p.Task)
@@ -1159,46 +1235,43 @@ defn replEnter(state)
     return s
   end
   k = indexOf(p.Owner, state)
-  r = if k == 0 missing else runOf(state.Buffers[k]) end
+  if k > 0 and not IsCells(state.Buffers[k]) and runsCesia(state.Buffers[k])
+    got = sessionFor(k, state)
+    if result.IsErr(got)
+      s.Buffers[state.Current] = appended("\n$(got.Error)\n$Prompt", b)
+      return s
+    end
+    s = got.Value
+  end
+  r = if k == 0 missing else runOf(s.Buffers[k]) end
+  b = s.Buffers[state.Current]
   if value.IsMissing(r) or value.IsMissing(r.Session)
     s.Buffers[state.Current] = appended("\nNo session: C-c e e in $(p.Owner) runs a cell first.\n$Prompt", b)
     return s
   end
-  no = refused(code, p.Owner, state)
+  if shows(r)
+    return commands.Say("The code before still runs.", s)
+  end
+  no = refused(code, p.Owner, s)
+  p = replOf(b)
   p.History = if str.Trim(code) == "" p.History else list.Append(code, p.History) end
   p.At = 0
+  b.Repl = p
   if value.IsSome(no)
-    b.Repl = p
     s.Buffers[state.Current] = appended("\n$no\n$Prompt", b)
     return s
   end
-  one = r.Session
-  width = GraphWidth(state)
-  p.Task = fiber.Spawn(() -> nb.Run(one, {Title: "", From: 0, To: 0, Source: code}, width = width))
-  b.Repl = p
   s.Buffers[state.Current] = appended("\n", b)
-  s
+  next(k, lineQueued(k, {Code: code, Quiet: false, Typed: true}, s))
 end
 
 (** Enter: in `*repl*` it runs what was typed; anywhere else it is a new line, as always. *)
 Enter(state) = if value.IsSome(replOf(state.Buffers[state.Current])) replEnter(state) else commands.NewLine(state) end
 
-defn answered(k, state)
-  (** The state after a tick for `*repl*` in buffer k: the answer of its code, once it came, then a new prompt. *)
-  b = state.Buffers[k]
-  p = replOf(b)
-  if value.IsMissing(p) or value.IsMissing(p.Task)
-    return state
-  end
-  got = fiber.Wait(p.Task, timeout = 0)
-  if result.IsErr(got) and got.Error.Kind == "timeout"
-    return state
-  end
-  p.Task = missing
-  ran = if result.IsOk(got) got.Value else got end
-  b.Repl = p
-  s = state
-  after = b
+defn answerIn(j, ran, state)
+  (** The state with the answer ran of code in `*repl*`, buffer j, at its end: what it printed, its value or its error, each graph under the lines
+      before it, then a new prompt, with what waited in its Draft. *)
+  after = state.Buffers[j]
   for part in resultParts(ran, state)
     (* *repl* writes a table as lines of text, as the cells did before they drew tables. *)
     t = dict.GetOr("Table", missing, part)
@@ -1214,11 +1287,54 @@ defn answered(k, state)
     if value.IsSome(graph)
       (* Each graph under the last line of the answer so far, in the order of the parts: a 3D graph turns there too. *)
       under = rope.LineCount(after.Rope) - 1
-      after = text.WithBlocks(list.Append(resultBlock(k, 0, under, [], graph, state), text.BlocksOf(after)), after)
+      after = text.WithBlocks(list.Append(resultBlock(j, 0, under, [], graph, state), text.BlocksOf(after)), after)
     end
   end
-  after = appended(Prompt, after)
-  s.Buffers[k] = after
+  p = replOf(after)
+  draft = dict.GetOr("Draft", "", p)
+  p.Draft = ""
+  after.Repl = p
+  s = state
+  s.Buffers[j] = appended("$Prompt$draft", after)
+  followed(j, s)
+end
+
+defn followed(j, state)
+  (** The state with each other pane that shows `*repl*`, buffer j, on its end, where code and answers come: its screen follows them there, as the pane
+      that types in it does. *)
+  s = state
+  tree = panes.Tree(s)
+  b = s.Buffers[j]
+  for i in 1..panes.Count(tree)
+    leaf = panes.At(i, tree)
+    if i != panes.Active(s) and leaf.Buffer == j
+      v = if value.IsMissing(leaf.View) view.ViewOf(b) else leaf.View end
+      v.Cursor = text.ToFileEnd(b).Cursor
+      v.Mark = missing
+      tree = panes.WithLeaf(i, {Buffer: j, View: v}, tree)
+    end
+  end
+  s.Panes = tree
+  s
+end
+
+defn answered(k, state)
+  (** The state after a tick for `*repl*` in buffer k, for code that ran on its own, as before C-c e r: the answer of its code, once it came, then a new
+      prompt. Code now runs in the queue of its session: see lineEnded. *)
+  b = state.Buffers[k]
+  p = replOf(b)
+  if value.IsMissing(p) or value.IsMissing(p.Task)
+    return state
+  end
+  got = fiber.Wait(p.Task, timeout = 0)
+  if result.IsErr(got) and got.Error.Kind == "timeout"
+    return state
+  end
+  p.Task = missing
+  b.Repl = p
+  s = state
+  s.Buffers[k] = b
+  s = answerIn(k, if result.IsOk(got) got.Value else got end, s)
   owner = indexOf(p.Owner, s)
   r = if owner == 0 missing else runOf(s.Buffers[owner]) end
   if value.IsSome(r) and value.IsSome(r.Session) and not asking(r)
@@ -1227,6 +1343,271 @@ defn answered(k, state)
     s = withRun(owner, r, s)
   end
   s
+end
+
+defn abovePrompt(j, words, state)
+  (** The state with words on lines of their own in `*repl*`, buffer j, above its last prompt, what was typed after it kept; at its end when it has
+      none. *)
+  b = state.Buffers[j]
+  n = promptLine(b)
+  s = state
+  s.Buffers[j] = if n == 0 appended("$words\n$Prompt", b) else text.ToFileEnd(text.InsertWords("$words\n", text.Place(n, 0, b))) end
+  followed(j, s)
+end
+
+defn lineClosed(k, words, state)
+  (** The state with words in the `*repl*` of buffer k after the code that ran and gave no answer, then a new prompt with its Draft. *)
+  j = replFor(text.FileOf(state.Buffers[k]), state)
+  if j == 0 state else closedWith(j, words, state) end
+end
+
+defn closedWith(j, words, state)
+  (** The state with words at the end of `*repl*`, buffer j, after code written there, then a new prompt with its Draft. *)
+  b = state.Buffers[j]
+  p = replOf(b)
+  draft = dict.GetOr("Draft", "", p)
+  p.Draft = ""
+  b.Repl = p
+  s = state
+  s.Buffers[j] = appended("$words\n$Prompt$draft", b)
+  followed(j, s)
+end
+
+(* ---- C-c e r: code of a buffer of Cesia run in its session, as if typed in `*repl*`, one line, a block or the selection. *)
+
+(** A line of code in a queue, {Code, Quiet, Typed}, and not the number of a cell: see lineStarted. *)
+isLine(i) = not value.IsInt(i)
+
+defn shows(r)
+  (** Does a run hold what writes in `*repl*` before code typed there now: a cell, or code that isn't the quiet use lines, running or queued? *)
+  loud = i -> not isLine(i) or not i.Quiet
+  (value.IsSome(r.Task) and (value.IsMissing(dict.GetOr("Line", missing, r)) or not r.Line.Quiet)) or list.Any([loud(i) for i in r.Queue])
+end
+
+defn isEmptyLine(n, b)
+  (** Is line n of a buffer blank, or only a comment, out of any text? Such a line runs nothing. *)
+  words = rope.Line(n, b.Rope)
+  if str.Trim(words) == ""
+    return true
+  end
+  st = syntax.StateAt(n, b.Colors, syntax.GuessOf(b))
+  if st.Text
+    return false
+  end
+  list.All([t[1] == syntax.Comment or str.Trim(t[2]) == "" for t in syntax.Tokens(words, st).Tokens])
+end
+
+(** How many lines a block that C-c e r runs may have: past them, the line runs alone, and its error says what is missing. *)
+MostLines() = 2000
+
+defn CodeAt(b)
+  (** The code that C-c e r runs in a buffer, {Code, Line}: the selection; else, from the line of the cursor on, the lines up to the first that makes the
+      code whole, as the parser reads it, so the block that a line opens with defn, for, if, match and the others, to its end; else the line alone.
+      Line is where the cursor goes after: the line after the code, or missing after a selection, where it stays. Missing for a line that is blank or
+      only a comment, which runs nothing.
+
+        CodeAt(text.Of("defn f(x)\n  x + 1\nend\nf(1)", "a.ce")) --> {Code: "defn f(x)\n  x + 1\nend", Line: 4} *)
+  e = text.Selection(b)
+  if value.IsSome(e) and (e.First.Line != e.Last.Line or e.First.Column != e.Last.Column)
+    return {Code: text.Region(b), Line: missing}
+  end
+  n = b.Cursor.Line
+  if isEmptyLine(n, b)
+    return missing
+  end
+  first = rope.Line(n, b.Rope)
+  last = n
+  code = first
+  most = list.Min(rope.LineCount(b.Rope), n + MostLines())
+  while not debug.IsComplete(code) and last < most
+    last += 1
+    code = "$code\n$(rope.Line(last, b.Rope))"
+  end
+  if debug.IsComplete(code) {Code: code, Line: last + 1} else {Code: first, Line: n + 1} end
+end
+
+defn replShown(k, state)
+  (** The state with the `*repl*` of buffer k, made if it has none, in a pane: below the pane of buffer k when no pane shows it, if there is room.
+      Buffer k stays the one edited. *)
+  path = text.FileOf(state.Buffers[k])
+  s = state
+  j = replFor(path, s)
+  if j == 0
+    s.Buffers = list.Append(newRepl(path), s.Buffers)
+    j = value.Len(s.Buffers)
+  end
+  tree = panes.Tree(s)
+  if paneOf(j, s) > 0
+    return s
+  end
+  i = panes.Active(s)
+  split = commands.SplitBelow(s)
+  if panes.Count(panes.Tree(split)) == panes.Count(tree)
+    return split
+  end
+  commands.FocusPane(i, commands.ToBuffer(j, commands.FocusPane(i + 1, split)))
+end
+
+defn topUses(b)
+  (** The use lines at the top of a buffer, as its text has them, for a new session to run first: "" for none. *)
+  lines = list.Unique([str.Trim(rope.Line(u.Line, b.Rope)) for u in complete.TopOf(b).Uses])
+  str.Join("\n", lines)
+end
+
+defn withUses(k, state)
+  (** The state with the use lines at the top of buffer k first in the queue of its session, quiet: they show only an error. *)
+  r = runOf(state.Buffers[k])
+  uses = topUses(state.Buffers[k])
+  if uses == ""
+    return state
+  end
+  r.Queue = list.Prepend({Code: uses, Quiet: true, Typed: false}, r.Queue)
+  withRun(k, r, state)
+end
+
+defn sessionFor(k, state)
+  (** The state with a session for buffer k, a buffer of Cesia with no cell, started if it has none, in an Ok: its use lines at the top queued first,
+      quiet, and in `*repl*` a word that the names defined before are gone when an earlier session of it ended. A file must be on the disk, since the
+      session runs beside it; the file of *scratch* is written first. An Err with the words that say why it can't start. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  if value.IsSome(r) and value.IsSome(r.Session)
+    return result.Ok(state)
+  end
+  path = text.FileOf(b)
+  if value.IsSome(b.Path) and not sys.Exists(path)
+    return result.Err("Save $(b.Path) first: its session runs beside its file.")
+  end
+  if value.IsMissing(b.Path) and not sys.Exists(path)
+    made = sys.Mkdir(files.FolderOf(path), private = true)
+    wrote = if result.IsErr(made) made else files.Replace(path, rope.Text(b.Rope)) end
+    if result.IsErr(wrote) and wrote.Error.Kind != "saved"
+      return result.Err("No session: $(wrote.Error.Message)")
+    end
+  end
+  got = session(k, state)
+  if result.IsErr(got)
+    return result.Err("No session for $path: $(got.Error.Message)")
+  end
+  again = value.IsSome(r) and dict.GetOr("Ended", false, r)
+  out = got.Value
+  out.Ended = false
+  out.Plain = true
+  s = withUses(k, withRun(k, out, state))
+  if again
+    j = replFor(path, s)
+    s = if j == 0 s else abovePrompt(j, "A new session: the names defined before are gone.", s) end
+  end
+  result.Ok(s)
+end
+
+defn lineQueued(k, item, state)
+  (** The state with a line of code at the end of the queue of the session of buffer k, as a cell is queued: it runs once those before it ran. *)
+  r = runOf(state.Buffers[k])
+  r.Queue = list.Append(item, r.Queue)
+  withRun(k, r, state)
+end
+
+defn lineStarted(k, item, state)
+  (** The state with a line of code of the queue of buffer k started in its session: its code written in its `*repl*` after the last prompt, as if typed
+      there, each line after the first after ". ", and kept in the history of M-p; what was typed after that prompt waits for the next. The use lines,
+      quiet, and code typed in `*repl*`, which shows there already, write nothing. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  one = r.Session
+  width = GraphWidth(state)
+  r.Task = fiber.Spawn(() -> nb.Run(one, {Title: "", From: 0, To: 0, Source: item.Code}, width = width))
+  r.Asked = width
+  r.Index = 0
+  r.Line = item
+  r.Started = sys.Now()
+  s = withRun(k, r, state)
+  j = replFor(text.FileOf(b), s)
+  if item.Quiet or item.Typed or j == 0 s else codeShown(j, item.Code, s) end
+end
+
+defn codeShown(j, code, state)
+  (** The state with code written in `*repl*`, buffer j, after its last prompt, as if typed there, each line after the first after ". ", and a line end
+      for its answer; kept in the history of M-p. What was typed after that prompt waits in Draft for the next one. *)
+  s = state
+  repl = s.Buffers[j]
+  n = promptLine(repl)
+  if n == 0
+    repl = appended(Prompt, repl)
+    n = rope.LineCount(repl.Rope)
+  end
+  p = replOf(repl)
+  p.Draft = typedCode(repl)
+  p.History = list.Append(code, p.History)
+  p.At = 0
+  repl = text.CutRegion(text.ToFileEnd(text.SetMark(text.Place(n, 2, repl))))
+  repl.Repl = p
+  s.Buffers[j] = appended("$(str.Replace("\n", "\n$More", code))\n", repl)
+  followed(j, s)
+end
+
+defn lineEnded(k, ran, state)
+  (** The state once the line of code that ran in the session of buffer k ended, ran its answer: written in its `*repl*`, a new prompt after it; for the
+      quiet use lines, only an error, above the prompt. A session that ended takes no more: the next C-c e r starts a new one. The next of the queue
+      starts. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  item = r.Line
+  r.Line = missing
+  r.Task = missing
+  r.Index = 0
+  s = withRun(k, r, state)
+  j = replFor(text.FileOf(b), s)
+  failed = result.IsErr(ran) or value.IsSome(dict.GetOr("Error", missing, ran.Value))
+  if j > 0 and item.Quiet and failed
+    s = abovePrompt(j, str.Join("\n", [l.Words for l in list.Flatten([x.Lines for x in resultParts(ran, s)])]), s)
+  else if j > 0 and not item.Quiet
+    s = answerIn(j, ran, s)
+  end
+  if result.IsErr(ran)
+    r = dropped(runOf(s.Buffers[k]))
+    r.Session = missing
+    r.Queue = []
+    r.Values = {}
+    r.Ended = true
+    how = if IsCells(b) "C-c e a" else "C-c e r" end
+    return commands.Say("The session of $(text.FileOf(b)) has ended: $how starts a new one.", withRun(k, r, s))
+  end
+  varying(k, next(k, s))
+end
+
+defn RunInRepl(state)
+  (** C-c e r in a buffer of Cesia, a file of cells or not, or *scratch*: runs the selection, or the block that the line of the cursor opens, to its end,
+      or the line, in the session of the buffer, as if typed in `*repl*`, which opens below when no pane shows it. The cursor stays in the buffer, on the
+      line after the code, or where it was after a selection. A line that is blank or only a comment runs nothing and opens `*repl*`, as in `*repl*` and
+      in any other buffer: see OpenRepl. In a file of cells, the code follows the rule of `*repl*`: it needs the session that C-c e e starts, and may not
+      define a name that a cell defines. Code that comes while other code or a cell runs waits for it, in the one queue of the session. *)
+  k = state.Current
+  b = state.Buffers[k]
+  got = if runsCesia(b) CodeAt(b) else missing end
+  if value.IsMissing(got)
+    return OpenRepl(state)
+  end
+  s = replShown(k, state)
+  s.Buffers[k] = if value.IsMissing(got.Line) s.Buffers[k] else if got.Line <= rope.LineCount(b.Rope) text.Place(got.Line, 0, s.Buffers[k]) else text.ToFileEnd(s.Buffers[k]) end
+  path = text.FileOf(b)
+  if IsCells(b)
+    r = runOf(b)
+    no = if value.IsMissing(r) or value.IsMissing(r.Session) "No session: C-c e e in $path runs a cell first." else refused(got.Code, path, s) end
+    j = replFor(path, s)
+    if value.IsSome(no)
+      return if j == 0 s else closedWith(j, no, codeShown(j, got.Code, s)) end
+    end
+  else
+    started = sessionFor(k, s)
+    if result.IsErr(started)
+      return commands.Say(started.Error, s)
+    end
+    s = started.Value
+  end
+  waits = shows(runOf(s.Buffers[k]))
+  s = next(k, lineQueued(k, {Code: got.Code, Quiet: false, Typed: false}, s))
+  if waits commands.Say("It runs once the code before it has run.", s) else s end
 end
 
 defn historyMoved(by, state)
@@ -4441,7 +4822,7 @@ defn rested(k, state)
   (** The state once buffer k rests: its cells read again if its text changed since, so that its sliders are drawn from its text, before any run, and
       the results that a slider's number no longer matches say so. Once for each version of the text; a buffer that is no file of Cesia pays nothing. *)
   b = state.Buffers[k]
-  if dict.GetOr("CellsSeen", -1, b) == b.Version or lists.IsList(b) or value.IsMissing(b.Path) or not str.EndsWith(".ce", b.Path)
+  if dict.GetOr("CellsSeen", -1, b) == b.Version or not runsCesia(b)
     return state
   end
   r = runOf(b)
@@ -4450,7 +4831,8 @@ defn rested(k, state)
   end
   s = state
   s.Buffers[k].CellsSeen = b.Version
-  if value.IsMissing(r) and not IsCells(b)
+  (* A buffer with no cell whose run C-c e r made draws no slider: its lines are no cells. *)
+  if not IsCells(b) and (value.IsMissing(r) or dict.GetOr("Plain", false, r))
     return s
   end
   restaled(k, fresh(k, s))
@@ -4479,14 +4861,27 @@ defn tableWaits(b)
     (dict.GetOr("Cell", 0, x) > 0 and isFlat(dict.GetOr("Graph", missing, x)) and wantsView(x.Graph)) for x in text.BlocksOf(b)]) or value.IsSome(dict.GetOr("Saving", missing, r))
 end
 
+defn Closing(k, state)
+  (** The state before buffer k closes: its session ends, its process stopped, so that none stays for a buffer that is gone. Its *repl* stays, and says
+      it has no session at its next Enter. *)
+  r = runOf(state.Buffers[k])
+  if value.IsSome(r) and value.IsSome(r.Session)
+    _ = sys.Stop(r.Session.Process)
+  end
+  state
+end
+
 defn Hooked(config)
-  (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs. *)
+  (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs; and
+      before a buffer closes, its session ends. *)
   c = config
   idle = dict.GetOr("Idle", s -> s, config)
   saved = dict.GetOr("Saved", s -> s, config)
   moving = dict.GetOr("Moving", s -> false, config)
+  closing = dict.GetOr("Closing", (k, s) -> s, config)
   c.Idle = s -> tick(idle(s))
   c.Saved = saved
   c.Moving = s -> moving(s) or Moving(s)
+  c.Closing = (k, s) -> closing(k, Closing(k, s))
   c
 end

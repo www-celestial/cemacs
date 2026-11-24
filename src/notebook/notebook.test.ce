@@ -994,3 +994,16 @@ isTabTableGraph() = value.Equal(commands.FocusOf(press("tab", onTable(tabled(day
 (* A box stays inside the plot: at the right edge, it goes to the left of its point. *)
 isBoxInsidePlot() = list.All([c.X + c.Width <= 2 * cell.Width + 500 for c in waveOf(clickWave(401, 51, graphed())).Draw(1000, look) if c.Kind == "box"])
 isSvgPathStaysBeside() = notebook.SvgPath("/a/b/sun.ce", "x/../../etc", 2, 1) == "/a/b/sun-x-etc.svg" and notebook.SvgPath("sun.ce", "Été 2026 : élévation", 2, 3) == "sun-ete-2026-elevation-3.svg"
+
+(* C-c e r: the code it runs, a line, a block, a selection, or nothing for a line that is blank or a comment. *)
+ceAt(line, words) = text.Place(line, 0, text.Of(words, "a.ce"))
+codeAt(line, words) = notebook.CodeAt(ceAt(line, words))
+isCodeLine() = value.Equal(codeAt(2, "x = 1\ny = x + 1\nz"), {Code: "y = x + 1", Line: 3})
+isCodeBlock() = value.Equal(codeAt(1, "defn f(x)\n  x + 1\nend\nf(1)"), {Code: "defn f(x)\n  x + 1\nend", Line: 4})
+isCodeIf() = value.Equal(codeAt(1, "if a\n  b\nelse\n  c\nend\nd"), {Code: "if a\n  b\nelse\n  c\nend", Line: 6})
+isCodeCall() = value.Equal(codeAt(1, "xs = list.Map(x ->\n  x * 2, ys)\nzs"), {Code: "xs = list.Map(x ->\n  x * 2, ys)", Line: 3})
+isCodeNeverEnds() = value.Equal(codeAt(1, "defn f(x)\n  x"), {Code: "defn f(x)", Line: 2})
+isCodeEmpty() = value.IsMissing(codeAt(2, "x\n   \ny")) and value.IsMissing(codeAt(1, "(* a note *)\nx")) and value.IsMissing(codeAt(1, "  (* a *) (* b *)"))
+isCodeNotComment() = value.Equal(codeAt(1, "x (* a note *)"), {Code: "x (* a note *)", Line: 2})
+isCodeSelection() = value.Equal(notebook.CodeAt(text.Place(1, 5, text.SetMark(text.Place(1, 4, text.Of("x = 1 + 2", "a.ce"))))), {Code: "1", Line: missing})
+isRunInReplOtherBuffer() = str.StartsWith("*repl* runs in the session of a buffer of Cesia", notebook.RunInRepl(view.Start([text.Of("x", "notes.md")], look, cell, 800, 600)).Message)

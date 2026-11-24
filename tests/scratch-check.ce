@@ -1,0 +1,97 @@
+(** Checks of *scratch* against real files and a real session, in a new folder under /tmp: every line of the day runs with no error, with the use lines
+    its *scratch* writes for it; its text is kept once it rests, when it closes and when the editor ends, in a folder of the person's alone, through a
+    new file renamed over the old; nothing is written while nothing changed; and once saved as a file of its own, its kept text goes, so that the next
+    start shows a new one. It is a script, not a test file: it needs permissions. Run it from the root of cemacs with
+    cesia run --allow read,write,exec=mktemp,exec=rm --allow exec=CESIA tests/scratch-check.ce, CESIA the real path of the cesia that runs it. It prints
+    ok at the end and stops at the first failure. *)
+use core/commands
+use core/press
+use core/text
+use core/view
+use src/emacs
+use src/rope
+use src/scratch
+use src/ui
+use std/bug
+use std/cells as nb
+use std/io
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+
+(* Every line of the day, in a session, after the use lines of its *scratch*: none gives an error. *)
+lines = "$folder/lines.ce"
+_ = result.Unwrap(sys.Write(lines, ""))
+session = result.Unwrap(nb.Session(lines))
+for l in scratch.Lines()
+  uses = list.Sort(list.Unique(list.Append("std/io", l.Uses)))
+  ran = result.Unwrap(nb.Run(session, {Title: "", From: 0, To: 0, Source: "$(str.Join("\n", ["use $u" for u in uses]))\n$(l.Code)"}))
+  check(value.IsMissing(ran.Error), "the line of the day $(l.Code) runs: $(if value.IsMissing(ran.Error) "" else ran.Error.Text end)")
+  check(value.IsSome(ran.Value), "the line of the day $(l.Code) shows a value")
+end
+
+(* Kept: after a rest, as a save writes, in a folder of the person's alone. *)
+data = "$folder/data/cemacs"
+kept = "$data/scratch.ce"
+config = () -> scratch.Hooked(emacs.Config(emacs.Keys))
+defn begun(words)
+  (** A state on a *scratch* kept at kept, with the hooks of *scratch*. *)
+  s = scratch.WithScratch(scratch.Buffer(kept, words, sys.Now()), view.Start([text.Of("", missing)], look, {Width: 8, Height: 19}, 800, 600))
+  s.Config = config
+  s
+end
+start = begun("")
+check(not sys.Exists(kept), "nothing is written at the start")
+idle = config().Idle
+check(not config().Moving(start), "a *scratch* that nothing changed waits for nothing")
+typed = press.Press(["x = 1"], start)
+check(config().Moving(typed), "a change waits to be kept")
+typed.Still = 0.5
+_ = idle(typed)
+check(not sys.Exists(kept), "not before a rest of a second")
+typed.Still = 1.0
+rested = idle(typed)
+check(result.UnwrapOr("", sys.Read(kept)) == rope.Text(typed.Buffers[1].Rope), "the text is kept once it rests")
+check(not config().Moving(rested), "then nothing waits")
+mode = result.Unwrap(sys.Stat(data))
+check(math.BitAnd(mode["Mode"], 63) == 0, "the folder of the kept text is the person's alone: $(mode["Mode"])")
+check(value.Equal(result.Unwrap(sys.List(data)), ["scratch.ce"]), "no new file is left beside it: $(sys.List(data))")
+
+(* Kept when it closes, and when the editor ends, whatever its rest: and nothing asks. *)
+more = press.Press(["enter", "y = 2"], rested)
+closed = press.Press(["C-x", "k"], more)
+check(value.IsMissing(closed.Prompt) and str.EndsWith("y = 2", result.UnwrapOr("", sys.Read(kept))), "a *scratch* that closes is kept, with no question")
+last = press.Press(["enter", "z = 3"], rested)
+ended = press.Press(["C-x", "C-c"], last)
+check(ended.Ending and value.IsMissing(ended.Prompt) and str.EndsWith("z = 3", result.UnwrapOr("", sys.Read(kept))), "the end of the editor keeps it, with no question")
+
+(* It comes back as it was left, its header of the day again. *)
+back = begun(result.Unwrap(sys.Read(kept)))
+check(str.EndsWith("z = 3", rope.Text(back.Buffers[1].Rope)) and str.StartsWith("(* Cemacs · ", rope.Text(back.Buffers[1].Rope)), "the kept text comes back")
+
+(* Saved as a file of its own, it is that file, and its kept text goes: the next start shows a new *scratch*. *)
+mine = "$folder/mine.ce"
+asked = press.Press(["C-x", "C-s"], back)
+check(asked.Prompt.Label == "Save as: ", "C-x C-s asks for a name: $(asked.Message)")
+saved = press.Press([mine, "enter"], asked)
+b = saved.Buffers[saved.Current]
+check(b.Path == mine and view.BufferName(b) == "mine.ce" and result.UnwrapOr("", sys.Read(mine)) == rope.Text(b.Rope), "it is saved as a file: $(saved.Message)")
+gone = idle(saved)
+check(not sys.Exists(kept), "its kept text goes once it is a file")
+check((st -> text.IsModified(st.Buffers[st.Current]))(press.Press(["x"], gone)), "a file it is now, whose changes count")
+
+_ = sys.Run("rm", ["-rf", folder])
+io.Print("ok")

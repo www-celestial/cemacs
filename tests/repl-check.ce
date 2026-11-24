@@ -1,0 +1,188 @@
+(** Checks of C-c e r, which runs code of a buffer of Cesia in *repl*, against real sessions of std/cells, on files in a new folder under /tmp and on a
+    *scratch* kept there: a line, a block, a selection, an empty line, the cursor after each, the names kept from one run to the next, the use lines at
+    the top run first, the queue, a stop from *repl*, a session that ends and the next that starts, no permission in *scratch*, a file not saved, a file
+    of cells and its rule, and the session that ends with its buffer. It is a script, not a test file: it needs permissions. Run it from the root of
+    cemacs with cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/repl-check.ce, CESIA the real path of the cesia that
+    runs it. It prints ok at the end and stops at the first failure. *)
+use core/commands
+use core/panes
+use core/text
+use core/view
+use src/notebook
+use src/rope
+use src/scratch
+use src/ui
+use std/bug
+use std/cells as nb
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+defn settled(state)
+  (** The state once the sessions stop moving, ticked as the editor ticks it, or a failure after ten seconds. *)
+  s = state
+  waited = 0.0
+  while notebook.Moving(s)
+    check(waited < 10.0, "the code never ended")
+    sys.Sleep(0.01)
+    waited = waited + 0.01
+    s = notebook.Hooked({}).Idle(s)
+  end
+  s
+end
+
+(** The text of the *repl* of the file at path. *)
+replAt(path, state) = rope.Text(state.Buffers[list.FindFirst(k -> value.IsSome(dict.GetOr("Repl", missing, state.Buffers[k])) and state.Buffers[k].Repl.Owner == path,
+  1..value.Len(state.Buffers))].Rope)
+
+defn at(n, k, state)
+  (** The state in buffer k, on its line n at column 0, with nothing selected. *)
+  s = state
+  s.Buffers[k] = text.Place(n, 0, text.ClearMark(state.Buffers[k]))
+  commands.ToBuffer(k, s)
+end
+
+(** C-c e r on line n of buffer k, once it answered. *)
+ran(n, k, state) = settled(notebook.RunInRepl(at(n, k, state)))
+
+look = ui.Look(ui.Dark, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/plain.ce"
+source = "use std/io\nuse std/list\n\nx = 3\nio.Print(\"hi\")\nlist.Order([30, 10, 20])\n\ndefn twice(n)\n  n * 2\nend\ntwice(x)\nx = 4\n(* a comment *)\n"
+_ = result.Unwrap(sys.Write(path, source))
+start = commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720))
+version = start.Buffers[1].Version
+
+(* A line: x = 3, then the use lines at the top run first, quietly, so io.Print and list.Order work at once; the cursor goes to the next line. *)
+s = ran(4, 1, start)
+check(s.Current == 1 and s.Buffers[1].Cursor.Line == 5, "the cursor stays in the buffer, on the next line: $(s.Buffers[1].Cursor)")
+check(view.BufferName(s.Buffers[2]) == "*repl*" and list.Any([leaf.Buffer == 2 for leaf in panes.Leaves(panes.Tree(s))]), "*repl* opens below, in a pane")
+s = ran(5, 1, s)
+s = ran(6, 1, s)
+check(str.Contains("> x = 3\n> io.Print(\"hi\")\nhi\n> list.Order([30, 10, 20])\n", replAt(path, s)) and str.Contains("2  3  1\n> ", replAt(path, s)), "lines run in turn: $(replAt(path, s))")
+check(not str.Contains("use std/io", replAt(path, s)), "the use lines at the top run quietly: $(replAt(path, s))")
+
+(* A block: the line that opens it runs to its end, and the cursor goes after it; the names stay from one run to the next. *)
+s = ran(8, 1, s)
+check(s.Buffers[1].Cursor.Line == 11, "the cursor goes after the block: $(s.Buffers[1].Cursor)")
+check(str.Contains("> defn twice(n)\n.   n * 2\n. end\n> ", replAt(path, s)), "a block shows as typed, its lines after the first after . : $(replAt(path, s))")
+s = ran(11, 1, s)
+check(str.EndsWith("> twice(x)\n6\n> ", replAt(path, s)), "the session keeps x and twice: $(replAt(path, s))")
+s = ran(12, 1, s)
+check(str.EndsWith("> x = 4\n> ", replAt(path, s)), "a plain file may define a name again: $(replAt(path, s))")
+
+(* A selection runs as it is, and the cursor stays. *)
+picked = s
+picked.Buffers[1] = text.Place(11, 8, text.SetMark(text.Place(11, 0, s.Buffers[1])))
+picked = settled(notebook.RunInRepl(commands.ToBuffer(1, picked)))
+check(str.EndsWith("> twice(x)\n8\n> ", replAt(path, picked)) and picked.Buffers[1].Cursor == {Line: 11, Column: 8}, "a selection runs, the cursor stays: $(replAt(path, picked))")
+check(picked.Buffers[1].Version == version, "the code buffer never changes")
+
+(* An empty line or a comment runs nothing and opens *repl*, as before: the pane that shows it gets the keys, with no new pane. *)
+count = panes.Count(panes.Tree(picked))
+empty = notebook.RunInRepl(at(7, 1, picked))
+check(view.BufferName(empty.Buffers[empty.Current]) == "*repl*" and panes.Count(panes.Tree(empty)) == count, "an empty line goes to *repl*: $(empty.Current) $(empty.Message) $(empty.Panes) $(empty.Pane)")
+comment = notebook.RunInRepl(at(13, 1, picked))
+check(view.BufferName(comment.Buffers[comment.Current]) == "*repl*" and replAt(path, comment) == replAt(path, picked), "a comment runs nothing")
+
+(* Code typed in *repl* runs in the same session, and after the code of C-c e r. *)
+typed = empty
+typed.Buffers[typed.Current] = text.InsertWords("x * 10", empty.Buffers[empty.Current])
+typed = settled(notebook.Enter(typed))
+check(str.EndsWith("> x * 10\n40\n> ", replAt(path, typed)), "Enter in *repl* runs in the same session: $(replAt(path, typed))")
+
+(* The queue: code that comes while other code runs waits for it, and the answers come in order. *)
+slow = "$folder/slow.ce"
+_ = result.Unwrap(sys.Write(slow, "defn count(n)\n  k = 0\n  while k < n\n    k = k + 1\n  end\n  k\nend\ncount(200000)\ncount(3) + 1\ndefn spin()\n  while true\n  end\nend\nspin()\n"))
+q = commands.OpenFile(slow, picked)
+n = q.Current
+q = ran(1, n, q)
+q = notebook.RunInRepl(at(8, n, q))
+q = notebook.RunInRepl(at(9, n, q))
+check(q.Message == "It runs once the code before it has run.", "the second waits: $(q.Message)")
+q = settled(q)
+check(str.EndsWith("> count(200000)\n200000\n> count(3) + 1\n4\n> ", replAt(slow, q)), "queued code runs in order: $(replAt(slow, q))")
+
+(* A stop from *repl*: the code that runs ends with Stopped., and the names stay. *)
+looping = notebook.RunInRepl(at(14, n, ran(10, n, q)))
+sys.Sleep(0.3)
+looping = notebook.Hooked({}).Idle(looping)
+fromRepl = commands.ToBuffer(list.FindFirst(k -> value.IsSome(dict.GetOr("Repl", missing, looping.Buffers[k])) and looping.Buffers[k].Repl.Owner == slow, 1..value.Len(looping.Buffers)), looping)
+stopping = notebook.StopCell(fromRepl)
+check(stopping.Message == "Stopping the code.", "C-c e s in *repl* stops its code: $(stopping.Message)")
+stopped = settled(stopping)
+check(str.EndsWith("> spin()\nStopped.\n> ", replAt(slow, stopped)), "the code ends with Stopped.: $(replAt(slow, stopped))")
+after = ran(9, n, stopped)
+check(str.EndsWith("> count(3) + 1\n4\n> ", replAt(slow, after)), "the names stay after a stop: $(replAt(slow, after))")
+
+(* A session that ends: the next C-c e r starts another, and *repl* says that the names are gone. *)
+r = after.Buffers[n].CellRun
+_ = sys.Stop(r.Session.Process)
+_ = sys.WaitExit(r.Session.Process)
+sys.Sleep(0.1)
+dead = ran(9, n, after)
+check(str.Contains("has ended: C-c e r starts a new one", dead.Message), "a session that ended says so: $(dead.Message)")
+again = ran(9, n, dead)
+check(str.Contains("A new session: the names defined before are gone.\n> count(3) + 1\n", replAt(slow, again)), "the next C-c e r starts a new session and says so: $(replAt(slow, again))")
+check(str.Contains("count", list.Last(str.Split("A new session", replAt(slow, again)))) and str.Contains("exist", list.Last(str.Split("A new session", replAt(slow, again)))),
+  "the new session has no name of the old one: $(replAt(slow, again))")
+
+(* A file not saved yet has no session: its session runs beside its file. *)
+fresh = commands.OpenFile("$folder/new.ce", picked)
+fresh.Buffers[fresh.Current] = text.InsertWords("1 + 1", fresh.Buffers[fresh.Current])
+unsaved = notebook.RunInRepl(fresh)
+check(str.StartsWith("Save $folder/new.ce first", unsaved.Message), "a file not saved asks to be saved: $(unsaved.Message)")
+
+(* *scratch*: its session, kept beside its file, with no permission; a name and then its use, as in the first steps. *)
+kept = "$folder/data/cemacs/scratch.ce"
+sc = scratch.WithScratch(scratch.Buffer(kept, "", sys.Now()), view.Start([text.Of("", missing)], look, {Width: 8, Height: 19}, 1280, 720))
+lines = rope.LineCount(sc.Buffers[1].Rope)
+day = ran(lines - 2, 1, sc)
+check(not str.Contains("doesn't exist", replAt(kept, day)) and not str.Contains("rror", replAt(kept, day)), "the line of the day runs: $(replAt(kept, day))")
+check(sys.Exists(kept), "the session of *scratch* runs beside its kept file, written first")
+typedIn = day
+typedIn.Buffers[1] = text.InsertWords("x = 3", text.ToFileEnd(day.Buffers[1]))
+typedIn = settled(notebook.RunInRepl(typedIn))
+typedIn.Buffers[1] = text.InsertWords("\nx * 14", text.ToFileEnd(typedIn.Buffers[1]))
+typedIn = settled(notebook.RunInRepl(typedIn))
+check(str.EndsWith("> x = 3\n> x * 14\n42\n> ", replAt(kept, typedIn)), "x = 3 then x * 14 gives 42: $(replAt(kept, typedIn))")
+denied = typedIn
+denied.Buffers[1] = text.InsertWords("\nuse std/sys\nsys.Read(\"$path\")", text.ToFileEnd(typedIn.Buffers[1]))
+denied = settled(notebook.RunInRepl(at(rope.LineCount(denied.Buffers[1].Rope) - 1, 1, denied)))
+denied = settled(notebook.RunInRepl(at(rope.LineCount(denied.Buffers[1].Rope), 1, denied)))
+check(str.Contains("ermission", replAt(kept, denied)), "*scratch* has no permission: $(replAt(kept, denied))")
+
+(* A file of cells: C-c e r follows the rule of *repl*, the session that C-c e e starts and no name of a cell defined again. *)
+cells = "$folder/nb.ce"
+_ = result.Unwrap(sys.Write(cells, "use std/io\n\n(* %% Data *)\nn = 3\n\n(* %% Use *)\nn * 7\n"))
+c = commands.OpenFile(cells, picked)
+m = c.Current
+none = ran(7, m, c)
+check(str.Contains("> n * 7\nNo session: C-c e e in $cells runs a cell first.\n> ", replAt(cells, none)), "no session in a file of cells: $(replAt(cells, none))")
+all = settled(notebook.RunAll(commands.ToBuffer(m, none)))
+line = ran(7, m, all)
+check(str.EndsWith("> n * 7\n21\n> ", replAt(cells, line)), "a line of a cell runs in the session of the cells: $(replAt(cells, line))")
+refusedLine = ran(4, m, line)
+check(str.EndsWith("> n = 3\nn is defined by the cell \"Data\": change it there.\n> ", replAt(cells, refusedLine)), "a name of a cell is refused: $(replAt(cells, refusedLine))")
+
+(* A buffer that closes ends its session. *)
+closing = commands.ToBuffer(1, refusedLine)
+closing.Config = () -> notebook.Hooked({})
+one = closing.Buffers[1].CellRun.Session
+closed = commands.CloseBuffer(closing)
+check(value.Len(closed.Buffers) == value.Len(closing.Buffers) - 1, "the buffer closes")
+check(sys.WaitExit(one.Process) != 0 or result.IsErr(nb.Variables(one)), "its session ended")
+
+_ = sys.Run("rm", ["-rf", folder])
+io.Print("ok")
