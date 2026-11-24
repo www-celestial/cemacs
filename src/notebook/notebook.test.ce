@@ -332,11 +332,12 @@ defn isNarrowGraphKept()
   value.IsMissing(stale(at(narrow), s)) and value.IsSome(stale(at(dict.Put("Asked", want - 100, narrow)), s)) and notebook.Block(4, [], cell, graph = narrow).Rows == math.Div(300 + 8 + cell.Height - 1, cell.Height)
 end
 
-defn animated()
-  (** The window once cell 2 showed the first frame of the animation, paused, as a run gives it. *)
+defn animated(out = missing)
+  (** The window once cell 2 showed the first frame of the animation, paused, as a run gives it; with out, under the label of its result on a row of
+      its own, as Out[2]: when the cell's last value is the animation. *)
   s = notebook.Hooked({}).Idle(view.Start([text.Of(animSource, "anim.ce")], look, cell, 1280, 720))
   g = dict.Merge(notebook.Prepared(frameScene(1, notebook.GraphWidth(s)), "."), {Key: 7, Frames: 3, Fps: 30, Frame: 1, Playing: false, Due: 0.0, Times: [], Want: missing})
-  s.Buffers[1] = text.WithBlocks([dict.Merge(notebook.Block(4, [], cell, graph = g), {Cell: 2, Base: [], Inputs: {}, Status: missing})], s.Buffers[1])
+  s.Buffers[1] = text.WithBlocks([dict.Merge(notebook.Block(4, [], cell, graph = g, out = out), {Cell: 2, Base: [], Inputs: {}, Status: missing})], s.Buffers[1])
   (* C-c e f then C-g draw the block again, as the cells make it: its bar takes the mouse. *)
   s.Buffers[1] = text.Place(4, 0, s.Buffers[1])
   s = commands.Unfocused(notebook.FocusControl(s))
@@ -345,6 +346,22 @@ defn animated()
 end
 anim(s) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) == 2, text.BlocksOf(s.Buffers[1]))   (** The block of the animation. *)
 barWords(s) = [c.Text for c in anim(s).Draw(1000, look) if c.Kind == "text" and c.Font == "code"]   (** The words of its bar. *)
+defn barSign(s)
+  (** The point of the window at the middle of the ▶ of the animation's bar, where the bar draws it. *)
+  for y in 0..719
+    hit = view.BlockAt(200, y, s)
+    if value.IsSome(hit) and dict.GetOr("Cell", 0, hit.Block) == 2
+      sign = list.FindFirst(c -> c.Kind == "text" and c.Font == "code" and str.StartsWith("▶", c.Text), hit.Block.Draw(hit.Width, look))
+      return {X: hit.Left + sign.X + math.Div(cell.Width, 2), Y: hit.Top + sign.Y + math.Div(cell.Height, 2)}
+    end
+  end
+  missing
+end
+clickedSign(s) = commands.Press({Kind: "mouse", Action: "down", X: barSign(s).X, Y: barSign(s).Y, Button: 1}, s)   (** A press on the ▶ of the bar. *)
+isSignClickPlays() = anim(clickedSign(animated())).Graph.Playing
+isSignClickPlaysUnderOut() = anim(clickedSign(animated(out = "Out[2]:"))).Graph.Playing   (** The bar under the label of a result takes the press on its ▶, not a row above. *)
+isRowAboveSignLeaves() = not anim(commands.Press({Kind: "mouse", Action: "down", X: barSign(animated(out = "Out[2]:")).X, Y: barSign(animated(out = "Out[2]:")).Y - cell.Height, Button: 1}, animated(out = "Out[2]:"))).Graph.Playing
+
 defn onBar(state)
   (** The window after C-c e f, the cursor in the cell of the animation. *)
   s = state
@@ -482,11 +499,12 @@ solidScene(v, width) = {Width: width, Height: 400, Items: [{Kind: "mesh", Rows: 
   Palette: ["#440154", "#21918c", "#fde725"], Colors: [0, 1, 2, -1], Order: [1, -1], Clip: [0, 0, 100, 100], Role: "data"}, {Kind: "text", X: 10, Y: 20, Text: "$(v[1])", Size: 12, Color: "ink", Anchor: "start", Angle: 0, Width: 40, Role: "title"}],
   Dropped: 0, View: v}
 
-defn solided()
-  (** The window once cell 2 showed the surface at the view of its code, as a run gives it. *)
+defn solided(out = missing)
+  (** The window once cell 2 showed the surface at the view of its code, as a run gives it; with out, under the label of its result on a row of its
+      own. *)
   s = notebook.Hooked({}).Idle(view.Start([text.Of(solidSource, "hill.ce")], look, cell, 1280, 720))
   g = dict.Merge(notebook.Prepared(solidScene([-37.5, 30.0], notebook.GraphWidth(s)), "."), {Key: 9, View: [-37.5, 30.0], Code: [-37.5, 30.0], Aim: [-37.5, 30.0]})
-  s.Buffers[1] = text.WithBlocks([dict.Merge(notebook.Block(4, [], cell, graph = g), {Cell: 2, Base: [], Inputs: {}, Status: missing})], s.Buffers[1])
+  s.Buffers[1] = text.WithBlocks([dict.Merge(notebook.Block(4, [], cell, graph = g, out = out), {Cell: 2, Base: [], Inputs: {}, Status: missing})], s.Buffers[1])
   s.Buffers[1] = text.Place(4, 0, s.Buffers[1])
   s = commands.Unfocused(notebook.FocusControl(s))
   s.Buffers[1] = text.Place(1, 0, s.Buffers[1])
@@ -523,7 +541,7 @@ defn atHill(s)
   for y in 0..719
     hit = view.BlockAt(200, y, s)
     if value.IsSome(hit) and dict.GetOr("Cell", 0, hit.Block) == 2
-      return {X: hit.Left + 2 * cell.Width, Y: hit.Top + 4}
+      return {X: hit.Left + 2 * cell.Width, Y: hit.Top + hit.Block.Under}
     end
   end
   missing
@@ -539,6 +557,12 @@ defn isDragTurns()
   s = commands.Release({Kind: "mouse", Action: "up", X: at.X + 70, Y: at.Y + 60, Button: 1}, s)
   s = moveTo(at.X + 200, at.Y + 60, s)
   focused and aimed and value.Equal(hill(s).Graph.Aim, [-47.5, 35.0])
+end
+defn isPressLowUnderOutTurns()
+  (* Under the label of a result, the graph is a row lower: a press on its last rows takes it, one under it doesn't. *)
+  at = atHill(solided(out = "Out[2]:"))
+  high = hill(solided(out = "Out[2]:")).Graph.Scene.Height
+  commands.FocusOf(pressAt(at.X + 50, at.Y + high - 5, solided(out = "Out[2]:"))).Turn == 9 and value.IsMissing(commands.FocusOf(pressAt(at.X + 50, at.Y + high + 2, solided(out = "Out[2]:"))))
 end
 isPressBesideNothing() = value.IsMissing(commands.FocusOf(pressAt(atHill(solided()).X - 10, atHill(solided()).Y + 50, solided())))
 

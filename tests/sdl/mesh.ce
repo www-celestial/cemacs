@@ -128,8 +128,15 @@ defn check()
   turned = meshAt([-35.0, 31.0])
   b = shot(turned, a.Window)
   io.Print("kept: $(value.Equal(b.Window.GeoBlocks[1].Parts, parts)) $(agrees(turned, b.Image) > 40)")
-  sdl.Frame([{Kind: "clear", Color: black}], b.Window)
-  io.Print(sdl.Close(b.Window))
+  (* A line takes the first place of a frame, as when the screen moves and another graph comes first; then the surface takes it back: it is drawn whole
+     again, not with what the line left there. *)
+  flat = result.Unwrap(plot.Scene(plot.Line([1, 2, 3], [3, 1, 2]), 640, 400))
+  line = dict.Merge(list.FindFirst(x -> x.Kind == "line", flat.Items), {Id: "line", Clip: missing, Color: 0xFFFFFF})
+  lined = sdl.Draw([{Kind: "clear", Color: black}, {Kind: "graph", X: 0, Y: 0, Width: 640, Height: 400, Items: [line], Font: "../../fonts/NotoSans-Medium.ttf"}], b.Window)
+  back = shot(one, lined)
+  io.Print("back after a line: $(agrees(one, back.Image) > 40)")
+  sdl.Frame([{Kind: "clear", Color: black}], back.Window)
+  io.Print(sdl.Close(back.Window))
   result.Ok("closed")
 end
 

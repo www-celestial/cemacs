@@ -3,6 +3,7 @@
 [142.5, 10.0]: true
 [-127.5, -30.0]: true
 kept: true true
+back after a line: true
 missing
 Ok("closed")
 exit 0

@@ -114,6 +114,11 @@ Measured on the same machine as the rest, in the book's chapter on performance:
 
 ### Fixes
 
+- A 3D surface stays drawn while the screen moves: when another graph's shape took its place in the frame, the surface
+  came back drawn with that shape's count of points and colours, and showed nothing.
+- The ▶ of an animation takes the press of the mouse where it is drawn, and a 3D graph the drag that turns it, when the
+  label of the result, as `Out[2]:`, has a row of its own above the graph: they took it a row higher. A 3D graph keeps
+  that label when it turns, where its graph moved a row up.
 - The left and the right side of a graph's frame are drawn whole, as in its SVG, where the left one stopped short and the
   right one faded: a line keeps its width up to each joint, its strip on the miter of its two segments, and a joint
   sharper than 120 degrees is cut flat.

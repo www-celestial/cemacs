@@ -434,8 +434,11 @@ defn grown(block, cap, bytes)
 end
 
 defn memoryFor(arrays, block)
-  (** The memory of a shape, grown to hold its arrays, which are written to it, each in one c.Write. *)
+  (** The memory of a shape, grown to hold its arrays, which are written to it, each in one c.Write. What a surface kept there to write only its
+      places next time goes: the shape written now may be another, as when the screen moves and another graph's shape takes this place of the frame. *)
   out = if value.IsMissing(block) {XY: missing, XYCap: 0, Colors: missing, CCap: 0, Index: missing, ICap: 0, Item: missing} else block end
+  out.Shape = missing
+  out.Parts = missing
   xy = grown(out.XY, out.XYCap, value.Len(arrays.XY) * 4)
   out.XY = xy.Block
   out.XYCap = xy.Cap

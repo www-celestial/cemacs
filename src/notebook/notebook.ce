@@ -209,7 +209,8 @@ defn Block(line, lines, cell, graph = missing, focused = false, out = missing, a
       or chosen by the keys, and its ring when focused, see GraphOverlay. A table comes there instead, see TableItems, with its ring when
       focused. Out, a label as Out[3]:, marks a result as Jupyter does: the
       lines after the first at ones, which are its status and its note, start after it, on its row, and the others under them; a result with no line
-      gives the label a row of its own, above its graph. Under is how far down the block its graph or its table starts, in pixels.
+      gives the label a row of its own, above its graph. Under is how far down the block its graph or its table starts, in pixels, and Bar where the
+      bar of an animation or the line of a 3D graph's view starts, under the graph: the press of the mouse finds the bar where it is drawn.
 
         Block(3, [{Role: "value", Words: "42"}], {Width: 8, Height: 19}).Rows --> 1 *)
   alone = value.IsSome(out) and value.Len(lines) <= at
@@ -227,7 +228,7 @@ defn Block(line, lines, cell, graph = missing, focused = false, out = missing, a
     [rowText(l.At, "  $(l.Words)", colorOf("note", look.Theme), cell) for l in label]),
     shown(width, look)),
     if bar == 0 [] else if isAnimation(graph) BarItems(graph, focused, width, under, cell, look.Theme) else ViewItems(graph, focused, top, under, cell, look.Theme) end)
-  {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Table: table, Lines: lines, Out: out, Under: top}
+  {Line: line, Rows: rows, Draw: draw, Cell: 0, Graph: graph, Table: table, Lines: lines, Out: out, Under: top, Bar: under}
 end
 
 (** Line k of a block, {Role, Words}, pad columns after the bar's margin, cut to the width. *)
@@ -2291,9 +2292,6 @@ animOf(k, key, state) = list.FindFirst(x -> dict.GetOr("Cell", 0, x) > 0 and isA
 (** The state with the block x of buffer k showing a graph, its lines as they were. *)
 withGraph(k, x, graph, state) = rebuilt(k, x, graph, state)
 
-(** Where the bar of an animation's block starts, in pixels down the block: under its lines and its graph. *)
-barTop(x, cell) = (value.Len(x.Lines) + math.Div(x.Graph.Scene.Height + 8 + cell.Height - 1, cell.Height)) * cell.Height
-
 defn onScreen(k, x, state)
   (** Is the block x of buffer k on the screen: its buffer shown in a pane, and its line among those the window has room for from the pane's top? *)
   tree = panes.Tree(state)
@@ -2482,7 +2480,7 @@ defn barMouse(key, action, point, state)
   p = BarPlaces(point.Width, x.Graph.Frames, state.Cell)
   s = state
   if action == "down"
-    top = barTop(x, state.Cell)
+    top = x.Bar
     if point.Y < top or point.Y >= top + state.Cell.Height or point.X > p.Track + p.Wide + 6
       return state
     end
@@ -2588,15 +2586,10 @@ defn ownerFor(k, state)
 end
 
 defn regraphed(k, key, graph, state)
-  (** The state with the block of buffer k that shows the 3D graph of a key drawn again with this graph, its lines as they were. *)
+  (** The state with the block of buffer k that shows the 3D graph of a key drawn again with this graph, its lines and the label of its result as
+      they were. *)
   x = turnOf(k, key, state)
-  if value.IsMissing(x)
-    return state
-  end
-  made = dict.Merge(x, resultBlock(k, dict.GetOr("Cell", 0, x), x.Line, x.Lines, graph, state))
-  s = state
-  s.Buffers[k] = text.WithBlocks([if isTurning(dict.GetOr("Graph", missing, y)) and y.Graph.Key == key made else y end for y in text.BlocksOf(state.Buffers[k])], state.Buffers[k])
-  s
+  if value.IsMissing(x) state else rebuilt(k, x, graph, state) end
 end
 
 (** The view [az, el] with el within -90 and 90, and az within -180 and 180, the turn kept. *)
@@ -2696,7 +2689,7 @@ defn turnMouse(key, action, point, state)
   end
   g = x.Graph
   if action == "down"
-    top = value.Len(x.Lines) * state.Cell.Height + 4
+    top = x.Under
     left = 2 * state.Cell.Width
     if point.Y < top or point.Y >= top + g.Scene.Height or point.X < left or point.X >= left + g.Scene.Width
       return state
