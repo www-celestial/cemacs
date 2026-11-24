@@ -50,7 +50,7 @@ defn Changed(config)
   (* c.Window = () -> {Width: 1600, Height: 900} *)
   (* c.DeleteToTrash = () -> false *)
   (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)
-  (* c.Start = s -> commands.SplitRight(s) *)
+  (* c.Start = s -> commands.SplitRight(config.Start(s)) *)
   c
 end
 ```
@@ -64,7 +64,8 @@ value.Equal(Changed(emacs.Config(emacs.Keys)), emacs.Config(emacs.Keys)) --> tru
 `Changed` gets the config, the record of functions that the editor runs on, and gives it back changed: [The config](#the-config)
 lists its fields. `c = config` and then `c.FontSize = ...` make a new record, the one given left as it was; each `(* *)` is
 a comment, which Cesia skips. A field `Changed` doesn't set keeps the value of Cemacs, so a setting that a later version of
-Cemacs adds comes through. `src/cemacs.ce` calls `Changed` each time the editor reads its config, at each key, so under
+Cemacs adds comes through. So does what Cemacs does at its start, as making `*scratch*`, when your `Start` calls the one it
+gets first, `config.Start(s)`, as the example does. `src/cemacs.ce` calls `Changed` each time the editor reads its config, at each key, so under
 `cesia do dev` a change you save works at the next key, but for `FontSize`, `Theme`, `Window` and `Start`, read only at the
 start: see [Reloading Cemacs while it runs](#reloading-cemacs-while-it-runs).
 

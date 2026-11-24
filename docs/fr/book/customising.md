@@ -50,7 +50,7 @@ defn Changed(config)
   (* c.Window = () -> {Width: 1600, Height: 900} *)
   (* c.DeleteToTrash = () -> false *)
   (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)
-  (* c.Start = s -> commands.SplitRight(s) *)
+  (* c.Start = s -> commands.SplitRight(config.Start(s)) *)
   c
 end
 ```
@@ -64,7 +64,9 @@ value.Equal(Changed(emacs.Config(emacs.Keys)), emacs.Config(emacs.Keys)) --> tru
 `Changed` reçoit la config, le record de fonctions sur lequel tourne l'éditeur, et la rend changée :
 [La config](#la-config) liste ses champs. `c = config` puis `c.FontSize = ...` font un nouveau record, celui reçu restant
 tel qu'il était ; chaque `(* *)` est un commentaire, que Cesia saute. Un champ que `Changed` ne pose pas garde la valeur de
-Cemacs : un réglage qu'une version plus récente de Cemacs ajoute passe donc. `src/cemacs.ce` appelle `Changed` chaque fois
+Cemacs : un réglage qu'une version plus récente de Cemacs ajoute passe donc. Ce que Cemacs fait à son démarrage, comme
+créer `*scratch*`, passe aussi quand votre `Start` appelle d'abord celui qu'il reçoit, `config.Start(s)`, comme le fait
+l'exemple. `src/cemacs.ce` appelle `Changed` chaque fois
 que l'éditeur lit sa config, à chaque touche : sous `cesia do dev`, un changement que vous enregistrez marche donc dès la
 touche suivante, sauf pour `FontSize`, `Theme`, `Window` et `Start`, lus seulement au démarrage : voir
 [Recharger Cemacs pendant qu'il tourne](#recharger-cemacs-pendant-quil-tourne).

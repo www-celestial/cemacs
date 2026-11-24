@@ -18,6 +18,6 @@ defn Changed(config)
   (* c.Window = () -> {Width: 1600, Height: 900} *)
   (* c.DeleteToTrash = () -> false *)
   (* c.Keys = () -> dict.Merge(config.Keys(), {"C-c t": "tools", "C-c t s": commands.Save}) *)
-  (* c.Start = s -> commands.SplitRight(s) *)
+  (* c.Start = s -> commands.SplitRight(config.Start(s)) *)
   c
 end
