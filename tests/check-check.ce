@@ -66,6 +66,17 @@ expect(value.Len(text.MarksOf(here(fixed))) == 0, "typing on the line drops its 
 again = ticked(fixed)
 expect(value.Len(text.MarksOf(here(again))) == 0 and not check.IsDue(here(again)), "io.Print is right: no mark")
 
+(* *scratch*, which has no file of its own, is checked as the file it is kept in, even before that file is written: once, and its marks in it. *)
+kept = text.Of("use std/io\nio.Prnt(1)\n", missing)
+kept.Kept = "$folder/data/scratch.ce"
+kept.Name = "*scratch*"
+scratchStart = view.Start([kept], look, cell, 800, 600)
+scratchStart.Config = checkConfig
+expect(check.IsDue(here(scratchStart)), "*scratch* is due, as a file of Cesia")
+checked = ticked(scratchStart)
+expect(value.Len(text.MarksOf(here(checked))) == 1 and text.MarksOf(here(checked))[1].Line == 2, "*scratch* gets its mark: $(text.MarksOf(here(checked))) $(checked.Message)")
+expect(not check.IsDue(here(checked)) and not commands.Moving(checked), "and is checked once")
+
 _ = sys.Remove(path)
 _ = sys.Remove(folder)
 io.Print("ok")

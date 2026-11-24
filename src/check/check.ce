@@ -74,14 +74,16 @@ defn start(k, state)
   end
   ch = fiber.Channel()
   words = rope.Text(b.Rope)
-  path = b.Path
+  (* *scratch* has no file of its own: it is checked as the file it is kept in, which names its root. *)
+  path = text.FileOf(b)
   _ = fiber.Spawn(() -> fiber.Send(sys.Run("cesia", ["check", "--json", "--stdin", path], input = words), ch))
   s = state
   s.Checking = {Path: path, Version: b.Version, Channel: ch}
   s
 end
 
-indexOf(path, state) = list.Reduce((found, k) -> if found == 0 and state.Buffers[k].Path == path k else found end, 0, 1..value.Len(state.Buffers))   (** The buffer of a path, or 0. *)
+(** The buffer of a path, or 0: the file of a buffer, or the file its text is kept in, see text.FileOf. *)
+indexOf(path, state) = list.Reduce((found, k) -> if found == 0 and text.FileOf(state.Buffers[k]) == path k else found end, 0, 1..value.Len(state.Buffers))
 
 defn Finished(state)
   (** The state once the running check has ended, if it has: the marks in its buffer, unless its text changed since. A check that couldn't run says why
