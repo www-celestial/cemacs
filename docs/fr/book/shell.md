@@ -9,6 +9,8 @@ un autre), si bien qu'un programme qui dessine un écran entier, comme `vim` ou 
 sur un terminal, n'y a pas d'écran. Les couleurs qu'un programme écrit pour un terminal sont enlevées. Le shell est la
 touche `t` du groupe `o`, open (ouvrir), de `C-c`, comme `SPC o t` dans Doom Emacs. Un second `C-c o t` revient au buffer.
 
+![Le buffer *shell* après deux commandes : ls liste cesia.toml, main.ce et src, puis cesia run main.ce écrit le total de 1349 cents et les trois prix avec la taxe ; le prompt $ attend sur la dernière ligne.](../../book/images/shell.png)
+
 | Touches | Commande | Ce qu'elle fait |
 |---|---|---|
 | `C-c o t` | [ide.Terminal] | ouvre le buffer du shell, le shell démarré dans le dossier du fichier courant, ou y va |

@@ -52,6 +52,8 @@ les numéros des lignes, les touches dans la bande et la sortie elle-même.
 Un pane montre un buffer, avec une colonne de numéros de ligne à sa gauche et sa mode line en bas. Au début, il y a un seul
 pane, qui remplit la place des panes.
 
+![Deux panes côte à côte après C-x 3 : main.ce à gauche, le pane que vous modifiez, avec sa ligne courante dessinée, et shop.ce à droite, chacun avec sa propre mode line.](../../book/images/windows-split.png)
+
 | Touches | Commande | Ce qu'elle fait |
 |---|---|---|
 | `C-x 2`, `C-c w s` | [commands.SplitBelow] | coupe en deux le pane que vous modifiez, l'un au-dessus de l'autre |

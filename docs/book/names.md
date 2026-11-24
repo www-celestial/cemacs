@@ -71,12 +71,16 @@ tax.`, the signature and the first sentence of its text. Nothing shows when a ma
 or a question is on the prompt line: they come first. It is asked once for a place of the cursor, when the time of the check
 comes, so that it costs nothing while the editor is still.
 
+![The list that C-c c i opens on Total in main.ce: the signature shop.Total(prices), then its text, The total of prices, in cents.](images/names-documentation.png)
+
 ## The references
 
 `M-?` lists each place as `path:line:column` and the words of its line, the definition first, the paths from the root of the
 project, the folder that holds its `cesia.toml`. Typing filters the list, Enter goes to the place and keeps the place left,
 for `M-,`. The places are those that read the name, as the compiler of Cesia reads it, through `cesia.Reads`, its resolver
 of names:
+
+![The references of WithTax after M-?: its definition in src/shop/shop.ce at line 9 first, then the call in main.ce at line 7; the prompt line says 2 places.](images/names-references.png)
 
 - a parameter or a local of the same name is no reference, nor is a word in a comment or a text; a name read inside a text,
   as `"$(Total(xs))"`, is one;

@@ -226,6 +226,8 @@ avec une majuscule ne trouve que les mots qui commencent tels qu'il est écrit. 
 Avec un seul mot trouvé, Tab le met en place tout de suite. Avec plusieurs, une liste s'ouvre sous le mot, le premier
 choisi :
 
+![Hel tapé sur la troisième ligne d'un fichier qui contient Hello et Help, puis Tab : une liste s'ouvre sous le mot avec Help, le plus proche, choisi, et Hello dessous.](../../book/images/editing-completion.png)
+
 | Touches | Commande | Ce qu'elle fait |
 |---|---|---|
 | `C-n`, `down` | [commands.CompleteNext] | choisit le mot suivant, et le premier après le dernier |
@@ -283,6 +285,8 @@ plus à sa fin.
 La mark est un second endroit du buffer, que vous posez ; le texte entre la mark et le curseur, dans un ordre ou dans
 l'autre, est la sélection. Emacs l'appelle la region. Elle est dessinée avec un fond de couleur, et une fin de ligne qu'elle
 contient s'affiche comme un caractère de couleur de plus, après le bout de la ligne.
+
+![Une sélection faite avec C-space à la ligne 5 puis des déplacements jusqu'au bout de la ligne 7 : ses lignes ont un fond de couleur, et les fins de ligne qu'elle contient se voient comme un caractère de couleur de plus.](../../book/images/editing-selection.png)
 
 | Touches | Commande | Ce qu'elle fait |
 |---|---|---|

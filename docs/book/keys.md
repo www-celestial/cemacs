@@ -23,6 +23,8 @@ with them, with `?` after every prefix key: the code below makes the same merge,
 the `Changed` of `user/config/config.ce` merges over these, are not in it: the table comes from the code of Cemacs, and
 `user/` is yours.
 
+![The list that C-c ? opens: each key after C-c, as C-c C-c, C-c b b and C-c c d, with the name of its command and the start of its documentation, and the prompt line where typing filters it.](images/keys-help.png)
+
 ```cesia output=md fold=code
 use src/buffers
 use src/check

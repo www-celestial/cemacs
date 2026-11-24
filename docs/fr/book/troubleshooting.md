@@ -209,6 +209,8 @@ Voici les messages des commandes, dans l'ordre des chapitres. Un message reste j
 | `Tests are those of a file of Cesia.` | `C-c t t` dans un buffer qui n'est pas un fichier `.ce` |
 | `No test ran yet: C-c t t runs those of the file.` | `C-c t r` avant tout test |
 
+![C-c c r sur main.ce avec 1500 ajouté aux prix sans enregistrer : la mode line montre main.ce *, la sortie montre les trois prix du fichier tel qu'il est enregistré, et la prompt line dit Running, le chemin, as saved, without the changes here.](../../book/images/troubleshooting-saved.png)
+
 ### Les questions
 
 | Question | Ce qu'elle demande |

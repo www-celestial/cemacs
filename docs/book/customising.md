@@ -148,6 +148,10 @@ use std/value
 | [emacs.Window] | pixels, `{Width, Height}` | the size of the window when it opens, which you can change after | once, when the window opens |
 | [emacs.Start] | a function from a state to a state | what the editor does at its start, after it opened the files it was given: nothing | once, after the files opened |
 
+![Cemacs on main.ce in the light theme, ui.Light: black code on white, the keywords in blue, the texts in green, the numbers in blue, with the output of a run.](images/customising-light.png)
+
+![The same file and output in the dark theme, ui.Dark, the theme Cemacs starts with: light code on a dark grey, the keywords in orange, the texts in green, the numbers in blue.](images/customising-dark.png)
+
 To change one, set its field in your `Changed`, as a function: the template has an example of each, and a function from a
 config to a config can gather yours, as each recipe of [Recipes](recipes.md) does:
 

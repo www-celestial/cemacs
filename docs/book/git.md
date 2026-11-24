@@ -25,6 +25,8 @@ each file, `staged`, `changed` or `new` before its path from the root of the rep
 has a row of each. In this list, as in Magit, a letter is a command, where typing filters the other lists of Cemacs: the
 state has few rows, and a letter is the fastest way to each thing.
 
+![The state of the shop repository after C-x g: On main and the letters, then src/shop/shop.ce staged, main.ce changed and notes.md new.](images/git-status.png)
+
 | Letter | What it does |
 |---|---|
 | `s` | stages the file of the row: `git add -- PATH` |
@@ -47,6 +49,10 @@ show --stat --patch` does, its words, the files it changed and its diff, as a li
 buffer, not saved too, through `git blame --contents -`, so that each line shows the commit and the author that last
 changed it, `00000000` for a line not committed yet; the list opens on the line of the cursor, and Enter shows the commit of
 the line.
+
+![The diff of main.ce after C-c g d: the header of git diff, the part @@ -1,7 +1,7 @@, the removed line prices = [250, 1000, 99] and the added line prices = [250, 1000, 99, 1500], with the lines kept around them.](images/git-diff.png)
+
+![The blame of main.ce after C-c g b: each line after the commit and the author that last changed it, Ada Lovelace for the uses and the total, Grace Hopper for the loop of the prices with tax, and 00000000 External file for line 4, changed and not committed.](images/git-blame.png)
 
 ## Security
 

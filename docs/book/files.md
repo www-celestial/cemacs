@@ -198,6 +198,8 @@ memory: quitting asks first, but a crash of the editor loses it. Save often.
 | `C-x k`, `C-c b k` | [commands.CloseBuffer] | closes the current buffer, asking first if its text isn't saved |
 | `C-x C-c`, `C-c q q` | [commands.Quit] | ends Cemacs, asking first if any text isn't saved |
 
+![The list of buffers that C-x C-b opens with three files open: a row for each buffer, and the prompt line where typing filters it.](images/files-buffers.png)
+
 A buffer's name is the last part of its path, as the mode line and the title of the window show it, `untitled` for a buffer
 with no file, or the name of a list. Two files of the same name in two folders show the same name: the list of buffers
 gives their paths.
@@ -226,6 +228,8 @@ the folder's absolute path. The prompt line shows that path, ending with `/`, th
 of the rows marked and flagged, the sort when it isn't by name, `hidden shown`, or, with none of these, `backspace: folder above, q: close, ?: keys`.
 The state of a list, its folder, its marks and the way it shows them, is a record, the view, that [folders.NewView] starts
 and [folders.ViewOf] reads.
+
+![The folder manager on the shop folder after n n n and m: src/ first, then cesia.toml, main.ce and notes.md, each with its mode, its size and its age, notes.md marked with a star; the prompt line shows the path and 1 marked.](images/files-folder.png)
 
 ### The rows
 

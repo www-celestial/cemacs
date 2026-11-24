@@ -76,6 +76,8 @@ ne s'affiche quand une marque de la vérification est sur la ligne, ou qu'un mes
 line : ils passent d'abord. Elle est demandée une fois pour une place du curseur, quand vient le moment de la
 vérification, si bien qu'elle ne coûte rien tant que l'éditeur est immobile.
 
+![La liste qu'ouvre C-c c i sur Total dans main.ce : la signature shop.Total(prices), puis son texte, The total of prices, in cents.](../../book/images/names-documentation.png)
+
 ## Les références
 
 `M-?` liste chaque endroit sous la forme `path:line:column` (le chemin, la ligne et la colonne) et les mots de sa ligne, la
@@ -83,6 +85,8 @@ définition d'abord, les chemins depuis la racine du projet, le dossier qui cont
 liste, Enter va à l'endroit et garde l'endroit quitté, pour `M-,`. Les endroits sont ceux qui lisent le nom, comme le
 compilateur de Cesia le lit, par `cesia.Reads`, son resolver de noms (la partie du compilateur qui dit ce que désigne
 chaque nom) :
+
+![Les références de WithTax après M-? : sa définition dans src/shop/shop.ce à la ligne 9 d'abord, puis l'appel dans main.ce à la ligne 7 ; la prompt line dit 2 places.](../../book/images/names-references.png)
 
 - un paramètre ou une variable locale du même nom n'est pas une référence, pas plus qu'un mot dans un commentaire ou un
   texte ; un nom lu à l'intérieur d'un texte, comme `"$(Total(xs))"`, en est une ;

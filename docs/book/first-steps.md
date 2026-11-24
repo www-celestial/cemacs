@@ -43,6 +43,8 @@ The window has four parts, from the top:
 
 The [Windows and panes](windows.md) chapter tells each part in full.
 
+![Cemacs on main.ce after a run: the code with its line numbers, the mode line with main.ce, 1:0 and Cesia, the output ended with code 0 and the three lines the program printed, and the prompt line that says Running and the path of the file.](images/first-steps-window.png)
+
 ## The keys
 
 The keys are those of Emacs. `C-` means the Control key and `M-` the Alt key: `C-x C-s` is Control and `x`, then Control and
@@ -73,6 +75,8 @@ The cut text goes to the clipboard of your system, so you can paste it in anothe
 
 You don't need to learn the keys above. Under `C-c`, every key is in a group, as in Doom Emacs. Press `C-c` and wait half
 a second: a band above the prompt line shows each group. Press a group's letter and wait again: the band shows its keys.
+
+![The band of hints half a second after C-c: the keys ?, C-c, C-g, C-k and C-o with the names of their commands, and the groups +buffers, +code, +debug, +execute, +files, +git, +insert, +open, +quit, +search, +test and +windows, each after its letter; the prompt line shows C-c -.](images/first-steps-hints.png)
 
 | Group | Its keys |
 |---|---|
