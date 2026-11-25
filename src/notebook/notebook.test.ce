@@ -1114,3 +1114,41 @@ isCodeEmpty() = value.IsMissing(codeAt(2, "x\n   \ny")) and value.IsMissing(code
 isCodeNotComment() = value.Equal(codeAt(1, "x (* a note *)"), {Code: "x (* a note *)", Line: 2})
 isCodeSelection() = value.Equal(notebook.CodeAt(text.Place(1, 5, text.SetMark(text.Place(1, 4, text.Of("x = 1 + 2", "a.ce"))))), {Code: "1", Line: missing})
 isRunInReplOtherBuffer() = str.StartsWith("*repl* runs in the session of a buffer of Cesia", notebook.RunInRepl(view.Start([text.Of("x", "notes.md")], look, cell, 800, 600)).Message)
+
+(* C-c e t: the file of cells as a small app, its code hidden: the titles of the cells that show something, and what they show. *)
+(** The file of sliders with a session that is busy, so that nothing starts one, and the cell Use showing words when given. *)
+defn appFile(words = missing)
+  s = busy(opened())
+  if value.IsSome(words) withBlock(1, 3, words, s) else s end
+end
+(** The texts that a state draws, its screens followed. *)
+appTexts(s) = [c.Text for c in view.View(view.FollowState(0, s)) if c.Kind == "text"]
+(** Does a state draw any line of the code of the file? *)
+showsCode(s) = list.Any([t == "use std/cells" or str.Contains("cells.Slider(", t) or t == "rho * n" or str.Contains("%%", t) for t in appTexts(s)])
+isAppKey() = notebook.Keys()["C-c e t"] == notebook.ToggleCode
+isAppHidesCode() = (s -> not showsCode(s) and "Parameters" in appTexts(s) and "Use" in appTexts(s) and list.Any([str.Contains("84.0", t) for t in appTexts(s)]) and "rho" in appTexts(s))(notebook.ToggleCode(appFile(words = [{Role: "value", Words: "84.0"}])))
+isAppShowsCodeBefore() = showsCode(appFile(words = [{Role: "value", Words: "84.0"}]))
+isAppCellWithNothingGone() = (s -> not ("Use" in appTexts(s)) and "Parameters" in appTexts(s) and not showsCode(s))(notebook.ToggleCode(appFile()))
+isAppErrorShows() = (s -> "Use" in appTexts(s) and list.Any([str.Contains("boom", t) for t in appTexts(s)]) and not showsCode(s))(notebook.ToggleCode(appFile(words = [{Role: "error", Words: "boom"}])))
+isAppRunningShows() = (s -> "Use" in appTexts(s) and list.Any([str.Contains("running", t) for t in appTexts(s)]) and not showsCode(s))(notebook.ToggleCode(appFile(words = running(0.0))))
+isAppUntitledCell() = (s -> "Cell 1" in appTexts(s))(notebook.ToggleCode(withBlock(1, 2, [{Role: "value", Words: "1"}], busy(notebook.Hooked({}).Idle(view.Start([text.Of("x = 0\n(* %% *)\nx + 1\n", "nb.ce")], look, cell, 1280, 720))))))
+isAppSaysHidden() = notebook.ToggleCode(appFile()).Message == "The code is hidden: C-c e t shows it."
+isAppCursorOnTitle() = notebook.ToggleCode((s -> dict.Put("Buffers", [text.Place(5, 3, s.Buffers[1])], s))(appFile())).Buffers[1].Cursor.Line == 3
+(** From the head of the file, the cursor goes to the first title shown; from a cell that shows nothing, to the next title, or else the one before. *)
+isAppCursorNextShown() = notebook.ToggleCode(appFile()).Buffers[1].Cursor.Line == 3 and notebook.ToggleCode((s -> dict.Put("Buffers", [text.Place(8, 0, s.Buffers[1])], s))(appFile())).Buffers[1].Cursor.Line == 3
+defn isAppOffSame()
+  (** C-c e t twice gives back the same frame, the cursor on the marker of its cell, on the same row of the screen. *)
+  s = view.FollowState(0, (t -> dict.Put("Buffers", [text.Place(3, 0, t.Buffers[1])], t))(appFile(words = [{Role: "value", Words: "84.0"}])))
+  back = view.FollowState(0, notebook.ToggleCode(view.FollowState(0, notebook.ToggleCode(s))))
+  back.Message = ""
+  value.IsMissing(text.FoldOf(back.Buffers[1])) and value.Equal(view.View(back), view.View(s)) and back.Buffers[1].CellRun.App == false
+end
+isAppTypingRefused() = (s -> s.Buffers[1].Version == 0 and s.Message == "The code is hidden: C-c e t shows it.")(commands.Update({Kind: "text", Text: "x"}, notebook.ToggleCode(appFile())))
+isAppNoCell() = notebook.ToggleCode(view.Start([text.Of("x = 1", "a.ce")], look, cell, 800, 600)).Message == "This buffer has no cell: (* %% Title *) on a line of a .ce file starts one, and C-c e i writes it."
+defn isAppReplUnchanged()
+  (** In *repl* or *variables*, C-c e t says there is no cell and changes nothing. *)
+  s = view.Start([text.Of(source, "nb.ce"), newRepl("nb.ce")], look, cell, 800, 600)
+  s.Current = 2
+  t = notebook.ToggleCode(s)
+  str.StartsWith("This buffer has no cell", t.Message) and value.Equal(t.Buffers, s.Buffers)
+end

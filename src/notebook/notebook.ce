@@ -42,15 +42,15 @@ use std/value
 (** The keys of the cells, in their group of C-c: e for execute. C-c e r runs code of any buffer of Cesia in `*repl*`; M-p and M-n go through the history
     there, and Enter there runs what was typed. *)
 Keys() = {"C-c e": "execute", "C-c e e": RunCell, "C-c e a": RunAll, "C-c e i": InsertCell, "C-c e v": ShowVariables, "C-c e r": RunInRepl,
-  "C-c e s": StopCell, "C-c e h": WriteHtml, "C-c e k": ClearResults, "C-c e f": FocusControl, "C-c e c": CopyTable, "enter": Enter, "S-enter": Enter,
-  "M-p": HistoryBack, "M-n": HistoryOn}
+  "C-c e s": StopCell, "C-c e h": WriteHtml, "C-c e k": ClearResults, "C-c e f": FocusControl, "C-c e c": CopyTable, "C-c e t": ToggleCode, "enter": Enter,
+  "S-enter": Enter, "M-p": HistoryBack, "M-n": HistoryOn}
 
 (** The most lines of a result drawn under a cell: its output, then its value, each cut there with a line that says how many more. *)
 MaxLines() = 40
 
 (* ---- The run of a buffer: {Session, Cells, Analysis, Queue, Task, Index, Started, Stopping, Html, Vars, Version}, and Line, the code of C-c e r or of
-   *repl* that runs, Ended, true once a session ended, until the next starts, and Plain, true for a run that C-c e r made for a buffer with no cell.
-   Queue holds the numbers of cells and the lines of code, in order. *)
+   *repl* that runs, Ended, true once a session ended, until the next starts, Plain, true for a run that C-c e r made for a buffer with no cell, and App,
+   true while C-c e t shows the file as an app. Queue holds the numbers of cells and the lines of code, in order. *)
 
 defn runOf(b)
   (** The cells run of a buffer, or missing: a buffer from before this field has none. *)
@@ -952,6 +952,144 @@ defn widened(k, state)
   task = if flat fiber.Spawn(() -> nb.Scene(one, key, width, mark = mark, xlim = xlim, ylim = ylim, points = points)) else fiber.Spawn(() -> nb.Scene(one, key, width, frame = frame, view = turn)) end
   r.Rescene = {Task: task, Cell: x.Cell, Key: key, Width: width}
   withRun(k, r, state)
+end
+
+(* ---- The view of an app: C-c e t hides the code of the whole file, the titles of its cells and what they show left, their inputs live. *)
+
+(** What the view of an app says when a key would change its code, and when C-c e t shows it. *)
+HiddenNote() = "The code is hidden: C-c e t shows it."
+
+(** Does a run show its file as an app? A run from before this field doesn't. *)
+isApp(r) = value.IsSome(r) and dict.GetOr("App", false, r) == true
+
+defn cellOf(line, cells)
+  (** The index of the cell that holds a line, as CellAt gives it, looked for by halves: the fold of an app asks it for each block. *)
+  low = 1
+  high = value.Len(cells)
+  while low < high
+    middle = math.Div(low + high + 1, 2)
+    if cells[middle].From <= line
+      low = middle
+    else
+      high = middle - 1
+    end
+  end
+  low
+end
+
+defn appFold(cells, b)
+  (** The fold of the view of an app for buffer b, whose text has these cells: every line hidden but the marker line of each cell that shows something,
+      a block under one of its lines (a result, a graph, a table, a slider or another input, an error, a note as running…), which is a title, the title of
+      the cell or Cell and its number; the lines before the first marker are hidden, the blocks under them shown. Its runs come in order, apart: see
+      text.FoldOf. *)
+  count = rope.LineCount(b.Rope)
+  showing = {}
+  for x in text.BlocksOf(b)
+    showing["$(cellOf(x.Line, cells))"] = true
+  end
+  hidden = []
+  titles = {}
+  from = 1
+  for i in 2..value.Len(cells)
+    c = cells[i]
+    if dict.Has("$i", showing) and c.From <= count
+      if c.From > from
+        hidden = list.Append({From: from, To: c.From - 1}, hidden)
+      end
+      titles["$(c.From)"] = if c.Title == "" "Cell $(i - 1)" else c.Title end
+      from = c.From + 1
+    end
+  end
+  {Hidden: if from <= count list.Append({From: from, To: count}, hidden) else hidden end, Titles: titles, Note: HiddenNote()}
+end
+
+defn appCells(k, state)
+  (** The cells of the text of buffer k now, for the fold of its app: those of its run when they are of its version, else read again, kept in the run for
+      that version, as the analysis waits for the text to rest. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  if r.Version == b.Version
+    return {Cells: r.Cells, State: state}
+  end
+  kept = dict.GetOr("AppCells", missing, r)
+  if value.IsSome(kept) and kept.Version == b.Version
+    return {Cells: kept.Cells, State: state}
+  end
+  cells = nb.Parse(rope.Text(b.Rope))
+  r.AppCells = {Version: b.Version, Cells: cells}
+  {Cells: cells, State: withRun(k, r, state)}
+end
+
+defn titleNear(line, cells, fold)
+  (** The title of the fold for the cell that holds line: its own, else the next one shown, else the last one before; missing with no title. *)
+  from = cells[cellOf(line, cells)].From
+  lines = list.Sort([str.Number(t) for t in dict.Keys(fold.Titles)])
+  after = [n for n in lines if n >= from]
+  if value.Len(after) > 0 after[1] else if value.Len(lines) > 0 list.Last(lines) else missing end
+end
+
+defn ToggleCode(state)
+  (** C-c e t: the file of cells of the current buffer as a small app, or as code again. The app shows the title of each cell that shows something, in the
+      strong font, and what it shows under it: its results, graphs, tables, sliders and other inputs; the rest of the file takes no row. Its inputs work as
+      before, with the mouse, C-c e f and Tab, and run again the cells that read them; its text is read only, but for their writes: a key that would change
+      it is refused, with HiddenNote(). Nothing is written in the file, and nothing is kept once the buffer closes. A file whose cells never ran in a
+      session runs them all first, as C-c e a. Again, C-c e t shows the code, the cursor on the marker of the cell it was on, on the same row of the screen;
+      or, when it stayed on the title it was put on, the code as it was, its cursor and its screen too. *)
+  k = state.Current
+  b = state.Buffers[k]
+  if not IsCells(b)
+    return commands.Say("This buffer has no cell: (* %% Title *) on a line of a .ce file starts one, and C-c e i writes it.", state)
+  end
+  if isApp(runOf(b)) appLeft(k, state) else appShown(k, state) end
+end
+
+defn appShown(k, state)
+  (** The state with buffer k shown as an app: its cells run first if they never ran, its fold made, the cursor on the title of its cell, or of the next
+      one shown, kept on its row of the screen as far as the titles above it let it. The place of the code is kept in the run, as From, for the way back. *)
+  s = fresh(k, state)
+  said = ""
+  if value.IsMissing(runOf(s.Buffers[k]).Session)
+    s = RunAll(s)
+    said = s.Message
+  end
+  got = appCells(k, s)
+  s = got.State
+  b = s.Buffers[k]
+  row = list.Max(0, view.RowOf(b.Cursor.Line, b, view.Under(b)))
+  fold = appFold(got.Cells, b)
+  title = titleNear(b.Cursor.Line, got.Cells, fold)
+  out = text.WithFold(fold, b)
+  out = if value.IsMissing(title) out else text.Place(title, 0, out) end
+  place = view.PlaceAt(out.Cursor.Line, row, out)
+  out.Top = place.Top
+  out.Skip = place.Skip
+  r = runOf(b)
+  r.App = true
+  r.AppFrom = {Line: out.Cursor.Line, View: view.ViewOf(b)}
+  s.Buffers[k] = out
+  s = withRun(k, r, s)
+  commands.Say(if said == "" HiddenNote() else said end, s)
+end
+
+defn appLeft(k, state)
+  (** The state with buffer k shown as code again: its fold gone, the cursor where it was, on the marker of its cell, on the same row of the screen. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  r.App = false
+  from = dict.GetOr("AppFrom", missing, r)
+  r.AppFrom = missing
+  row = list.Max(0, view.RowOf(b.Cursor.Line, b, view.Under(b)))
+  out = text.WithFold(missing, b)
+  if value.IsSome(from) and from.Line == b.Cursor.Line
+    out = view.WithView(from.View, out)
+  else
+    place = view.PlaceAt(out.Cursor.Line, row, out)
+    out.Top = place.Top
+    out.Skip = place.Skip
+  end
+  s = state
+  s.Buffers[k] = out
+  commands.Say("The code is shown.", withRun(k, r, s))
 end
 
 (* ---- The page of a file. *)
