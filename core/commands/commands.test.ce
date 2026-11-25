@@ -1015,3 +1015,42 @@ defn isKeptFileGoesToIt()
   commands.OpenFile("/data/cemacs/scratch.ce", s).Current == 1
 end
 isKeptIndents() = wordsOf(press.Press(["if a", "enter", "x"], kept(""))) == "if a\n  x"
+
+(* A buffer with a fold that hides lines is read only: a change of its text is put back, with the note of its fold. The app's own writes go through, as
+   the version it gave as Written, and so does a change that leaves the text saved, as a save that formats it. *)
+hiddenNote = "The code is hidden: C-c e t shows it."
+(** A fold of lines 2 and 3, line 1 a title, with the note of the cells, and the version an app wrote if any. *)
+foldOf(written) = {Hidden: [{From: 2, To: 3}], Titles: {"1": "A"}, Note: hiddenNote, Written: written}
+(** The keys of the tests, and two of an app: C-c z writes y at the end of the current buffer, as its own write; C-c w writes it and marks the text saved. *)
+defn appKeys()
+  wrote = s -> commands.Say("", (b -> (s2 -> s2)(dict.Put("Buffers", list.Concat(list.Take(s.Current - 1, s.Buffers), list.Concat([text.WithFold(dict.Put("Written", b.Version, text.FoldOf(b)), b)], list.Skip(s.Current, s.Buffers))), s)))(text.InsertWords("y", text.ToFileEnd(here(s)))))
+  saved = s -> dict.Put("Buffers", list.Concat(list.Take(s.Current - 1, s.Buffers), list.Concat([text.MarkSaved(missing, text.InsertWords("y", text.ToFileEnd(here(s))))], list.Skip(s.Current, s.Buffers))), s)
+  other = s -> dict.Put("Buffers", [s.Buffers[1], text.InsertWords("y", s.Buffers[2])], s)
+  dict.Merge(emacs.Keys(), {"C-c z": wrote, "C-c w": saved, "C-c o": other})
+end
+defn foldedState(buffers = missing)
+  (** A state of one buffer "a\nb\nc\nd" with lines 2 and 3 hidden, edited once before, and the keys of an app. *)
+  b = text.Place(1, 0, text.WithFold(foldOf(missing), text.InsertWords("d", text.ToFileEnd(text.Of("a\nb\nc\n", missing)))))
+  s = begun(if value.IsMissing(buffers) [b] else buffers end, look, cell, 800, 600)
+  s.Config = () -> emacs.Config(appKeys)
+  s
+end
+isFoldedTypingRefused() = (s -> wordsOf(s) == "a\nb\nc\nd" and here(s).Version == 1 and s.Message == hiddenNote)(press.Press(["x"], foldedState()))
+isFoldedUndoRefused() = (s -> wordsOf(s) == "a\nb\nc\nd" and here(s).Version == 1 and s.Message == hiddenNote)(press.Press(["C-/"], foldedState()))
+isFoldedCutRefused() = (s -> wordsOf(s) == "a\nb\nc\nd" and s.Message == hiddenNote)(press.Press(["C-k"], foldedState()))
+isFoldedMovesWork() = here(press.Press(["C-n"], foldedState())).Cursor.Line == 4
+isFoldedCopyWorks() = clipped(press.Press(["C-space", "C-n", "M-w"], foldedState())) == "a\nb\nc\n"
+isFoldedAppWritePasses() = (s -> wordsOf(s) == "a\nb\nc\ndy" and here(s).Version == 2)(press.Press(["C-c", "z"], foldedState()))
+isFoldedSavePasses() = (s -> wordsOf(s) == "a\nb\nc\ndy" and not text.IsModified(here(s)))(press.Press(["C-c", "w"], foldedState()))
+(** An undo back to the text saved changes no save: it is refused as any other. *)
+isFoldedUndoToSavedRefused() = (s -> wordsOf(s) == "a\nb\nc\ndy" and s.Message == hiddenNote)(press.Press(["C-c", "w", "C-x", "C-g", "x", "C-/"], foldedState()))
+isFoldedDefaultNote() = press.Press(["x"], (s -> dict.Put("Buffers", [text.WithFold(dict.Put("Note", missing, foldOf(missing)), here(s))], s))(foldedState())).Message == "Lines are hidden here: the text can't change."
+(** Titles alone hide nothing: the text types as any other. *)
+isTitlesOnlyType() = wordsOf(press.Press(["x"], (s -> dict.Put("Buffers", [text.WithFold({Hidden: [], Titles: {"1": "A"}}, here(s))], s))(foldedState()))) == "xa\nb\nc\nd"
+isUnfoldedTypes() = wordsOf(press.Press(["x"], (s -> dict.Put("Buffers", [text.WithFold(missing, here(s))], s))(foldedState()))) == "xa\nb\nc\nd"
+(** A folded buffer that isn't the current one is read only too: a command that writes in it, as C-c o, is put back. *)
+defn isFoldedOtherBufferKept()
+  other = text.WithFold(foldOf(missing), text.Of("a\nb\nc\nd", missing))
+  t = press.Press(["z", "C-c", "o"], foldedState(buffers = [text.Of("x", missing), other]))
+  wordsOf(t) == "zx" and rope.Text(t.Buffers[2].Rope) == "a\nb\nc\nd" and t.Message == hiddenNote
+end

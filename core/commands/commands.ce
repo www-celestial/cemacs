@@ -1338,6 +1338,29 @@ defn guarded(after, before)
   end
 end
 
+defn folded(after, before)
+  (** A buffer whose fold hides lines (see text.FoldOf) is read only, as a list: after an event that changed its text, a key typed, a cut, a paste, an undo
+      or the command of an app, it is put back as it was, with the Note of its fold, or a message of its own. Two changes go through: the write of the app
+      that folded it, whose version the app gives the fold as Written before the event ends, as the cells do for a slider moved, and a change that leaves the
+      text saved, as a save that formats it does. Every buffer is looked at, the current one or not; while buffers open or close, none is. *)
+  if value.Len(after.Buffers) != value.Len(before.Buffers)
+    return after
+  end
+  s = after
+  for k in 1..value.Len(after.Buffers)
+    was = before.Buffers[k]
+    now = after.Buffers[k]
+    f = text.FoldOf(now)
+    if value.IsSome(f) and value.Len(f.Hidden) > 0 and value.IsSome(text.FoldOf(was)) and now.Version != was.Version and dict.GetOr("Written", missing, f) != now.Version and
+      not (now.Saved != was.Saved and now.Version == now.Saved)
+      s.Buffers[k] = was
+      note = dict.GetOr("Note", missing, f)
+      s = say(if value.IsMissing(note) "Lines are hidden here: the text can't change." else note end, s)
+    end
+  end
+  s
+end
+
 (* ---- Keys and events *)
 
 (** Does the editor need frames of its own? Only while keys wait for the next one and their hints aren't shown yet, or while an app waits for time to
@@ -1827,7 +1850,8 @@ defn Settled(state)
 end
 
 defn Update(event, state)
-  (** The new state after an event, or missing when the editor ends. *)
+  (** The new state after an event, or missing when the editor ends. A buffer whose fold hides lines keeps its text through the event, but for the write of
+      the app that folded it, the version it gives as the fold's Written, and a save: a change of any other kind is put back, with the Note of the fold. *)
   next = match event.Kind
     "quit" -> onQuit(state)
     "resize" -> resized(event, state)
@@ -1840,6 +1864,7 @@ defn Update(event, state)
   if event.Kind == "key" or event.Kind == "text" or event.Kind == "mouse"
     next.Still = 0.0
   end
+  next = folded(next, state)
   if next.Ending ending(next) else Settled(next) end
 end
 
