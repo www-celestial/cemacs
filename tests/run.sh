@@ -38,6 +38,7 @@ timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --al
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/anim-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/rotate-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/tables-check.ce
+timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/app-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=mktemp,exec=rm,exec=rmdir,env=PWD --allow "exec=$(readlink -f "$(command -v cesia)")" tests/graphs-check.ce
 timeout -s KILL 60 cesia run --allow read,write,exec=git,env=PWD tests/project-check.ce
 timeout -s KILL 90 cesia run --allow read,write,exec=cesia,exec=git,env=HOME,env=PWD,env=SHELL tests/git-config-check.ce

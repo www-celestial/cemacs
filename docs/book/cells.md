@@ -36,6 +36,7 @@ The keys of the cells are a group of `C-c`, `e` for *execute*, which the band of
 | `C-c e k` | [notebook.ClearResults] | clears the results drawn; the names of the session stay |
 | `C-c e f` | [notebook.FocusControl] | gives the keys to the first input of the cursor's cell, a slider or another, to the bar of its animation, to its 3D graph, to its table or to its graph: see Sliders, Inputs, Animations, 3D graphs, Tables and Graphs |
 | `C-c e c` | [notebook.CopyTable] | copies a table as CSV: the one that has the keys, or had them last, or the first of the cursor's cell |
+| `C-c e t` | [notebook.ToggleCode] | hides the code of the whole file, which shows as a small app, or shows it again: see [The view of an app](#the-view-of-an-app) |
 
 In `*repl*`, Enter runs what was typed, and `M-p` and `M-n` go back and on through what was typed before; anywhere else,
 Enter is a new line, as always.
@@ -550,7 +551,50 @@ through, so the file it points to stays as it was. The page holds each cell's ti
 code coloured as Cesia's docs colour it, what it printed and its value, as a table or a text, or its error. The page needs
 no other file and no script, and shows what `cesia run` computes, not the state of the window. An animation starts paused
 on its first frame under a box *Play*, which plays it by CSS alone. A 3D graph shows at the view of its code, not at the
-view it was turned to in the window.
+view it was turned to in the window. In the view of an app, after `C-c e t`, the page leaves out the code of the cells,
+and the cells that show nothing: [cells.Html](https://www-celestial.github.io/cesia-lang/cells.html) with `code = false`.
+
+## The view of an app
+
+`C-c e t` shows the whole file as a small app, and shows its code again. The view keeps the title of each cell that shows
+something, a result, a graph, a table, a slider or another input, an error or a note as *running…*, in the strong font,
+without a line number, and under it what the cell shows; every other line, the code of the cells, the uses at the top
+and the cells that show nothing, takes no row. A cell without a title is called `Cell 2`, by its number. Nothing is
+written in the file: the view belongs to the window, and is forgotten when the buffer closes. A file whose cells never
+ran in a session runs them first, as `C-c e a` does.
+
+![savings.ce after C-c e a, as code: two sliders under their lines, rate and years, the graph of 1000 at the rate under the cell Growth, and the cell Year by year, whose table is under the screen.](images/cells-app-code.png)
+
+![The same file after C-c e t: the titles Savings, Growth and Year by year in the strong font, the two sliders, the graph and the table of nine rows, without a line of code; the prompt line says The code is hidden: C-c e t shows it.](images/cells-app.png)
+
+The inputs work as they do under the code: the mouse, `C-c e f` and Tab give them the keys, and a change writes its value
+in the file, then runs again the cells that read it. `C-n` and `C-p` go from title to title, the hidden lines passed. The
+text is read only there: a key that would change it, a letter typed, `C-k`, `C-y`, `C-/`, says `The code is hidden: C-c
+e t shows it.` and changes nothing; the writes of the inputs and of a table go through, and so does a save. `C-c e t`
+again shows the code, the cursor on the marker of the cell it was on, on the same row of the screen; when the cursor
+stayed on the title it was put on, the code comes back as it was, its cursor and its screen too.
+
+```bash
+bin/cemacs --app sim.ce
+```
+
+`--app` opens each file of cells given in this view at once and runs its cells: a file for someone who only moves its
+sliders. A file without cells opens as code, and says `notes.ce has no cell: --app shows its code.` The options come
+before the files, and `--` ends them, so `bin/cemacs -- --app` opens a file named `--app`; an option that no app takes
+stops Cemacs before its window opens, with `cemacs: unknown option --x (known: --app)` and the exit code 2. `C-c e h` in
+the view writes the page without the code, as [The page](#the-page) tells.
+
+How it is made: the view is a fold of the buffer, a part of the core that any app may use, [text.FoldOf]: runs of lines
+hidden, which take no row on the screen while the blocks under them still show, and title lines drawn as their words.
+The cells make it again from their cells and their blocks before each frame, at the `Settle` hook of the config, so a
+value written that adds a line, a save that formats the file, a cell whose result comes or goes change the view at
+once, and no line of code shows. A buffer without a fold pays one match a move, and draws as before, to the byte.
+
+The view beside the others: MATLAB's Live Editor has *Hide Code*, for the whole file, its controls and outputs left,
+as here. marimo has its app view in its editor, and `marimo run` serves the notebook as a web app; Voilà serves a
+Jupyter notebook as a page with live widgets: both reach other people, in a browser, which Cemacs doesn't do, since its
+view is for the person at the window. Pluto hides the code cell by cell, with an eye beside each one, kept in the file:
+one cell's code, a formula to show, can stay in sight, where `C-c e t` hides the whole file and writes nothing.
 
 ## Security
 
@@ -603,6 +647,12 @@ a million cells. The memory the shapes take is written by `c.Write`, which check
 before it writes.
 
 ## Speed
+
+The view of an app, on a file of 10,000 lines and 100 cells, each a slider and a result: `C-c e t` takes 2.9 ms to the
+view made, its frame 2.7 ms to follow and draw, wherever the cursor is, against 0.8 ms for the same file as code; `C-c e
+t` back, 0.7 ms; a key refused, 2.3 ms; a slider moved by its key, 17.3 ms to the fold made again, against 15.8 ms as
+code, the write itself 15.4 (medians of 21). The hidden lines are runs, which the screen passes in a few steps, looked
+for by halves: the frame reads no line of the code, and no color.
 
 A table of a million rows: `PgDn` takes 0.48 ms, the median of 63 screens from the top, from the key to its block drawn
 again; when its rows are asked of the session, every other screen, 4.0 ms from the key to the rows drawn, 11.3 ms at

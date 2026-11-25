@@ -293,3 +293,31 @@ isPercentNotInComment() = allText(typedCe("%%", inCe(2, 0, "(* a\n\n*)"))) == "(
 isPercentNotInText() = allText(typedCe("%%", inCe(2, 0, "x = \"a\n\nb\""))) == "x = \"a\n%%\nb\""
 isPercentOnlyCesia() = allText(typedCe("%%", text.Place(1, 0, text.Of("", "a.md")))) == "%%"
 isPercentMarkerParses() = text.CellMarker() == "(* %%  *)"
+
+(* A fold: lines hidden that take no row, and titles drawn as words; the cursor never rests on a hidden line. *)
+run(first, last) = {From: first, To: last}
+tenLines() = text.Of(str.Join("\n", list.Map(n -> "line $n", list.Range(1, 10))), missing)
+folded(hidden) = text.WithFold({Hidden: hidden, Titles: {}}, tenLines())
+isFoldMissing() = value.IsMissing(text.FoldOf(text.Of("a", missing)))
+isFoldCleared() = value.IsMissing(text.FoldOf(text.WithFold(missing, folded([run(2, 3)]))))
+isFoldRunsMerged() = value.Equal(text.FoldOf(folded([run(5, 6), run(2, 3), run(4, 4), run(9, 8)])).Hidden, [run(2, 6)])
+isFoldRunsApart() = value.Equal(text.FoldOf(folded([run(7, 8), run(2, 3)])).Hidden, [run(2, 3), run(7, 8)])
+isFoldKeepsFields() = (f -> f.Written == 4 and f.Note == "n" and f.Titles["1"] == "A")(text.FoldOf(text.WithFold({Hidden: [], Titles: {"1": "A"}, Written: 4, Note: "n"}, tenLines())))
+isVisible() = text.Visible(1, folded([run(2, 3)])) and not text.Visible(2, folded([run(2, 3)])) and not text.Visible(3, folded([run(2, 3)])) and text.Visible(4, folded([run(2, 3)])) and text.Visible(5, tenLines())
+isHiddenRun() = text.HiddenRun(7, text.FoldOf(folded([run(2, 3), run(6, 8)]))) == run(6, 8) and value.IsMissing(text.HiddenRun(5, text.FoldOf(folded([run(2, 3), run(6, 8)]))))
+isMoveSkipsHidden() = text.MoveLine(1, folded([run(2, 3)])).Cursor.Line == 4
+isMoveBackSkipsHidden() = text.MoveLine(-1, text.Place(4, 0, folded([run(2, 3)]))).Cursor.Line == 1
+isMoveGoesBackAtEnd() = text.MoveLine(1, text.Place(8, 0, folded([run(9, 10)]))).Cursor.Line == 8 and text.MoveLine(-1, text.Place(3, 0, folded([run(1, 2)]))).Cursor.Line == 3
+isMoveKeepsWanted() = same(at(text.MoveLine(1, text.MoveLine(1, text.Place(1, 6, folded([run(2, 3)]))))), [5, 6])
+isPageSkipsHidden() = text.MovePage(1, 2, folded([run(2, 3)])).Cursor.Line == 4 and text.MovePage(-1, 2, text.Place(6, 0, folded([run(3, 4)]))).Cursor.Line == 2
+defn isAllHiddenKeepsCursor()
+  (** A buffer whose lines are all hidden keeps its cursor where it is, through every move. *)
+  b = folded([run(1, 10)])
+  b.Cursor.Line == 1 and text.MoveLine(1, b).Cursor.Line == 1 and text.MovePage(1, 3, b).Cursor.Line == 1 and text.Place(5, 0, b).Cursor.Line == 1 and text.ToFileEnd(b).Cursor.Line == 1
+end
+isPlaceShownAbove() = text.Place(3, 2, folded([run(2, 3)])).Cursor.Line == 1 and text.Place(2, 0, folded([run(1, 3)])).Cursor.Line == 4
+isCharSkipsHidden() = same(at(text.MoveChar(1, text.Place(1, 6, folded([run(2, 3)])))), [4, 0]) and same(at(text.MoveChar(-1, text.Place(4, 0, folded([run(2, 3)])))), [1, 6])
+isWordSkipsHidden() = text.MoveWord(1, text.Place(1, 6, folded([run(2, 3)]))).Cursor.Line == 4 and text.MoveWord(-1, text.Place(4, 0, folded([run(2, 3)]))).Cursor.Line == 1
+isFileEdgesShown() = text.ToFileEnd(folded([run(9, 10)])).Cursor.Line == 8 and text.ToFileStart(text.Place(5, 0, folded([run(1, 2)]))).Cursor.Line == 3
+isWithFoldMovesCursor() = text.WithFold({Hidden: [run(2, 3)], Titles: {}}, text.Place(3, 0, tenLines())).Cursor.Line == 1 and text.WithFold({Hidden: [run(1, 3)], Titles: {}}, tenLines()).Cursor.Line == 4
+isShownFrom() = text.ShownFrom(2, 1, folded([run(2, 3)])) == 4 and text.ShownFrom(2, -1, folded([run(2, 3)])) == 1 and text.ShownFrom(5, 1, folded([run(2, 3)])) == 5 and value.IsMissing(text.ShownFrom(4, 1, folded([run(1, 10)])))

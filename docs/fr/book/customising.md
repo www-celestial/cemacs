@@ -207,7 +207,8 @@ fenêtre :
 | `CompleteKeys` | les touches de la liste des completions, devant les touches globales |
 | `TabText`, `WheelLines`, `ScrollMargin`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `DeleteToTrash`, `Theme`, `Window` | les réglages |
 | `Start` | ce que fait l'éditeur une fois, à son démarrage |
-| `Idle`, `Saved`, `Moving` | les hooks, qu'ajoute [check.Hooked] : voir plus bas |
+| `Options` | les options de la ligne de commande que prennent les apps, comme `--app` des cells : voir [Installer](install.md#le-lancer) |
+| `Idle`, `Saved`, `Moving`, `Settle` | les hooks, qu'ajoutent [check.Hooked] et [notebook.Hooked] : voir plus bas |
 
 Chaque champ est une fonction, et la config elle-même aussi : l'état de l'éditeur contient la fonction `Config`, et
 l'appelle chaque fois qu'il a besoin d'une touche ou d'un réglage, deux ou trois fois pour une touche. C'est ce qui fait
@@ -408,8 +409,9 @@ les hooks de la config (des fonctions que le core appelle à des moments donnés
 | `Idle(state)` | à chaque tick, l'événement qui compte le temps, avec [commands.Still] qui donne les secondes depuis la dernière touche |
 | `Saved(state)` | après chaque enregistrement |
 | `Moving(state)` | à chaque tour de la boucle : true demande des ticks, et une frame à chacun |
+| `Settle(state)` | après chaque événement, avant que l'écran suive : ce qu'une app tire des buffers, remis juste avant la frame, comme les cells refont le fold (le repli) d'un fichier montré comme une app |
 
-[check.Hooked] pose les trois. Une config sans eux a des hooks qui ne font rien. Pour ajouter les vôtres à côté de ceux de la
+[check.Hooked] pose les trois premiers, et [notebook.Hooked] `Settle` aussi. Une config sans eux a des hooks qui ne font rien. Pour ajouter les vôtres à côté de ceux de la
 vérification, enveloppez-les, pour que les deux tournent :
 
 ```cesia

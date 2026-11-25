@@ -38,8 +38,8 @@ buffer.
 question asked, or `missing`), `Message`, `Run` (the program, or `missing`), `Window`, `Width`, `Height`, `Cell` (the size of
 a character of the code font), `Look` (the theme and the widths of the fonts), `Clip` (the clipboard when there is no window),
 `Chorded`, `Chain` (true after `C-k`), `Dragging`, `Pressed`, `Wheel`, `Ending`, `Title`, `Config`, `Home` (the folder of
-Cemacs), `Second`, `Panes`, `Pane`, `Waited`, `Hints` and `Chords`. Later code added `Still`, `Breaks`, `Checking` and
-`Hovering` (the block under the mouse that wants its moves), read
+Cemacs), `Second`, `Panes`, `Pane`, `Waited`, `Hints` and `Chords`. Later code added `Still`, `Breaks`, `Checking`,
+`Hovering` (the block under the mouse that wants its moves) and `Options` (the options of the command line, as `--app`), read
 through a `match` with a default, for the reason [Changing Cemacs](customising.md#reloading-cemacs-while-it-runs) tells.
 
 A buffer, made by [text.Of], holds `Rope` (its text), `Cursor`, `Mark`, `Origin` (what set the mark: `"key"`, `"shift"`,
@@ -48,8 +48,9 @@ A buffer, made by [text.Of], holds `Rope` (its text), `Cursor`, `Mark`, `Origin`
 screen past those known, or `missing`), `Screen` (what the view keeps of the lines on the screen from one frame to the
 next), `Wanted` (the goal column), `Typing`, `Hold` (what holds the screen until a key: `"mouse"`, `"wheel"` or `""`),
 `Skip` (the rows of the top line above the screen, inside its blocks), `Marks` (the errors of the check) and `MarksNote`
-(words for the mode line when there are none, such as why the text wasn't checked); a list has `List` too, and the check
-adds `Checked`, the version it read.
+(words for the mode line when there are none, such as why the text wasn't checked); a list has `List` too, the check
+adds `Checked`, the version it read, and an app may give it `Blocks`, drawn under its lines, and `Fold`, runs of lines
+hidden and lines drawn as titles ([text.FoldOf]), as the cells do.
 
 A buffer is modified when its `Version` differs from `Saved`. Each edit takes a new number from `Clock`, which never goes back,
 so two different texts never share a number, and undo brings back the number of the state it returns to: comparing two

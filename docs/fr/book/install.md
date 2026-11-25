@@ -129,6 +129,12 @@ sans fichier (un buffer est le texte qu'un pane montre et que l'on modifie, souv
 bin/cemacs notes.ce
 ```
 
+Les options viennent avant les fichiers : `bin/cemacs --app sim.ce` ouvre un fichier de cells comme une petite app, son
+code caché et ses cells lancées, comme le dit [Cells](cells.md#la-vue-dune-app). Un mot qui commence par `--` avant le
+premier fichier est une option, et `--` les termine, si bien que `bin/cemacs -- --app` ouvre un fichier nommé `--app` ;
+une option qu'aucune app ne prend arrête Cemacs avant que sa fenêtre s'ouvre, avec `cemacs: unknown option --x (known:
+--app)` (option inconnue) sur la sortie d'erreur et le code de sortie 2.
+
 C'est un petit script `bash`. Il trouve le dossier de Cemacs à partir de sa propre place, même à travers un lien
 symbolique, crée `user/` par `tools/user.sh` s'il manque, et lance :
 

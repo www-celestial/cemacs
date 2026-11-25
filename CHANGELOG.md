@@ -121,11 +121,23 @@ what a key can lead to, so no key has to be learnt before the start.
   corner and each edge a point of the item, a color `0xRRGGBB` each, the edges in order. A step of a drag takes 28 ms for
   a machine of 516 triangles and 0.30 s for a ball of 99,224, under SDL's dummy driver. The chapter on cells shows it,
   in English and in French.
+- `C-c e t` shows a whole file of cells as a small app: the title of each cell that shows something, in the strong font,
+  and what it shows, its sliders, inputs, graphs and tables live; the code takes no row, and is read only there, a key
+  that would change it refused with `The code is hidden: C-c e t shows it.`, the writes of the inputs and a save let
+  through. Nothing is written in the file. `C-c e t` again shows the code, the cursor on its cell. `cemacs --app f.ce`
+  opens a file so and runs its cells; `C-c e h` there writes the page without code, `cells.Html` of Cesia 1.3 with
+  `code = false`. On a file of 10,000 lines and 100 cells, `C-c e t` takes 2.9 ms and a frame 2.7 ms.
+- The core folds a buffer, [text.FoldOf]: runs of lines hidden, which take no row while the blocks under them still show,
+  and title lines drawn as their words, which the screen, the wheel, the mouse and the moves pass by runs; a buffer
+  without a fold draws as before, to the byte. It reads the options of the command line before the files, up to `--`,
+  each app naming those it takes in `Options`; an unknown one stops Cemacs before its window opens, with the exit code 2.
 
 ### Changing Cemacs
 
 - `user/`, the person's folder, which git ignores: the config gives the theme, the size of the window and a function run
   after the files opened; keys, commands and apps of one's own, in Cesia, reloaded while Cemacs runs.
+- The hook `Settle` of the config runs after each event, before the screen follows: an app makes right there what it
+  derives from the buffers, as the cells their fold.
 
 ### The book
 

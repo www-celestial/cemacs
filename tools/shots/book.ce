@@ -13,6 +13,7 @@ dayCells = "use std/cells\nuse std/frame\nuse std/plot\n\n(* %% Day *)\nhours = 
 stationCells = "use std/cells\n\n(* %% Stations *)\nstations = [\n  {name: \"Mont Aigoual, observatoire\", altitude: 1567, temperature: 4.5},\n  {name: \"Brest-Guipavas\", altitude: 94, temperature: 11.25},\n  {name: \"Lyon-Bron\", altitude: 197, temperature: missing},\n  {name: \"Marseille-Marignane\", altitude: 9, temperature: 15.75},\n  {name: \"Strasbourg-Entzheim\", altitude: 150, temperature: 10.5}\n]\nstations\n"
 lorenzCells = "use std/cells\nuse std/ode\nuse std/result\n\n(* %% Parameters *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\n\n(* %% Lorenz *)\nlorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]\ns = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))\n"
 inputCells = "use std/cells\n\n(* %% Place and day *)\nyear  = cells.Choice(2026, [2025, 2026, 2027])\nzone  = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])\nday   = cells.Date(\"2026-11-23\")\nplace = cells.Field(\"40.76, -73.984\")\nhigh  = cells.Field(50)\nrho   = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nbold  = cells.Check(false, label = \"Bold line\")\n"
+appCells = "use std/cells\nuse std/frame\nuse std/math\nuse std/plot\n\n(* %% Savings *)\nrate = cells.Slider(3.5, 0.0, 10.0, step = 0.5)\nyears = cells.Slider(8, 1, 12)\n\n(* %% Growth *)\nks = [k for k in 0..years]\namounts = [math.Round(1000.0 * (1.0 + rate / 100.0) ^ k) for k in ks]\nplot.Of([plot.Line(ks, amounts), plot.Points(ks, amounts, size = 4)], x = \"year\", y = \"amount\", title = \"1000 at the rate\", size = [540, 240])\n\n(* %% Year by year *)\nframe.Of({year: ks, amount: amounts})\n"
 waveCells = "use std/math\nuse std/num\nuse std/plot\n\n(* %% Wave *)\nx = num.Linspace(0.0, 2.0 * math.Pi, 200)\nts = num.Linspace(0.0, 2.0 * math.Pi, 120)\nplot.Frames([plot.Line(x, math.Sin(x - t)) for t in ts], fps = 30)\n"
 main1 = "use src/shop\nuse std/io\n\nprices = [250, 1000, 99]\nio.Print(\"Total: $$(shop.Total(prices)) cents\")\n"
 main3 = "use src/shop\nuse std/io\n\nprices = [250, 1000, 99, 1500]\nio.Print(\"Total: $$(shop.Total(prices)) cents\")\nfor p in prices\n  io.Print(\"$$p with tax: $$(shop.WithTax(p))\")\nend\n"
@@ -54,6 +55,8 @@ defn Book()
     {Name: "cells-repl", Size: [660, 480], Files: [{Path: "sun.ce", Text: replCells}], Open: ["sun.ce"],
       Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e r", Until: "28.66"}]},
     {Name: "cells-inputs", Size: [660, 600], Files: [{Path: "place.ce", Text: inputCells}], Open: ["place.ce"], Steps: [{Keys: "M-> C-c e f"}, {Keys: "enter"}]},
+    {Name: "cells-app-code", Size: [660, 720], Files: [{Path: "savings.ce", Text: appCells}], Open: ["savings.ce"], Steps: [{Keys: "C-c e a"}]},
+    {Name: "cells-app", Size: [660, 720], Files: [{Path: "savings.ce", Text: appCells}], Open: ["savings.ce"], Steps: [{Keys: "C-c e a"}, {Keys: "C-c e t"}]},
     {Name: "cells-animation", Size: [660, 760], Files: [{Path: "wave.ce", Text: waveCells}], Open: ["wave.ce"],
       Steps: [{Keys: "C-c e a"}, {Keys: "M-> C-p C-c e f"}, {Keys: "right right right right right right right right right right right"}]},
     {Name: "editing-completion", Size: [660, 260], Files: [{Path: "words.ce", Text: "Hello = 1\nHelp = 2\n"}], Open: ["words.ce"], Steps: [{Keys: "M->"}, {Keys: "H e l tab", Settle: false}]},

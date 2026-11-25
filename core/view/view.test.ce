@@ -10,6 +10,7 @@ use std/text as str
 use std/list
 use std/dict
 use std/gen
+use std/math
 use std/test
 use std/value
 
@@ -726,3 +727,164 @@ defn isBlockMovesWithItsLine()
   after = text.NewLine(c)
   text.BlocksOf(above)[1].Line == 4 and text.BlocksOf(after)[1].Line == 4
 end
+
+(* ---- A fold: hidden lines take no row of their own, their blocks still show, and a title line is drawn as its words. *)
+
+defn print(words)
+  (** A number for a text, a polynomial of its bytes modulo a prime: two frames that differ in one byte give two numbers. *)
+  h = 0
+  for v in str.Bytes(words)
+    h = math.Mod(h * 257 + v + 1, 1000000007)
+  end
+  h
+end
+
+defn richState(top, skip)
+  (** A buffer of 100 lines with blocks, a selection, marks and a cursor, its screen at top and skip: what a frame without a fold draws. *)
+  b = text.WithMarks([markOf(12, 0, 4, "error", "bad"), markOf(14, 1, 3, "warning", "w")],
+    text.WithBlocks([blockAt(3, 4, "first"), blockAt(9, 2, "second"), blockAt(9, 3, "third"), blockAt(13, 30, "tall")], text.Of(manyLines(100), "a.ce")))
+  b.Mark = {Line: 10, Column: 1}
+  b.Cursor = {Line: 12, Column: 3}
+  b.Top = top
+  b.Skip = skip
+  stateOf([b], 800, 600)
+end
+
+(** The frames of buffers with blocks and no fold are the same, to the byte, as before the fold came: their numbers were taken then. *)
+isNoFoldSameCommands() = value.Equal([print(value.Text(view.View(richState(t[1], t[2])))) for t in [[1, 0], [3, 2], [9, 4], [13, 12]]], [422747949, 563975772, 563603654, 837100514])
+
+hide(first, last) = {From: first, To: last}
+
+(** A buffer of lines lines of "word", with these blocks and this fold. *)
+folded(hidden, titles = {}, blocks = [], lines = 100) = text.WithFold({Hidden: hidden, Titles: titles}, text.WithBlocks(blocks, text.Of(manyLines(lines), "a.ce")))
+
+defn frameOf(b)
+  (** The frame of one buffer in a window of 800 by 600, its screen followed first. *)
+  s = stateOf([b], 800, 600)
+  lay = view.Layout(s.Width, s.Height, s.Cell, false)
+  s.Buffers = [view.Follow(lay.Rows, lay.Columns, 0, b)]
+  view.View(s)
+end
+
+(** The texts of a frame that say "word", the lines of code drawn. *)
+wordsIn(drawn) = [c for c in drawn if c.Kind == "text" and c.Text == "word"]
+
+isHiddenNoRow() = (b -> view.RowOf(4, b, view.Under(b)) == 1)(folded([hide(2, 3)]))
+isHiddenBlockShows() = (b -> view.RowOf(4, b, view.Under(b)) == 3 and view.RowOf(3, b, view.Under(b)) == 1)(folded([hide(2, 3)], blocks = [blockAt(3, 2, "result")]))
+isUnderOfFold() = value.IsSome(view.Under(folded([hide(2, 3)]))) and value.IsMissing(view.Under(text.WithFold(missing, folded([hide(2, 3)]))))
+
+defn isHiddenNotDrawn()
+  (** Lines 2 to 99 hidden: only the words of lines 1 and 100 are drawn, with their numbers, and the block under hidden line 50 between them. *)
+  drawn = frameOf(folded([hide(2, 99)], blocks = [blockAt(50, 2, "result")]))
+  words = wordsIn(drawn)
+  result = [c for c in drawn if c.Kind == "text" and c.Text == "result"]
+  value.Len(words) == 2 and words[2].Y == words[1].Y + 3 * 19 and value.Len(result) == 1 and result[1].Y == words[1].Y + 19 and "100" in codeTexts(drawn) and
+    not ("50" in codeTexts(drawn))
+end
+
+defn isTitleDrawn()
+  (** Line 1, a title, is drawn as its words in the strong font on its row, without its number or its code; the lines shown after it as before. *)
+  drawn = frameOf(folded([hide(2, 3)], titles = {"1": "Réglages"}))
+  title = [c for c in drawn if c.Kind == "text" and c.Text == "Réglages"]
+  value.Len(title) == 1 and title[1].Font == "strong" and title[1].Y == 4 and not ("1" in codeTexts(drawn)) and "4" in codeTexts(drawn) and value.Len(wordsIn(drawn)) == 27
+end
+
+defn isTitleNoBar()
+  (** The cursor on a title has the band of its line, and no bar: the words of a title are no code to type in. *)
+  drawn = frameOf(folded([hide(2, 3)], titles = {"1": "Réglages"}))
+  value.Len([c for c in drawn if c.Kind == "rect" and c.Width == 2 and c.Height == 19]) == 0 and value.Len([c for c in drawn if c.Kind == "box" and c.Color == look.Theme.Hover]) == 1
+end
+
+defn isClickInHiddenRun()
+  (** A click on the rows of a block under a hidden line never gives a hidden line: the nearest line shown above, else below; the row after it, the next line. *)
+  b = folded([hide(2, 3)], blocks = [blockAt(3, 2, "result")])
+  first = folded([hide(1, 3)], blocks = [blockAt(3, 2, "result")])
+  s = stateOf([b], 800, 600)
+  view.PositionAt(view.Gutter, 4 + 19 + 3, s).Line == 1 and view.ClickAt(view.Gutter, 4 + 2 * 19 + 3, s).Line == 1 and view.PositionAt(view.Gutter, 4 + 3 * 19 + 3, s).Line == 4 and
+    view.PositionAt(view.Gutter, 7, stateOf([first], 800, 600)).Line == 4 and view.LineAtRow(1, b, view.Under(b)) == 1
+end
+
+defn isBlockAtUnderHidden()
+  (** The block under a hidden line takes the presses on its rows, which start right under the line shown above. *)
+  b = folded([hide(2, 3)], blocks = [blockAt(3, 2, "result")])
+  hit = view.BlockAt(view.Gutter + 4, 4 + 19 + 3, stateOf([b], 800, 600))
+  value.IsSome(hit) and hit.Block.Line == 3 and hit.Top == 4 + 19
+end
+
+defn isFollowFolded()
+  (** Line 100 is on the second row when the lines between are hidden: the screen keeps its top. With lines 1 and 100 titles, no line of code is drawn,
+      and no color is read; as code, the colors are read down to line 100, through the hidden lines, where a comment may open. *)
+  b = text.Place(100, 0, folded([hide(2, 99)], titles = {"1": "A", "100": "B"}))
+  f = view.Follow(10, 80, 3, b)
+  code = view.Follow(10, 80, 3, text.Place(100, 0, folded([hide(2, 99)])))
+  f.Top == 1 and view.RowOf(100, f, view.Under(f)) == 1 and f.Colors.Known < 50 and code.Top == 1 and code.Colors.Known >= 100
+end
+
+isScrolledFolded() = view.Scrolled(1, folded([hide(2, 99)])).Top == 100 and view.Scrolled(-1, view.Scrolled(1, folded([hide(2, 99)]))).Top == 1
+
+defn isFoldedTopAfterRows()
+  (** A top on hidden lines after the last row of the file goes back to that row, which the wheel moves from: the screen never holds empty. *)
+  b = folded([hide(51, 100)])
+  b.Top = 80
+  view.Scrolled(1, b).Top == 50 and view.Scrolled(-1, b).Top == 49
+end
+
+defn isFarFoldCheap()
+  (** Two hundred thousand lines all hidden but the first and the last, two titles: the screen at the last line reads the colors of none of the others. *)
+  b = text.Place(200000, 0, folded([hide(2, 199999)], titles = {"1": "First", "200000": "Last"}, lines = 200000))
+  f = view.Follow(28, 80, 3, b)
+  drawn = frameOf(b)
+  f.Top == 1 and f.Colors.Known < 50 and value.Len(wordsIn(drawn)) == 0 and value.Len([c for c in drawn if c.Kind == "text" and dict.GetOr("Font", "", c) == "strong" and (c.Text == "First" or c.Text == "Last")]) == 2
+end
+
+(** The rows that line k takes, as a fold has it: its own row if it is shown, and those of the blocks under it. *)
+heightIn(k, b, u) = (if text.Visible(k, b) 1 else 0 end) + (if value.IsMissing(u) 0 else dict.GetOr("$k", 0, u) end)
+(** The rows of the file above line n. *)
+foldedAbove(n, b, u) = list.Sum([heightIn(k, b, u) for k in list.Range(1, n - 1)])
+(** The place of a screen as one number, the rows of the file above its first row, with a fold. *)
+foldedPlace(b) = (u -> foldedAbove(b.Top, b, u) + view.SkipOf(b, u))(view.Under(b))
+
+(** A buffer as buffered makes it, with the runs of p hidden. *)
+foldedBuffer(p) = text.WithFold({Hidden: [hide(r.From, r.From + r.Rows - 1) for r in p.Runs], Titles: {}}, buffered(p))
+
+defn isFoldedFollowSettled(p)
+  (** isFollowSettled, with lines hidden: the screen shows the cursor's line with the margin as far as the file has rows, and stays once followed. *)
+  b = foldedBuffer(p)
+  line = b.Cursor.Line
+  if not text.Visible(line, b)
+    return true
+  end
+  f = view.Follow(p.Rows, 80, p.Margin, b)
+  u = view.Under(f)
+  row = view.RowOf(line, f, u)
+  m = view.Kept(p.Rows, p.Margin)
+  low = list.Min(m, foldedAbove(line, f, u))
+  high = p.Rows - 1 - list.Min(m, foldedAbove(p.Lines + 1, f, u) - foldedAbove(line, f, u) - 1)
+  again = view.Follow(p.Rows, 80, p.Margin, f)
+  low <= row and row <= high and foldedPlace(again) == foldedPlace(f)
+end
+
+defn isFoldedScrolledByRows(p)
+  (** isScrolledByRows, with lines hidden: the wheel moves by rows, the hidden lines taking none. *)
+  b = foldedBuffer(p)
+  u = view.Under(b)
+  last = list.Max(0, foldedAbove(p.Lines + 1, b, u) - 1)
+  k = p.Line - 20
+  foldedPlace(view.Scrolled(k, b)) == list.Max(0, list.Min(list.Min(foldedPlace(b), last) + k, last))
+end
+
+defn isFoldedWheeledFollows(p)
+  (** After the wheel, the cursor is on a line shown, on the screen, unless no line shown is there, when the screen holds. *)
+  b = view.Wheeled(p.Rows, p.Margin, view.Scrolled(p.Line - 20, foldedBuffer(p)))
+  u = view.Under(b)
+  row = view.RowOf(b.Cursor.Line, b, u)
+  view.HoldOf(b) == "wheel" or not text.Visible(b.Cursor.Line, foldedBuffer(p)) or (text.Visible(b.Cursor.Line, b) and 0 <= row and row < p.Rows)
+end
+
+foldedPlaces = gen.Of({Lines: gen.Int(1, 40), Rows: gen.Int(1, 14), Margin: gen.Int(0, 6), Top: gen.Int(1, 40), Skip: gen.Int(0, 16), Line: gen.Int(1, 40),
+  Blocks: blocks, Runs: gen.List(gen.Of({From: gen.Int(1, 40), Rows: gen.Int(1, 12)}), max = 4)})
+isFoldedFollowSettledAlways() = test.ForAll(isFoldedFollowSettled, foldedPlaces, cases = 500)
+isFoldedScrolledByRowsAlways() = test.ForAll(isFoldedScrolledByRows, foldedPlaces, cases = 300)
+isFoldedWheeledFollowsAlways() = test.ForAll(isFoldedWheeledFollows, foldedPlaces, cases = 300)
+(** A click under the last row, where the lines hidden at the end of the file would be, gives the last line shown, never a hidden one. *)
+isClickUnderHiddenEnd() = (s -> view.ClickAt(view.Gutter, 540, s).Line == 20 and view.PositionAt(view.Gutter, 540, s).Line == 20 and text.Place(60, 0, s.Buffers[1]).Cursor.Line == 20)(stateOf([folded([hide(21, 100)])], 800, 600))

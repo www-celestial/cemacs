@@ -41,7 +41,8 @@ d'annulation garde des textes entiers, et que deux panes gardent deux endroits d
 `Cell` (la taille d'un caractère de la police du code), `Look` (le thème et les largeurs des polices), `Clip` (le
 presse-papiers quand il n'y a pas de fenêtre), `Chorded`, `Chain` (true après `C-k`), `Dragging`, `Pressed`, `Wheel`,
 `Ending`, `Title`, `Config`, `Home` (le dossier de Cemacs), `Second`, `Panes`, `Pane`, `Waited`, `Hints` et `Chords`. Du code
-plus tardif a ajouté `Still`, `Breaks`, `Checking` et `Hovering` (le bloc sous la souris qui veut ses mouvements), lus par
+plus tardif a ajouté `Still`, `Breaks`, `Checking`, `Hovering` (le bloc sous la souris qui veut ses mouvements) et `Options`
+(les options de la ligne de commande, comme `--app`), lus par
 un `match` avec une valeur par défaut, pour la raison que donne
 [Modifier Cemacs](customising.md#recharger-cemacs-pendant-quil-tourne).
 
@@ -52,8 +53,9 @@ au moment de la lecture), `Top` et `Left` (la première ligne et la première co
 lignes de l'écran d'une frame à la suivante), `Wanted` (la goal column), `Typing`, `Hold` (ce qui tient l'écran jusqu'à une
 touche : `"mouse"`, `"wheel"` ou `""`), `Skip` (les rangées de la ligne du haut au-dessus de l'écran, dans ses blocs),
 `Marks` (les erreurs de la vérification) et `MarksNote` (des mots pour la mode line quand il n'y en a pas, comme la raison
-pour laquelle le texte n'a pas été vérifié) ; une liste a aussi `List`, et la vérification ajoute `Checked`, la version
-qu'elle a lue.
+pour laquelle le texte n'a pas été vérifié) ; une liste a aussi `List`, la vérification ajoute `Checked`, la version
+qu'elle a lue, et une app peut lui donner `Blocks`, dessinés sous ses lignes, et `Fold` (un repli), des suites de lignes
+cachées et des lignes dessinées comme des titres ([text.FoldOf]), comme le font les cells.
 
 Un buffer est modifié quand sa `Version` diffère de `Saved`. Chaque modification prend un nouveau numéro à `Clock`, qui ne
 recule jamais, si bien que deux textes différents ne partagent jamais un numéro, et l'annulation ramène le numéro de l'état

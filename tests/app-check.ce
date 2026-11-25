@@ -1,0 +1,128 @@
+(** Checks of the view of an app, C-c e t, against a real session of std/cells, on a file in a new folder under /tmp, each key sent as the window sends it,
+    through the editor, its read only rule and the fold made again before each frame: the file whose cells never ran runs them and shows as an app, the
+    titles of its cells that show something and what they show, no line of code; a slider moved by its keys and a field typed write the file and run again
+    the cells that read them; a value of a table edited writes the file; a key typed is refused; C-c e h writes the page without code; C-c e t again shows
+    the code, the cursor on its cell; and --app does as C-c e t at the start. It is
+    a script, not a test file: it needs permissions. Run it from the root of cemacs with
+    cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/app-check.ce, CESIA the real path of the cesia that runs it. It prints
+    ok at the end and stops at the first failure. *)
+use core/commands
+use core/press
+use core/text
+use core/view
+use src/emacs
+use src/notebook
+use src/rope
+use src/ui
+use std/bug
+use std/cells as nb
+use std/cesia
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text as str
+use std/value
+
+defn check(condition, words)
+  (** Stops the script with the words if the condition is false. *)
+  if not condition
+    bug.Panic("FAILED: $words")
+  end
+end
+
+defn settled(state)
+  (** The state once the cells stop moving, each tick sent through the editor as the window sends it, or a failure after twenty seconds. *)
+  s = state
+  waited = 0.0
+  while notebook.Moving(s)
+    check(waited < 20.0, "the cells never ended")
+    sys.Sleep(0.005)
+    waited = waited + 0.005
+    s = commands.Update({Kind: "tick", Seconds: 0.005}, s)
+  end
+  s
+end
+
+(** The state after keys and texts, as press gives them, once the cells stop moving. *)
+pressed(items, s) = settled(press.Press(items, s))
+(** The texts a frame draws. *)
+texts(s) = [c.Text for c in view.View(s) if c.Kind == "text"]
+(** Does a frame draw a line of the code? Each draws its number in the gutter, where no title and no block draws. *)
+codeShown(s) = list.Any([c.Kind == "text" and c.X < view.Gutter and c.Y < 670 and value.IsSome(str.Number(c.Text)) for c in view.View(s)])
+(** Does a frame draw a text that holds these words? *)
+drawn(words, s) = list.Any([str.Contains(words, t) for t in texts(s)])
+(** Line n of the file. *)
+line(s, n) = rope.Line(n, s.Buffers[1].Rope)
+(** Is the buffer shown as an app? *)
+isApp(s) = dict.GetOr("App", false, s.Buffers[1].CellRun) == true
+
+look = ui.Look(ui.Light, (w, f) -> value.Len(w) * 8, 19)
+folder = str.Trim(result.Unwrap(sys.Run("mktemp", ["-d"])).Out)
+path = "$folder/app.ce"
+source = "use std/cells\nuse std/frame\nuse std/io\n\n(* %% Settings *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nplace = cells.Field(\"Paris\")\n\n(* %% Quiet *)\nk = 2\n\n(* %% Twice *)\nio.Print(\"twice $$place\")\nrho * k\n\n(* %% Table *)\nfr = frame.Of({x: [1, 2, 3], y: [10.0, 20.0, 30.0]})\nfr\n\n(* %% Broken *)\nnope + 1\n"
+_ = result.Unwrap(sys.Write(path, source))
+state = commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720))
+state.Config = () -> notebook.Hooked(emacs.Config(() -> dict.Merge(emacs.Keys(), notebook.Keys())))
+state = commands.Settled(state)
+check(codeShown(state), "the file shows its code")
+
+(* C-c e t on a file whose cells never ran: they run, and the file shows as an app. *)
+s = pressed(["C-c", "e", "t"], state)
+check(isApp(s) and not codeShown(s), "the file shows as an app, no line of code: $(texts(s))")
+check(drawn("Settings", s) and drawn("Twice", s) and drawn("Table", s) and drawn("Broken", s) and not drawn("Quiet", s), "the titles of the cells that show something: $(texts(s))")
+check(drawn("twice Paris", s) and drawn("56.0", s) and drawn("rho", s), "what they show: $(texts(s))")
+check(s.Buffers[1].Cursor.Line == 5, "the cursor on the first title: $(s.Buffers[1].Cursor)")
+
+(* The slider, by its keys: the file writes its number, Twice runs again, and no code shows. *)
+s = pressed(["C-c", "e", "f", "right"], s)
+check(line(s, 6) == "rho = cells.Slider(28.5, 0.0, 50.0, step = 0.5)", "the slider writes its number: $(line(s, 6))")
+check(drawn("57.0", s) and not codeShown(s) and isApp(s), "Twice ran again with 28.5, no code shows: $(texts(s))")
+
+(* The field, typed: the file writes the text, Twice runs again with it. *)
+s = pressed(["tab", "!", "enter"], s)
+check(line(s, 7) == "place = cells.Field(\"Paris!\")", "the field writes its text: $(line(s, 7))")
+check(drawn("twice Paris!", s) and not codeShown(s), "Twice ran again with the text: $(texts(s))")
+
+(* A key typed out of the inputs is refused, and so is an undo. *)
+v = s.Buffers[1].Version
+s = pressed(["C-g", "z"], commands.Unfocused(s))
+check(s.Buffers[1].Version == v and s.Message == "The code is hidden: C-c e t shows it.", "a key typed is refused: $(s.Message)")
+s = pressed(["C-/"], s)
+check(s.Buffers[1].Version == v and line(s, 7) == "place = cells.Field(\"Paris!\")", "an undo is refused")
+
+(* A value of the table, edited: C-n goes to the next title, Quiet's hidden; Enter, 9, Enter write it in the file. *)
+s = pressed(["C-n", "C-n"], s)
+check(s.Buffers[1].Cursor.Line == 16, "C-n goes from title to title: $(s.Buffers[1].Cursor)")
+s = pressed(["C-c", "e", "f", "enter", "9", "enter"], s)
+check(str.Contains("x: [19, 2, 3]", line(s, 17)), "the table writes its value: $(line(s, 17))")
+check(not codeShown(s) and drawn("19", s) and isApp(s), "the table ran again, no code shows: $(texts(s))")
+
+(* C-c e h in the view of an app writes the page without the code of the cells, with a Cesia whose cells.Html takes code. *)
+s = commands.Unfocused(s)
+if str.Contains("code = true", cesia.Doc(nb.Html))
+  s = press.Press(["C-c", "e", "h"], s)
+  check(str.Contains("for its page without its code", s.Message), "C-c e h asks for the page without code: $(s.Message)")
+  s = settled(s)
+  page = result.Unwrap(sys.Read("$folder/app.html"))
+  check(str.Contains("<h2>Twice</h2>", page) and str.Contains("twice Paris", page) and not str.Contains("<pre><code", page) and not str.Contains("cells.Slider(", page) and
+    not str.Contains("<h2>Quiet</h2>", page), "the page holds what the app shows, and no code: $(page)")
+else
+  io.Print("This Cesia's cells.Html writes every page with its code: the page without code is checked with one that takes code = false.")
+end
+
+(* C-c e t again: the code, the cursor on the marker of the cell of the table. *)
+s = pressed(["escape", "C-c", "e", "t"], s)
+check(not isApp(s) and codeShown(s) and s.Buffers[1].Cursor.Line == 16 and value.IsMissing(text.FoldOf(s.Buffers[1])), "the code shows again, the cursor on its cell: $(s.Buffers[1].Cursor)")
+check(not text.IsModified(text.MarkSaved(missing, s.Buffers[1])) and result.Unwrap(sys.Read(path)) == source, "nothing was written in the file on disk by the view")
+
+(* cemacs --app: the Start of the cells shows the file as an app and runs its cells, as C-c e t does. *)
+opened = commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720))
+opened.Config = state.Config
+opened.Options = ["--app"]
+s = settled(commands.Settled(notebook.Hooked({}).Start(opened)))
+check(isApp(s) and not codeShown(s) and drawn("Twice", s) and drawn("56.0", s), "--app shows the file as an app, its cells run: $(texts(s))")
+
+_ = sys.Run("rm", ["-rf", folder])
+io.Print("ok")

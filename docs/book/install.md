@@ -122,6 +122,11 @@ test`, `cesia check` and `cesia doc` in the folder of Cemacs say `cesia.toml:4:1
 bin/cemacs notes.ce
 ```
 
+Options come before the files: `bin/cemacs --app sim.ce` opens a file of cells as a small app, its code hidden and its
+cells run, as [Cells](cells.md#the-view-of-an-app) tells. A word that starts with `--` before the first file is an
+option, and `--` ends them, so `bin/cemacs -- --app` opens a file named `--app`; an option that no app takes stops Cemacs
+before its window opens, with `cemacs: unknown option --x (known: --app)` on the standard error and the exit code 2.
+
 It is a small `bash` script. It finds the folder of Cemacs from its own place, even through a symbolic link, makes `user/`
 with `tools/user.sh` if it is missing, and runs:
 
