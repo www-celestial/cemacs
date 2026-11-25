@@ -202,7 +202,8 @@ The editor runs on a config, a record of functions that [emacs.Config] makes, [c
 | `CompleteKeys` | the keys of the list of completions, over the global ones |
 | `TabText`, `WheelLines`, `ScrollMargin`, `DragZone`, `FontSize`, `HintDelay`, `CheckDelay`, `DeleteToTrash`, `Theme`, `Window` | the settings |
 | `Start` | what the editor does once at its start |
-| `Idle`, `Saved`, `Moving` | the hooks, which [check.Hooked] adds: see below |
+| `Options` | the options of the command line that the apps take, as `--app` of the cells: see [Install](install.md#starting-it) |
+| `Idle`, `Saved`, `Moving`, `Settle` | the hooks, which [check.Hooked] and [notebook.Hooked] add: see below |
 
 Each field is a function, and so is the config itself: the state of the editor holds the function `Config`, and calls it each
 time it needs a key or a setting, two or three times for a key. That is what makes a change apply at the next key under
@@ -397,8 +398,9 @@ An app that needs to hear of time, or of saves, as the check does, goes through 
 | `Idle(state)` | at each tick, the event that counts time, with [commands.Still] telling the seconds since the last key |
 | `Saved(state)` | after each save |
 | `Moving(state)` | at each pass of the loop: true asks for ticks, and for a frame at each one |
+| `Settle(state)` | after each event, before the screen follows: what an app derives from the buffers, made right before the frame, as the cells make again the fold of a file shown as an app |
 
-[check.Hooked] sets all three. A config without them has hooks that do nothing. To add your own beside those of the check,
+[check.Hooked] sets the first three, and [notebook.Hooked] `Settle` too. A config without them has hooks that do nothing. To add your own beside those of the check,
 wrap them, so that both run:
 
 ```cesia

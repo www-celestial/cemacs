@@ -40,6 +40,7 @@ Les touches des cells sont un groupe de `C-c`, `e` pour *execute* (exécuter), q
 | `C-c e k` | [notebook.ClearResults] | efface les résultats dessinés ; les noms de la session restent |
 | `C-c e f` | [notebook.FocusControl] | donne les touches au premier input de la cell du curseur, un slider ou un autre, à la barre de son animation, à son graphe 3D, à sa table ou à son graphe : voir Sliders, Inputs, Animations, Graphes 3D, Tables et Les graphes |
 | `C-c e c` | [notebook.CopyTable] | copie une table en CSV : celle qui a les touches, ou les a eues en dernier, ou la première de la cell du curseur |
+| `C-c e t` | [notebook.ToggleCode] | cache le code de tout le fichier, qui se montre comme une petite app, ou le montre à nouveau : voir [La vue d'une app](#la-vue-dune-app) |
 
 Dans `*repl*`, Enter lance ce qui a été tapé, et `M-p` et `M-n` reculent et avancent dans ce qui a été tapé avant ;
 partout ailleurs, Enter est un saut de ligne, comme toujours.
@@ -595,7 +596,56 @@ contient le titre de chaque cell, son code coloré comme les docs de Cesia le co
 valeur, en table ou en texte, ou son erreur. La page n'a besoin d'aucun autre fichier ni d'aucun script, et montre ce que
 `cesia run` calcule, pas l'état de la fenêtre. Une animation démarre en pause sur sa première image sous une case *Play*,
 qui la joue par le CSS (les règles de style de la page) seul. Un graphe 3D se montre à la vue de son code, pas à celle où
-on l'a tourné dans la fenêtre.
+on l'a tourné dans la fenêtre. Dans la vue d'une app, après `C-c e t`, la page laisse de côté le code des cells, et les
+cells qui ne montrent rien : [cells.Html](https://www-celestial.github.io/cesia-lang/cells.html) avec `code = false`.
+
+## La vue d'une app
+
+`C-c e t` montre tout le fichier comme une petite app (une application : ici, une page de réglages et de résultats), et
+montre à nouveau son code. La vue garde le titre de chaque cell qui montre quelque chose, un résultat, un graphe, une
+table, un slider ou un autre input, une erreur ou une note comme *running…*, dans la police forte, sans numéro de ligne,
+et sous lui ce que la cell montre ; toute autre ligne, le code des cells, les uses du haut et les cells qui ne montrent
+rien, ne prend aucune rangée. Une cell sans titre s'appelle `Cell 2`, par son numéro. Rien n'est écrit dans le fichier :
+la vue appartient à la fenêtre, et s'oublie quand le buffer se ferme. Un fichier dont les cells n'ont jamais tourné
+dans une session les lance d'abord, comme `C-c e a`.
+
+![savings.ce après C-c e a, en code : deux sliders sous leurs lignes, rate et years, le graphe de 1000 au taux sous la cell Growth, et la cell Year by year, dont la table est sous l'écran.](../../book/images/cells-app-code.png)
+
+![Le même fichier après C-c e t : les titres Savings, Growth et Year by year dans la police forte, les deux sliders, le graphe et la table de neuf rangées, sans une ligne de code ; la ligne du bas dit The code is hidden: C-c e t shows it.](../../book/images/cells-app.png)
+
+Les inputs marchent comme sous le code : la souris, `C-c e f` et Tab leur donnent les touches, et un changement écrit sa
+valeur dans le fichier, puis relance les cells qui la lisent. `C-n` et `C-p` vont de titre en titre, les lignes cachées
+passées. Le texte y est en lecture seule : une touche qui le changerait, une lettre tapée, `C-k`, `C-y`, `C-/`, dit `The
+code is hidden: C-c e t shows it.` (le code est caché : C-c e t le montre) et ne change rien ; les écritures des inputs
+et d'une table passent, un enregistrement aussi. `C-c e t` à nouveau montre le code, le curseur sur le marqueur de la
+cell où il était, sur la même rangée de l'écran ; quand le curseur est resté sur le titre où il a été mis, le code
+revient tel qu'il était, son curseur et son écran aussi.
+
+```bash
+bin/cemacs --app sim.ce
+```
+
+`--app` ouvre chaque fichier de cells donné dans cette vue tout de suite et lance ses cells : un fichier pour quelqu'un
+qui ne fait que bouger ses sliders. Un fichier sans cell s'ouvre en code, et dit `notes.ce has no cell: --app shows its
+code.` (notes.ce n'a pas de cell : --app montre son code). Les options viennent avant les fichiers, et `--` les termine,
+si bien que `bin/cemacs -- --app` ouvre un fichier nommé `--app` ; une option qu'aucune app ne prend arrête Cemacs avant
+que sa fenêtre s'ouvre, avec `cemacs: unknown option --x (known: --app)` (option inconnue) et le code de sortie 2. `C-c e
+h` dans la vue écrit la page sans le code, comme le dit [La page](#la-page).
+
+Comment c'est fait : la vue est un fold (un repli) du buffer, une pièce du cœur que toute app peut utiliser,
+[text.FoldOf] : des suites de lignes cachées, qui ne prennent aucune rangée à l'écran tandis que les blocs sous elles se
+montrent encore, et des lignes de titre dessinées par leurs mots. Les cells le refont à partir de leurs cells et de leurs
+blocs avant chaque image, au hook (le point d'accroche) `Settle` de la config, si bien qu'une valeur écrite qui ajoute
+une ligne, un enregistrement qui formate le fichier, une cell dont le résultat vient ou s'en va changent la vue aussitôt,
+et aucune ligne de code ne se montre. Un buffer sans fold paie un match par mouvement, et se dessine comme avant, à
+l'octet près.
+
+La vue à côté des autres : le Live Editor de MATLAB a *Hide Code*, pour tout le fichier, ses contrôles et ses sorties
+laissés, comme ici. marimo a sa vue d'app dans son éditeur, et `marimo run` sert le notebook comme une app web ; Voilà
+sert un notebook Jupyter comme une page aux widgets vivants : tous deux atteignent d'autres personnes, dans un
+navigateur, ce que Cemacs ne fait pas, puisque sa vue est pour la personne devant la fenêtre. Pluto cache le code cell
+par cell, avec un œil à côté de chacune, gardé dans le fichier : le code d'une cell, une formule à montrer, peut rester
+en vue, là où `C-c e t` cache tout le fichier et n'écrit rien.
 
 ## Sécurité
 
@@ -654,6 +704,12 @@ colorées selon leur valeur) d'un million de cases. La mémoire que prennent les
 sa longueur entière contre le bloc avant d'écrire.
 
 ## Vitesse
+
+La vue d'une app, sur un fichier de 10 000 lignes et 100 cells, chacune un slider et un résultat : `C-c e t` prend 2,9 ms
+jusqu'à la vue faite, son image 2,7 ms pour suivre et dessiner, où que soit le curseur, contre 0,8 ms pour le même
+fichier en code ; `C-c e t` pour revenir, 0,7 ms ; une touche refusée, 2,3 ms ; un slider bougé par sa touche, 17,3 ms
+jusqu'au fold refait, contre 15,8 ms en code, l'écriture elle-même 15,4 (médianes de 21). Les lignes cachées sont des
+suites, que l'écran passe en quelques pas, cherchées par moitiés : l'image ne lit aucune ligne du code, et aucune couleur.
 
 Une table d'un million de rangées : `PgDn` prend 0,48 ms, la médiane de 63 écrans depuis le haut, de la touche à son bloc
 dessiné de nouveau ; quand ses rangées sont demandées à la session, un écran sur deux, 4,0 ms de la touche aux rangées
