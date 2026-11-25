@@ -174,9 +174,36 @@ defn Follow(rows, columns, margin, b)
     out.Screen = dict.Dict()
     return out
   end
+  if value.IsSome(text.FoldOf(b))
+    return followedFolded(seenRows, left, left + seenColumns, out)
+  end
   out.Colors = coloredTo(lastLine, b)
   out.Guess = if out.Colors.Known >= lastLine missing else guessed(top, lastLine, out) end
   out.Screen = screenOf(top, list.Min(rope.LineCount(b.Rope), top + seenRows - 1), left, left + seenColumns, out)
+  out
+end
+
+defn followedFolded(rows, left, width, b)
+  (** Follow's colors and Screen for a buffer with a fold, its top and left set: only the lines drawn as code are read, those shown on the screen without a
+      title; the colors are known down to the last of them, the lines hidden above it read too, since a comment may open there. A screen of titles and
+      blocks alone, as the cells' view of an app, reads no color. *)
+  lines = [n for n in screenShown(b, rows, Under(b)) if not isTitle(n, Under(b))]
+  out = b
+  if value.Len(lines) == 0
+    out.Guess = missing
+    out.Screen = dict.Dict()
+    return out
+  end
+  lastLine = list.Min(rope.LineCount(b.Rope), list.Last(lines) + 1)
+  out.Colors = coloredTo(lastLine, b)
+  out.Guess = if out.Colors.Known >= lastLine missing else guessed(b.Top, lastLine, out) end
+  kept = keptRows(out)
+  screen = dict.Dict()
+  for n in lines
+    full = screenLines(n, n, out)[1]
+    screen = dict.Put(full, tokensOf(full, left, width, stateAt(n, out), kept, n, dict.Dict()), screen)
+  end
+  out.Screen = screen
   out
 end
 
@@ -415,16 +442,22 @@ rowY(row, rect, cell) = rect.Y + inset + row * cell.Height
 columnX(column, rect, cell) = rect.X + Gutter + column * cell.Width
 
 defn Under(b)
-  (** The rows that blocks take under the lines of a buffer, by line as a text, or missing for a buffer with no block: most have none, and pay nothing.
+  (** The rows that blocks take under the lines of a buffer, by line as a text, or missing for a buffer with no block and no fold: most have neither, and pay
+      nothing. A buffer with a fold (see text.FoldOf) has it there too, under "fold", which no line number is: its runs and titles, and Lines, the lines
+      with blocks in order, which a walk down the screen jumps to across a run.
 
         Under(text.Of("a", missing)) --> missing *)
   blocks = text.BlocksOf(b)
-  if value.Len(blocks) == 0
+  fold = text.FoldOf(b)
+  if value.Len(blocks) == 0 and value.IsMissing(fold)
     return missing
   end
   out = {}
   for k in blocks
     out["$(k.Line)"] = dict.GetOr("$(k.Line)", 0, out) + k.Rows
+  end
+  if value.IsSome(fold)
+    out["fold"] = {Hidden: fold.Hidden, Titles: fold.Titles, Lines: list.Sort(list.Unique([k.Line for k in blocks]))}
   end
   out
 end
@@ -432,8 +465,73 @@ end
 (** The rows of blocks under line n. *)
 extra(n, under) = if value.IsMissing(under) 0 else dict.GetOr("$n", 0, under) end
 
-(** The rows that line n takes on the screen: its own, then those of the blocks under it. *)
-height(n, under) = 1 + extra(n, under)
+(** The fold kept in the rows of a buffer, or missing. *)
+foldIn(under) = if value.IsMissing(under) missing else dict.GetOr("fold", missing, under) end
+
+(** Does the fold of the rows hide line n? *)
+isHidden(n, under) = (f -> value.IsSome(f) and value.IsSome(text.HiddenRun(n, f)))(foldIn(under))
+
+(** Is line n a title of the fold, drawn as its words? *)
+isTitle(n, under) = (f -> value.IsSome(f) and dict.Has("$n", f.Titles))(foldIn(under))
+
+(** The rows that line n takes on the screen: its own, unless a fold hides it, then those of the blocks under it. *)
+height(n, under) = extra(n, under) + (if isHidden(n, under) 0 else 1 end)
+
+defn firstFrom(x, xs)
+  (** The place in xs, numbers in order, of the first one at least x, or one past the end: looked for by halves. *)
+  low = 1
+  high = value.Len(xs) + 1
+  while low < high
+    middle = math.Div(low + high, 2)
+    if xs[middle] < x
+      low = middle + 1
+    else
+      high = middle
+    end
+  end
+  low
+end
+
+defn below(n, under)
+  (** The line after line n that takes rows on the screen: n + 1, or past a run of hidden lines that starts there, the first of them with blocks, or the line
+      after the run. Without a fold, always n + 1. *)
+  f = foldIn(under)
+  r = if value.IsMissing(f) missing else text.HiddenRun(n + 1, f) end
+  if value.IsMissing(r)
+    return n + 1
+  end
+  k = firstFrom(n + 1, f.Lines)
+  if k <= value.Len(f.Lines) and f.Lines[k] <= r.To f.Lines[k] else r.To + 1 end
+end
+
+defn above(n, under)
+  (** The line before line n that takes rows on the screen, as below finds it the other way: n - 1, or past a run, its last line with blocks or the line before
+      the run, 0 above the first line. *)
+  f = foldIn(under)
+  r = if value.IsMissing(f) missing else text.HiddenRun(n - 1, f) end
+  if value.IsMissing(r)
+    return n - 1
+  end
+  k = firstFrom(n, f.Lines) - 1
+  if k >= 1 and f.Lines[k] >= r.From f.Lines[k] else r.From - 1 end
+end
+
+defn screenShown(b, rows, under)
+  (** The lines shown whose rows are on a screen of rows rows of a buffer with a fold, from its top, in order: a top line whose words are above the screen
+      is not one. *)
+  out = []
+  row = -SkipOf(b, under)
+  n = b.Top
+  count = rope.LineCount(b.Rope)
+  while n <= count and row < rows
+    if not isHidden(n, under) and row >= 0
+      out = list.Append(n, out)
+    end
+    row = row + height(n, under)
+    n = below(n, under)
+  end
+  out
+end
 
 defn skipField(b)
   (** The Skip that a buffer or a place holds, or 0 for one from before this field. *)
@@ -444,10 +542,11 @@ defn skipField(b)
 end
 
 (** The rows of the top line that are above the screen: 0 when the screen starts at the line, more when it starts inside the blocks under it, which then show
-    their lower part only. At most the rows of those blocks, so that a block taken away leaves none.
+    their lower part only. At most the rows of those blocks, so that a block taken away leaves none; for a line that a fold hides, which has no row of its
+    own, one less, so that the screen shows a row of them.
 
       SkipOf(text.Of("a", missing), missing) --> 0 *)
-SkipOf(b, under) = list.Max(0, list.Min(skipField(b), extra(b.Top, under)))
+SkipOf(b, under) = list.Max(0, list.Min(skipField(b), height(b.Top, under) - 1))
 
 defn HoldOf(b)
   (** What holds the screen of a buffer until the next key: "mouse" while the cursor is where the mouse put it, which keeps no margin around it, so that the
@@ -471,17 +570,30 @@ defn RowOf(n, b, under)
   if n <= b.Top
     return row + n - b.Top
   end
-  for m in b.Top..n - 1
+  m = b.Top
+  while m < n
     row = row + height(m, under)
+    m = below(m, under)
   end
   row
 end
 
 defn LineAtRow(row, b, under)
-  (** The line of the buffer on a row of the screen, from 0 at the first row: a row of a block is the row of the line above it. *)
+  (** The line of the buffer on a row of the screen, from 0 at the first row: a row of a block is the row of the line above it. With a fold, a row of the
+      blocks under a hidden line gives the nearest line shown above it, or else below it. *)
   if value.IsMissing(under)
     return b.Top + row
   end
+  n = lineAt(row, b, under)
+  if value.IsMissing(foldIn(under))
+    return n
+  end
+  shown = text.ShownFrom(n, -1, b)
+  if value.IsMissing(shown) n else shown end
+end
+
+defn lineAt(row, b, under)
+  (** LineAtRow, but a row of the blocks under a hidden line gives that line. *)
   at = row + SkipOf(b, under)
   if at <= 0
     return b.Top + at
@@ -491,7 +603,7 @@ defn LineAtRow(row, b, under)
   last = rope.LineCount(b.Rope)
   while n < last and r + height(n, under) <= at
     r = r + height(n, under)
-    n = n + 1
+    n = list.Min(below(n, under), last)
   end
   if r + height(n, under) <= at n + at - r - extra(n, under) else n end
 end
@@ -516,7 +628,7 @@ defn placeAt(line, row, under)
   need = row
   t = line
   while need > 0 and t > 1
-    t = t - 1
+    t = list.Max(1, above(t, under))
     h = height(t, under)
     if h > need
       return {Top: t, Skip: h - need}
@@ -534,7 +646,7 @@ defn rowsBefore(line, cap, under)
   r = 0
   t = line
   while r < cap and t > 1
-    t = t - 1
+    t = list.Max(1, above(t, under))
     r = r + height(t, under)
   end
   list.Min(r, cap)
@@ -548,7 +660,7 @@ defn rowsAfter(line, count, cap, under)
   r = extra(line, under)
   t = line
   while r < cap and t < count
-    t = t + 1
+    t = list.Min(below(t, under), count)
     r = r + height(t, under)
   end
   list.Min(r, cap)
@@ -563,10 +675,17 @@ defn screenRow(line, rows, b, under)
   if line < b.Top or (line == b.Top and skip > 0)
     return -1
   end
-  if line - b.Top - skip >= rows
+  (* Each line takes a row at least, but a hidden one: with a fold, the rows are counted, as far as the screen goes. *)
+  if line - b.Top - skip >= rows and value.IsMissing(foldIn(under))
     return rows
   end
-  list.Min(RowOf(line, b, under), rows)
+  row = -skip
+  m = b.Top
+  while m < line and row < rows
+    row = row + height(m, under)
+    m = below(m, under)
+  end
+  list.Min(row, rows)
 end
 
 defn bounds(line, rows, margin, b, under)
@@ -606,28 +725,40 @@ defn Scrolled(k, b)
   count = rope.LineCount(b.Rope)
   top = list.Min(list.Max(1, b.Top), count)
   skip = SkipOf(b, under)
+  (* A top on hidden lines that take no row starts at the next line that takes one, or, after the last, at the last row of the file. *)
+  if height(top, under) == 0
+    next = below(top, under)
+    if next <= count
+      top = next
+    else
+      back = above(top, under)
+      top = if back >= 1 back else top end
+      skip = list.Max(0, height(top, under) - 1)
+    end
+  end
   left = math.Abs(k)
   while left > 0
     if k > 0
-      rest = extra(top, under) - skip
+      rest = height(top, under) - 1 - skip
+      next = below(top, under)
       if left <= rest
         skip = skip + left
         left = 0
-      else if top < count
+      else if next <= count
         left = left - rest - 1
-        top = top + 1
+        top = next
         skip = 0
       else
-        skip = extra(top, under)
+        skip = list.Max(0, height(top, under) - 1)
         left = 0
       end
     else if skip >= left
       skip = skip - left
       left = 0
-    else if top > 1
+    else if top > 1 and above(top, under) >= 1
       left = left - skip - 1
-      top = top - 1
-      skip = extra(top, under)
+      top = above(top, under)
+      skip = list.Max(0, height(top, under) - 1)
     else
       skip = 0
       left = 0
@@ -653,7 +784,9 @@ defn Wheeled(rows, margin, b)
   under = Under(b)
   first = if SkipOf(b, under) > 0 b.Top + 1 else b.Top end
   last = list.Min(rope.LineCount(b.Rope), LineAtRow(seen - 1, b, under))
-  order = if line < first list.Range(first, last) else list.Reverse(list.Range(first, last)) end
+  (* With a fold, the lines of the screen are those shown: a hidden one can't take the cursor. *)
+  shown = if value.IsMissing(foldIn(under)) list.Range(first, last) else [n for n in screenShown(b, seen, under) if n >= first and n <= last] end
+  order = if line < first shown else list.Reverse(shown) end
   for n in order
     if Keeps(n, seen, margin, out)
       return text.MoveLine(n - line, out)
@@ -753,8 +886,8 @@ defn BlockAt(x, y, state)
   lay = LayoutOf(state)
   rect = lay.Code
   row = cellAt(x, y, rect, state.Cell).Row
-  n = LineAtRow(row, b, under)
-  first = RowOf(n, b, under) + 1
+  n = lineAt(row, b, under)
+  first = RowOf(n, b, under) + (if isHidden(n, under) 0 else 1 end)
   if row < first
     return missing
   end
@@ -770,9 +903,9 @@ defn BlockAt(x, y, state)
   missing
 end
 
-defn selection(b, first, last, lay, look, lineY)
-  (** The selection of a buffer on the lines from first to last: one rectangle per line, from the mark to the cursor. A line that the selection
-      crosses is filled one character past its end, to show that its line end is selected. *)
+defn selection(b, lines, lay, look, lineY)
+  (** The selection of a buffer on the lines drawn as code, in order: one rectangle per line, from the mark to the cursor. A line that the selection crosses
+      is filled one character past its end, to show that its line end is selected. *)
   ends = text.Selection(b)
   if value.IsMissing(ends)
     return []
@@ -780,12 +913,12 @@ defn selection(b, first, last, lay, look, lineY)
   rect = lay.Code
   cell = lay.Cell
   out = []
-  for n in list.Max(first, ends.First.Line)..list.Min(last, ends.Last.Line)
+  for n in lines
     from = if n == ends.First.Line ends.First.Column else 0 end
     to = if n == ends.Last.Line ends.Last.Column else text.LineWidth(n, b) + 1 end
     a = list.Max(from, b.Left)
     z = list.Min(to, b.Left + lay.Columns)
-    if z > a
+    if n >= ends.First.Line and n <= ends.Last.Line and z > a
       out = list.Append(rectCommand(columnX(a - b.Left, rect, cell), lineY(n), (z - a) * cell.Width, cell.Height, look.Theme.Fill), out)
     end
   end
@@ -795,61 +928,76 @@ end
 defn code(b, lay, look, focused, marks)
   (** The code area of a buffer in a pane: the band of the current line, the lines on the screen and the cursor bar. Only the pane being edited, focused, has
       the band and a bright bar. Marks are those of a run: a dot in the gutter for a breakpoint, a band of color on the line where the program stopped,
-      and the value of an eval at the end of its line, in grey and not in the file. *)
+      and the value of an eval at the end of its line, in grey and not in the file. With a fold, a hidden line has no row and draws nothing, the blocks
+      under it but; a title draws its words in the strong font, with the band of the cursor and no bar. *)
   th = look.Theme
   cell = lay.Cell
   rect = lay.Code
   out = [box(rect.X, rect.Y, rect.Width, rect.Height, th.Code, 0)]
   top = b.Top
   under = Under(b)
+  fold = foldIn(under)
   rowOf = {}
   last = list.Min(rope.LineCount(b.Rope), b.Top + lay.Rows - 1)
   skip = SkipOf(b, under)
+  (* The first line whose words are on the screen: the top line's are above it while the screen starts inside its blocks. *)
+  first = if skip > 0 top + 1 else top end
+  shown = []
   if not value.IsMissing(under)
-    (* The lines that fit with the blocks under them, from the rows of the top line above the screen. *)
+    (* The lines that fit with the blocks under them, from the rows of the top line above the screen; a fold's hidden lines are passed by runs. *)
     row = -skip
     n = top
     while n <= rope.LineCount(b.Rope) and row < lay.Rows
       rowOf["$n"] = row
+      if value.IsSome(fold) and n >= first and not isHidden(n, under)
+        shown = list.Append(n, shown)
+      end
       row = row + height(n, under)
-      n = n + 1
+      n = below(n, under)
     end
     last = n - 1
   end
-  (* The first line whose words are on the screen: the top line's are above it while the screen starts inside its blocks. *)
-  first = if skip > 0 top + 1 else top end
   lineY = if value.IsMissing(under) (n -> rowY(n - b.Top, rect, cell)) else (n -> rowY(rowOf["$n"], rect, cell)) end
+  (* The lines drawn as code: each from first to last, or, with a fold, those shown that are no title. *)
+  drawn = if value.IsMissing(fold) first..last else [n for n in shown if not isTitle(n, under)] end
+  onScreen = n -> n >= first and n <= last and (value.IsMissing(fold) or (dict.Has("$n", rowOf) and not isHidden(n, under)))
   here = b.Cursor.Line
-  if focused and here >= first and here <= last
+  if focused and onScreen(here)
     out = list.Append(box(rect.X + 4, lineY(here), rect.Width - 8, cell.Height, th.Hover, 4), out)
   end
   stopped = marks.Stopped
-  if not value.IsMissing(stopped) and stopped >= first and stopped <= last
+  if not value.IsMissing(stopped) and onScreen(stopped)
     out = list.Append(box(rect.X + 4, lineY(stopped), rect.Width - 8, cell.Height, th.Picked, 4), out)
   end
-  out = list.Concat(out, selection(b, first, last, lay, look, lineY))
-  fulls = if last < first [] else screenLines(first, last, b) end
-  for n in first..last
-    out = list.Concat(out, line(b, n, fulls[n - first + 1], lineY(n), lay.Columns, rect, look))
+  out = list.Concat(out, selection(b, drawn, lay, look, lineY))
+  fulls = if value.IsSome(fold) [screenLines(n, n, b)[1] for n in drawn] else if last < first [] else screenLines(first, last, b) end
+  for k in 1..value.Len(drawn)
+    n = drawn[k]
+    out = list.Concat(out, line(b, n, fulls[k], lineY(n), lay.Columns, rect, look))
     if not value.IsMissing(list.IndexOf(n, marks.Breaks))
       out = list.Append(box(rect.X + 6, lineY(n) + math.Div(cell.Height, 2) - 4, 8, 8, breakColor, 4), out)
     end
     out = list.Concat(out, answer(b, n, marks.Run, lineY(n), lay.Columns, rect, cell, th))
   end
-  if not value.IsMissing(under)
-    out = list.Concat(out, blocksIn(b, top, last, lay, look, lineY))
+  for n in shown
+    if isTitle(n, under)
+      out = list.Append(inside("strong", rect.X + Gutter, lineY(n), cutTo(lay.Columns, fold.Titles["$n"]), th.Ink), out)
+    end
   end
-  out = list.Concat(out, marked(b, first, last, lay, look, lineY))
-  if here >= first and here <= last and b.Cursor.Column >= b.Left and b.Cursor.Column - b.Left < lay.Columns
+  if not value.IsMissing(under)
+    out = list.Concat(out, blocksIn(b, top, last, lay, look, lineY, under))
+  end
+  out = list.Concat(out, marked(b, drawn, lay, look, lineY))
+  if onScreen(here) and not isTitle(here, under) and b.Cursor.Column >= b.Left and b.Cursor.Column - b.Left < lay.Columns
     out = list.Append(rectCommand(columnX(b.Cursor.Column - b.Left, rect, cell), lineY(here), 2, cell.Height, if focused th.Bright else th.Faint end), out)
   end
   out
 end
 
-defn blocksIn(b, first, last, lay, look, lineY)
-  (** The blocks under the lines from first to last, each drawn from the left of the text, under its line, the ones below it after it; a command that
-      would go past the top or the bottom of the code area is left out, but a graph, which shows what the pane has room for: its top part at the bottom
-      of the pane, Visible, and its lower part at the top, Hidden, when the screen starts inside it. *)
+defn blocksIn(b, first, last, lay, look, lineY, under)
+  (** The blocks under the lines from first to last, each drawn from the left of the text, under its line, the ones below it after it, from the row of a
+      line that a fold hides; a command that would go past the top or the bottom of the code area is left out, but a graph, which shows what the pane has
+      room for: its top part at the bottom of the pane, Visible, and its lower part at the top, Hidden, when the screen starts inside it. *)
   cell = lay.Cell
   rect = lay.Code
   x = rect.X + Gutter
@@ -859,7 +1007,7 @@ defn blocksIn(b, first, last, lay, look, lineY)
   ys = {}
   for k in text.BlocksOf(b)
     if k.Line >= first and k.Line <= last
-      y = dict.GetOr("$(k.Line)", lineY(k.Line) + cell.Height, ys)
+      y = dict.GetOr("$(k.Line)", lineY(k.Line) + (if isHidden(k.Line, under) 0 else cell.Height end), ys)
       ys["$(k.Line)"] = y + k.Rows * cell.Height
       for c in k.Draw(width, look)
         high = dict.GetOr("Height", cell.Height, c)
@@ -875,13 +1023,13 @@ defn blocksIn(b, first, last, lay, look, lineY)
   out
 end
 
-defn marked(b, first, last, lay, look, lineY)
-  (** The marks of the lines on the screen: a line of two pixels under each span, and after the end of the line, two spaces after it, the words of its first
+defn marked(b, lines, lay, look, lineY)
+  (** The marks of the lines drawn as code: a line of two pixels under each span, and after the end of the line, two spaces after it, the words of its first
       mark, cut at the edge, with (+2) when the line has two more. No row is added: a full line keeps only the underline and the color of its number. *)
   cell = lay.Cell
   rect = lay.Code
   out = []
-  for n in first..last
+  for n in lines
     here = marksAt(n, b)
     if value.Len(here) > 0
       y = lineY(n)
