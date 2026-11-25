@@ -1168,7 +1168,8 @@ end
 
 defn WriteHtml(state)
   (** C-c e h: runs every cell of the file as saved in a new session, and writes its page beside it, the same name ending in .html; a file or a link
-      there already is asked about first, as a copy asks, since a folder from elsewhere can bring one. *)
+      there already is asked about first, as a copy asks, since a folder from elsewhere can bring one. While the file shows as an app, after C-c e t, the
+      page leaves out the code of its cells, and those that show nothing. *)
   k = state.Current
   b = state.Buffers[k]
   if not IsCells(b)
@@ -1185,15 +1186,17 @@ defn WriteHtml(state)
 end
 
 defn exporting(k, state)
-  (** The run of every cell of the file of buffer k, as saved, in a new session, for its page. *)
+  (** The run of every cell of the file of buffer k, as saved, in a new session, for its page; while the file shows as an app, for its page without the
+      code of its cells, as the app shows it: see cells.Html. *)
   b = state.Buffers[k]
   path = b.Path
   allow = allowOf(path)
   r = runOf(b)
   r = if value.IsMissing(r) newRun() else r end
-  r.Html = fiber.Spawn(() -> nb.Html(path, allow = allow))
+  app = isApp(r)
+  r.Html = fiber.Spawn(() -> if app nb.Html(path, allow = allow, code = false) else nb.Html(path, allow = allow) end)
   how = if text.IsModified(b) " as saved, without the changes here" else "" end
-  commands.Say("Running every cell of $path$how for its page.", withRun(k, r, state))
+  commands.Say("Running every cell of $path$how for its page$(if app " without its code" else "" end).", withRun(k, r, state))
 end
 
 (** The path of the page of a file of cells.

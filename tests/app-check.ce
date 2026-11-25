@@ -1,8 +1,8 @@
 (** Checks of the view of an app, C-c e t, against a real session of std/cells, on a file in a new folder under /tmp, each key sent as the window sends it,
     through the editor, its read only rule and the fold made again before each frame: the file whose cells never ran runs them and shows as an app, the
     titles of its cells that show something and what they show, no line of code; a slider moved by its keys and a field typed write the file and run again
-    the cells that read them; a value of a table edited writes the file; a key typed is refused; C-c e t again shows the code, the cursor on its cell; and
-    --app does as C-c e t at the start. It is
+    the cells that read them; a value of a table edited writes the file; a key typed is refused; C-c e h writes the page without code; C-c e t again shows
+    the code, the cursor on its cell; and --app does as C-c e t at the start. It is
     a script, not a test file: it needs permissions. Run it from the root of cemacs with
     cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/app-check.ce, CESIA the real path of the cesia that runs it. It prints
     ok at the end and stops at the first failure. *)
@@ -15,6 +15,8 @@ use src/notebook
 use src/rope
 use src/ui
 use std/bug
+use std/cells as nb
+use std/cesia
 use std/dict
 use std/io
 use std/list
@@ -96,6 +98,19 @@ check(s.Buffers[1].Cursor.Line == 16, "C-n goes from title to title: $(s.Buffers
 s = pressed(["C-c", "e", "f", "enter", "9", "enter"], s)
 check(str.Contains("x: [19, 2, 3]", line(s, 17)), "the table writes its value: $(line(s, 17))")
 check(not codeShown(s) and drawn("19", s) and isApp(s), "the table ran again, no code shows: $(texts(s))")
+
+(* C-c e h in the view of an app writes the page without the code of the cells, with a Cesia whose cells.Html takes code. *)
+s = commands.Unfocused(s)
+if str.Contains("code = true", cesia.Doc(nb.Html))
+  s = press.Press(["C-c", "e", "h"], s)
+  check(str.Contains("for its page without its code", s.Message), "C-c e h asks for the page without code: $(s.Message)")
+  s = settled(s)
+  page = result.Unwrap(sys.Read("$folder/app.html"))
+  check(str.Contains("<h2>Twice</h2>", page) and str.Contains("twice Paris", page) and not str.Contains("<pre><code", page) and not str.Contains("cells.Slider(", page) and
+    not str.Contains("<h2>Quiet</h2>", page), "the page holds what the app shows, and no code: $(page)")
+else
+  io.Print("This Cesia's cells.Html writes every page with its code: the page without code is checked with one that takes code = false.")
+end
 
 (* C-c e t again: the code, the cursor on the marker of the cell of the table. *)
 s = pressed(["escape", "C-c", "e", "t"], s)
