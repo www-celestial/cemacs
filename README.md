@@ -9,6 +9,9 @@ in Cesia, in a folder of your own that `git pull` never touches, and it reloads 
 **Documentation: https://www-celestial.github.io/cemacs/** (start with
 [First steps](https://www-celestial.github.io/cemacs/first-steps.html)). The same pages are in [docs/book/](docs/book/).
 
+The family: [Cesia](https://www-celestial.github.io/cesia-lang/) (the language) · [Cemacs](https://www-celestial.github.io/cemacs/) (the editor) ·
+[Cepheus](https://www-celestial.github.io/cepheus/) (the database) · [Ceti](https://www-celestial.github.io/ceti/) (the browser driver).
+
 ## Install
 
 Cemacs is tried on Linux. It needs three things:

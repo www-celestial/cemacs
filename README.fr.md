@@ -11,6 +11,9 @@ Cesia, dans un dossier à vous que `git pull` ne touche jamais, et il se recharg
 [First steps](https://www-celestial.github.io/cemacs/first-steps.html)). Les mêmes pages, en français, sont dans
 [docs/fr/book/](docs/fr/book/).
 
+La famille : [Cesia](https://www-celestial.github.io/cesia-lang/fr/) (le langage) · [Cemacs](https://www-celestial.github.io/cemacs/fr/) (l'éditeur) ·
+[Cepheus](https://www-celestial.github.io/cepheus/fr/) (la base de données) · [Ceti](https://www-celestial.github.io/ceti/fr/) (le pilote de navigateur).
+
 ## Installation
 
 Cemacs est essayé sous Linux. Il lui faut trois choses :
