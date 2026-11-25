@@ -37,6 +37,13 @@ isKeywordInsideAName() = value.Equal(color.Tokens("ending", color.FirstState).To
 isNumber() = value.Equal(color.Tokens("x = 0x1F + 2.5", color.FirstState).Tokens[2], [color.Number, "0x1F"])
 isFloat() = value.Equal(color.Tokens("x = 2.5", color.FirstState).Tokens[2], [color.Number, "2.5"])
 isText() = color.String in roles("x = \"a\"")
+(* x! unwraps a result: ! is an operator, of no color as ? is, and the call before it and the field after it keep theirs. *)
+isBangAfterCall() = value.Equal(color.Tokens("f(x)!.Name", color.FirstState).Tokens, [[color.Name, "f"], [color.Plain, "(x)!."], [color.Field, "Name"]])
+isBangAsQuestion() = value.Equal(roles("n = age(t)! + xs[1]!"), roles("n = age(t)? + xs[1]?"))
+isBangInType() = value.Equal(roles("defn size(p) Int!"), roles("defn size(p) Int?"))
+isBangBeforeEqual() = value.Equal(color.Tokens("a!=b", color.FirstState).Tokens, [[color.Plain, "a!=b"]]) and
+  value.Equal(color.Tokens("a! == b", color.FirstState).Tokens, [[color.Plain, "a! == b"]])
+isBangThenCall() = value.Equal(color.Tokens("g()!(2)", color.FirstState).Tokens, [[color.Name, "g"], [color.Plain, "()!("], [color.Number, "2"], [color.Plain, ")"]])
 isTextWhole() = value.Equal(color.Tokens("x = \"a\"", color.FirstState).Tokens[2], [color.String, "\"a\""])
 isTextWithEscape() = value.Equal(color.Tokens("\"a\\\"b\" c", color.FirstState).Tokens[1], [color.String, "\"a\\\"b\""])
 isInterpolationStaysString() = value.Equal(color.Tokens("\"a $$(b) c\"", color.FirstState).Tokens, [[color.String, "\"a $$(b) c\""]])

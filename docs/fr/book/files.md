@@ -174,7 +174,7 @@ disque ; l'écraser ? y pour oui, n pour non). `y` écrit votre texte par-dessus
 use std/result
 use std/sys
 sys.Write("notes.txt", "one")
-read = result.Unwrap(files.ReadFile("notes.txt"))
+read = files.ReadFile("notes.txt")!
 result.IsOk(files.SaveFile("notes.txt", "second", read.Disk)) --> true
 files.SaveFile("notes.txt", "third", read.Disk) --> result.Err({Kind: "changed", Message: "notes.txt changed on disk since it was read."})
 ```
@@ -418,7 +418,7 @@ un dossier. Une réponse qui finit par `/` et ne nomme encore aucun dossier le c
 
 ```cesia
 use std/result
-result.Unwrap(folders.Destinations([{Name: "a.ce", IsDir: false}], "/p", "/q/"))[1].To --> "/q/a.ce"
+folders.Destinations([{Name: "a.ce", IsDir: false}], "/p", "/q/")![1].To --> "/q/a.ce"
 ```
 
 Un fichier déjà là n'est remplacé qu'après un oui : `b.ce exists. Replace it? (y or n)` (b.ce existe, le remplacer ?), ou,
