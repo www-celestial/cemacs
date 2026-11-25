@@ -1037,10 +1037,16 @@ defn ToggleCode(state)
       or, when it stayed on the title it was put on, the code as it was, its cursor and its screen too. *)
   k = state.Current
   b = state.Buffers[k]
-  if not IsCells(b)
+  if not cellsIn(b)
     return commands.Say("This buffer has no cell: (* %% Title *) on a line of a .ce file starts one, and C-c e i writes it.", state)
   end
   if isApp(runOf(b)) appLeft(k, state) else appShown(k, state) end
+end
+
+defn cellsIn(b)
+  (** IsCells, from the cells its run read when they are of its text now: the file is read again, 5 ms for 10,000 lines, only when they aren't. *)
+  r = runOf(b)
+  if runsCesia(b) and value.IsSome(r) and r.Version == b.Version value.Len(r.Cells) > 1 else IsCells(b) end
 end
 
 defn appShown(k, state)
@@ -1066,6 +1072,7 @@ defn appShown(k, state)
   r = runOf(b)
   r.App = true
   r.AppFrom = {Line: out.Cursor.Line, View: view.ViewOf(b)}
+  r.AppSeen = {Version: b.Version, Lines: [x.Line for x in text.BlocksOf(b)]}
   s.Buffers[k] = out
   s = withRun(k, r, s)
   commands.Say(if said == "" HiddenNote() else said end, s)
@@ -1142,7 +1149,7 @@ defn appStarted(state)
   said = []
   for k in 1..value.Len(s.Buffers)
     b = s.Buffers[k]
-    if value.IsSome(b.Path) and IsCells(b)
+    if value.IsSome(b.Path) and cellsIn(b)
       s.Current = k
       s = appShown(k, s)
     else if value.IsSome(b.Path)
