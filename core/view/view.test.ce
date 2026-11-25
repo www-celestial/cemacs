@@ -886,3 +886,5 @@ foldedPlaces = gen.Of({Lines: gen.Int(1, 40), Rows: gen.Int(1, 14), Margin: gen.
 isFoldedFollowSettledAlways() = test.ForAll(isFoldedFollowSettled, foldedPlaces, cases = 500)
 isFoldedScrolledByRowsAlways() = test.ForAll(isFoldedScrolledByRows, foldedPlaces, cases = 300)
 isFoldedWheeledFollowsAlways() = test.ForAll(isFoldedWheeledFollows, foldedPlaces, cases = 300)
+(** A click under the last row, where the lines hidden at the end of the file would be, gives the last line shown, never a hidden one. *)
+isClickUnderHiddenEnd() = (s -> view.ClickAt(view.Gutter, 540, s).Line == 20 and view.PositionAt(view.Gutter, 540, s).Line == 20 and text.Place(60, 0, s.Buffers[1]).Cursor.Line == 20)(stateOf([folded([hide(21, 100)])], 800, 600))
