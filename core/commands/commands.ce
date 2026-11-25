@@ -1836,9 +1836,9 @@ defn resized(event, state)
 end
 
 defn Settled(state)
-  (** The state with a list made again from its rows, the pane being edited on the current buffer, the screen of each pane on its cursor, and the title of the
-      window the name of the current buffer. *)
-  s = view.FollowState(ScrollMargin(state), synced(refreshed(state)))
+  (** The state with what the apps keep of it made right by the Settle of the config, if it has one, a list made again from its rows, the pane being edited on
+      the current buffer, the screen of each pane on its cursor, and the title of the window the name of the current buffer. *)
+  s = view.FollowState(ScrollMargin(state), synced(refreshed(settled(state))))
   name = view.BufferName(current(s))
   if name != s.Title
     if not value.IsMissing(s.Window)
@@ -1847,6 +1847,14 @@ defn Settled(state)
     s.Title = name
   end
   s
+end
+
+defn settled(state)
+  (** The state after the Settle of the config, the function from a state to a state that runs after each event, before the screen follows, as the cells
+      make the fold of a file shown as an app again from its text and its blocks there; the state as it is for a config without one. It runs at each event:
+      an app pays there only for what changed. *)
+  f = dict.GetOr("Settle", missing, config(state))
+  if value.IsMissing(f) state else f(state) end
 end
 
 defn Update(event, state)

@@ -1123,8 +1123,8 @@ defn appFile(words = missing)
 end
 (** The texts that a state draws, its screens followed. *)
 appTexts(s) = [c.Text for c in view.View(view.FollowState(0, s)) if c.Kind == "text"]
-(** Does a state draw any line of the code of the file? *)
-showsCode(s) = list.Any([t == "use std/cells" or str.Contains("cells.Slider(", t) or t == "rho * n" or str.Contains("%%", t) for t in appTexts(s)])
+(** Does a state draw any line of the code of the file? Each draws its number in the gutter, left of the text, where no title and no block draws. *)
+showsCode(s) = list.Any([c.Kind == "text" and c.X < view.Gutter and c.Y < 670 and value.IsSome(str.Number(c.Text)) for c in view.View(view.FollowState(0, s))])
 isAppKey() = notebook.Keys()["C-c e t"] == notebook.ToggleCode
 isAppHidesCode() = (s -> not showsCode(s) and "Parameters" in appTexts(s) and "Use" in appTexts(s) and list.Any([str.Contains("84.0", t) for t in appTexts(s)]) and "rho" in appTexts(s))(notebook.ToggleCode(appFile(words = [{Role: "value", Words: "84.0"}])))
 isAppShowsCodeBefore() = showsCode(appFile(words = [{Role: "value", Words: "84.0"}]))
@@ -1152,3 +1152,35 @@ defn isAppReplUnchanged()
   t = notebook.ToggleCode(s)
   str.StartsWith("This buffer has no cell", t.Message) and value.Equal(t.Buffers, s.Buffers)
 end
+
+(* The fold of an app follows the file, before each frame: an input's write, a table's that adds a line, a file read again, a cell that shows something
+   or no longer. *)
+(** A state of the app with the hooks of the editor and of the cells, as src/cemacs.ce has them. *)
+appEditor(s) = dict.Put("Config", () -> notebook.Hooked(emacs.Config(emacs.Keys)), s)
+(** A key pressed in the editor. *)
+appKey(chord, s) = commands.Update({Kind: "key", Key: chord, Ctrl: false, Alt: false, Shift: false, Super: false}, s)
+(** The window of the app on the file of sliders, Use showing 84.0, rho with the keys. *)
+appFocused() = notebook.FocusControl(appEditor(notebook.ToggleCode(appFile(words = [{Role: "value", Words: "84.0"}]))))
+isAppSliderKey() = (s -> line(s, 4) == "rho = cells.Slider(28.5, 0.0, 50.0, step = 0.5)" and s.Buffers[1].CellRun.Moves["rho"].Pending == 28.5 and not showsCode(s) and
+  "Parameters" in appTexts(s) and s.Message == "")(appKey("right", appFocused()))
+isAppTypingAfterWrite() = (s -> line(s, 4) == "rho = cells.Slider(28.5, 0.0, 50.0, step = 0.5)" and s.Message == "The code is hidden: C-c e t shows it.")(commands.Update({Kind: "text", Text: "x"}, commands.Unfocused(appKey("right", appFocused()))))
+isAppUndoAfterWrite() = (s -> line(s, 4) == "rho = cells.Slider(28.5, 0.0, 50.0, step = 0.5)" and s.Message == "The code is hidden: C-c e t shows it.")(commands.Update({Kind: "key", Key: "/", Ctrl: true, Alt: false, Shift: false, Super: false}, commands.Unfocused(appKey("right", appFocused()))))
+defn isAppLineAdded()
+  (** A write of the app that adds a line to a cell, as a table's value that grows: the fold is made again, Use's title one line further, no code shown. *)
+  s = appEditor(notebook.ToggleCode(appFile(words = [{Role: "value", Words: "84.0"}])))
+  grown = text.Replaced([{Line: 5, Column: 0, End: 0, Text: "m = 1\n"}], s.Buffers[1])
+  s.Buffers[1] = text.WithFold(dict.Put("Written", grown.Version, text.FoldOf(grown)), grown)
+  t = commands.Settled(s)
+  not showsCode(t) and dict.Has("8", text.FoldOf(t.Buffers[1]).Titles) and not dict.Has("7", text.FoldOf(t.Buffers[1]).Titles) and "Use" in appTexts(t)
+end
+defn isAppFileReadAgain()
+  (** The file read again with a cell added outside: the fold follows the new text, no code shown, and the new cell's title comes once it shows something. *)
+  s = appEditor(notebook.ToggleCode(appFile(words = [{Role: "value", Words: "84.0"}])))
+  b = s.Buffers[1]
+  last = rope.LineCount(b.Rope)
+  s.Buffers[1] = text.MarkSaved(missing, text.Replaced([{Line: last, Column: 0, End: 0, Text: "\n(* %% Later *)\nrho + n\n"}], b))
+  t = commands.Settled(s)
+  u = commands.Settled(withBlock(1, 4, [{Role: "value", Words: "31.0"}], fresh(1, t)))
+  not showsCode(t) and not ("Later" in appTexts(t)) and not showsCode(u) and "Later" in appTexts(u) and "Use" in appTexts(u)
+end
+isAppClearedTitleGoes() = (s -> not ("Use" in appTexts(s)) and "Parameters" in appTexts(s) and not showsCode(s))(commands.Settled(notebook.ClearResults(appEditor(notebook.ToggleCode(appFile(words = [{Role: "value", Words: "84.0"}]))))))

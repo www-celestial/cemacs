@@ -1054,3 +1054,6 @@ defn isFoldedOtherBufferKept()
   t = press.Press(["z", "C-c", "o"], foldedState(buffers = [text.Of("x", missing), other]))
   wordsOf(t) == "zx" and rope.Text(t.Buffers[2].Rope) == "a\nb\nc\nd" and t.Message == hiddenNote
 end
+(** The Settle of a config runs after each event, before the screen follows: an app keeps there what it derives from the buffers, as the cells their fold. *)
+isSettleRuns() = (s -> s.Message == "settled 1")(press.Press(["a"], (t -> dict.Put("Config", () -> dict.Put("Settle", u -> dict.Put("Message", "settled $(here(u).Version)", u), emacs.Config(emacs.Keys)), t))(stateOf(""))))
+isNoSettleSame() = wordsOf(press.Press(["a"], stateOf(""))) == "a"

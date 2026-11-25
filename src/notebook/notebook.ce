@@ -1092,6 +1092,56 @@ defn appLeft(k, state)
   commands.Say("The code is shown.", withRun(k, r, s))
 end
 
+defn appWrote(k, state)
+  (** The state with the write that an input or a table of buffer k just made let through the read only rule of its app, while it shows as one: its
+      version is the fold's Written (see commands.Update). Nothing for a buffer shown as code. *)
+  b = state.Buffers[k]
+  f = text.FoldOf(b)
+  if not isApp(runOf(b)) or value.IsMissing(f)
+    return state
+  end
+  s = state
+  s.Buffers[k] = text.WithFold(dict.Put("Written", b.Version, f), b)
+  s
+end
+
+defn appKept(k, state)
+  (** The state with the fold of buffer k made again, while it shows as an app, when its text or the lines of its blocks changed since: an input's write, a
+      table's that adds a line, a save that formats the file, a cell that shows something or no longer. The lines of the blocks and the version it was
+      made for are kept in the run, as Seen, so that an event that changed neither pays a comparison of them. *)
+  b = state.Buffers[k]
+  r = runOf(b)
+  seen = {Version: b.Version, Lines: [x.Line for x in text.BlocksOf(b)]}
+  if value.Equal(dict.GetOr("AppSeen", missing, r), seen)
+    return state
+  end
+  got = appCells(k, state)
+  s = got.State
+  r = runOf(s.Buffers[k])
+  r.AppSeen = seen
+  s = withRun(k, r, s)
+  b = s.Buffers[k]
+  fold = appFold(got.Cells, b)
+  old = text.FoldOf(b)
+  if value.IsSome(old) and value.Equal(old.Hidden, fold.Hidden) and value.Equal(old.Titles, fold.Titles)
+    return s
+  end
+  fold.Written = if value.IsSome(old) dict.GetOr("Written", missing, old) else missing end
+  s.Buffers[k] = text.WithFold(fold, b)
+  s
+end
+
+defn appsKept(state)
+  (** The state with the fold of each buffer shown as an app made right, before the frame: see appKept. A buffer shown as code pays a match. *)
+  s = state
+  for k in 1..value.Len(s.Buffers)
+    if isApp(runOf(s.Buffers[k]))
+      s = appKept(k, s)
+    end
+  end
+  s
+end
+
 (* ---- The page of a file. *)
 
 defn WriteHtml(state)
@@ -2189,7 +2239,7 @@ defn Edited(k, name, at, how, state)
   (* The analysis says what the text says: the cells are not read again at rest for this edit. *)
   edited.CellsSeen = edited.Version
   s.Buffers[k] = edited
-  restaled(k, laid(k, withRun(k, r, s)))
+  restaled(k, laid(k, withRun(k, r, appWrote(k, s))))
 end
 
 defn pushed(k, name, number, state)
@@ -2771,6 +2821,7 @@ defn Changed(k, name, x, state)
   (* The analysis says what the text says: the cells are not read again at rest for this edit. *)
   edited.CellsSeen = edited.Version
   s.Buffers[k] = edited
+  s = appWrote(k, s)
   (* A field and a date that keep the keys show the value set. *)
   f = inputFocus(name, k, s)
   if value.IsSome(f) and dict.Has("Draft", f)
@@ -4160,7 +4211,7 @@ defn editWritten(t, state)
     return s
   end
   s.Buffers[k] = text.Replaced([{Line: w.Line, Column: w.Column - 1, End: w.End, Text: w.Text}], s.Buffers[k])
-  rerunEdited(k, found.Cell, x, closed, s)
+  rerunEdited(k, found.Cell, x, closed, appWrote(k, s))
 end
 
 defn unshown(words)
@@ -5587,16 +5638,18 @@ defn Closing(k, state)
 end
 
 defn Hooked(config)
-  (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs; and
-      before a buffer closes, its session ends. *)
+  (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs; before a
+      buffer closes, its session ends; and after each event, its Settle then the cells', which keep the fold of each file shown as an app. *)
   c = config
   idle = dict.GetOr("Idle", s -> s, config)
   saved = dict.GetOr("Saved", s -> s, config)
   moving = dict.GetOr("Moving", s -> false, config)
   closing = dict.GetOr("Closing", (k, s) -> s, config)
+  settle = dict.GetOr("Settle", s -> s, config)
   c.Idle = s -> tick(idle(s))
   c.Saved = saved
   c.Moving = s -> moving(s) or Moving(s)
   c.Closing = (k, s) -> closing(k, Closing(k, s))
+  c.Settle = s -> appsKept(settle(s))
   c
 end
