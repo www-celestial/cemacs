@@ -1,7 +1,8 @@
 (** Checks of the view of an app, C-c e t, against a real session of std/cells, on a file in a new folder under /tmp, each key sent as the window sends it,
     through the editor, its read only rule and the fold made again before each frame: the file whose cells never ran runs them and shows as an app, the
     titles of its cells that show something and what they show, no line of code; a slider moved by its keys and a field typed write the file and run again
-    the cells that read them; a value of a table edited writes the file; a key typed is refused; C-c e t again shows the code, the cursor on its cell. It is
+    the cells that read them; a value of a table edited writes the file; a key typed is refused; C-c e t again shows the code, the cursor on its cell; and
+    --app does as C-c e t at the start. It is
     a script, not a test file: it needs permissions. Run it from the root of cemacs with
     cesia run --allow read,write,exec=mktemp,exec=rm,env=PWD --allow exec=CESIA tests/app-check.ce, CESIA the real path of the cesia that runs it. It prints
     ok at the end and stops at the first failure. *)
@@ -100,6 +101,13 @@ check(not codeShown(s) and drawn("19", s) and isApp(s), "the table ran again, no
 s = pressed(["escape", "C-c", "e", "t"], s)
 check(not isApp(s) and codeShown(s) and s.Buffers[1].Cursor.Line == 16 and value.IsMissing(text.FoldOf(s.Buffers[1])), "the code shows again, the cursor on its cell: $(s.Buffers[1].Cursor)")
 check(not text.IsModified(text.MarkSaved(missing, s.Buffers[1])) and result.Unwrap(sys.Read(path)) == source, "nothing was written in the file on disk by the view")
+
+(* cemacs --app: the Start of the cells shows the file as an app and runs its cells, as C-c e t does. *)
+opened = commands.OpenFile(path, view.Start([], look, {Width: 8, Height: 19}, 1280, 720))
+opened.Config = state.Config
+opened.Options = ["--app"]
+s = settled(commands.Settled(notebook.Hooked({}).Start(opened)))
+check(isApp(s) and not codeShown(s) and drawn("Twice", s) and drawn("56.0", s), "--app shows the file as an app, its cells run: $(texts(s))")
 
 _ = sys.Run("rm", ["-rf", folder])
 io.Print("ok")

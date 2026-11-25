@@ -4,9 +4,11 @@ use src/ui
 use core/commands
 use core/text
 use core/view
+use std/io
 use std/list
 use std/result
 use std/sys
+use std/text as str
 use std/value
 
 defn opened(home, size, window)
@@ -42,12 +44,51 @@ defn begun(c, state)
   end
 end
 
+defn optionsOf(c)
+  (** The options of the command line that the apps of a config take, as the cells take --app: what its Options gives, or none for a config without it. *)
+  match c
+    {Options: f} -> f()
+    else -> []
+  end
+end
+
+defn Options(args, known)
+  (** The words of a command line after the home, {Options, Files} in an Ok: the options are the first words that start with --, each kept once, up to --,
+      which ends them, or to the first other word, which is a file, as each word after it is, --app too; the files are the rest. An option not in known is an
+      Err of the line that says so.
+
+        Options(["--app", "a.ce"], ["--app"]) --> result.Ok({Options: ["--app"], Files: ["a.ce"]})
+        Options(["--", "--app"], ["--app"]) --> result.Ok({Options: [], Files: ["--app"]}) *)
+  options = []
+  k = 1
+  while k <= value.Len(args) and str.StartsWith("--", args[k])
+    word = args[k]
+    k += 1
+    if word == "--"
+      break
+    end
+    if not (word in known)
+      return result.Err("cemacs: unknown option $word (known: $(if value.Len(known) == 0 "none" else str.Join(", ", known) end))")
+    end
+    if not (word in options)
+      options = list.Append(word, options)
+    end
+  end
+  result.Ok({Options: options, Files: list.Skip(k - 1, args)})
+end
+
 defn Start(config)
   (** Opens the window with config, the function that gives the keys and the settings, opens the files given after the home or one empty buffer, runs the
       Start of the config, and runs until the editor ends. The size of the window, its theme and its fonts are read once, here. bin/cemacs gives the home of
-      Cemacs first, then the files to open; cesia do dev runs from the home and gives nothing. *)
+      Cemacs first, then the options and the files to open, see Options: the state keeps the options as Options, and an option that no app of the config
+      takes stops Cemacs before its window opens, with a line on the standard error and the exit code 2. cesia do dev runs from the home and gives nothing. *)
   home = if value.Len(sys.Args) == 0 "." else sys.Args[1] end
   c = config()
+  line = Options(list.Skip(1, sys.Args), optionsOf(c))
+  if result.IsErr(line)
+    io.PrintError(line.Error)
+    sys.Exit(2)
+  end
   size = windowOf(c)
   window = opened(home, c.FontSize(), size)?
   measured = sdl.Measure(window)
@@ -57,7 +98,8 @@ defn Start(config)
   empty.Window = window
   empty.Config = config
   empty.Home = home
-  state = commands.Settled(begun(c, commands.OpenAll(list.Skip(1, sys.Args), empty)))
+  empty.Options = line.Value.Options
+  state = commands.Settled(begun(c, commands.OpenAll(line.Value.Files, empty)))
   sdl.Run(state, commands.Update, view.View, window, moving = commands.Moving)
   sdl.Close(window)
   result.Ok(missing)

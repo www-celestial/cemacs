@@ -1184,3 +1184,16 @@ defn isAppFileReadAgain()
   not showsCode(t) and not ("Later" in appTexts(t)) and not showsCode(u) and "Later" in appTexts(u) and "Use" in appTexts(u)
 end
 isAppClearedTitleGoes() = (s -> not ("Use" in appTexts(s)) and "Parameters" in appTexts(s) and not showsCode(s))(commands.Settled(notebook.ClearResults(appEditor(notebook.ToggleCode(appFile(words = [{Role: "value", Words: "84.0"}]))))))
+
+(* cemacs --app f.ce: the cells take the option, and their Start shows each file of cells opened as an app; a file without cells as code. *)
+isAppOption() = value.Equal(notebook.Hooked({}).Options(), ["--app"]) and value.Equal(notebook.Hooked({Options: () -> ["--x"]}).Options(), ["--x", "--app"])
+defn appStarted(options)
+  (** The Start of the cells on a file of cells whose session is busy, a file without cells and a buffer without a file, with the options given. *)
+  s = view.Start([busy(opened()).Buffers[1], text.Of("x = 1", "plain.ce"), text.Of("", missing)], look, cell, 1280, 720)
+  s.Options = options
+  notebook.Hooked({}).Start(s)
+end
+isAppStartShows() = (s -> s.Buffers[1].CellRun.App and value.IsSome(text.FoldOf(s.Buffers[1])) and value.IsMissing(text.FoldOf(s.Buffers[2])) and value.IsMissing(text.FoldOf(s.Buffers[3])) and
+  s.Message == "plain.ce has no cell: --app shows its code." and s.Current == 1)(appStarted(["--app"]))
+isAppStartWithout() = (s -> value.IsMissing(text.FoldOf(s.Buffers[1])) and s.Message == "")(appStarted([]))
+isAppStartOlderState() = value.IsMissing(text.FoldOf(notebook.Hooked({}).Start(busy(opened())).Buffers[1]))

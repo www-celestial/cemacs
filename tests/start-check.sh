@@ -30,6 +30,29 @@ started cesia do dev
 started bin/cemacs
 started bin/cemacs src/cemacs.ce core/text/text.ce
 
+# An option that no app takes stops Cemacs before its window opens: one line on the standard error, the exit code 2, nothing else.
+SDL_VIDEODRIVER=dummy timeout -s KILL 10 bin/cemacs --x core/text/text.ce > "$output" 2>&1
+status=$?
+if [ "$status" -ne 2 ] || [ "$(cat "$output")" != "cemacs: unknown option --x (known: --app)" ]; then
+  printf 'FAILED: an unknown option\nexit %s\n' "$status"
+  head -c 2000 "$output"
+  exit 1
+fi
+# --app opens a file of cells as an app and runs its cells, silent. Its session is a process that Cemacs started, and Cesia then ends a program at the
+# first TERM, as it would without a handler, where SDL would make it a quit event: so the proof is a second of silence, then the end by the timeout.
+cells="$(mktemp -d)"
+printf '(* %%%% One *)\n1 + 1\n' > "$cells/one.ce"
+SDL_VIDEODRIVER=dummy timeout -s TERM -k 1 1 bin/cemacs --app "$cells/one.ce" > "$output" 2>&1
+status=$?
+if [ "$status" -ne 124 ] || grep -qv -e '^Ok(missing)$' -e '^$' "$output"; then
+  printf 'FAILED: bin/cemacs --app\nexit %s\n' "$status"
+  head -c 2000 "$output"
+  exit 1
+fi
+rm -rf "$cells"
+# -- ends the options, so a file may start with --.
+started bin/cemacs -- core/text/text.ce
+
 # user/, in a new folder of Cemacs as a clone gives it: bin/cemacs and cesia do dev make it from the template when it is missing, and never touch one that is
 # there, even a link to nothing.
 fresh="$(mktemp -d)"

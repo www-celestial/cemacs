@@ -36,7 +36,8 @@ promptHeight = 22
     the last pending key; hints, the keys that can follow the pending ones once shown; chords, the keys of the command that runs; completion, the
     list of words offered under the cursor, see commands.Complete; names, the names of Cesia that completion reads once; focus, a control of an app
     that has the keys, {Keys, Hints, Leave}, its keys taken first and its hints shown, or missing, see commands.FocusOf; and holding, the block that took a
-    mouse press, {Mouse, Left, Top, Width}, until the button is released, or missing, see BlockAt. Config is the function
+    mouse press, {Mouse, Left, Top, Width}, until the button is released, or missing, see BlockAt; and options, the options of the command line, as --app,
+    see editor.Options. Config is the function
     that gives the keys and the settings, which the program sets: with none, no key runs. Home is the folder of Cemacs, "." until the program says. Panes is
     the tree of the panes, see panes.ce, and Pane the one being edited, which shows the current buffer.
     Under --watch the code changes and the state stays, so a session can hold a state from before a field was added here. A field added after that

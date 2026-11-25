@@ -5,6 +5,9 @@ use src/ui
 use core/commands
 use core/text
 use core/view
+use core/editor
+use std/dict
+use std/result
 use std/value
 
 look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 8, 19)
@@ -28,3 +31,13 @@ isWindowRead() = value.Equal(windowOf(mine()), {Width: 1600, Height: 900}) and v
 isWindowDefault() = value.Equal(windowOf(older()), {Width: 1280, Height: 720})
 isStartRun() = begun(mine(), first()).Message == "started with 1 buffer"
 isStartDefault() = value.Equal(begun(older(), first()), first()) and value.Equal(begun(emacs.Config(emacs.Keys), first()), first())
+
+(* The options of the command line: words that start with -- before the files, until -- or the first other word; each one an app takes. *)
+known = ["--app"]
+isOptionsRead() = value.Equal(editor.Options(["--app", "a.ce"], known), result.Ok({Options: ["--app"], Files: ["a.ce"]}))
+isOptionsNone() = value.Equal(editor.Options(["a.ce", "b.ce"], known), result.Ok({Options: [], Files: ["a.ce", "b.ce"]})) and value.Equal(editor.Options([], known), result.Ok({Options: [], Files: []}))
+isOptionsEnd() = value.Equal(editor.Options(["--", "--app"], known), result.Ok({Options: [], Files: ["--app"]})) and value.Equal(editor.Options(["--app", "--", "--x.ce"], known), result.Ok({Options: ["--app"], Files: ["--x.ce"]}))
+isOptionAfterFile() = value.Equal(editor.Options(["a.ce", "--app"], known), result.Ok({Options: [], Files: ["a.ce", "--app"]}))
+isOptionUnknown() = value.Equal(editor.Options(["--x", "a.ce"], known), result.Err("cemacs: unknown option --x (known: --app)")) and value.Equal(editor.Options(["--app"], []), result.Err("cemacs: unknown option --app (known: none)"))
+isOptionTwice() = value.Equal(editor.Options(["--app", "--app", "a.ce"], known), result.Ok({Options: ["--app"], Files: ["a.ce"]}))
+isOptionsOfConfig() = value.Equal(optionsOf(older()), []) and value.Equal(optionsOf(dict.Put("Options", () -> ["--app"], older())), ["--app"])

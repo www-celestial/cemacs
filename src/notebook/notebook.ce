@@ -1131,6 +1131,28 @@ defn appKept(k, state)
   s
 end
 
+defn appStarted(state)
+  (** The Start of the cells: with --app on the command line, each file of cells opened shows as an app, its cells run, as C-c e t shows it, and a file
+      without cells as code, with a message; without it, nothing. A buffer without a file, as *scratch*, is none of them. *)
+  if not ("--app" in dict.GetOr("Options", [], state))
+    return state
+  end
+  s = state
+  here = state.Current
+  said = []
+  for k in 1..value.Len(s.Buffers)
+    b = s.Buffers[k]
+    if value.IsSome(b.Path) and IsCells(b)
+      s.Current = k
+      s = appShown(k, s)
+    else if value.IsSome(b.Path)
+      said = list.Append("$(list.Last(str.Split("/", b.Path))) has no cell: --app shows its code.", said)
+    end
+  end
+  s.Current = here
+  if value.Len(said) > 0 commands.Say(str.Join(" ", said), s) else s end
+end
+
 defn appsKept(state)
   (** The state with the fold of each buffer shown as an app made right, before the frame: see appKept. A buffer shown as code pays a match. *)
   s = state
@@ -5639,17 +5661,22 @@ end
 
 defn Hooked(config)
   (** A config with the hooks of the cells over those it has, as the check's: at each tick, its Idle then the cells'; it moves while either needs; before a
-      buffer closes, its session ends; and after each event, its Settle then the cells', which keep the fold of each file shown as an app. *)
+      buffer closes, its session ends; after each event, its Settle then the cells', which keep the fold of each file shown as an app; at the start, its
+      Start then the cells', which show the files of cells as apps with --app, one of its Options. *)
   c = config
   idle = dict.GetOr("Idle", s -> s, config)
   saved = dict.GetOr("Saved", s -> s, config)
   moving = dict.GetOr("Moving", s -> false, config)
   closing = dict.GetOr("Closing", (k, s) -> s, config)
   settle = dict.GetOr("Settle", s -> s, config)
+  start = dict.GetOr("Start", s -> s, config)
+  options = dict.GetOr("Options", () -> [], config)
   c.Idle = s -> tick(idle(s))
   c.Saved = saved
   c.Moving = s -> moving(s) or Moving(s)
   c.Closing = (k, s) -> closing(k, Closing(k, s))
   c.Settle = s -> appsKept(settle(s))
+  c.Start = s -> appStarted(start(s))
+  c.Options = () -> list.Unique(list.Append("--app", options()))
   c
 end
