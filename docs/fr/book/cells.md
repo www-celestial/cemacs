@@ -326,7 +326,7 @@ rho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)
 
 (* %% Lorenz *)
 lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
-s = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
+s = ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])!
 ```
 
 Sous chacune de ces lignes, Cemacs dessine son slider, d'après le texte seul, avant que rien ne tourne : le nom, une piste,

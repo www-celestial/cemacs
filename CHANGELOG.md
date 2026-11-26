@@ -47,6 +47,9 @@ what a key can lead to, so no key has to be learnt before the start.
   already if one does. A line that gives a name a new value from its old one, as `x = x + 1` or `xs[1] = 5`, reads the old
   one, as in a terminal of Python, R or Julia, in `*repl*` too.
 - `M-;` makes the line, or the selected lines, a comment of Cesia, `(* … *)`, or takes it away, in one step of undo.
+- `x!`, Cesia's unwrap of a result, coloured and indented as `?` is: the call before the `!` keeps the colour of a call,
+  the field after it that of a field, and `a!=b` stays not-equal. The examples of the book write `x!` for
+  `result.Unwrap(x)`.
 - Completing a name of std/ after its module, as `io.Print`, writes the `use` it needs at the top, `use std/io`, in the same
   step of undo.
 - Errors in the lines: `cesia check` runs in the background after a pause or a save, its marks move with their lines, and

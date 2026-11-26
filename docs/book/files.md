@@ -156,7 +156,7 @@ and leaves both texts as they are. [files.SaveFile] does the check:
 use std/result
 use std/sys
 sys.Write("notes.txt", "one")
-read = result.Unwrap(files.ReadFile("notes.txt"))
+read = files.ReadFile("notes.txt")!
 result.IsOk(files.SaveFile("notes.txt", "second", read.Disk)) --> true
 files.SaveFile("notes.txt", "third", read.Disk) --> result.Err({Kind: "changed", Message: "notes.txt changed on disk since it was read."})
 ```
@@ -383,7 +383,7 @@ answer that ends with `/` and names no folder yet makes it. [folders.Destination
 
 ```cesia
 use std/result
-result.Unwrap(folders.Destinations([{Name: "a.ce", IsDir: false}], "/p", "/q/"))[1].To --> "/q/a.ce"
+folders.Destinations([{Name: "a.ce", IsDir: false}], "/p", "/q/")![1].To --> "/q/a.ce"
 ```
 
 A file that is there already is replaced only after a yes: `b.ce exists. Replace it? (y or n)`, or, for more,
