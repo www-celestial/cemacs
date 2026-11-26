@@ -369,7 +369,7 @@ and on the paper of the theme, black on white in the light one: its name, then i
 its value as the file writes it, and a `v` at the right of a list and of a day; a check box is `[ ]` or `[x]` and its
 label. Their names line up, and so do their boxes and the tracks of the sliders.
 
-```
+```text
 year   [ 2026        v ]
 zone   [ GMT-5       v ]
 day    [ 2026-11-23  v ]
@@ -409,7 +409,7 @@ prompt line says that `C-c e a` runs the cells with it.
 A cell whose last expression is an animation, as `plot.Frames([plot.Line(x, math.Sin(x - t)) for t in ts], fps = 30)`
 of [std/plot](https://www-celestial.github.io/cesia-lang/graphs.html), shows its first frame, paused, over a bar:
 
-```
+```text
   ▶ 12 / 120  ───────●──────────────────  30/s
 ```
 
@@ -440,7 +440,7 @@ A cell whose last expression is a 3D graph, a surface of `plot.Surface`, lines o
 of [std/plot](https://www-celestial.github.io/cesia-lang/graphs.html#3d), shows it at the view its code gives, `view = [az,
 el]` or MATLAB's `[-37.5, 30]`, with a line under it that says the view:
 
-```
+```text
   view −62.5°, 20° (code −37.5°, 30°)
 ```
 

@@ -395,7 +395,7 @@ pixel, avec sa valeur telle que le fichier l'écrit, et un `v` à droite d'une l
 `[ ]` ou `[x]` suivie de son label (son libellé). Leurs noms s'alignent, et leurs cases aussi, avec les barres des
 sliders.
 
-```
+```text
 year   [ 2026        v ]
 zone   [ GMT-5       v ]
 day    [ 2026-11-23  v ]
@@ -438,7 +438,7 @@ Une cell dont la dernière expression est une animation, comme
 [std/plot](https://www-celestial.github.io/cesia-lang/graphs.html), montre sa première image, en pause, au-dessus d'une
 barre :
 
-```
+```text
   ▶ 12 / 120  ───────●──────────────────  30/s
 ```
 
@@ -473,7 +473,7 @@ Une cell dont la dernière expression est un graphe 3D, une surface de `plot.Sur
 pièces de `plot.Mesh` de [std/plot](https://www-celestial.github.io/cesia-lang/graphs.html#3d), le montre à la vue que donne son code,
 `view = [az, el]` ou le `[-37.5, 30]` de MATLAB, avec une ligne en dessous qui dit la vue (*view*) :
 
-```
+```text
   view −62.5°, 20° (code −37.5°, 30°)
 ```
 
